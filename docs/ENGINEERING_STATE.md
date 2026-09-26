@@ -3,7 +3,7 @@
 ## 1. Project Identity & Status
 
 - **Project**: DuskWeave
-- **Workspace**: `d:/CornerStone`
+- **Workspace**: `D:/DuskWeave`
 - **Current Phase**: Stage 0 — Repository Authority Bootstrap
 - **Active Seal**: `DW-BOOTSTRAP-001`
 - **Seal Status**: **SEALED** (Exit criteria completely verified)
@@ -16,9 +16,9 @@
 
 | Dokumen | Path | Status | Otoritas / Peran |
 | :--- | :--- | :--- | :--- |
-| **Build Order** | `docs/BUILD_ORDER.md` | VERIFIED | Menentukan tahapan resmi, urutan dependency, dan batasan implementasi. |
+| **Build Order** | `docs/BUILD_ORDER.md` + `docs/build-order/*.md` | VERIFIED | Index tipis menentukan navigasi; packet terpisah menentukan tahapan, dependency, dan batasan implementasi. |
 | **Agent Protocol** | `AGENTS.md` | VERIFIED | Menentukan hirarki otoritas, invarian INV-001 s.d. INV-007, dan aturan agent. |
-| **Reasoning Skill** | `SKILL.md` | VERIFIED | Menentukan alur berpikir, panduan penulisan PRD/ADR, dan domain contract. |
+| **Reasoning Skill** | `.agents/skills/build-duskweave/SKILL.md` | VERIFIED | Menentukan alur berpikir, panduan penulisan PRD/ADR, dan domain contract. |
 | **Quality Bar** | `QUALITY_BAR.md` | VERIFIED | Menentukan budget LOC modul/diff, testing bar, dan larangan God Object. |
 | **Engineering State** | `docs/ENGINEERING_STATE.md` | VERIFIED | Status pelacakan seal, milestone, dan gap aktif repositori. |
 | **PRD Registry** | `docs/prd/README.md` | VERIFIED | Indeks pendaftaran PRD-000 s.d. PRD-021 beserta aturan penulisan. |
@@ -29,7 +29,7 @@
 ## 3. Exit Criteria Evaluation for `DW-BOOTSTRAP-001`
 
 - [x] **Authority hierarchy documented**: Ditetapkan secara hierarkis pada `AGENTS.md` dan `docs/BUILD_ORDER.md` (PRD > ADR > Domain Contract > Quality Bar > AGENTS.md > SKILL.md > Implementation).
-- [x] **Build order documented**: Seluruh 22 tahapan didefinisikan secara eksplisit dalam `docs/BUILD_ORDER.md`.
+- [x] **Build order documented**: `docs/BUILD_ORDER.md` menjadi canonical index; detail 22 tahapan dipisah secara bounded di `docs/build-order/*.md`.
 - [x] **God-object rules documented**: INV-001 dan larangan terhadap monolitik manager terdokumentasi di `AGENTS.md` dan `QUALITY_BAR.md`.
 - [x] **Module-size rules documented**: Batas ideal `< 300 LOC`, batas keras `400 LOC`, dan aturan split tanggung jawab terdokumentasi di `QUALITY_BAR.md`.
 - [x] **ADR/PRD conventions documented**: Format, batasan konten, dan tata kelola diuraikan di `docs/prd/README.md` dan `docs/adr/README.md`.
@@ -51,7 +51,7 @@ Semua interaksi dan rencana tunduk pada:
 
 ## 5. Next Immediate Action
 
-Sesuai urutan authoring pada `docs/BUILD_ORDER.md` Bagian 29:
+Sesuai `docs/BUILD_ORDER.md` dan packet `docs/build-order/07-delivery-and-seals.md`:
 - **Next Stage**: Stage 1 — Product Thesis
 - **Target Artifact**: `docs/prd/PRD-000-product-thesis.md`
 - **Seal**: `DW-PRD-000`

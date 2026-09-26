@@ -15,12 +15,14 @@ It is a campaign operating system.
 Before making changes, read:
 
 ```text
-1. docs/BUILD_ORDER.md
+1. AGENTS.md
 2. docs/ENGINEERING_STATE.md
-3. relevant PRD
-4. relevant accepted ADR
-5. relevant domain contracts
-6. QUALITY_BAR.md
+3. docs/BUILD_ORDER.md
+4. relevant PRD
+5. relevant accepted ADR
+6. relevant domain contracts
+7. QUALITY_BAR.md
+8. .agents/skills/build-duskweave/SKILL.md
 ```
 
 Do not infer architectural authority from existing implementation when PRD/ADR says otherwise.
