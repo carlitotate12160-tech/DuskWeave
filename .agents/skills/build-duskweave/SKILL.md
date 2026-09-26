@@ -1,3 +1,8 @@
+---
+name: build-duskweave
+description: Guidelines and mandatory reasoning protocol for designing, implementing, reviewing, or extending DuskWeave.
+---
+
 # Skill: build-duskweave
 
 ## Purpose
