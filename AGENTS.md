@@ -1,150 +1,300 @@
-# AGENTS.md — DuskWeave Contributor & Agent Protocol
+# AGENTS.md
 
-## Purpose & Overview
+## Mission
 
-Dokumen ini adalah protokol otoritatif bagi model AI, automated agent, IDE, dan kontributor manusia yang bekerja pada repositori **DuskWeave**.
+Build DuskWeave as a persistent campaign reasoning and adversary-emulation platform with strict separation between cognition, deterministic authority, execution, observation, and proof.
 
-Prinsip fundamental DuskWeave:
+The repository is not a collection of attack scripts.
 
-> **Campaign semantics first. Reality/evidence second. Execution third. Tools last.**
-
-Setiap interaksi dan kontribusi pada repositori ini wajib tunduk pada hirarki otoritas dan invariant yang ditetapkan di bawah ini.
+It is a campaign operating system.
 
 ---
 
-## 0. Authority Hierarchy
+## Required reading order
 
-Urutan otoritas mutlak dalam DuskWeave:
+Before making changes, read:
 
 ```text
-1. PRODUCT THESIS / PRD     (Menentukan WHAT / WHY)
-2. ACCEPTED ADR             (Menentukan Architectural HOW)
-3. DOMAIN CONTRACT          (Menentukan interface yang boleh diimplementasikan)
-4. QUALITY BAR              (Menentukan standar kode, budget ukuran, dan testing)
-5. AGENTS.md                (Menentukan cara model/agent/kontributor bekerja)
-6. SKILL.md                 (Menentukan workflow reasoning & implementasi)
-7. IMPLEMENTATION           (Kode sumber dan automated test)
+1. docs/BUILD_ORDER.md
+2. docs/ENGINEERING_STATE.md
+3. relevant PRD
+4. relevant accepted ADR
+5. relevant domain contracts
+6. QUALITY_BAR.md
 ```
 
-### Aturan Hirarki:
-- Code tidak boleh menciptakan arsitektur baru tanpa authority yang lebih tinggi (PRD & ADR yang sudah di-*accept*).
-- `AGENTS.md` dan `SKILL.md` tidak boleh mengubah atau melemahkan keputusan yang telah disepakati dalam PRD atau ADR.
-- Tidak ada kontributor atau agent yang boleh melompati *stage* atau *dependency* hanya karena tahap berikutnya tampak mudah atau menarik.
+Do not infer architectural authority from existing implementation when PRD/ADR says otherwise.
 
 ---
 
-## 1. Hard Invariants (Wajib Dipatuhi Tanpa Pengecualian)
+## Core architectural invariants
 
-### INV-001 — No God Object
-Dilarang keras membuat atau mengintroduksi service/object monolitik serba tahu, seperti:
+Never create a God Object.
+
+Keep separate:
+
 ```text
-CampaignManager
-SystemManager
-AgentManager
-GlobalContext
-WorldManager
-ToolManager
+CyberTerrain
+FootholdGraph
+AttackPathView
+ObjectiveState
+CampaignTrajectory
 ```
-Setiap modul harus memiliki tanggung jawab tunggal (*single responsibility*) dengan batasan domain yang eksplisit.
 
-### INV-002 — Separate Operational Models
-Lima model operasional harus tetap terpisah secara tegas:
-1. `CyberTerrain`
-2. `FootholdGraph`
-3. `AttackPathView`
-4. `ObjectiveState`
-5. `CampaignTrajectory`
+Never expose arbitrary execution directly to reasoning workers.
 
-Dilarang keras menggabungkan kelima model ini ke dalam satu struktur raksasa (misalnya `CampaignState`).
+Never treat observations as verified facts without reconciliation/evidence.
 
-### INV-003 — Reasoning != Execution
-LLM atau Reasoning Worker tidak memiliki hak eksekusi langsung (*zero arbitrary execution authority*). Alur wajib:
+Never persist raw credential material, customer records, financial records, or sensitive authentication stores.
+
+Campaign reasoning cannot consume defender detections during active execution.
+
+Campaign capabilities cannot alter authoritative audit evidence.
+
+---
+
+## Language ownership
+
+Production baseline:
+
 ```text
-Reasoning Worker
-     ↓
+Rust:
+domain core
+campaign engine
+terrain
+footholds
+pathing
+objectives
+evidence
+authority
+execution broker
+
+Go:
+tool adapters
+collectors
+network/integration workers
+telemetry adapters
+
+Zig:
+only when a concrete low-level native-helper requirement justifies it
+
+C/C++:
+FFI or unavoidable external SDK integration only
+
+Python/Nim:
+research plane unless an accepted ADR promotes a specific component
+```
+
+Never introduce another production language without an ADR.
+
+---
+
+## Dependency discipline
+
+Direction:
+
+```text
+domain
+↑
+application
+↑
+adapters
+```
+
+Domain code cannot import tool adapters, databases, HTTP clients, LLM clients, telemetry backends, or OS-specific execution implementations.
+
+Bounded contexts communicate through:
+
+```text
+typed contracts
+commands
+events
+ports
+```
+
+not internal implementation imports.
+
+---
+
+## No generic dumping grounds
+
+Avoid:
+
+```text
+utils/
+helpers/
+common/
+managers/
+misc/
+```
+
+unless responsibility is narrow and explicit.
+
+`dw-types` may contain only genuine primitives.
+
+Do not move business logic into shared modules to bypass module-size rules.
+
+---
+
+## Size discipline
+
+Preferred source module:
+
+```text
+< 300 LOC
+```
+
+Architecture review threshold:
+
+```text
+400 LOC
+```
+
+Large modules must be split by cohesive responsibility.
+
+Test modules are also expected to remain readable and bounded.
+
+---
+
+## Slice discipline
+
+One slice should implement:
+
+```text
+one architectural concern
++
+one safety-complete vertical behavior
++
+tests
+```
+
+Do not turn a slice into a multi-domain refactor.
+
+If scope expands materially, return:
+
+```text
+SPLIT_REQUIRED
+```
+
+---
+
+## Development workflow
+
+Required sequence:
+
+```text
+AUTHORITY CHECK
+→ TDD
+→ IMPLEMENT
+→ LOCAL CHECKS
+→ SELF-REVIEW
+→ ARCHITECTURE CHECK
+→ PR
+→ ONE ADVERSARIAL REVIEW
+→ FIX VALID FINDINGS
+→ FINAL CURRENT-HEAD CHECK
+→ MERGE
+```
+
+---
+
+## Reasoning workers
+
+Reasoning workers should be short-lived specialists.
+
+Examples:
+
+```text
+MissionInterpreter
+TerrainAnalyst
+AccessStrategist
+ExpansionPlanner
+ObjectiveAnalyst
+ChainComposer
+AdaptationPlanner
+```
+
+Each receives a narrow ContextPack.
+
+Never create a universal `Agent` with access to all repositories, tools, memory, telemetry, and execution.
+
+---
+
+## Execution rule
+
+The permitted flow is:
+
+```text
+Reasoning
+↓
 Proposal
-     ↓
-Deterministic Validation
-     ↓
+↓
+Deterministic validation
+↓
 Capability Gateway
-     ↓
-Executor
+↓
+Execution Broker
+↓
+Adapter
 ```
 
-### INV-004 — Observation != Fact
-Hasil observasi atau output tool bukan fakta langsung (*ground truth*). Alur wajib:
+Not:
+
 ```text
-Observation
-     ↓
-Validation / Reconciliation
-     ↓
-State Delta
-```
-Inference spekulatif dilarang diam-diam berubah menjadi fakta graf.
-
-### INV-005 — Sensitive Data Zero-Retention
-Data sensitif mentah (*raw credentials*, *customer records*, *financial data*, *auth stores*) **tidak boleh** mencapai persistence layer.
-- Pemrosesan bukti (*proof transformation*) harus diturunkan sebelum persistensi.
-- Memori efemeral harus di-*zeroize*.
-
-### INV-006 — Audit Integrity
-Kemampuan kampanye (*campaign capabilities*) dilarang keras:
-- Menghapus bukti otoritatif (*authoritative evidence*).
-- Mengubah rekaman audit.
-- Mematikan sistem audit otoritatif.
-- Memalsukan catatan audit.
-
-### INV-007 — Defender Isolation
-Reasoning kampanye tidak boleh menerima telemetri defender secara *real-time* (misalnya vonis EDR/AV, alert SIEM, respons SOC) untuk melakukan *adaptive evasion*.
-- Penilaian celah kendali (*control-gap assessment*) hanya dilakukan pasca-eksekusi oleh Observer / Grader.
-
----
-
-## 2. Slice & Engineering Rules
-
-### Aturan Slice (Paket Implementasi)
-Setiap paket implementasi harus memenuhi:
-```text
-1 architectural concern + 1 meaningful vertical behavior + tests
-```
-- Target ukuran runtime diff: disukai `< 400 LOC`.
-- Jangan sengaja memperbesar slice hanya untuk mengejar kuota baris.
-
-### Aturan Ukuran File & Modul
-- Disukai: `< 300 LOC/module`.
-- Ambang batas review ketat (*hard limit*): `400 LOC/module`.
-- Bila mendekati limit: **pecah berdasarkan tanggung jawab domain (*split by responsibility*)**, bukan memindahkan fungsi secara acak ke file `helpers` atau `utils`.
-
-### Standar Siklus Implementasi
-Setiap slice kode harus melalui:
-```text
-1. DESIGN AUTHORITY CHECK (Cek kesesuaian PRD/ADR)
-2. TDD (Tulis failing test terlebih dahulu)
-3. IMPLEMENT (Tulis kode hingga test lulus)
-4. LOCAL CHECKS (Format, linter, type-check, tests passing)
-5. SELF-REVIEW DIFF (Verifikasi kebersihan diff)
-6. ARCHITECTURE INVARIANT CHECK (Cek INV-001 s.d. INV-007)
-7. PR / REVIEW (Adversarial review)
-8. FIX VALID FINDINGS
-9. FINAL VALIDATION & MERGE
+LLM
+↓
+shell
 ```
 
 ---
 
-## 3. STOP Conditions (Kondisi Wajib Berhenti)
+## Sensitive-data rule
 
-Agent / Model **WAJIB BERHENTI** dan mengembalikan `SPLIT_REQUIRED` dengan alasan jelas jika:
-1. Dokumen PRD atau ADR pendukung belum diterima (*accepted*).
-2. Perubahan yang diminta melanggar salah satu dari INV-001 s.d. INV-007.
-3. Diperlukan batas domain baru yang belum didefinisikan dalam ADR.
-4. Ruang lingkup (*scope*) membesar secara material.
-5. Modul berisiko menjadi God Object atau melampaui batas LOC.
-6. Diff runtime berubah menjadi mini-project yang tidak fokus.
-7. Test mengungkap ketidakcocokan arsitektur dasar.
+Raw sensitive material must remain in an ephemeral sensitive boundary.
+
+It must not be:
+
+```text
+serialized
+logged
+stored
+sent to an LLM
+included in tracing
+written to crash diagnostics
+included in reports
+```
+
+Persistent proof must use approved opaque proof material.
 
 ---
 
-## 4. Communication & Language
+## Scenario rule
 
-- Komunikasi dengan pemilik repositori menggunakan **Bahasa Indonesia**.
-- Penulisan kode, skema, tipe data, ADR/PRD teknis, dan prompt menggunakan **Bahasa Inggris**.
+Threat scenarios may consume generic capabilities.
+
+They may not become new architecture.
+
+If an APT41-, Lazarus-, or Volt-derived scenario requires adding actor-specific logic into CampaignKernel:
+
+```text
+STOP
+```
+
+and redesign the generic domain.
+
+---
+
+## STOP conditions
+
+Stop implementation when:
+
+```text
+authority is ambiguous
+required PRD/ADR does not exist
+architecture invariant would be violated
+new cross-domain dependency appears
+God Object pressure appears
+slice expands beyond its sealed purpose
+```
+
+Return a concise architecture finding instead of improvising.
