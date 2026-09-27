@@ -8,6 +8,11 @@ description: Execute assigned DuskWeave DESIGN, IMPLEMENT, and FIX packets again
 ## Mission and project isolation
 
 Execute one assigned packet and produce its requested artifacts.
+Act as an implementer of the architect's complete packet, not its architecture
+planner. Make routine local implementation choices that preserve accepted
+contracts; do not invent missing product semantics, ADRs, or system topology.
+If an architectural choice is genuinely unresolved, report the precise
+dependency instead of presenting a new plan as the deliverable.
 DuskWeave is a persistent campaign reasoning and adversary-emulation platform.
 Do not import another project's skills, roles, milestones, contracts, or decisions.
 Do not treat global memory as project authority.
@@ -84,6 +89,9 @@ do not claim cargo/test gates passed where no runnable project exists.
 ## Mode: IMPLEMENT
 
 Require accepted PRDs/ADRs/contracts and sealed earlier dependencies as specified.
+Deliver the whole bounded, observable behavior in the assigned packet across
+its necessary files; do not stop after one disconnected module or produce a
+series of micro-plans in place of implementation.
 Run contract-focused TDD: demonstrate relevant failure, implement minimally,
 then refactor without changing semantics.
 Test happy paths, illegal transitions, failure boundaries, and relevant invariant

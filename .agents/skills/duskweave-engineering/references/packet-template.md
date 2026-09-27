@@ -26,6 +26,7 @@ Distinguish accepted authority from documents this packet is tasked to draft.
 State one reviewable outcome, ownership, and behavior.
 Define necessary assumptions and failure semantics.
 Give exact acceptance criteria; define what evidence proves completion.
+Keep the packet cohesive across its necessary files; avoid prompts per module.
 
 ## Allowed files
 List exact paths. Include required test/consumer changes established by inspection.
@@ -33,6 +34,8 @@ Do not authorize arbitrary wildcard edits.
 
 ## Required work
 Use concise, directly executable steps.
+The IDE implements the decisions already captured by authority and packet.
+Do not ask it to choose a new architecture or return another plan.
 Keep product semantics in PRDs and architectural decisions in permitted ADRs.
 Do not duplicate entire authority documents in the prompt.
 

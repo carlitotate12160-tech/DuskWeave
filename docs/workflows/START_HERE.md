@@ -13,7 +13,8 @@ Read docs/BUILD_ORDER.md for sequencing.
 1. Use a separate Project named DuskWeave.
 2. Paste the complete contents of PROJECT_INSTRUCTIONS.md into Project Instructions.
 3. Attach/connect current DuskWeave authority; avoid unrelated project sources.
-4. Choose the installed duskweave-engineering skill for design and review.
+4. Use duskweave-engineering for design and packet authoring; use
+   duskweave-adversarial-review to challenge the completed artifact.
 5. Start one conversation per bounded outcome.
 
 Project instructions control guidance; they do not guarantee memory isolation.
@@ -26,8 +27,9 @@ The setup file does not automatically modify the ChatGPT Project settings.
 Open D:/DuskWeave as its own workspace.
 Read AGENTS.md and .agents/skills/build-duskweave/SKILL.md explicitly if your
 IDE does not discover repository skills automatically.
-For architecture/review use .agents/skills/duskweave-engineering/SKILL.md.
-Both skill directories are self-contained. No other project's skill is needed.
+For architecture use .agents/skills/duskweave-engineering/SKILL.md;
+for a distinct review use .agents/skills/duskweave-adversarial-review/SKILL.md.
+All three skill directories are self-contained. No other project's skill is needed.
 
 ## Source ownership
 
@@ -37,7 +39,7 @@ Both skill directories are self-contained. No other project's skill is needed.
 - QUALITY_BAR.md: quality gates and budgets.
 - Build order: dependency and stage navigation.
 - Engineering state: actual acceptance/seal status.
-- Skills: how to carry out one kind of work.
+- Skills: architecture, packet execution, and adversarial review workflows.
 - Packet: exact bounded authorization for the current task.
 
 Repository copies are canonical for repository procedure.
@@ -49,8 +51,9 @@ Update the installed copy deliberately when repository workflow changes.
 
 PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain
 are ACCEPTED. DW-DESIGN-001.md and its prior pinned execution base are historical.
-The next permitted authoring packet is DW-DESIGN-002 (PRD-003..006); create and
-pin its execution prompt against a newly verified clean HEAD when assigned.
+The next permitted authoring packet is DW-DESIGN-002 (PRD-003..006).
+Its combined prompt is docs/workflows/DW-DESIGN-002.md. Pin the invocation
+against a newly verified clean HEAD when assigning it.
 Do not start ADR or runtime work before the required PRD acceptance and foundation
 dependencies are complete.
 

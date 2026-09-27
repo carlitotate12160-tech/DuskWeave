@@ -59,9 +59,10 @@ Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 telah ditinjau dan d
 
 ## 6. Engineering setup maintenance
 
-Instruksi Project dan dua skill terpisah disiapkan melalui pekerjaan konfigurasi
+Instruksi Project dan tiga skill terpisah disiapkan melalui pekerjaan konfigurasi
 yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
-- Architecture/review: `.agents/skills/duskweave-engineering/SKILL.md`.
+- Architecture/packet preparation: `.agents/skills/duskweave-engineering/SKILL.md`.
 - Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
+- Distinct adversarial review: `.agents/skills/duskweave-adversarial-review/SKILL.md`.
 - Setup navigation: `docs/workflows/START_HERE.md`.
 - Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. Acceptance PRD-000..002 dicatat terpisah; ADR, runtime, dan foundation seal belum selesai.

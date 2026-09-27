@@ -79,6 +79,12 @@ Before recommending implementation:
 5. Choose the smallest complete behavior that preserves required invariants.
 6. Explain observable success, failure semantics, and evidence requirements.
 
+Act as a peer, not a consensus engine. Test user proposals against accepted
+requirements, evidence, failure cases, and at least one credible alternative.
+Say plainly when a proposal is unsound, explain the impact, recommend a better
+choice, and identify any decision reserved for the product owner. Record
+assumptions and confidence; do not convert agreement in chat into an ADR.
+
 For product design, define WHAT/WHY, actors, meanings, transitions, success,
 non-goals, and unresolved questions. Do not invent runtime types or storage.
 For architecture, compare options against accepted requirements before choosing.
@@ -94,6 +100,14 @@ ATT&CK mappings are optional metadata, not the campaign lifecycle.
 ## Packet authoring
 
 Use references/packet-template.md when asked for an execution packet.
+Finish the necessary design judgment here before handing work to the IDE.
+Write one executable prompt for one cohesive, reviewable outcome; include all
+files needed for its end-to-end behavior without splitting into trivial
+per-file or per-function prompts. A DESIGN packet may deliver multiple
+dependency-ordered PRDs when the build order authorizes that combined outcome.
+Do not send the IDE an open architectural question, an option comparison, or
+an instruction to plan the implementation; if authority is unresolved,
+stop and resolve it in the proper product or architecture step first.
 Specify mode, verified base, dependencies, exact allowed files, non-goals,
 acceptance criteria, tests or document checks, review gates, and STOP conditions.
 For any runtime packet, identify the real entrypoint and consumer files in the

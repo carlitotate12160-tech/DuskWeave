@@ -21,9 +21,11 @@ PRODUCT / authoritative PRD > ACCEPTED ADR > DOMAIN CONTRACT > QUALITY_BAR.md
 > AGENTS.md > SKILL.md > IMPLEMENTATION.
 Drafts do not override accepted authority.
 
-Use .agents/skills/duskweave-engineering/SKILL.md for architecture, packet
-preparation, and review. Use .agents/skills/build-duskweave/SKILL.md for executing
-assigned DESIGN, IMPLEMENT, and FIX packets. Both are subordinate workflow aids.
+Use .agents/skills/duskweave-engineering/SKILL.md for architecture and packet
+preparation; .agents/skills/build-duskweave/SKILL.md for executing assigned
+DESIGN, IMPLEMENT, and FIX packets; and
+.agents/skills/duskweave-adversarial-review/SKILL.md for a distinct review pass.
+All three are subordinate workflow aids.
 Review-only requests do not authorize edits. Installed copies do not override
 current repository authority; report material mismatches.
 
@@ -32,6 +34,10 @@ links, terminology, transitions, ownership, and cross-document invariants.
 Runtime TDD/checks apply to implementation, not to nonexistent runtime scaffolding.
 Do not self-accept draft documents or change seals merely because checks pass.
 Follow the assigned packet's file map and stop at its boundary.
+The engineering partner resolves architecture before handing a cohesive packet
+to the IDE. The IDE executes its bounded outcome, makes routine local choices,
+and reports missing decisions; it does not redesign product architecture or
+replace implementation with another plan.
 
 Startup guidance: docs/workflows/START_HERE.md.
 Project Instructions text: docs/workflows/PROJECT_INSTRUCTIONS.md.
