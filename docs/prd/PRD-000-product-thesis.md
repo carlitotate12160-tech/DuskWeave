@@ -63,7 +63,7 @@ Rather than a single linear pipeline, DuskWeave models adversary activity as fou
 - **Strategic Loop**: Mission objectives, boundary constraints, priority scoring, and global campaign posture.
 - **Access Loop**: Initial terrain discovery, entry path identification, access validation, and survivability.
 - **Expansion Loop (Recursive)**: Situational awareness, internal traversal, trust relationship leverage, and positional advancement.
-- **Objective Loop**: Target validation, simulated collection, staged exfiltration, and proof generation.
+- **Objective Loop**: Target validation, bounded evidence collection when authorized, staging of derived proof, and objective proof review.
 
 Adaptation is not a final phase; it is an active control mechanism that cross-cuts all four loops to redirect decisions whenever reality diverges from assumptions.
 
@@ -109,17 +109,17 @@ Defensive efficacy is measured through distinct control-gap dimensions:
 - **TemporalCorrelationGap**: Defensive breakdowns caused by adversary actions dispersed across multi-day dwell intervals.
 
 ### 5.2 Defender Assessment and Knowledge Boundary (INV-007)
-DuskWeave uses defender telemetry to assess how controls responded to authorized emulation. Campaign reasoning does not receive live EDR, AV, SIEM, or SOC verdicts to adjust active operations. The Observer correlates action evidence with defender visibility, alerts, prevention, and response independently of the active campaign.
+DuskWeave uses defender telemetry to assess how controls responded to authorized emulation. The Observer correlates action evidence with defender visibility, alerts, prevention, and response independently of campaign decisions. INV-007 below owns the knowledge boundary for blind campaigns, separately authorized defender-informed exercises, and telemetry obtained through a validated campaign position.
 
 Assessment must distinguish: an action that failed independently of a control; an action prevented before objective achievement; an objective reached with a correlated detection; an objective reached without a correlated alert despite verified sensor coverage; and an inconclusive result caused by absent, incomplete, or delayed telemetry. Silence alone is not proof of evasion. Each reported gap must identify the action and objective evidence, relevant sensor coverage and observation window, and the observed control outcome.
 
-A collaborative validation exercise may use defender findings to improve coverage and authorize a separate retest. Label that exercise separately from an adversary emulation run whose active planner did not have defender-internal knowledge. The Observer reports measured control gaps; it does not become an active campaign reward or decision channel.
+A separately authorized defender-informed exercise or retest may use bounded defender feedback for control validation. Label and evaluate it separately from a blind adversary-emulation run. The Observer's privileged feed is not an input to blind campaign decisions. Evidence of an alert acquired through a validated, authorized campaign position follows INV-007 and INV-004; it does not by itself prove which control caused a campaign-visible effect.
 
 ---
 
 ## 6. Architectural Invariants
 
-All features and requirements across DuskWeave are subordinate to seven immutable invariants:
+All features and requirements across DuskWeave are subordinate to seven governing invariants:
 
 1. **INV-001 (No God Object)**: No central manager, coordinator, or global context struct may hold global references across the entire platform. Subsystems interact solely through typed events and bounded contracts.
 2. **INV-002 (Separate Operational Models)**: The system maintains five strictly separated operational models:
@@ -130,9 +130,23 @@ All features and requirements across DuskWeave are subordinate to seven immutabl
    - `CampaignTrajectory`: Chronological event ledger of past actions, decisions, and outcomes.
 3. **INV-003 (Reasoning != Execution)**: Cognitive planners and LLMs only generate typed proposals. All execution must pass through deterministic policy kernels, capability gateways, and execution brokers.
 4. **INV-004 (Observation != Fact)**: Raw sensory data from tools and environment must undergo validation, corroboration, and reconciliation before updating established operational models.
-5. **INV-005 (Sensitive Data Zero-Retention)**: Raw client credentials, password hashes, cryptographic private keys, personal identity records, customer data, and financial records must never be persisted to storage or forwarded to LLM contexts. Proof of access is derived via irreversible, opaque tokens before persistence.
+5. **INV-005 (Sensitive Data Zero-Retention)**: Raw client credentials, password hashes, cryptographic private keys, personal identity records, customer data, and financial records must never be persisted to storage or forwarded to LLM contexts. For a specifically authorized access or objective proof, the minimum necessary client content may be transferred into an isolated ephemeral sensitive boundary, processed there only to derive irreversible opaque proof, and discarded after the attempt. No raw client content becomes durable evidence or an output to operators.
 6. **INV-006 (Audit Integrity)**: Campaign capabilities can never alter, delete, tamper with, or disable authoritative audit logs.
-7. **INV-007 (Defender Assessment Boundary)**: Active campaign planners cannot use live defender detection verdicts as an evasion oracle. The separate Observer uses defender telemetry to evaluate visibility, prevention, correlation, and response, then supports an explicitly authorized retest.
+7. **INV-007 — Defender Knowledge Boundary**:
+
+   DuskWeave may perform authorized, bounded operational adaptation intended to test whether enterprise controls can prevent, constrain, or expose an adversary-emulation campaign.
+
+   Active campaign reasoning may use security effects and environmental changes that are genuinely observable from its validated campaign position, including blocked actions, denied access, terminated execution, lost reachability, changed system behavior, or other campaign-visible friction.
+
+   In blind adversary-emulation mode, active campaign reasoning must not receive privileged defender-internal telemetry or verdicts that would not ordinarily be available from the campaign position, including EDR/AV console alerts, SIEM detections, SOC tickets, analyst conclusions, Observer verdicts, or Grader results.
+
+   Campaign-observed evidence does not automatically establish which defensive control caused an effect. Such attribution requires evidence and remains subject to observation/fact reconciliation.
+
+   A separately authorized defender-informed exercise or retest may expose bounded defender feedback to campaign planning for control-validation purposes. Such exercises must be explicitly labeled and evaluated separately from blind campaign results.
+
+   Defender telemetry acquired legitimately through an authorized campaign-visible position is treated as ordinary campaign-observed evidence and remains subject to scope, sensitive-data, provenance, and evidence rules.
+
+   The Defender Knowledge Boundary prohibits privileged defender-oracle feedback; it does not prohibit authorized adversary-emulation capabilities that adapt operational behavior in response to conditions the campaign itself can legitimately observe.
 
 ---
 
@@ -142,7 +156,7 @@ To maintain architectural purity and safety, the following capabilities are expl
 
 - **Destructive Actions**: DuskWeave will never execute ransomware, disk wiping, data destruction, denial-of-service, or irreversible hardware modifications.
 - **Covert Implant Infrastructure**: DuskWeave does not build, host, or deploy covert botnet C2 networks, DNS fast-flux infrastructure, or unmonitored persistence implants on client machines.
-- **Raw Data Exfiltration**: Real client confidential data will never be exfiltrated. Proof of impact is established using synthetic tokens, canary objects, or cryptographic proof material.
+- **Unbounded or Retained Raw Data Transfer**: Real client confidential content may not be exported as a deliverable, retained, or transferred outside an explicitly authorized ephemeral proof boundary. When synthetic or non-sensitive proof cannot satisfy a declared access or objective claim and the rules of engagement expressly permit it, DuskWeave may download only the minimum necessary content from a scoped client resource into that boundary to derive opaque proof. The raw content is discarded on success, failure, interruption, or withdrawal of authorization; only the derived proof and non-sensitive provenance may persist. Bulk extraction or transfer without a specific proof condition remains out of scope. This client-content proof exception does not authorize acquiring passwords, private keys, or authentication stores.
 - **Autonomous Out-of-Scope Spreading**: DuskWeave will never incorporate unconstrained worm-like self-propagation. Every target traversal is verified deterministically against authorized scope bounds.
 - **Implementation Specifications in PRD**: This document explicitly excludes database schemas, programming language type definitions, command-line tool syntax, and network wire protocol designs.
 
@@ -153,5 +167,5 @@ To maintain architectural purity and safety, the following capabilities are expl
 DuskWeave achieves its product mission when:
 1. An authorized campaign can execute autonomously over extended durations across multi-subnet enterprise networks, demonstrating valid access expansion and objective achievement without human intervention for routine steps.
 2. If primary footholds or network segments are isolated, the platform autonomously re-evaluates terrain, recognizes secondary pathways, and adapts its trajectory without aborting.
-3. Zero instances of raw client credentials or sensitive records appear in persistent storage, logs, or cognitive prompts across the campaign lifecycle.
+3. Zero instances of raw client credentials or sensitive records appear in persistent storage, temporary files, caches, logs, traces, crash diagnostics, reports, or cognitive prompts across the campaign lifecycle; any authorized ephemeral proof transfer produces only opaque durable proof.
 4. Defender assessment correlates verified campaign actions and objective outcomes with sensor coverage, detection, prevention, and response within a defined observation window. It distinguishes a substantiated control gap from missing telemetry and can verify improvement through a separately authorized retest.

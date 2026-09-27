@@ -63,13 +63,7 @@ The Access Loop governs the transition from external discovery to validated oper
 ### 3.1 Transient Access vs. Validated Foothold
 A critical invariant of the DuskWeave lifecycle is that **`TransientAccess` does not become a `Foothold` without explicit `AccessValidation`**:
 
-1. **TransientAccess**: A temporary, unverified capability to execute an action on a target (e.g., a blind command injection response, a newly acquired web session cookie, an ephemeral cloud access token).
-2. **AccessValidation**: A deterministic verification phase that actively confirms:
-   - Command/execution determinism and output retrieval reliability.
-   - Exact identity and privilege context of the execution environment.
-   - Operating system and process boundaries.
-   - Operational stability (ensuring action does not crash host services or violate safety bounds).
-3. **Foothold**: A confirmed, addressable operational position that satisfies all validation criteria and is available for subsequent campaign operations.
+Transient access is an observed, bounded effect whose repeatability or context is still unverified. A validated foothold requires reconciled evidence of reliable bounded execution and retrievable results, exact identity and privilege context, environmental boundary, stability, and current authorized scope. A candidate path, a tool return, or reachability alone does not establish a foothold. [PRD-003](PRD-003-access-and-footholds.md) develops access evidence and health transitions; until it is accepted, these lifecycle requirements remain governing.
 
 ### 3.2 Access Survivability
 Once a foothold is established, the campaign evaluates access survivability without requiring invasive persistence:
@@ -79,70 +73,41 @@ Once a foothold is established, the campaign evaluates access survivability with
 - **No Invariant Violation**: Survivability semantics model operational continuity; they do not prescribe specific malware persistence, registry modifications, or backdoor installation.
 
 ### 3.3 Access Loss and Re-Entry
-Access loss is a normal operational event resulting from network timeouts, host reboots, credential revocation, or defensive containment.
-- Access loss does **not** signify campaign failure.
-- When a foothold is lost, the platform transitions the foothold to an inactive/stale state, assesses remaining alternate positions, and triggers re-entry planning.
-- If viable alternate paths exist, operations resume immediately from the nearest surviving foothold.
+A timeout, reboot, or failed contact prompts health reassessment; it does not by itself prove access loss. Expired validation is stale, conflicting evidence is uncertain, and only reconciled affirmative evidence establishes that a position is lost. Dependent actions pause while evidence is insufficient.
+- Confirmed access loss does **not** signify campaign failure.
+- When a position is confirmed lost, assess independently healthy alternate positions and reconsider authorized re-entry routes.
+- A viable route is only a candidate; operations from another position require its own current validation, and re-entry requires fresh access validation. [PRD-003](PRD-003-access-and-footholds.md) owns the detailed transition criteria.
 
 ---
 
 ## 4. Recursive Expansion Loop
 
-Internal traversal and network expansion are modeled as a recursive, feedback-driven loop rather than a linear lateral movement phase:
-
-```text
-       ┌────────────────────────────────────────────────────────┐
-       ▼                                                        │
-    Observe ──► Update Situational Model ──► Access Expansion   │
-                                                    │           │
-    Observe Again ◄── New Foothold ◄── Move/Pivot ◄─┴─ Internal Path Selection
-```
+Internal traversal and network expansion revisit observation, reconciliation, authorized transition, and validation from current positions. This is a recursive lifecycle relationship, not a mandatory lateral-movement stage; [PRD-004](PRD-004-expansion-loop.md) owns candidate evidence, authorized attempts, and new-position validation when accepted.
 
 ### 4.1 Lateral Movement as Recursive Traversal
 Lateral movement is not an isolated phase of a kill chain. It is the repeated, hypothesis-driven traversal of trust boundaries within the recursive expansion loop. Each traversal yields new observations, expands known terrain, and potentially yields additional footholds.
 
 ### 4.2 Multi-Dimensional Access Expansion
-Access expansion is frequently mischaracterized solely as credential harvesting. DuskWeave models access expansion across multiple operational dimensions:
-- **Identity & Principal Context**: Gaining access to new service accounts, user identities, or federated roles.
-- **Privilege & Entitlements**: Elevating administrative authority or gaining specific role-based permissions.
-- **Host & Application Context**: Moving between isolated execution tiers (e.g., container to container host, web tier to database tier).
-- **Service Authority**: Acquiring authorization to interact with enterprise services (e.g., message queues, key vaults, orchestration APIs).
-- **Network Reach & Routing**: Discovering internal routing paths across dual-homed hosts, VPN concentrators, or proxy gateways.
-- **Trust Relationships**: Traversing cross-forest domain trusts, cloud provider trust policies, and mutual TLS application trust boundaries.
+Expansion may change host, identity, privilege, application, service, network-reach, or trust position within authorized bounds. It cannot be measured solely by credentials acquired. [PRD-004](PRD-004-expansion-loop.md) owns the specific evidence and transition semantics for these dimensions when accepted.
 
 ---
 
 ## 5. Objective Processing Loop
 
-The Objective Loop governs the identification, validation, and fulfillment of mission requirements:
-
-```text
-Objective Discovery
-      ↓
-Target Validation
-      ↓
-Simulated Collection
-      ↓
-Staging
-      ↓
-Transfer / Exfiltration Proof
-      ↓
-Objective Review
-```
+The Objective Loop discovers mission-relevant targets, validates a scoped claim, gathers sufficient authorized proof, and reviews fulfillment. Collection or transfer is conditional, not a mandatory lifecycle step. [PRD-005](PRD-005-objective-loop.md) owns target-specific proof transitions and review criteria when accepted.
 
 ### 5.1 Dynamic Objective Discovery
-Objectives are not static checklists known in advance. While strategic mission goals are defined at campaign inception, specific objective instances (e.g., the exact internal repository containing target design specifications) are discovered dynamically as terrain expands:
-- **Rule**: Whenever material terrain changes occur (e.g., discovering an unmapped subnet, an internal code repository, or an identity store), the campaign must **revisit objective discovery** to evaluate whether new objective pathways have opened.
+Strategic mission goals are defined at campaign inception, but concrete targets may emerge as terrain changes. Material terrain or position changes require revisiting objective opportunity; discovery alone does not establish objective success. [PRD-005](PRD-005-objective-loop.md) owns target validation and fulfillment semantics when accepted.
 
 ### 5.2 Emulation Boundaries & Zero-Retention
 In strict adherence to **INV-005 (Sensitive Data Zero-Retention)**:
-- **Collection**: DuskWeave collects metadata, file attributes, cryptographic proofs of access, or synthetic tokens. It never reads or records raw customer records, personal data, or financial stores.
-- **Staging & Transfer**: Staging aggregates opaque proof material. Exfiltration simulates exfiltration channels (e.g., measuring channel bandwidth, testing egress filtering) using synthetic, non-sensitive payloads.
+- **Collection**: Use sufficient non-sensitive evidence when available. PRD-000 INV-005 governs the conditional, expressly authorized minimum client-content download into the ephemeral sensitive boundary for opaque proof; unavailable containment makes the proof attempt ineligible or inconclusive. [PRD-005](PRD-005-objective-loop.md) develops target-specific evidence and review when accepted.
+- **Staging & Transfer**: Only synthetic, non-sensitive, or derived opaque proof may be staged, delivered, or reported; raw client material remains subject to PRD-000 INV-005 and is discarded after the attempt.
 
 ### 5.3 Objective Review Outcomes
 Following an objective action, an explicit Objective Review determines the subsequent campaign posture:
-1. **Continue**: Proceed to the next sequential objective or deeper expansion.
-2. **Dwell**: Intentionally pause active operations to honor tempo constraints or allow a defined observation window; any defender response observed by the separate assessment plane is not fed into active campaign reasoning.
+1. **Continue**: Pursue an authorized objective or justified expansion; no fixed objective order is implied.
+2. **Dwell**: Intentionally pause active operations to honor tempo constraints or allow a defined observation window; any defender feedback follows the mode-specific knowledge boundary in PRD-000 INV-007.
 3. **Retask**: Re-evaluate campaign priorities based on newly discovered strategic value or altered rules of engagement.
 4. **Maintain Access**: Hold established footholds in a passive monitoring state without generating new actions.
 5. **Re-enter**: Rebuild an access chain after partial access loss before attempting further objective work.
@@ -154,7 +119,7 @@ Following an objective action, an explicit Objective Review determines the subse
 Adversaries do not generate continuous, high-volume automated traffic. DuskWeave elevates dwell time to a first-class operational state:
 - **Active Dwell**: An intentional pause where no target actions are dispatched, allowing natural enterprise traffic patterns to mask prior interactions.
 - **Temporal Alignment**: Operations align with target organization working hours, time zones, and scheduled maintenance windows.
-- **Health Preservation**: Dwell states preserve foothold readiness through passive, low-overhead heartbeats rather than noisy active testing.
+- **Health Reassessment**: Dwell does not prove continued foothold readiness; bounded checks may refresh health when authorized, while expired or conflicting evidence requires reconciliation before dependent actions.
 
 ---
 
@@ -163,20 +128,13 @@ Adversaries do not generate continuous, high-volume automated traffic. DuskWeave
 Adaptation is an active control mechanism operating across all four loops, not a terminal error handler.
 
 ### 7.1 Adaptation Triggers
-Adaptation is triggered by environmental divergences and operational friction:
-- **Frictional Triggers**: Invalidation of credentials, network timeout, endpoint reboot, or target access denial.
-- **Structural Triggers**: Discovery of new subnets, air-gapped segments, unexpected architecture, or altered trust paths.
-- **Opportunity Triggers**: Identification of high-value key terrain or direct routes to mission objectives that bypass intermediate steps.
+Changes in reconciled campaign evidence, access health, objective opportunity, authorized scope, or operational tempo may require reassessment. A raw signal remains an observation; timeout or denial does not automatically prove a cause or access loss.
 
 ### 7.2 Multi-Loop Adaptation Routing
-When triggered, adaptation directs re-planning to the appropriate loop level:
-- *Strategic Redirect*: Retasking overall campaign priorities if primary objectives become unviable within scope constraints.
-- *Access Redirect*: Selecting an alternative external access path if an initial ingress vector closes.
-- *Expansion Redirect*: Identifying alternate traversal routes across internal trust boundaries when a pivot host is isolated.
-- *Objective Redirect*: Re-sequencing objective pursuit based on newly discovered target locations.
+Reassessment may revisit Strategic, Access, Expansion, or Objective decisions without imposing a fixed sequence. [PRD-006](PRD-006-adaptation.md) owns the detailed decision triggers, routing, retries, and stopping conditions when accepted.
 
 ### 7.3 Campaign Adaptation and Defender Assessment
-Campaign adaptation uses authorized mission context, campaign-visible environmental observations, and evidence of its own actions. It does not use the isolated Observer's live EDR, AV, SIEM, or SOC verdicts to choose the next active step. After an exercise, defenders may assess outcomes and authorize a distinct retest; the retest must remain distinguishable from the original run. PRD-000 owns the product meaning of defender control-gap assessment.
+Blind campaign adaptation uses authorized mission context and reconciled evidence from its position. A separately authorized defender-informed exercise may additionally use bounded, labeled defender feedback. PRD-000 INV-007 owns that distinction and the treatment of telemetry obtained through a validated, authorized campaign position. Defender assessment and blind campaign outcomes remain independently identifiable.
 
 ---
 

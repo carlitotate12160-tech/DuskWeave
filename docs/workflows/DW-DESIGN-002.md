@@ -5,6 +5,8 @@ PROJECT: DuskWeave
 WORKSPACE: D:/DuskWeave
 DELIVERY: Four linked PRD drafts in one bounded outcome.
 
+> Historical packet: the four drafts were authored against the original base. A later product-owner revision of PRD-000 INV-007 and follow-up cross-document reconciliation supersede the defender-isolation wording below. Do not rerun this create-only packet as the authority for those later revisions; use current PRD-000 and engineering state.
+
 Use the exact EXPECTED_BASE_SHA supplied in the entry instruction. This packet
 is not executable without that verified SHA. Work directly on the documents;
 do not return another plan or delegate architecture choices to the IDE.
@@ -68,9 +70,12 @@ Expansion, and Objective loops. Show how reconciled campaign-visible evidence,
 freshness changes, access loss, stalled objectives, and authorized scope cause
 re-evaluation, dwell, alternate paths, or stop. Define escalation where evidence
 is insufficient and prevent unbounded retries or out-of-scope actions.
-Defender-internal alerts, SOC tickets, and Observer/Grader verdicts remain
-outside active reasoning under INV-007. Control assessment and separately
-authorized retest remain independent of this campaign loop.
+In blind mode, privileged defender-internal alerts, SOC tickets, and
+Observer/Grader verdicts remain outside active reasoning under INV-007.
+Campaign-visible effects and telemetry legitimately acquired through an
+authorized validated position follow reconciliation and sensitive-data rules.
+A separately authorized defender-informed exercise or retest is explicitly
+labeled and evaluated apart from blind campaign results.
 
 Each PRD must state purpose, actors, terms and ownership, valid transitions,
 failure or inconclusive cases, observable acceptance criteria, explicit

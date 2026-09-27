@@ -33,8 +33,12 @@ outranks this portable skill; never borrow BlackBread rules.
    alone does not prove production reachability. Require a relevant consumer
    path test where the stage can execute it.
 4. Challenge INV-001..007, especially sensitive-data zero-retention, audit
-   integrity, and separation of defender assessment from active reasoning.
-   Observer silence without verified coverage is inconclusive, not evasion.
+   integrity, and PRD-000's mode-specific Defender Knowledge Boundary.
+   In blind mode, privileged defender/Observer/Grader feeds cannot act as an
+   oracle; campaign-visible effects and legitimately acquired telemetry require
+   validated position, scope, provenance, and observation/fact reconciliation.
+   Defender-informed exercises require separate authorization, labeling, and
+   evaluation. Observer silence without verified coverage is inconclusive.
 5. For DESIGN documents, check meaning, cross-document dependencies, scope,
    links, counterexamples, and no premature runtime architecture. State that
    runtime wiring is N/A for a document-only packet.

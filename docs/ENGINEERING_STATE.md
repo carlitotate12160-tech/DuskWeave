@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Stage 2 — Campaign Semantics (PRD-000..002 accepted; PRD-003..006 pending)
+- **Current Phase**: Stage 2 — Campaign Semantics (PRD-000..002 accepted; PRD-003..006 proposed drafts)
 - **Active Seal**: `DW-BOOTSTRAP-001`
 - **Seal Status**: **SEALED** (Exit criteria completely verified)
 - **Target Foundation Seal**: `DW-FOUNDATION-001` (Memerlukan Stage 0 s.d. Stage 3 selesai)
@@ -45,16 +45,15 @@ Semua interaksi dan rencana tunduk pada:
 - **INV-004**: Observation != Fact
 - **INV-005**: Sensitive Data Zero-Retention
 - **INV-006**: Audit Integrity
-- **INV-007**: Defender Isolation
+- **INV-007**: Defender Knowledge Boundary (PRD-000 §6; mode-specific authority)
 
 ---
 
 ## 5. Next Immediate Action
 
-Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 telah ditinjau dan diterima oleh pemilik produk pada 2026-09-27. Versi yang diterima mencakup pemisahan assessment telemetry defender, hasil kontrol yang konklusif vs inkonklusif, dan retest terpisah. Registry ketiganya tercatat `ACCEPTED`.
-- **Next permitted design packet**: `DW-DESIGN-002` untuk PRD-003 Access & Footholds, PRD-004 Expansion Loop, PRD-005 Objective Loop, dan PRD-006 Adaptation.
-- **Authority prerequisite**: PRD-000..002 accepted; PRD-003..006 belum ditulis/diterima.
-- **Next boundary**: hanya mulai DW-DESIGN-002 ketika packet itu ditugaskan; STOP setelah packet tersebut.
+Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`. Revisi pemilik produk pada 2026-09-27 menetapkan INV-007 Defender Knowledge Boundary di PRD-000 §6; penilaian control gap tetap membedakan bukti konklusif dari telemetry yang tidak lengkap.
+- **DW-DESIGN-002**: packet historis sudah menghasilkan draft PRD-003 Access & Footholds, PRD-004 Expansion Loop, PRD-005 Objective Loop, dan PRD-006 Adaptation. Keempatnya tetap `PROPOSED`, belum diterima atau sealed; instruksi packet historis tidak menimpa revisi PRD-000 terbaru.
+- **Current boundary**: selaraskan dan review lintas dokumen terhadap revisi otoritas; penerimaan PRD-003..006 adalah keputusan pemilik produk berikutnya.
 - **Runtime / ADR / foundation seal**: belum diotorisasi oleh urutan build; `DW-FOUNDATION-001` belum sealed.
 
 ## 6. Engineering setup maintenance

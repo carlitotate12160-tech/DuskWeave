@@ -45,7 +45,7 @@ Apply INV-001..007 from invariant packet 00:
 - Observations require reconciliation; inference is not automatically fact.
 - Raw sensitive client material never enters persistent storage or LLM context.
 - Campaign capabilities cannot alter authoritative audit evidence.
-- Defender-observer verdicts remain isolated from active campaign reasoning.
+- PRD-000 INV-007 governs defender knowledge: exclude privileged defender/Observer/Grader feeds from blind reasoning; permit reconciled campaign-visible effects and legitimately acquired telemetry within authorized position and sensitive-data bounds; label and evaluate separately any authorized defender-informed exercise.
 
 Retain freshness and provenance when the packet touches environmental knowledge.
 Initial access is not automatically a validated foothold; a candidate path is not
@@ -123,7 +123,7 @@ Do not dismiss a real defect merely because the current packet cannot fix it.
 ## Review and delivery
 
 Inspect the diff for authority compliance, domain ownership, coupling, evidence,
-freshness, failure semantics, zero-retention, audit integrity, and defender isolation.
+freshness, failure semantics, zero-retention, audit integrity, and the mode-specific Defender Knowledge Boundary.
 Perform one adversarial review cycle; fix valid in-scope findings.
 Recheck the final changed result and any tests affected by those fixes.
 Follow repository PR/merge rules where applicable. Never create or report a live

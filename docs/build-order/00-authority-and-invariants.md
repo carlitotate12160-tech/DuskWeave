@@ -124,19 +124,8 @@ falsify audit records
 
 ---
 
-## INV-007 — Defender isolation
+## INV-007 — Defender Knowledge Boundary
 
-Campaign reasoning tidak memperoleh real-time:
-
-```text
-EDR verdict
-AV verdict
-SIEM alert
-SOC response
-```
-
-untuk mengoptimalkan adaptive evasion.
-
-Control-gap assessment dilakukan oleh Observer/Grader.
+Definisi otoritatif berada di [PRD-000 §6](../prd/PRD-000-product-thesis.md). Kampanye blind dapat beradaptasi pada efek keamanan yang benar-benar terlihat dari posisi yang tervalidasi; feed istimewa milik defender/Observer/Grader tidak boleh dipakai sebagai oracle kampanye blind. Telemetri defender yang diperoleh secara sah dari posisi kampanye yang diizinkan tunduk pada scope, provenance, rekonsiliasi, dan batas data sensitif. Exercise atau retest yang diberi bounded defender feedback memerlukan otorisasi terpisah, pelabelan, serta evaluasi yang terpisah dari hasil blind. Control-gap assessment tetap dimiliki Observer/Grader.
 
 ---

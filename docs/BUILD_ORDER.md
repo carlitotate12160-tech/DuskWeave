@@ -53,14 +53,14 @@ Next permitted design packet:
 
 DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 
-DW-DESIGN-002, when separately assigned, contains:
+DW-DESIGN-002 has authored four linked `PROPOSED` drafts:
 
 - PRD-003 Access & Footholds
 - PRD-004 Expansion Loop
 - PRD-005 Objective Loop
 - PRD-006 Adaptation
 
-Foundation ADRs begin only after PRD-000 through PRD-006 are accepted.
+A later product-owner revision of PRD-000 INV-007 requires cross-document reconciliation and review before acceptance of those drafts. Foundation ADRs begin only after PRD-000 through PRD-006 are accepted.
 
 ## Mandatory invariants
 
@@ -74,7 +74,7 @@ Summary:
 - INV-004: Observation is not fact.
 - INV-005: Raw sensitive client data is zero-retention.
 - INV-006: Campaign capabilities cannot alter authoritative audit evidence.
-- INV-007: Active campaign reasoning cannot consume defender detection results as an evasion oracle.
+- INV-007: Blind campaigns exclude privileged defender-oracle feeds; authorized campaign-visible effects and legitimately acquired telemetry may inform bounded adaptation, while separately authorized defender-informed exercises are labeled and evaluated independently. See PRD-000 §6.
 
 ## Navigation rule for agents
 

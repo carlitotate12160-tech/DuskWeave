@@ -1,0 +1,63 @@
+# PRD-006: Adaptation
+
+| Metadata | Value |
+| :--- | :--- |
+| **Document ID** | PRD-006 |
+| **Title** | Adaptation |
+| **Status** | PROPOSED |
+| **Stage** | Stage 2 — Campaign Semantics |
+| **Direct Dependencies** | [PRD-005 Objective Loop](PRD-005-objective-loop.md) |
+| **Target Seal** | DW-PRD-006 |
+
+## 1. Purpose and actors
+
+Define how a persistent authorized campaign reevaluates goals, access, expansion, and objective work when evidence or authority changes. Adaptation overlays the Strategic, Access, Expansion, and Objective loops in [PRD-001](PRD-001-campaign-lifecycle.md); it is neither a fifth sequential phase nor a permission to improvise execution. It sustains useful progress while keeping uncertainty, retries, and scope bounded.
+
+The campaign operator owns mission priorities, authorization, and retasking that changes approved goals. Bounded reasoners propose alternative decisions for their own loop using reconciled campaign evidence and, only in a separately authorized defender-informed exercise, bounded defender feedback tagged by its source and exercise mode; deterministic authority checks any action against current scope and safety; capabilities perform only approved actions; evidence reconciliation decides what changed. A reviewer can inspect the decision trail. The separate Observer/Grader evaluates defender response; its privileged feed stays outside blind planning. Separately authorized defender-informed validation follows PRD-000 INV-007.
+
+## 2. Decision inputs and model ownership
+
+Adaptation considers reconciled environmental changes from CyberTerrain; health and loss of validated positions from FootholdGraph; stale, blocked, or newly plausible candidates from AttackPathView; target opportunities and proof status from ObjectiveState; and the time-ordered decision and outcome record in CampaignTrajectory. These remain separate models. The trajectory documents what happened; it does not convert old evidence into a currently valid foothold or terrain fact.
+
+A trigger may be a fresh campaign-visible control or denial, new key terrain, expired premises, contradictory observations, loss of a position, an inconclusive objective, a change in authorized scope, or a deliberate tempo boundary. A separately authorized defender-informed exercise may additionally use bounded defender feedback as a labeled trigger; it must not be reported as blind campaign evidence. An observation is first reconciled; an inference remains a hypothesis. A scope reduction takes effect before any newly proposed action. Added scope or changed goals require explicit operator authorization and do not retroactively justify previous attempts.
+
+### 2.1 Explainable reasoning episode
+
+Each material decision must be explainable from campaign-visible observation and reconciled evidence, plus any explicitly authorized and labeled defender-informed feedback, through a hypothesis, plausible alternatives (including observe more, refresh, dwell, or stop), the selected proposal, expected evidence and disconfirming result, authorization, observed outcome, and subsequent revision of the affected models. The reasoner may choose no target action when evidence is insufficient. This is a bounded decision process, not a sixth operational model or an autonomous source of truth. A proposal describes intent and its evidence test; it grants no execution authority and does not prescribe a tool sequence.
+
+In blind mode, privileged defender-internal EDR/AV/SIEM verdicts, SOC tickets, and Observer/Grader assessments remain outside decision inputs. Campaign-visible environmental friction may guide bounded adaptation without automatic attribution. Defender telemetry legitimately observed through a validated, authorized campaign position follows observation/fact reconciliation and can inform a decision within its actual evidentiary limits. A separately authorized defender-informed exercise or retest may use bounded feedback, but is labeled and evaluated independently of blind results under [PRD-000 INV-007](PRD-000-product-thesis.md).
+
+## 3. Cross-loop routing
+
+| Loop revisited | Trigger and bounded response | Condition for progress |
+| :--- | :--- | :--- |
+| Strategic | Changed authorized mission, materially altered target value, exhausted avenues, or safety concern → reprioritize, request authorization, dwell, or stop | Current mission authority supports the revised goal and bounds |
+| Access | Candidate ingress closes, health expires, or foothold is lost → reassess route, validate surviving position, or consider eligible re-entry under [PRD-003](PRD-003-access-and-footholds.md) | Fresh validation establishes usable access; eligibility alone is insufficient |
+| Expansion | Fresh terrain changes a trust hypothesis, a path fails, or a position is lost → refresh premises, choose another scoped candidate, or return to Access under [PRD-004](PRD-004-expansion-loop.md) | Authorized attempt and validation establish any new position |
+| Objective | Target location changes, proof is partial, or access to target is lost → revisit discovery, select a safer proof, dwell, retask, or re-enter under [PRD-005](PRD-005-objective-loop.md) | Target-specific accepted proof satisfies the declared condition |
+
+A material change may cause several loops to reassess in either order dictated by dependencies. A loss can immediately suspend dependent actions while strategic priorities are reviewed; a new objective opportunity can redirect expansion. No loop may promote another model's hypothesis or attempted action into its own verified state.
+
+## 4. Decisions, uncertainty, and stopping
+
+A decision names its trigger, relevant reconciled evidence and freshness, affected positions and objectives, competing hypotheses, why an option was selected or abandoned, expected and falsifying evidence, current authorization, and the condition that would change the decision. Valid responses include continue, alternate scoped path, observe more, refresh, dwell, maintain validated access, re-enter, seek operator decision, retask within approved bounds, or stop. Inconclusive evidence prompts bounded observation or escalation, not presumed success. An action's result must revise the relevant belief or mark it unresolved before another capability is considered; changing tools alone is not adaptation.
+
+Retries require a changed premise, a justified transient failure condition, or renewed authorization; repeating identical attempts without new reason is prohibited. Any attempt remains subject to deterministic scope and safety checks. Dwell preserves a decision to pause actions; it does not imply the foothold remains healthy indefinitely. Loss suspends dependent actions until a surviving position or renewed validation supports them. If authority is revoked, a safety boundary is breached, or no scoped route is viable, stop or freeze according to campaign lifecycle rules.
+
+Adaptation retains only approved opaque proof and non-sensitive decision context. It cannot request raw secrets as reasoning input or change authoritative audit evidence. Privileged defender assessment cannot become a reward signal in blind mode; any feedback released in a separately authorized defender-informed exercise remains bounded and recorded as such under PRD-000 INV-007. CampaignTrajectory records the time-ordered, non-sensitive rationale: evidence considered, selected and rejected hypotheses, attempted action, contradictory result, and why the campaign changed course. Current environmental, access, path, and objective truth stays with its respective model; historical rationale cannot itself validate a position.
+
+## 5. Illustrative synthetic trace across the four PRDs
+
+The synthetic Host A route begins as a candidate and produces transient access; only validated bounded execution creates a PRD-003 foothold. PRD-004 uses that healthy position to reconcile a Service B relationship, attempts a scoped transition, validates B, and observes synthetic Asset C. PRD-005 validates C as an objective target; a generic success remains inconclusive until a permitted synthetic marker yields target-specific opaque proof. If A is then lost while B remains healthy, PRD-006 suspends paths that require A, reevaluates B's own current scope and health, and chooses continue from B, dwell, or an eligible re-entry route. If B is also lost, it cannot claim a position merely from the earlier marker; it weakens the assumption that B remains usable, suspends B-dependent paths, and considers a fresh validation, another authorized hypothesis, or stop. No privileged defender verdict influences this blind-mode decision; a defender-informed exercise would be separately authorized and labeled.
+
+## 6. Observable acceptance criteria
+
+1. A reviewer can follow a fresh or stale trigger through competing hypotheses, a justified proposal or decision to observe more, expected and contrary evidence, authorization, outcome, and model revision in any of the four loops.
+2. Loss of one position suspends only dependent actions; an independently healthy position can sustain authorized work, while re-entry demands fresh validation.
+3. Inconclusive observations and objectives do not turn into facts or success; an unchanged failed hypothesis cannot cause unbounded retries or a blind tool substitution. Historical rationale remains reviewable without being treated as current truth.
+4. A changed scope or goal has an explicit operator and deterministic authority boundary; a revoked authorization blocks further action.
+5. The synthetic cross-PRD trace maintains distinct terrain, path, foothold, objective, and trajectory claims without raw sensitive material, audit modification, or privileged defender-oracle feedback in blind mode; any defender-informed variant is distinctly authorized, labeled, and evaluated.
+
+## 7. Explicit non-goals
+
+This PRD does not specify scheduling algorithms, retry counts, event schemas, service topology, tool behavior, payloads, or adaptive evasion procedures. It does not merge the operational models, define Observer grading, or auto-authorize broader scope.

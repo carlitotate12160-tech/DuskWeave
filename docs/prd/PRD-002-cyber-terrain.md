@@ -71,7 +71,7 @@ Captures environmental defensive architecture and security enforcement boundarie
 - Endpoint detection agents, host-based firewalls, and local security configurations.
 - Authentication gating mechanisms (e.g., Multi-Factor Authentication barriers, Conditional Access policies).
 
-A campaign-visible control or access denial may be represented with provenance and freshness. Defender-internal alert status, SOC tickets, and isolated Observer verdicts are assessment evidence, not terrain facts available to active campaign reasoning. See PRD-000 for the defender assessment boundary.
+A campaign-visible control or access denial may be represented with provenance and freshness without assuming which control caused it. Defender telemetry obtained through a validated, authorized campaign position may enter as a campaign observation subject to reconciliation, scope, and sensitive-data rules; observing an alert establishes only the limited observation of that alert, not its correctness or a causal link to a specific campaign action or control effect. Privileged Observer/Grader feeds remain outside blind campaign terrain. PRD-000 INV-007 owns the knowledge boundary and defender-informed mode.
 
 ### 2.6 Objective-Relevance Terrain
 Captures how environmental entities relate to mission objectives:

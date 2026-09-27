@@ -57,12 +57,12 @@ Do not reduce key terrain to vulnerability severity.
 
 Maintain INV-001..007 as defined in the repository:
 no God Object; separate models; reasoning != execution; observation != fact;
-sensitive-data zero-retention; audit integrity; defender isolation.
+sensitive-data zero-retention; audit integrity; the mode-specific Defender Knowledge Boundary.
 Proposals do not confer execution authority. Tool success does not prove a goal.
 Do not let campaign capabilities alter authoritative audit evidence.
 Keep raw sensitive client material outside persistence, logs, traces, LLM context,
 reports, fixtures, and crash artifacts. Use synthetic examples.
-Do not feed defender verdicts to active campaign reasoning as an evasion oracle.
+Apply PRD-000 INV-007: blind campaigns can adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized, validated campaign position. Privileged defender/Observer/Grader feeds cannot serve as an oracle in blind mode. A separately authorized defender-informed exercise or retest may expose bounded feedback, labeled and evaluated apart from blind results.
 
 Follow the language baseline: Rust for correctness-sensitive core and authority;
 Go for adapters, collectors, integrations; Zig only for justified native helpers;
