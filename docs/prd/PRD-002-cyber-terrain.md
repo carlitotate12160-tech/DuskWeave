@@ -13,14 +13,14 @@
 
 ## 1. Purpose & Scope of Cyber Terrain
 
-Cyber Terrain is the authoritative semantic model representing what exists within the operational environment and the observed relationships among those entities.
+Cyber Terrain owns the campaign's environmental understanding: corroborated facts together with sourced observations and hypotheses carrying explicit epistemic limits. Inclusion in this model does not promote an observation into a fact or grant execution authority.
 
 DuskWeave operates on the principle that an adversary cannot interact with an environment without forming, updating, and navigating a conceptual map of that environment. Cyber Terrain models this operational reality: it captures network structures, compute platforms, identity architectures, software applications, defensive controls, and operational rhythms discovered during a campaign.
 
 ### 1.1 Strict Model Separation (INV-002)
 To prevent architectural monoliths and maintain semantic purity, Cyber Terrain maintains strict boundaries against the other four operational models:
 
-- **CyberTerrain**: What exists in the environment and the factual relationships observed between entities.
+- **CyberTerrain**: Environmental claims and relationships with provenance, tier, and epistemic status; only claims with sufficient evidence are treated as established facts.
 - **FootholdGraph**: Where the campaign currently holds validated execution access.
 - **AttackPathView**: Analytical projections of potential traversal and attack transitions.
 - **ObjectiveState**: Declared mission requirements and their fulfillment progress.
@@ -71,7 +71,7 @@ Captures environmental defensive architecture and security enforcement boundarie
 - Endpoint detection agents, host-based firewalls, and local security configurations.
 - Authentication gating mechanisms (e.g., Multi-Factor Authentication barriers, Conditional Access policies).
 
-A campaign-visible control or access denial may be represented with provenance and freshness without assuming which control caused it. Defender telemetry obtained through a validated, authorized campaign position may enter as a campaign observation subject to reconciliation, scope, and sensitive-data rules; observing an alert establishes only the limited observation of that alert, not its correctness or a causal link to a specific campaign action or control effect. Privileged Observer/Grader feeds remain outside blind campaign terrain. PRD-000 INV-007 owns the knowledge boundary and defender-informed mode.
+A campaign-visible control or access denial may be represented with provenance and freshness without assuming which control caused it. Defender telemetry obtained through an authorized campaign position may enter as a campaign observation subject to reconciliation, scope, and sensitive-data rules; observing an alert establishes only the limited observation of that alert, not its correctness or a causal link to a specific campaign action or control effect. Privileged Observer/Grader feeds remain outside blind campaign terrain. PRD-000 INV-007 owns the knowledge boundary and defender-informed mode.
 
 ### 2.6 Objective-Relevance Terrain
 Captures how environmental entities relate to mission objectives:
@@ -88,17 +88,7 @@ Captures time-based operational dynamics:
 
 ## 3. Epistemic Lifecycle & Observation Reconciliation
 
-In strict adherence to **INV-004 (Observation != Fact)**, raw observations from tool executions or environmental signals never directly enter the accepted Cyber Terrain model. They must undergo reconciliation and corroboration.
-
-```text
-Raw Observation (Perception)
-           ↓
-Validation & Corroboration
-           ↓
-Reconciliation against Known Model
-           ↓
-Accepted Cyber Terrain State
-```
+Under **INV-004 (Observation != Fact)**, every raw observation receives provenance, validation, and reconciliation before entering CyberTerrain. Its epistemic status describes what is known; its tier describes the operational stakes and required evidence. An OBSERVED or PROVISIONAL entry is visible for bounded orientation but is not a corroborated environmental fact or an authorization. This keeps fast reasoning possible without making all terrain claims equally certain.
 
 ### 3.1 Epistemic Product Vocabulary
 Every entity, attribute, and relationship in Cyber Terrain carries an explicit epistemic status:
@@ -109,12 +99,79 @@ Every entity, attribute, and relationship in Cyber Terrain carries an explicit e
 - **HYPOTHETICAL**: A plausible candidate entity or relationship postulated by cognitive planners as an operational hypothesis, awaiting empirical verification.
 - **STALE**: An entity or relationship that was previously corroborated, but whose observation freshness window has expired without re-verification.
 - **REFUTED**: An entity or relationship that was previously accepted or postulated, but has been affirmatively disproven by recent observation (e.g., host no longer responds, service uninstalled).
+- **PROVISIONAL**: A sourced observation from a transient or unvalidated position that has passed initial validation and reconciliation but whose origin remains unverified. It is recorded within CyberTerrain for orientation and hypothesis formation, not as an established terrain fact or a sole premise for scope, trust, access, expansion, objective, or other consequential action. If its origin fails validation or is abandoned, it is downgraded to HYPOTHETICAL without erasing its provenance or history.
 
 ### 3.2 Provenance, Freshness, & Temporal Decay
 Target environments are dynamic: IP leases expire, virtual machines terminate, services relocate, and firewall rules change.
-- **Provenance**: Every terrain fact tracks its originating observation event, capability source, and method of discovery.
+- **Provenance**: Every terrain fact tracks its originating observation event, capability source, method of discovery, and originating position validation status.
 - **First and Last Observed**: Every entity and relationship maintains precise timestamps for initial discovery and most recent corroboration.
 - **Freshness Rule**: **Terrain at $T_0$ is not automatically valid at $T_1$**. Confidence in terrain validity decays over time unless refreshed by operational interaction. Planners must account for staleness before relying on historical terrain state.
+
+### 3.3 Tiered Epistemic Confidence
+
+Observations carry different operational stakes. A port responding on a host is a low-risk fact; the identity of a Domain Controller governing an entire trust domain is a campaign-critical determination. Forcing identical reconciliation rigor on both wastes operational tempo and diverges from how real operators assess their environment.
+
+Cyber Terrain classifies observations into three confidence tiers:
+
+**Tier 1 — Fast sourced observation (low operational stakes)**
+
+Narrow outputs of direct authorized queries whose immediate use has low stakes:
+- The response to a direct port probe from a specified vantage and time, not a global claim about port state.
+- An interface address or hostname reported by an authorized query, not proof of asset ownership or scope.
+- A version string returned by a banner or system command, not independent proof of installed version.
+- Local identity or group membership returned by an authorized OS query from a validated position, limited to that context.
+- File existence or directory listing observed from a validated position at a recorded time.
+
+Tier 1 observations enter terrain as OBSERVED from one sufficiently direct source after validating the source, scope, time, claim limits, and any contrary evidence. An independent second source is not required for a narrow, low-stakes observation to inform orientation. If source or context is uncertain, leave the limited observation unpromoted or keep it HYPOTHETICAL; use PROVISIONAL specifically when its originating position is unvalidated. A Tier 1 observation cannot alone establish identity or privilege beyond its observed context, authorization scope, a trust boundary, Key Terrain, or objective fulfillment. It decays to STALE under normal freshness rules.
+
+**Tier 2 — Light Corroboration (moderate operational stakes)**
+
+Observations where misidentification could waste operational effort but does not directly risk campaign safety or scope:
+- Service identity and version behind a port.
+- Trust relationships between domains or tenants.
+- Network routes and segmentation boundaries.
+- Application dependencies and inter-service connections.
+- Privilege or role associations discovered through enumeration.
+
+Tier 2 observations require one primary source plus one supporting signal before reaching CORROBORATED. A single source enters as OBSERVED and may inform hypothesis formation, but dependent actions that cross trust or scope boundaries wait for corroboration.
+
+**Tier 3 — Full Reconciliation (campaign-critical, high operational stakes)**
+
+Observations whose misidentification could compromise campaign safety, violate scope, waste significant operational capital, or mislead strategic decisions:
+- Domain Controller, Root CA, or central identity provider identification.
+- Key Vault, secrets manager, or credential store location.
+- Scope-boundary systems (what is in-scope vs. out-of-scope).
+- Trust delegation chains that govern cross-domain authority.
+- Any entity classified as Key Terrain under §5.
+
+Tier 3 observations require multiple independent sources and full reconciliation before reaching CORROBORATED. An unverified Tier 3 claim remains OBSERVED or INFERRED and cannot be the basis for campaign-critical actions.
+
+**Tier classification is not immutable.** An initially Tier 1 observation must be elevated if later evidence makes the claim campaign-critical (e.g., a routine host turns out to be a Domain Controller). A lower tier requires evidence that the actual stakes decreased; exploitation tempo alone never lowers the required tier or bypasses scope, trust, Key Terrain, access, or objective evidence boundaries.
+
+### 3.4 Reconciliation Flow
+
+The reconciliation pipeline adapts to the tier of the observation:
+
+```text
+Raw Observation (Perception)
+           ↓
+Tier Classification (stakes assessment)
+           ↓
+     ┌─────┼─────────────────────┐
+     ↓     ↓                     ↓
+  Tier 1   Tier 2              Tier 3
+  Single   Primary +           Multiple independent
+  source   supporting signal   sources + reconciliation
+     ↓     ↓                     ↓
+  OBSERVED CORROBORATED        CORROBORATED
+     ↓     ↓                     ↓
+     └─────┴─────────────────────┘
+           ↓
+  CyberTerrain entry at stated status
+  (with tier, provenance, freshness)
+```
+
+A transient-origin observation first enters as PROVISIONAL after preliminary validation and reconciliation, then is reconsidered on origin validation; it is never silently promoted to a fact. The tiered reconciliation pipeline implements INV-004: every observation undergoes validation and reconciliation; the tier sets the corroboration burden appropriate to its operational stakes. Tier 1 acceptance as OBSERVED satisfies INV-004 only for a narrow sourced observation and does not make it CORROBORATED ground truth. PROVISIONAL remains an observation pending origin validation. Every entry retains source, time, position, epistemic status, and tier; consequential claims wait for the evidence appropriate to their stakes.
 
 ---
 
@@ -145,6 +202,9 @@ A foundational rule of DuskWeave is that **Key Terrain must never be equated wit
 - An unpatched edge device with a CVSS 9.8 remote code execution vulnerability is **not** Key Terrain if it resides in an isolated DMZ with zero internal routing, no privileged identities, and no path to mission objectives.
 - Conversely, a fully patched Active Directory Domain Controller or an enterprise Kubernetes control plane with **zero known vulnerabilities** is supreme Key Terrain because its legitimate operational authority and trust position dictate overall network control.
 - DuskWeave evaluates Key Terrain based on topological leverage, trust architecture, and mission relevance—not vulnerability scoring.
+
+### 5.3 Key Terrain and Epistemic Tiers
+All Key Terrain entities and their defining relationships require Tier 3 (Full Reconciliation) epistemic confidence before campaign-critical actions depend on them. Misidentifying Key Terrain carries outsized campaign risk. A candidate Key Terrain entity at Tier 1 or Tier 2 may inform hypothesis formation but cannot be the basis for strategic campaign decisions until fully reconciled.
 
 ---
 
@@ -178,3 +238,4 @@ To maintain PRD boundaries and adhere to repository governance:
 - **No Database Schemas**: This document does not specify relational tables, document schemas, or graph database query languages (e.g., Cypher, SQL).
 - **No Programming Language Types**: This document does not define Rust structs, traits, Go interfaces, or serialization formats.
 - **No Algorithmic Implementations**: Graph traversal algorithms (e.g., Dijkstra, A*, shortest-path traversals) belong to downstream design and implementation specifications, not to this PRD.
+- **No Tier Classification Algorithms**: The specific rules, thresholds, or scoring systems that classify observations into tiers belong to domain contracts, not to this PRD. This document establishes the semantic requirement for tiered confidence, not the mechanism.

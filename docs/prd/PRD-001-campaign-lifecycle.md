@@ -19,7 +19,7 @@ To maintain conceptual rigor and prevent conflation of concerns, the lifecycle e
 
 - **State**: The current verified operational condition of a campaign entity (e.g., campaign status, foothold health, terrain snapshot). State is deterministic, grounded in evidence, and immutable once recorded.
 - **Event**: A discrete, point-in-time occurrence or execution outcome (e.g., network probe completed, execution succeeded, connection dropped). Events serve as the audit record and trigger transitions.
-- **Observation**: An unverified signal, datum, or output perceived from the environment. Observations are not facts until corroborated and reconciled.
+- **Observation**: A signal, datum, or output perceived from the environment with provenance and an epistemic status. It may inform a hypothesis after tier-appropriate validation and reconciliation; it is not automatically a corroborated fact or execution authority under PRD-000 INV-004 and PRD-002.
 - **Decision**: A deliberate choice made by a reasoning worker to select one candidate proposal among evaluated alternatives.
 - **Objective**: A declared mission goal representing a desired real-world or emulation milestone (e.g., demonstrate access to core transaction database).
 - **Position**: The operational standing of the campaign across cyber terrain, defined by the set of active, validated footholds and their reachable horizons.
@@ -134,7 +134,7 @@ Changes in reconciled campaign evidence, access health, objective opportunity, a
 Reassessment may revisit Strategic, Access, Expansion, or Objective decisions without imposing a fixed sequence. [PRD-006](PRD-006-adaptation.md) owns the detailed decision triggers, routing, retries, and stopping conditions when accepted.
 
 ### 7.3 Campaign Adaptation and Defender Assessment
-Blind campaign adaptation uses authorized mission context and reconciled evidence from its position. A separately authorized defender-informed exercise may additionally use bounded, labeled defender feedback. PRD-000 INV-007 owns that distinction and the treatment of telemetry obtained through a validated, authorized campaign position. Defender assessment and blind campaign outcomes remain independently identifiable.
+Blind campaign adaptation uses authorized mission context and reconciled evidence from its position. A separately authorized defender-informed exercise may additionally use bounded, labeled defender feedback. PRD-000 INV-007 owns that distinction and the treatment of telemetry obtained through a current, authorized campaign position. Defender assessment and blind campaign outcomes remain independently identifiable.
 
 ---
 

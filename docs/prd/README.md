@@ -33,10 +33,10 @@ Setiap PRD wajib mematuhi aturan berikut:
 | **PRD-000** | Product Thesis | Stage 1 | None | `ACCEPTED` |
 | **PRD-001** | Campaign Lifecycle | Stage 2 | PRD-000 | `ACCEPTED` |
 | **PRD-002** | Cyber Terrain | Stage 2 | PRD-001 | `ACCEPTED` |
-| **PRD-003** | Access & Footholds | Stage 2 | PRD-002 | `PROPOSED` |
-| **PRD-004** | Expansion Loop | Stage 2 | PRD-003 | `PROPOSED` |
-| **PRD-005** | Objective Loop | Stage 2 | PRD-004 | `PROPOSED` |
-| **PRD-006** | Adaptation | Stage 2 | PRD-005 | `PROPOSED` |
+| **PRD-003** | Access & Footholds | Stage 2 | PRD-002 | `ACCEPTED` |
+| **PRD-004** | Expansion Loop | Stage 2 | PRD-003 | `ACCEPTED` |
+| **PRD-005** | Objective Loop | Stage 2 | PRD-004 | `ACCEPTED` |
+| **PRD-006** | Adaptation | Stage 2 | PRD-005 | `ACCEPTED` |
 | **PRD-007** | Observation Model | Stage 4 | ADR-001..007 | `PLANNED` |
 | **PRD-008** | Evidence Model | Stage 4 | PRD-007 | `PLANNED` |
 | **PRD-009** | Client Proof | Stage 4 | PRD-008 | `PLANNED` |

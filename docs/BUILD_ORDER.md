@@ -45,22 +45,22 @@ Current seal:
 
 Current engineering state:
 
-`Stage 2 — Campaign Semantics; PRD-000..002 ACCEPTED`
+`Stage 3 — Foundation ADRs; PRD-000..006 ACCEPTED`
 
-Next permitted design packet:
+Current design document:
 
-`DW-DESIGN-002`
+`ADR-001 Modular Monolith (PROPOSED draft; acceptance pending)`
 
 DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 
-DW-DESIGN-002 has authored four linked `PROPOSED` drafts:
+DW-DESIGN-002 authored four linked PRDs, accepted by the product owner on 2026-09-27 after reconciliation:
 
 - PRD-003 Access & Footholds
 - PRD-004 Expansion Loop
 - PRD-005 Objective Loop
 - PRD-006 Adaptation
 
-A later product-owner revision of PRD-000 INV-007 requires cross-document reconciliation and review before acceptance of those drafts. Foundation ADRs begin only after PRD-000 through PRD-006 are accepted.
+PRD-000 INV-004 now defines tier-proportionate corroboration, and INV-007 retains the current campaign position boundary. PRD-002..006 preserve provenance, epistemic limits, authorized action, and reversible proof. All seven PRDs are ACCEPTED; Stage 3 starts with a PROPOSED ADR-001 draft. ADRs 002..007 wait for their predecessors.
 
 ## Mandatory invariants
 

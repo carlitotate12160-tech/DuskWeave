@@ -81,7 +81,7 @@ Never treat observations as verified facts without reconciliation/evidence.
 
 Never persist raw credential material, customer records, financial records, or sensitive authentication stores.
 
-Apply PRD-000 INV-007: blind campaign reasoning may adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from a validated, authorized campaign position. Privileged defender/Observer/Grader feeds remain outside blind reasoning; separately authorized defender-informed exercises are labeled and evaluated apart.
+Apply PRD-000 INV-007: blind campaign reasoning may adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized current campaign position, subject to source, epistemic status, and sensitive-data rules. Privileged defender/Observer/Grader feeds remain outside blind reasoning; separately authorized defender-informed exercises are labeled and evaluated apart.
 
 Campaign capabilities cannot alter authoritative audit evidence.
 

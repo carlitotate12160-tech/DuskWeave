@@ -125,10 +125,11 @@ TerrainObservation
 TerrainDelta
 TerrainSnapshot
 Freshness
-Confidence
+EpistemicStatus (OBSERVED, CORROBORATED, INFERRED, HYPOTHETICAL, STALE, REFUTED, PROVISIONAL)
+EpistemicTier (Tier 1 fast sourced observation, Tier 2 supporting evidence, Tier 3 full reconciliation)
 ```
 
-Terrain layers:
+Terrain layers per PRD-002 §2:
 
 ```text
 network
@@ -136,7 +137,7 @@ compute
 identity
 application
 control
-objective
+objective-relevance
 temporal
 ```
 
@@ -151,22 +152,27 @@ Implement:
 ```text
 Foothold
 AccessContext
-FootholdState
+FootholdHealth
 FootholdTransition
 ```
 
-Lifecycle:
+Lifecycle governed by PRD-003 invariants A-1 through A-7.
+Domain contracts define specific states and transitions.
+
+Key semantic conditions (not a rigid state machine):
 
 ```text
-CANDIDATE
-→ VALIDATED
-→ ACTIVE
-→ DEGRADED
-→ LOST
-→ REENTRY_CANDIDATE
+candidate access (AttackPathView hypothesis)
+transient access (unvalidated observed effect)
+validated foothold (evidence of bounded execution)
+stale (freshness expired, proof needs refresh)
+presumed loss (configurable unreachability threshold)
+confirmed loss (affirmative revocation evidence)
+re-entry eligibility (hypothesis, not recovered access)
 ```
 
-A foothold requires evidence.
+A foothold requires evidence. Presumed loss and confirmed
+loss are distinct conditions with different recovery paths.
 
 ---
 

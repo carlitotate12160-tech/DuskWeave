@@ -62,7 +62,7 @@ Proposals do not confer execution authority. Tool success does not prove a goal.
 Do not let campaign capabilities alter authoritative audit evidence.
 Keep raw sensitive client material outside persistence, logs, traces, LLM context,
 reports, fixtures, and crash artifacts. Use synthetic examples.
-Apply PRD-000 INV-007: blind campaigns can adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized, validated campaign position. Privileged defender/Observer/Grader feeds cannot serve as an oracle in blind mode. A separately authorized defender-informed exercise or retest may expose bounded feedback, labeled and evaluated apart from blind results.
+Apply PRD-000 INV-007: blind campaigns can adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized current campaign position, with epistemic and sensitive-data limits. Privileged defender/Observer/Grader feeds cannot serve as an oracle in blind mode. A separately authorized defender-informed exercise or retest may expose bounded feedback, labeled and evaluated apart from blind results.
 
 Follow the language baseline: Rust for correctness-sensitive core and authority;
 Go for adapters, collectors, integrations; Zig only for justified native helpers;
