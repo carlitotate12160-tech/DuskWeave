@@ -96,6 +96,11 @@ ATT&CK mappings are optional metadata, not the campaign lifecycle.
 Use references/packet-template.md when asked for an execution packet.
 Specify mode, verified base, dependencies, exact allowed files, non-goals,
 acceptance criteria, tests or document checks, review gates, and STOP conditions.
+For any runtime packet, identify the real entrypoint and consumer files in the
+allowed map; require a traced runtime path and a test through that path.
+A changed production component consumed only by unit tests is an island.
+If there is no authorized entrypoint/consumer in scope, split or defer the
+runtime packet. Do not impose runtime wiring checks on DESIGN-only documents.
 Do not emit unresolved placeholders as an executable packet.
 Do not ask the executor to produce a plan when the task is to produce artifacts.
 Do not add a governance subsystem to solve an ordinary delivery problem.

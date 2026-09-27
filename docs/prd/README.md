@@ -30,9 +30,9 @@ Setiap PRD wajib mematuhi aturan berikut:
 
 | PRD ID | Judul Dokumen | Tahapan Terkait | Ketergantungan Langsung | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **PRD-000** | Product Thesis | Stage 1 | None | `PLANNED` |
-| **PRD-001** | Campaign Lifecycle | Stage 2 | PRD-000 | `PLANNED` |
-| **PRD-002** | Cyber Terrain | Stage 2 | PRD-001 | `PLANNED` |
+| **PRD-000** | Product Thesis | Stage 1 | None | `ACCEPTED` |
+| **PRD-001** | Campaign Lifecycle | Stage 2 | PRD-000 | `ACCEPTED` |
+| **PRD-002** | Cyber Terrain | Stage 2 | PRD-001 | `ACCEPTED` |
 | **PRD-003** | Access & Footholds | Stage 2 | PRD-002 | `PLANNED` |
 | **PRD-004** | Expansion Loop | Stage 2 | PRD-003 | `PLANNED` |
 | **PRD-005** | Objective Loop | Stage 2 | PRD-004 | `PLANNED` |

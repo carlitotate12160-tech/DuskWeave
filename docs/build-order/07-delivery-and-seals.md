@@ -48,6 +48,19 @@ move functions randomly to helpers.py
 
 ---
 
+# 26.1 Wiring gate for runtime slices
+
+Each runtime slice must connect its changed production behavior to a real
+entrypoint and consumer, with an observable output and a relevant test through
+that path. Test-only references or unused exports are insufficient. Inspect
+changed modules, event flow, configuration, migrations, adapters, and error
+paths for dead code and isolated islands. If wiring requires out-of-scope
+consumer/test files, return SPLIT_REQUIRED with exact missing paths.
+DESIGN-only packets verify authority references and document links; runtime
+wiring is N/A.
+
+---
+
 # 27. STOP conditions
 
 The model MUST STOP a slice if:

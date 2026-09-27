@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Stage 0 — Repository Authority Bootstrap
+- **Current Phase**: Stage 2 — Campaign Semantics (PRD-000..002 accepted; PRD-003..006 pending)
 - **Active Seal**: `DW-BOOTSTRAP-001`
 - **Seal Status**: **SEALED** (Exit criteria completely verified)
 - **Target Foundation Seal**: `DW-FOUNDATION-001` (Memerlukan Stage 0 s.d. Stage 3 selesai)
@@ -51,13 +51,11 @@ Semua interaksi dan rencana tunduk pada:
 
 ## 5. Next Immediate Action
 
-Sesuai `docs/BUILD_ORDER.md`, packet berikutnya adalah `DW-DESIGN-001`.
-- **Scope**: draft PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, dan PRD-002 Cyber Terrain, berurutan.
-- **Packet**: `docs/workflows/DW-DESIGN-001.md`, dipanggil dengan exact verified base SHA.
-- **Acceptance**: belum dilakukan; registry PRD tetap PLANNED sampai acceptance terpisah.
-- **Next boundary**: STOP setelah tiga draft dan cross-document review.
-- **DW-DESIGN-002**: belum boleh dieksekusi sebelum acceptance dependency dicatat.
-- **Runtime / ADR**: tidak termasuk packet saat ini.
+Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 telah ditinjau dan diterima oleh pemilik produk pada 2026-09-27. Versi yang diterima mencakup pemisahan assessment telemetry defender, hasil kontrol yang konklusif vs inkonklusif, dan retest terpisah. Registry ketiganya tercatat `ACCEPTED`.
+- **Next permitted design packet**: `DW-DESIGN-002` untuk PRD-003 Access & Footholds, PRD-004 Expansion Loop, PRD-005 Objective Loop, dan PRD-006 Adaptation.
+- **Authority prerequisite**: PRD-000..002 accepted; PRD-003..006 belum ditulis/diterima.
+- **Next boundary**: hanya mulai DW-DESIGN-002 ketika packet itu ditugaskan; STOP setelah packet tersebut.
+- **Runtime / ADR / foundation seal**: belum diotorisasi oleh urutan build; `DW-FOUNDATION-001` belum sealed.
 
 ## 6. Engineering setup maintenance
 
@@ -66,5 +64,4 @@ yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
 - Architecture/review: `.agents/skills/duskweave-engineering/SKILL.md`.
 - Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
 - Setup navigation: `docs/workflows/START_HERE.md`.
-- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya; tidak
-  mengklaim PRD, ADR, runtime, atau foundation seal baru telah selesai.
+- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. Acceptance PRD-000..002 dicatat terpisah; ADR, runtime, dan foundation seal belum selesai.

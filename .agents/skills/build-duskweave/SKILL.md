@@ -91,6 +91,17 @@ negative controls. Avoid tests that only mirror private implementation structure
 Use deterministic fixtures; do not use real client secrets or external targets.
 Run repository-required checks. Respect QUALITY_BAR.md budgets and language gates.
 Do not add unused scaffolding, speculative abstractions, or unrelated cleanup.
+For each changed runtime component, show a real path from an authorized
+production entrypoint through caller/port, registration or injection,
+component, and consumer to an observable output or state transition.
+A unit test, exported symbol, or placeholder registration alone is insufficient.
+Exercise at least one real entrypoint-to-consumer path when testable at this
+stage. Review changed event producers/consumers, adapters, configuration,
+migrations, and failure paths for orphan or island code. Remove truly unused
+artifacts or finish the wiring within the allowed file map; if the required
+consumer or test file is outside the map, STOP with SPLIT_REQUIRED and exact
+paths. Document legitimate dynamic wiring with evidence before classifying it
+as unused. When no executable runtime exists, report wiring as N/A for DESIGN.
 
 ## Mode: FIX
 
@@ -115,6 +126,8 @@ Report:
 - packet/mode and verified base/head;
 - artifacts and exact files changed;
 - tests/checks actually run and their results;
+- runtime wiring trace and consumer-path test, or DESIGN N/A;
+- dead-code/island/orphan disposition for changed scope;
 - review findings and dispositions;
 - remaining blockers and readiness;
 - next action: STOP at the packet boundary.

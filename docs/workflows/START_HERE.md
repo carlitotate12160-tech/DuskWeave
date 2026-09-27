@@ -2,8 +2,9 @@
 
 ## Setup scope
 
-This setup configures engineering workflows only.
-It does not accept PRDs, create ADRs, scaffold runtime, or advance a foundation seal.
+This guide navigates the engineering workflows.
+PRD-000..002 have been accepted in a separate product decision.
+No ADR, runtime, or foundation seal has been completed.
 The canonical current state remains docs/ENGINEERING_STATE.md.
 Read docs/BUILD_ORDER.md for sequencing.
 
@@ -46,23 +47,20 @@ Update the installed copy deliberately when repository workflow changes.
 
 ## Next permitted packet
 
-DW-DESIGN-001 drafts, in dependency order:
-1. docs/prd/PRD-000-product-thesis.md
-2. docs/prd/PRD-001-campaign-lifecycle.md
-3. docs/prd/PRD-002-cyber-terrain.md
-
-Use DW-DESIGN-001.md with an entry prompt pinned to a verified clean HEAD.
-The packet does not create ADRs or implement code.
-The original pre-setup SHA is historical; do not reuse it as the new execution base.
+PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain
+are ACCEPTED. DW-DESIGN-001.md and its prior pinned execution base are historical.
+The next permitted authoring packet is DW-DESIGN-002 (PRD-003..006); create and
+pin its execution prompt against a newly verified clean HEAD when assigned.
+Do not start ADR or runtime work before the required PRD acceptance and foundation
+dependencies are complete.
 
 ## Completion and handoff
 
-The IDE reports artifacts, base/head, document checks, invariant review,
-findings, and open questions, then stops.
-Review the three PRDs against their authority and exact diff.
-Acceptance and registry/state updates are a separate authorized step because
-DW-DESIGN-001 allows only the three PRD files.
-Proceed to DW-DESIGN-002 only after the required acceptance is recorded.
+The IDE reports artifacts, base/head, relevant document or runtime checks,
+wiring evidence for runtime changes, findings, and open questions, then stops.
+PRD-000..002 acceptance and registry/state updates were recorded after the
+product owner's approval. DW-DESIGN-002 is the next permitted authoring packet,
+not an automatic continuation.
 
 Use a compact handoff: verified base/head, active packet, files changed,
 checks actually run, acceptance status, blockers, and next permitted action.

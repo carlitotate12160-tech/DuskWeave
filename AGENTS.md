@@ -184,6 +184,25 @@ Test modules are also expected to remain readable and bounded.
 
 ---
 
+## Wiring and reachability for every IDE delivery
+
+For each runtime IMPLEMENT or FIX packet, trace every changed production
+component from an existing authorized entrypoint through real caller/consumer
+boundaries to an observable result. Include its registration/import,
+construction/injection, data or event flow, and failure path where applicable.
+A unit test or export alone does not prove production reachability.
+Write an integration or contract test through the real entrypoint/consumer
+when the behavior can be exercised at this stage.
+
+Audit the changed-scope symbols, modules, event producers/consumers, migrations,
+configuration flags, and adapters for dead code and disconnected islands.
+Remove unused changes or wire them within the packet's file map. If required
+wiring or tests need files outside that map, STOP with SPLIT_REQUIRED and name
+the exact missing files; do not add test-only wiring or speculative scaffolding.
+Do not declare runtime delivery complete with an orphaned component.
+DESIGN packets validate document links, registry/authority references, and
+cross-document semantics; runtime reachability is N/A until runtime exists.
+
 ## Slice discipline
 
 One slice should implement:

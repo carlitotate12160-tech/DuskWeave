@@ -65,5 +65,8 @@ Keterbacaan, keterawatan, dan isolasi tanggung jawab domain ditegakkan melalui b
 
 - **Formatting**: Wajib lolos `cargo fmt -- --check`.
 - **Linting**: Wajib lolos `cargo clippy --all-targets -- -D warnings`.
-- **Zero Dead Code**: Kode yang tidak digunakan atau eksperimen sementara tidak boleh masuk ke branch utama.
+- **Zero Dead Code / No Islands**: Setiap perubahan runtime harus memiliki jalur nyata dari entrypoint yang diotorisasi menuju komponen baru, consumer produksi, dan hasil yang dapat diamati. Export, registrasi tanpa penggunaan, atau pemanggilan yang hanya muncul dalam unit test tidak cukup.
+- **Wiring proof per packet**: Laporan IDE menyebut entrypoint → caller/port → changed component → consumer/output, serta bukti test yang melewati jalur tersebut. Periksa producer/consumer event, adapter, konfigurasi, migrasi, dan error path yang diubah. Jalur yang benar-benar tidak ada adalah blocker; simbol yang dipakai melalui mekanisme dinamis harus didukung bukti wiring, bukan dianggap dead code hanya karena pencarian teks.
+- **Scope failure**: Hapus artefak runtime yang tidak dipakai atau selesaikan wiring dalam file map. Jika file map tidak mengizinkan consumer/test yang diperlukan, STOP dengan `SPLIT_REQUIRED` serta daftar path tepatnya. Jangan menyembunyikan island di modul helper atau membuat kode hanya untuk memuaskan test.
+- **DESIGN-only**: Pemeriksaan ini berlaku pada dokumen sebagai konsistensi rujukan dan authority; bukti runtime reachability dinyatakan N/A sebelum runtime ada.
 - **Audit Dependensi**: Dependensi eksternal harus seminimal mungkin, melalui proses kurasi ketat, dan diaudit keamanannya (`cargo audit`).

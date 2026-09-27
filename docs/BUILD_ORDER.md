@@ -45,21 +45,15 @@ Current seal:
 
 Current engineering state:
 
-`Stage 0 — Repository Authority Bootstrap / SEALED`
+`Stage 2 — Campaign Semantics; PRD-000..002 ACCEPTED`
 
 Next permitted design packet:
 
-`DW-DESIGN-001`
+`DW-DESIGN-002`
 
-DW-DESIGN-001 contains only:
+DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 
-- PRD-000 Product Thesis
-- PRD-001 Campaign Lifecycle
-- PRD-002 Cyber Terrain
-
-Do not create foundation ADRs, runtime code, tool adapters, execution brokers, or threat scenarios during DW-DESIGN-001.
-
-After DW-DESIGN-001 is accepted, the next planned packet is DW-DESIGN-002:
+DW-DESIGN-002, when separately assigned, contains:
 
 - PRD-003 Access & Footholds
 - PRD-004 Expansion Loop

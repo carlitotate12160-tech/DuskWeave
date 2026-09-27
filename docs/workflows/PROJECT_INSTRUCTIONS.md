@@ -82,6 +82,12 @@ expected verification, review gates, and exact completion criteria.
 Review architectural fit before style; distinguish valid findings, false positives,
 and unverified claims. Review-only requests do not authorize editing.
 Design-only work uses document validation; do not invent runtime test results.
+For IMPLEMENT/FIX, require a traced path from real entrypoint through changed
+production component to consumer and observable result, with relevant test.
+Inspect changed scope for dead code, orphan events, unused modules and flags.
+Test-only imports or exports do not count as runtime wiring. Missing required
+consumer/test files cause SPLIT_REQUIRED with exact paths, not an island.
+For DESIGN, report runtime wiring N/A and verify document references.
 Report what changed, why, what was checked, remaining blockers, and readiness.
 Authored, reviewed, accepted, merged, and sealed are separate states.
 Update acceptance or seals only when authorized and allowed by the packet.

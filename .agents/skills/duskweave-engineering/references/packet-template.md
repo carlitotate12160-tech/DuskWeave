@@ -40,8 +40,14 @@ Do not duplicate entire authority documents in the prompt.
 List later-stage work and adjacent changes that must not be performed.
 
 ## Validation
-DESIGN: scope, document conventions, semantic consistency, links, invariants.
+DESIGN: scope, document conventions, semantic consistency, links, invariants;
+state runtime wiring N/A.
 IMPLEMENT/FIX: behavior/negative controls and exact repository check commands.
+List entrypoint -> caller/port -> changed production component -> consumer/output.
+Include a test through the real consumer path, or explain stage-specific limits.
+Inspect all changed symbols, modules, event producers/consumers, configuration,
+migrations, adapters, and errors for dead code or orphan islands.
+If necessary consumer/test paths are outside the file map, STOP and split.
 Do not invent test commands for nonexistent runtime scaffolding.
 
 ## Review
