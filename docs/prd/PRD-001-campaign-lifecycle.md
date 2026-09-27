@@ -73,7 +73,7 @@ Once a foothold is established, the campaign evaluates access survivability with
 - **No Invariant Violation**: Survivability semantics model operational continuity; they do not prescribe specific malware persistence, registry modifications, or backdoor installation.
 
 ### 3.3 Access Loss and Re-Entry
-A timeout, reboot, or failed contact prompts health reassessment; it does not by itself prove access loss. Expired validation is stale, conflicting evidence is uncertain, and only reconciled affirmative evidence establishes that a position is lost. Dependent actions pause while evidence is insufficient.
+A timeout, reboot, or failed contact prompts health reassessment; it does not by itself prove confirmed access loss. Expired validation is stale and conflicting evidence is uncertain. Sustained unreachability beyond the configured operational threshold may establish presumed loss under PRD-003; only reconciled affirmative evidence establishes confirmed loss. Dependent actions pause while evidence is insufficient or the position is presumed lost.
 - Confirmed access loss does **not** signify campaign failure.
 - When a position is confirmed lost, assess independently healthy alternate positions and reconsider authorized re-entry routes.
 - A viable route is only a candidate; operations from another position require its own current validation, and re-entry requires fresh access validation. [PRD-003](PRD-003-access-and-footholds.md) owns the detailed transition criteria.

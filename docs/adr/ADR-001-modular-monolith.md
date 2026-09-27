@@ -4,7 +4,8 @@
 | :--- | :--- |
 | **Document ID** | ADR-001 |
 | **Title** | Modular Monolith Architecture |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
+| **Acceptance** | Product owner, 2026-09-27: modular core retained with the core-plus-workers alternative and shared-failure/recovery clarification |
 | **Stage** | Stage 3 — Foundation ADRs |
 | **Direct Dependencies** | [PRD-000](../prd/PRD-000-product-thesis.md), [PRD-001](../prd/PRD-001-campaign-lifecycle.md), [PRD-002](../prd/PRD-002-cyber-terrain.md), [PRD-003](../prd/PRD-003-access-and-footholds.md), [PRD-004](../prd/PRD-004-expansion-loop.md), [PRD-005](../prd/PRD-005-objective-loop.md), [PRD-006](../prd/PRD-006-adaptation.md) — all ACCEPTED |
 
@@ -38,6 +39,7 @@ These reports document operations, not software architecture. The modular monoli
 | Option | Benefit | Failure or cost |
 | :--- | :--- | :--- |
 | One unbounded campaign engine with shared mutable state | Simple initial call path | Mixes five models, reasoning, authority, and execution; encourages a God Object and privileged-data leaks. Rejected. |
+| Modular core with separately scheduled long-running workers | Isolates slow work and permits independent worker recovery or scaling | Adds queue ownership, cancellation, duplicate-work and outcome-reconciliation obligations. Defer until a concrete workload justifies it; required trust isolation is not deferred. |
 | Independent network services for every operational model and reasoning step | Independent deployment and scaling | Adds distributed ordering, retries, and consistency problems before domain contracts exist; risks losing time-sensitive momentum. Deferred as a possible later extraction, not the starting shape. |
 | **Modular monolith for the campaign core, with explicit external trust boundaries** | Local composition and short decision paths with enforceable ownership | Needs architectural checks to prevent direct cross-module state access and accidental central coordinators. Selected. |
 
@@ -64,7 +66,7 @@ The isolated execution environment, ephemeral sensitive proof boundary, defender
 
 **Positive:** Local composition avoids network round trips among the five models during ordinary reasoning. Explicit ownership and typed boundaries support rapid adaptation with reviewable evidence. A single campaign-core deployable simplifies early evolution without forcing one cognitive worker to know everything.
 
-**Costs:** Modules in one deployable can still become tightly coupled through convenience imports or shared mutable state. Establish dependency checks and contract-focused tests as the design becomes executable. The core cannot scale individual internal modules independently until a justified extraction.
+**Costs:** Modules in one deployable can still become tightly coupled through convenience imports or shared mutable state. Establish dependency checks and contract-focused tests as the design becomes executable. The core cannot scale individual internal modules independently until a justified extraction. Internal modules also share the core process's failure boundary: one process failure can interrupt all core work. Recovery must reconcile issued actions whose outcomes are unknown; a missing response cannot authorize blind replay of an action that may already have taken effect. Downstream event, persistence and execution contracts specify the recovery mechanism.
 
 **Migration trigger:** Consider splitting one bounded context into its own deployable only after a measured isolation, reliability, or scaling need and an accepted ADR. Extraction must preserve its model owner, action authority, evidence provenance, and INV-007 mode labeling. Deployment count is not an acceptance metric.
 
@@ -88,4 +90,4 @@ The isolated execution environment, ephemeral sensitive proof boundary, defender
 4. An objective uses permitted client content: the core sees only derived opaque proof; raw content is discarded within the isolated ephemeral boundary on success or failure.
 5. One position becomes presumed lost while another remains healthy: only dependent work pauses; the core does not infer confirmed loss or global campaign failure.
 
-This is a design decision and has no runtime validation yet. It neither prescribes service topology for the trust boundaries nor decides domain-event schemas, database, graph representation, language, process protocol, or tooling. ADR-002 is the next dependency; ADR-001 remains PROPOSED until separately accepted.
+This is a design decision and has no runtime validation yet. It neither prescribes service topology for the trust boundaries nor decides domain-event schemas, database, graph representation, language, process protocol, or tooling. ADR-001 was accepted by the product owner on 2026-09-27 with the refinements recorded above. ADR-002 is the next design dependency; this acceptance does not authorize runtime implementation or seal DW-FOUNDATION-001.

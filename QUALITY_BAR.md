@@ -14,7 +14,7 @@ Keterbacaan, keterawatan, dan isolasi tanggung jawab domain ditegakkan melalui b
 | :--- | :--- | :--- | :--- |
 | **Ukuran Modul/File** | `< 300 LOC` | `400 LOC` | Wajib dipecah berdasarkan batas tanggung jawab domain (*split by responsibility*). |
 | **Runtime Diff per PR/Slice** | `< 300 LOC` | `400 LOC` | Wajib dipecah menjadi beberapa slice bertahap (*SPLIT_REQUIRED*). |
-| **Kompleksitas Siklomatik (McCabe)** | `≤ 7` per fungsi | `10` per fungsi | Wajib refactor ke fungsi murni yang lebih kecil dan terkomposisi. |
+| **Kompleksitas Siklomatik (McCabe)** | `≤ 7` per fungsi | `7` per fungsi | Nilai `> 7` melanggar batas; wajib refactor berdasarkan tanggung jawab yang kohesif. |
 
 ### Aturan Pemecahan Kode:
 - **Dilarang keras** membuat file penampung sampah seperti `utils.rs`, `helpers.rs`, `common.rs`, atau `misc.rs`.
