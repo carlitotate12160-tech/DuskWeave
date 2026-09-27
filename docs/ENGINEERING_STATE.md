@@ -51,13 +51,20 @@ Semua interaksi dan rencana tunduk pada:
 
 ## 5. Next Immediate Action
 
-Sesuai `docs/BUILD_ORDER.md` dan packet `docs/build-order/07-delivery-and-seals.md`:
-- **Next Stage**: Stage 1 — Product Thesis
-- **Target Artifact**: `docs/prd/PRD-000-product-thesis.md`
-- **Seal**: `DW-PRD-000`
-- **Core Questions to Answer**:
-  1. What is DuskWeave?
-  2. Who is it for?
-  3. What problem does it solve?
-  4. What is explicitly outside scope?
-  5. What makes campaign emulation different from vulnerability scanning?
+Sesuai `docs/BUILD_ORDER.md`, packet berikutnya adalah `DW-DESIGN-001`.
+- **Scope**: draft PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, dan PRD-002 Cyber Terrain, berurutan.
+- **Packet**: `docs/workflows/DW-DESIGN-001.md`, dipanggil dengan exact verified base SHA.
+- **Acceptance**: belum dilakukan; registry PRD tetap PLANNED sampai acceptance terpisah.
+- **Next boundary**: STOP setelah tiga draft dan cross-document review.
+- **DW-DESIGN-002**: belum boleh dieksekusi sebelum acceptance dependency dicatat.
+- **Runtime / ADR**: tidak termasuk packet saat ini.
+
+## 6. Engineering setup maintenance
+
+Instruksi Project dan dua skill terpisah disiapkan melalui pekerjaan konfigurasi
+yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
+- Architecture/review: `.agents/skills/duskweave-engineering/SKILL.md`.
+- Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
+- Setup navigation: `docs/workflows/START_HERE.md`.
+- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya; tidak
+  mengklaim PRD, ADR, runtime, atau foundation seal baru telah selesai.

@@ -127,22 +127,17 @@ MERGE
 
 # 29. Current next action
 
-The next authoring sequence is exactly:
+Read current seal/acceptance status in `docs/ENGINEERING_STATE.md`.
+Read the currently permitted packet in `docs/BUILD_ORDER.md`.
+Do not restart completed bootstrap work or infer permission to author every PRD.
 
-```text
-1. AGENTS.md
-2. SKILL.md
-3. QUALITY_BAR.md
-4. PRD-000 Product Thesis
-5. PRD-001 Campaign Lifecycle
-6. PRD-002 Cyber Terrain
-7. PRD-003 Access & Footholds
-8. PRD-004 Expansion Loop
-9. PRD-005 Objective Loop
-10. PRD-006 Adaptation
-```
+The product authoring sequence is:
+1. DW-DESIGN-001: PRD-000, PRD-001, PRD-002, as dependency-ordered drafts.
+2. Acceptance and required registry/state updates through an authorized step.
+3. DW-DESIGN-002: PRD-003, PRD-004, PRD-005, PRD-006.
+4. Acceptance of all seven PRDs, PRD-000 through PRD-006.
 
-Only after these six PRDs are coherent:
+Only after all seven PRDs are accepted:
 
 ```text
 11. ADR-001 Modular Monolith

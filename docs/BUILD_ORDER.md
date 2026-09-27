@@ -17,7 +17,7 @@ Principle:
 3. Domain Contract
 4. QUALITY_BAR.md
 5. AGENTS.md
-6. .agents/skills/build-duskweave/SKILL.md
+6. Relevant DuskWeave skill under .agents/skills/
 7. Implementation
 
 PRDs define WHAT/WHY. ADRs define architectural HOW. Code may not invent architecture that has no accepted authority.

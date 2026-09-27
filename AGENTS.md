@@ -10,6 +10,32 @@ It is a campaign operating system.
 
 ---
 
+## Project isolation and skill routing
+
+Use only DuskWeave sources as project authority. Do not load BlackBread skills
+or import another project's decisions, role names, contracts, or milestones.
+Unrelated memory is not DuskWeave authority.
+
+Authority order:
+PRODUCT / authoritative PRD > ACCEPTED ADR > DOMAIN CONTRACT > QUALITY_BAR.md
+> AGENTS.md > SKILL.md > IMPLEMENTATION.
+Drafts do not override accepted authority.
+
+Use .agents/skills/duskweave-engineering/SKILL.md for architecture, packet
+preparation, and review. Use .agents/skills/build-duskweave/SKILL.md for executing
+assigned DESIGN, IMPLEMENT, and FIX packets. Both are subordinate workflow aids.
+Review-only requests do not authorize edits. Installed copies do not override
+current repository authority; report material mismatches.
+
+For document-only DESIGN work, validate document conventions, exact file scope,
+links, terminology, transitions, ownership, and cross-document invariants.
+Runtime TDD/checks apply to implementation, not to nonexistent runtime scaffolding.
+Do not self-accept draft documents or change seals merely because checks pass.
+Follow the assigned packet's file map and stop at its boundary.
+
+Startup guidance: docs/workflows/START_HERE.md.
+Project Instructions text: docs/workflows/PROJECT_INSTRUCTIONS.md.
+
 ## Required reading order
 
 Before making changes, read:
@@ -22,7 +48,7 @@ Before making changes, read:
 5. relevant accepted ADR
 6. relevant domain contracts
 7. QUALITY_BAR.md
-8. .agents/skills/build-duskweave/SKILL.md
+8. relevant skill under .agents/skills/ and the assigned packet
 ```
 
 Do not infer architectural authority from existing implementation when PRD/ADR says otherwise.

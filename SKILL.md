@@ -1,9 +1,10 @@
 # Compatibility Pointer
 
-The canonical DuskWeave engineering skill is:
+Canonical DuskWeave skills:
 
-`.agents/skills/build-duskweave/SKILL.md`
+- Architecture and review: `.agents/skills/duskweave-engineering/SKILL.md`.
+- Assigned packet execution: `.agents/skills/build-duskweave/SKILL.md`.
 
-Do not duplicate or maintain independent skill instructions in this file.
-
-All agents, IDEs, and review workflows must read the canonical skill from the path above.
+Load only the skill relevant to the requested work.
+Do not maintain independent instructions in this compatibility file.
+See `docs/workflows/START_HERE.md` for project setup.

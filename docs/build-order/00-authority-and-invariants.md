@@ -8,7 +8,7 @@ Urutan authority:
 3. DOMAIN CONTRACT
 4. QUALITY BAR
 5. AGENTS.md
-6. .agents/skills/build-duskweave/SKILL.md
+6. Relevant DuskWeave SKILL.md under .agents/skills/
 7. IMPLEMENTATION
 ```
 
