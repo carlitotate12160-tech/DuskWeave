@@ -50,9 +50,9 @@ Keterbacaan, keterawatan, dan isolasi tanggung jawab domain ditegakkan melalui b
 ## 4. Keamanan Tipe & Desain Bahasa (Rust Focus)
 
 1. **Parse, Don't Validate**:
-   - Validasi data masukan di perbatasan sistem; data yang lolos validasi harus memiliki tipe data spesifik yang menjamin keabsahannya sepanjang siklus hidup.
+   - Validasi data masukan di perbatasan sistem; tipe spesifik menjaga invariant struktural melalui konstruksi dan mutasi yang terkontrol. Freshness, otorisasi, dan kondisi lingkungan tetap diperiksa saat keputusan digunakan; tipe tidak menjamin keabsahan klaim eksternal sepanjang waktu.
 2. **Typestate Pattern**:
-   - Gunakan tipe generik untuk memastikan operasi hanya dapat dipanggil pada state yang valid (contoh: `Foothold<Candidate>` tidak memiliki method `execute_action()`; hanya `Foothold<Active>` yang memilikinya).
+   - Gunakan typestate bila memperjelas transisi lokal yang sah, tanpa state machine generik untuk seluruh kampanye. Kandidat akses dimiliki Pathing, bukan FootholdGraph. View posisi tervalidasi tidak menyediakan eksekusi langsung; setiap dispatch tetap melewati authority terkini, Capability Gateway, Execution Broker, dan adapter.
 3. **Newtype Pattern**:
    - Cegah kebingungan ID dengan membungkus identifier primitif ke dalam tipe kuat (contoh: `struct EntityId(Uuid)`, `struct FootholdId(Uuid)`).
 4. **Penanganan Error Eksplisit**:
