@@ -49,7 +49,7 @@ Current engineering state:
 
 Current design document:
 
-`ADR-004 Rust Core Language (ACCEPTED); next design dependency: ADR-005 PostgreSQL System of Record (not yet authored)`
+`ADR-005 PostgreSQL System of Record (PROPOSED); awaiting product-owner review before ADR-006`
 
 DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 
@@ -60,7 +60,7 @@ DW-DESIGN-002 authored four linked PRDs, accepted by the product owner on 2026-0
 - PRD-005 Objective Loop
 - PRD-006 Adaptation
 
-PRD-000 INV-004 now defines tier-proportionate corroboration, and INV-007 retains the current campaign position boundary. PRD-002..006 preserve provenance, epistemic limits, authorized action, and reversible proof. All seven PRDs and ADR-001..004 are ACCEPTED. ADR-001 acceptance on 2026-09-27 includes the core-plus-workers alternative and shared-failure/recovery clarification; PRD-001 distinguishes presumed from confirmed loss consistently with PRD-003. ADR-002 was accepted on 2026-09-27 after the product owner's four requested boundary clarifications. ADR-003 was accepted on 2026-09-28 after its B1-B7 revision. ADR-004 was accepted on 2026-09-28 with the revised reasoning/inference boundaries. ADR-005 is next; ADRs 005..007 remain unauthored and wait for their predecessors. Runtime and the foundation seal remain pending.
+PRD-000 INV-004 now defines tier-proportionate corroboration, and INV-007 retains the current campaign position boundary. PRD-002..006 preserve provenance, epistemic limits, authorized action, and reversible proof. All seven PRDs and ADR-001..004 are ACCEPTED. ADR-001 acceptance on 2026-09-27 includes the core-plus-workers alternative and shared-failure/recovery clarification; PRD-001 distinguishes presumed from confirmed loss consistently with PRD-003. ADR-002 was accepted on 2026-09-27 after the product owner's four requested boundary clarifications. ADR-003 was accepted on 2026-09-28 after its B1-B7 revision. ADR-004 was accepted on 2026-09-28 with the revised reasoning/inference boundaries. ADR-005 is authored and PROPOSED for review; ADRs 006..007 remain unauthored and wait for their predecessors. Runtime and the foundation seal remain pending.
 
 ## Mandatory invariants
 

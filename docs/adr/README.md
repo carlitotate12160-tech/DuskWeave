@@ -31,7 +31,7 @@ Setiap ADR disusun menggunakan struktur baku berikut:
 
 ## 2. ADR Registry & Dependency Index
 
-ADR-001..004 are authored and ACCEPTED. Remaining entries are reserved decision slots, not authored or accepted documents. Their legacy PROPOSED labels do not satisfy dependencies; verify the corresponding file and acceptance before proceeding.
+ADR-001..004 are authored and ACCEPTED; ADR-005 is authored and PROPOSED. Remaining entries are reserved decision slots, not authored or accepted documents. Their legacy PROPOSED labels do not satisfy dependencies; verify the corresponding file and acceptance before proceeding.
 
 | ADR ID | Judul Keputusan | Tahapan Terkait | Ketergantungan Langsung | Status |
 | :--- | :--- | :--- | :--- | :--- |

@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Stage 3 — Foundation ADRs (PRD-000..006 and ADR-001..004 ACCEPTED; ADR-005 next, not authored)
+- **Current Phase**: Stage 3 — Foundation ADRs (PRD-000..006 and ADR-001..004 ACCEPTED; ADR-005 PROPOSED for review)
 - **Active Seal**: `DW-BOOTSTRAP-001`
 - **Seal Status**: **SEALED** (Exit criteria completely verified)
 - **Target Foundation Seal**: `DW-FOUNDATION-001` (Memerlukan Stage 0 s.d. Stage 3 selesai)
@@ -58,7 +58,7 @@ Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`
 - **ADR-002 acceptance**: Keputusan pemilik produk pada 2026-09-27 adalah REVISE, THEN ACCEPT. Empat klarifikasi sudah diterapkan dan diperiksa: objective eligibility merujuk klaim Terrain/Access/Mission; Gateway, Broker, dan Adapter dipisahkan dengan larangan bypass dispatch; command interface spesifik terhadap intent; serta transient read-only acquisition yang tetap PROVISIONAL. Bukti historis tetap dibatasi provenance/freshness dan tidak membuktikan akses saat ini. ADR-002 berstatus `ACCEPTED`; acceptance ini bukan seal atau bukti runtime.
 - **ADR-003 acceptance**: ADR-003 Domain Events ditulis dan diperiksa melalui review dokumen serta satu adversarial pass sebagai `PROPOSED` berdasarkan ADR-002 yang ACCEPTED. Review memperjelas scope identitas/deduplikasi dan pemisahan metadata pengiriman ulang dari isi semantik event. Cakupan: event milik domain, kontrak consumer terbatas, recoverable publication/delivery, duplicate handling, ordering/freshness, replay tanpa eksekusi, serta batas data sensitif dan exercise mode. Revisi 2026-09-28 menindaklanjuti B1–B7 dengan efek consumer yang eksplisit, klasifikasi kewajiban required/optional, resolusi integrity conflict yang dapat diverifikasi, kompatibilitas upgrade, penghentian tanpa menunggu backlog, isolasi campaign, dan correction menurut revision/causality. Tujuh kasus review ditambahkan; kesetaraan rebuild membandingkan evaluation time dan aturan rekonsiliasi yang sama. Pemilik produk menerima revisi ini pada 2026-09-28; ADR-003 berstatus `ACCEPTED`. ADR-004 menjadi dependency desain berikutnya.
 - **ADR-004 acceptance**: ADR-004 Rust Core Language ditulis sebagai `PROPOSED`: Rust untuk core, Go untuk integrasi sesuai baseline; tipe hanya menjamin invariant lokal, bukan freshness/otorisasi permanen. Boundary bahasa mempertahankan authority, event recovery, sensitive proof, dan exercise mode. Contoh QUALITY_BAR diselaraskan dengan PRD-003 dan ADR-002. Revisi brainstorming 2026-09-28 memperjelas pemisahan use case Rust dari runtime inferensi yang belum dipilih, kedalaman reasoning, admission proposal tak tepercaya, correction/retry terbatas, promosi Python per komponen melalui ADR, dan evaluasi empiris tanpa asumsi output identik. Pemilik produk menerima revisi pada 2026-09-28; ADR-004 `ACCEPTED`. Persetujuan ini mengunci keputusan ADR-004, bukan seal foundation; section 30 build-order masih mensyaratkan ADR-005..007 dan koherensi seluruh foundation.
-- **Current boundary**: ADR-005 menjadi dependency desain berikutnya; ADR-005..007 belum ditulis.
+- **Current boundary**: ADR-005 PostgreSQL System of Record ditulis sebagai `PROPOSED`: PostgreSQL untuk permitted core records, transaksi lokal pemilik dengan durable outbox/inbox, concurrency/recovery eksplisit, dan pembatasan audit/sensitive data. Ini bukan schema, runtime implementation, atau klaim audit tamper-proof. ADR-006/007 belum ditulis; ADR-006 menunggu acceptance ADR-005.
 - **Quality enforcement**: Hard cap McCabe adalah 7 per fungsi. Repository masih document-only; analyzer, runtime tests, dependency gates, dan CI belum tersedia. ADR-002 mendefinisikan kewajiban verifikasi saat implementasi diotorisasi, bukan hasil test.
 - **Runtime / foundation seal**: belum diotorisasi oleh urutan build; `DW-FOUNDATION-001` belum sealed.
 
@@ -70,4 +70,4 @@ yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
 - Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
 - Distinct adversarial review: `.agents/skills/duskweave-adversarial-review/SKILL.md`.
 - Setup navigation: `docs/workflows/START_HERE.md`.
-- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. Acceptance PRD-000..006 dan ADR-001..004 dicatat terpisah; ADR-005 dan berikutnya belum ditulis, runtime dan foundation seal belum selesai.
+- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. Acceptance PRD-000..006 dan ADR-001..004 dicatat terpisah; ADR-005 PROPOSED untuk review, ADR-006 dan berikutnya belum ditulis; runtime dan foundation seal belum selesai.
