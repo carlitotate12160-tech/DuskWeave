@@ -96,7 +96,11 @@ Exploitation mode is entered by a reasoned decision that identifies the opportun
 
 ## 5. Survivability, loss, and decisions
 
-Survivability means tracking alternate authorized routes, validating current position health when needed, and preserving enough non-sensitive provenance to choose a safe recovery path after pause or loss. It does not require implants, covert persistence, or retention of raw credentials. A healthy alternate foothold may sustain the campaign while another becomes stale; the failed position cannot be used as an execution origin.
+Survivability means tracking alternate authorized routes, validating current position health when needed, and preserving enough non-sensitive provenance to choose a safe recovery path after pause or loss. It does not require implants, covert persistence, or retention of raw credentials. Campaign state and authorized re-entry remain the default continuity mechanisms.
+
+An explicitly authorized temporary managed access artifact may support a bounded position only through a curated capability with declared identity, target/scope, capability limits, lease/expiry, non-sensitive manifest, revocation, cleanup plan, and opaque cleanup evidence. Its presence does not by itself validate a foothold, widen capability, or make historical access current; Access still requires A-1 evidence and current authority. A reasoner cannot author or deploy an arbitrary binary. Expiry stops eligibility but is not proof of removal; residue or unverified cleanup remains visible for operator remediation and cannot be concealed by altering audit evidence.
+
+A healthy alternate foothold may sustain the campaign while another becomes stale; the failed position cannot be used as an execution origin.
 
 ### 5.1 Operational loss threshold
 
@@ -137,4 +141,4 @@ Synthetic Host A has been validated but receives no successful contact for a dur
 
 ## 8. Explicit non-goals
 
-This PRD does not select credentials, implants, persistence techniques, validation commands, tool adapters, storage schemas, or runtime protocols. It does not classify control gaps or infer access from vulnerability severity. It does not define specific state names, enumeration types, or transition implementation mechanisms; those belong to domain contracts that satisfy the invariants in §3. Expansion behavior and objective fulfillment belong to the following PRDs. Configurable thresholds (health check cadence, operational loss timeout, exploitation retry window) are engagement parameters, not PRD constants.
+This PRD does not select credentials, artifact formats, implants, persistence techniques, validation commands, tool adapters, storage schemas, or runtime protocols. Temporary managed access remains an optional, explicitly authorized later capability and cannot become a hidden prerequisite for Access. It does not classify control gaps or infer access from vulnerability severity. It does not define specific state names, enumeration types, or transition implementation mechanisms; those belong to domain contracts that satisfy the invariants in §3. Expansion behavior and objective fulfillment belong to the following PRDs. Configurable thresholds (health check cadence, operational loss timeout, exploitation retry window) are engagement parameters, not PRD constants.
