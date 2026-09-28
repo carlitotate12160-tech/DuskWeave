@@ -4,10 +4,11 @@
 | :--- | :--- |
 | **Document ID** | PRD-007 |
 | **Title** | Observation Model |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
 | **Stage** | Stage 4 — Reality & Evidence |
 | **Direct Dependencies** | [PRD-000..006](README.md) and [ADR-001..007](../adr/README.md) — ACCEPTED; `DW-FOUNDATION-001` SEALED |
 | **Target Seal** | DW-DOMAIN-001 |
+| **Acceptance** | Product owner, 2026-09-28 — accepted after reconciliation of observation/reconnaissance, owner-qualified use, freshness, protected-edge, and raw-input boundaries |
 
 ## 1. Purpose and product outcome
 
@@ -17,17 +18,20 @@ An Observation preserves what was perceived and the limits under which it was pe
 
 This PRD applies across the Strategic, Access, Expansion, and Objective loops. It defines shared semantics and admission obligations, but it does not create a sixth operational model, a universal observation manager, or a global state machine.
 
+Observation is not synonymous with reconnaissance. Reconnaissance is an authorized campaign activity that may acquire perceptions; Observation is the bounded product representation of an eligible perception after admission. This PRD neither selects reconnaissance actions nor authorizes acquisition, execution, or dispatch.
+
 ## 2. Vocabulary and boundaries
 
 | Term | Product meaning | What it does not establish |
 | :--- | :--- | :--- |
-| **Raw capture** | Untrusted tool, sensor, operator, or environment output before observation admission. | Safe retention, truth, evidence, or permission. |
-| **Candidate observation** | A proposed interpretation of a bounded portion of raw capture, with proposed source and context. | Admission, owner acceptance, or corroboration. |
-| **Observation** | An admitted, non-sensitive, sourced report of what was perceived from a stated vantage and time. | Fact, causal attribution, access, objective fulfillment, or authorization. |
+| **Raw capture** | Untrusted acquisition material from a tool, sensor, operator, or environment, kept outside operational models, durable/cognitive surfaces, and core reasoning until permitted interpretation and sensitive-data handling have completed. | Safe retention, an Observation, truth, evidence, or permission. |
+| **Observation** | An admitted, non-sensitive, sourced, time-bounded report of what was perceived from a stated vantage. | Fact, causal attribution, access, objective fulfillment, or authorization. |
 | **Accepted model claim** | A claim an accountable operational-model owner has accepted at an explicit epistemic status after its own reconciliation. | Universal truth, indefinite freshness, or authority outside that model. |
 | **Inference** | A reasoned conclusion derived from eligible premises, labeled with those premises and limits. | Direct perception or automatic fact promotion. |
 | **Evidence** | Material assessed for its ability to support or refute a bounded claim; detailed semantics belong to PRD-008. | Automatic proof or permission. |
 | **Client proof** | A client-facing substantiation of a declared result; detailed semantics belong to PRD-009. | Raw client content or a replacement for owner state. |
+
+The foundation phrase **raw observation** names generic pre-model perception awaiting validation and reconciliation. In this PRD, raw capture is the untrusted acquisition material; pre-admission interpretation is a bounded process, not a separately owned or persisted product entity; and the capitalized Observation is the admitted report. These terms do not create another model.
 
 Observation identity and model-claim identity remain distinct. Several observations may support one claim; one observation may be relevant to several owners, but each owner independently decides whether and how it affects its state through its own contract.
 
@@ -77,19 +81,26 @@ A transient-origin Observation remains unvalidated and can support only PROVISIO
 
 Only a validated position may become a FootholdGraph node or serve as the consequential origin for expansion, objective work, or other state-changing follow-on action. Observation admission never upgrades a position.
 
+A blind campaign is blind to privileged defender truth, not deprived of its authorized engagement context. Declared targets, scope, timing, exclusions, exercise mode, and operator-approved constraints are starting authority, not observations about target reality. Any additional target understanding must arise from eligible campaign acquisition and owner reconciliation.
+
 ## 6. Admission and reconciliation
 
-Admission proceeds conceptually through bounded checks:
+Admission is a bounded eligibility decision, not a global gate sequence or a claim that interpretation is mechanically infallible. It enforces, for the applicable observation family:
 
-1. Confirm that acquisition and intended use fall within current engagement scope, operating authority, and stopping conditions.
-2. Confirm campaign isolation, exercise mode, source eligibility, and vantage/origin limitations.
-3. Reject prohibited sensitive content before it can reach persistence, logs, traces, diagnostics, retry material, reports, or LLM context.
-4. Determine that the proposed observation is attributable, time-bounded, narrowly stated, and structurally adequate for its family.
-5. Preserve contrary, partial, uncertain, or unknown outcomes rather than coercing them into success or failure.
-6. Route the admitted Observation only to accountable owners or consumers with declared responsibilities.
-7. Let each receiving owner validate and reconcile it under that model's evidence, freshness, tier, and transition rules.
+1. current engagement scope, operating authority, intended use, and stopping conditions;
+2. campaign isolation, exercise mode, source eligibility, and vantage/origin limits;
+3. rejection of prohibited sensitive content before persistence, logs, traces, diagnostics, retry material, reports, or LLM context;
+4. attributable provenance, relevant times, a narrow assertion, and adequate bounded structure;
+5. explicit preservation of contrary, partial, uncertain, negative, or unknown outcomes; and
+6. routing only to accountable owners or consumers with declared responsibilities.
 
-Admission means that an Observation is eligible to be considered. It does not mean the reported condition is true, corroborated, current, causally attributed, or safe to act upon.
+These obligations may be evaluated concurrently or incrementally where their dependencies allow. Routine outputs from already authorized acquisition do not require per-observation human approval. Material that is ambiguous, ineligible, or unsafe is rejected, or quarantined only if a later accepted sensitive-handling contract permits that safely; unrelated eligible work continues.
+
+Admission means that an Observation is eligible to be considered. It does not mean the reported condition is true, corroborated, current, causally attributed, or safe to act upon. Each receiving owner then performs bounded, claim-specific reconciliation under its evidence, freshness, tier, and transition rules.
+
+After an accountable owner qualifies an admitted Observation for a declared non-authoritative purpose, it may immediately inform that purpose—for example, bounded hypothesis ranking—within that owner's limits. Consequential state, access, objective, trust, scope, or action decisions still require the owning model's accepted burden. Admission alone never changes ranking or state.
+
+There is no campaign-wide reconciliation barrier. Independent owners and independent dependency branches may continue as soon as their own inputs are eligible; only the claim or action that depends on unresolved, stale, conflicting, or missing material is blocked or downgraded.
 
 For CyberTerrain, PRD-002 owns epistemic status and tier. A narrow direct source may support an OBSERVED Terrain claim after Terrain validation and reconciliation; a transient origin produces PROVISIONAL orientation; consequential Tier 2 or Tier 3 claims require their accepted burden. Other operational models apply their own claim semantics and cannot borrow Terrain status as a shortcut.
 
@@ -99,7 +110,7 @@ An observation consumer may supply eligible material, request bounded reconsider
 
 DuskWeave distinguishes the time of a perceived real-world effect, observation time, availability/receipt time, owner acceptance time, and evaluation time where they differ. Clock time alone is not a total causal order, and a late arrival cannot overwrite a newer accepted correction.
 
-Freshness is evaluated when an observation or derived claim is used. An old Observation remains a historical report of what was perceived, but it does not establish that the condition or access still exists. Expiry does not refute the original report, create corroboration, or resolve a provisional origin.
+Freshness is evaluated when an observation or derived claim is used and is anchored to the perceived effect/observation time and its stated validity window—not to the time admission or reconciliation completed. Availability, admission, and owner-processing delay remain visible; processing cannot refresh old target reality. An old Observation remains a historical report of what was perceived, but it does not establish that the condition or access still exists. Expiry does not refute the original report, create corroboration, or resolve a provisional origin.
 
 Current owner state may change through accepted transitions. When an admitted Observation is retained as an accepted historical record, its semantic content is not rewritten; a correction or reinterpretation is linked as a new accountable record. This does not require universal event sourcing or retention of every raw capture. Retention follows the responsible owner's and later evidence/sensitive-data contracts.
 
@@ -128,7 +139,8 @@ Observation, correction, cleanup, or rejection handling can never alter, delete,
 - **Contradictory observations**: both remain sourced and visible to authorized reconciliation. Contradiction is not resolved by last-write-wins or by counting sources that are not independent.
 - **Correction**: a new linked record states the corrected scope and basis. It does not erase the original perception, rewrite historical decisions, or execute compensation.
 - **Partial result**: only the observed portion may be asserted; omitted or interrupted portions remain unknown.
-- **Unknown external outcome**: interruption or missing acknowledgement does not imply target success or failure and does not authorize automatic repetition of the action.
+- **Blocked or negative outcome**: a refusal, denial, challenge, or unreachable result is a bounded assertion about the tested interaction from its stated vantage and time. It may reduce or refute only dependent hypotheses whose accepted semantics cover that result; it does not establish global absence, name a control, expand scope, or authorize circumvention. A scope or authority denial stops the affected proposal.
+- **Unknown external outcome**: interruption, timeout, silence, or missing acknowledgement does not imply target success or failure and does not authorize automatic repetition of the action.
 - **Source unavailable or stale**: dependent claims expose the limitation and defer, refresh, or downgrade under their owner's rules; unavailable input is not negative evidence.
 - **Admission failure**: prohibited or ineligible input is rejected without echoing sensitive content, contaminating a blind context, or silently dropping a required accountability signal.
 
@@ -144,9 +156,11 @@ From validated synthetic position B, an authorized query returns a local service
 
 Transient synthetic position D returns local identity and interface information through the read-only allowance in PRD-003. The observations retain D as an unvalidated origin and may support only PROVISIONAL Terrain orientation. D later fails validation, so the accepted owner downgrade/invalidation rules apply; no FootholdGraph node or expansion origin is created.
 
-### 11.3 Campaign-visible defensive effect
+### 11.3 Protected edge and campaign-visible defensive effect
 
-A scoped action receives an access-denied response. Blind reasoning may use the admitted fact that a denial was perceived, but cannot claim that a particular EDR or analyst caused it. A privileged console alert supplied separately is rejected from blind context. If the same alert is legitimately read from a validated campaign position, it remains a sourced campaign observation whose correctness and causality still require reconciliation.
+A scoped request to a synthetic protected edge receives a challenge or access-denied response while no origin response is observable. The Observation establishes only that this edge-visible effect occurred from the stated vantage and time. It does not prove that the origin is unreachable from every eligible path, identify a vendor or control, or authorize evasion, circumvention, alternate infrastructure, or a new target. Owner-qualified reasoning may revise only dependent hypotheses and may propose another already-authorized, lower-footprint action; ordinary scope and capability validation still apply.
+
+A privileged console alert supplied separately is rejected from blind context. If comparable telemetry is legitimately encountered through a validated campaign position, it remains a sourced campaign observation whose correctness and causality still require reconciliation.
 
 ### 11.4 Ambiguous execution outcome
 
@@ -162,7 +176,7 @@ An older observation arrives after a linked correction has already changed the c
 
 ## 12. Observable acceptance criteria
 
-1. Reviewers can distinguish raw capture, candidate observation, admitted Observation, accepted model claim, inference, evidence, and client proof without treating any pair as interchangeable.
+1. Reviewers can distinguish foundation-level raw observation, raw capture, admitted Observation, accepted model claim, inference, evidence, and client proof without treating any pair as interchangeable or inventing another product model.
 2. Every admitted Observation exposes sufficient non-sensitive scope, source, mode, vantage/origin, time, bounded assertion, method limits, and provenance for the applicable receiving owner.
 3. A tool success, source assertion, command output, silence, inferred relationship, or event delivery cannot bypass owner validation and reconciliation.
 4. A transient-origin observation remains PROVISIONAL and non-consequential; only a separately validated position can become a FootholdGraph node or consequential origin.
@@ -172,6 +186,8 @@ An older observation arrives after a linked correction has already changed the c
 8. A synthetic sensitive sentinel is rejected before persistence, event/retry/quarantine material, logs, traces, diagnostics, reports, or LLM context.
 9. Observation replay or redelivery cannot dispatch a capability, repeat a target-side action, renew authority, restore access, or claim objective success.
 10. The five operational models retain separate owners and transitions; no Observation service becomes a sixth model or global manager.
+11. Owner-qualified observations may inform bounded hypothesis ranking without a campaign-wide barrier, while only dependent consequential use waits for unresolved inputs.
+12. A protected-edge denial remains a narrow result and cannot itself identify a control, authorize circumvention, or establish global target absence.
 
 ## 13. Explicit non-goals and deferred work
 
@@ -181,12 +197,12 @@ This PRD does not define:
 - client-facing proof, proof fingerprints, or `ProofEnvelope`, which belong to PRD-009 and later accepted architecture;
 - the complete ephemeral sensitive boundary or `Sensitive<T>` semantics, which belong to PRD-010 and later accepted architecture;
 - database tables, retention periods, message brokers, serialization formats, identifiers, hashes, signatures, cryptographic keys, or wire protocols;
-- Rust/Go types, crates, modules, service topology, collectors, adapters, tool commands, execution sandboxes, or runtime scheduling;
+- Rust/Go types, crates, modules, service topology, reconnaissance planners, collectors, adapters, tool commands, execution sandboxes, or runtime scheduling;
 - a universal confidence score, source-ranking algorithm, tier classifier, causal-attribution engine, or global observation state machine;
 - permission to collect new data, access privileged defender feeds, deploy a temporary artifact, execute a capability, or begin runtime implementation.
 
-ADR-008 must define how architecture preserves the Observation-versus-Fact boundary without weakening this product meaning. PRD-008 is the next product dependency after this PRD is explicitly accepted. Until then, evidence architecture and runtime remain unauthorized.
+ADR-008 must define how architecture preserves the Observation-versus-Fact boundary without weakening this product meaning. Acceptance of this PRD permits PRD-008 product authoring; evidence architecture and runtime remain unauthorized until their own dependencies and decisions are accepted.
 
 ---
 
-**Authoring boundary:** PRD-007 is `PROPOSED`. It does not modify the accepted status of PRD-000..006, accept ADR-008, change `DW-FOUNDATION-001`, seal `DW-DOMAIN-001`, or authorize runtime.
+**Acceptance boundary:** PRD-007 is `ACCEPTED` by explicit product-owner decision on 2026-09-28. This accepts the Observation product semantics only; it does not accept ADR-008, change `DW-FOUNDATION-001`, seal `DW-DOMAIN-001`, or authorize runtime, acquisition tooling, or capability execution.
