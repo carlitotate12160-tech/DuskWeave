@@ -42,6 +42,10 @@ A material change may cause several loops to reassess in either order dictated b
 
 ### 3.1 Tempo-aware adaptation
 
+Adaptation routing respects both the current operational tempo and the operator-authorized engagement envelope. Rapid validation prioritizes time-to-proof without weakening evidence or dispatch checks. A bounded campaign may branch, pause, re-enter, and pursue several objectives within its deadline. A persistent campaign may retain state through inactive intervals and reactivate only on an authorized schedule, operator retask, or eligible campaign-visible trigger. No profile creates a sixth model or independent authority.
+
+When the engagement deadline or activity budget is exhausted, adaptation cannot extend itself. It stops new dependent proposals and preserves an accountable result identifying assessed scope, proven outcomes, untested or unresolved hypotheses, and residual uncertainty. Continuation requires a new or amended operator authorization.
+
 Adaptation routing respects the current operational tempo:
 
 **In exploitation mode**: Reassessment may execute rapidly. If a fast expansion reveals that the original opportunity is no longer viable, the campaign can quickly redirect to an alternative route without returning to deliberate mode first. The decision to pivot during exploitation mode requires a clear trigger, a viable alternative within current authorization, and a recorded justification. Every resulting action still passes deterministic authority and its available evidence must support the particular action's stakes. After the tempo window, reconciliation examines outcomes and corrects or suspends unsupported claims; it never retroactively authorizes an action.
@@ -98,8 +102,9 @@ No privileged defender verdict influences any of these decisions. A defender-inf
 4. Transient failures permit bounded retry; persistent failures require a changed premise; the classification and its outcome are recorded.
 5. A changed scope or goal has an explicit operator and deterministic authority boundary; a revoked authorization blocks further action.
 6. Tempo transitions (entering and exiting exploitation mode) are recorded with justification and trigger appropriate post-tempo reconciliation.
-7. The synthetic cross-PRD trace maintains distinct terrain, path, foothold, objective, and trajectory claims without raw sensitive material, audit modification, or privileged defender-oracle feedback in blind mode; any defender-informed variant is distinctly authorized, labeled, and evaluated.
+7. Rapid, bounded, and persistent engagement envelopes constrain adaptation without changing proof standards; expiry or budget exhaustion prevents self-extension and produces a bounded-completion account of assessed scope and residual uncertainty.
+8. The synthetic cross-PRD trace maintains distinct terrain, path, foothold, objective, and trajectory claims without raw sensitive material, audit modification, or privileged defender-oracle feedback in blind mode; any defender-informed variant is distinctly authorized, labeled, and evaluated.
 
 ## 7. Explicit non-goals
 
-This PRD does not specify scheduling algorithms, retry counts or timeout values, event schemas, service topology, tool behavior, payloads, adaptive evasion procedures, or exploitation-mode entry criteria. It does not merge the operational models, define Observer grading, or auto-authorize broader scope. Configurable parameters (retry window, operational loss threshold, health check cadence) are engagement-level settings, not PRD constants.
+This PRD does not specify scheduling algorithms, preset duration values, retry counts or timeout values, event schemas, service topology, tool behavior, payloads, adaptive evasion procedures, or exploitation-mode entry criteria. It does not merge the operational models, define Observer grading, or auto-authorize broader scope. The engagement envelope and configurable parameters such as retry window, operational loss threshold, and health-check cadence are operator-authorized product inputs; their concrete presets and runtime mechanisms are later design decisions, not PRD constants.

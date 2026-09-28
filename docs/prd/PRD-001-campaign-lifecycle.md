@@ -114,12 +114,17 @@ Following an objective action, an explicit Objective Review determines the subse
 
 ---
 
-## 6. Campaign Tempo & Deliberate Dwell
+## 6. Campaign Tempo, Engagement Envelope & Deliberate Dwell
 
-Adversaries do not generate continuous, high-volume automated traffic. DuskWeave elevates dwell time to a first-class operational state:
-- **Active Dwell**: An intentional pause where no target actions are dispatched, allowing natural enterprise traffic patterns to mask prior interactions.
-- **Temporal Alignment**: Operations align with target organization working hours, time zones, and scheduled maintenance windows.
+The authorized operator selects an engagement envelope suited to rapid validation, a bounded multi-day campaign, or persistent assessment. The envelope constrains the campaign deadline or observation period, permitted operating windows, activity and concurrency bounds, footprint tolerance, objectives, pause/resume and retest permissions, and stopping conditions. These profiles share the same evidence, access-validation, authority, and safety semantics; a shorter window never lowers the proof required for a claim.
+
+DuskWeave does not add delay merely to resemble an adversary. It proceeds as quickly as current evidence, authority, and safety allow. A persistent campaign may remain inactive between sparse scheduled episodes or triggers eligible under its current authorization, source rules, and exercise mode while retaining its accepted state and history. Privileged Observer/Grader signals cannot activate or steer a blind campaign; separately authorized defender-informed feedback remains distinctly labeled and evaluated under PRD-000 INV-007.
+
+Dwell remains a first-class operational choice:
+- **Active Dwell**: An intentional pause where no target actions are dispatched for a stated assessment purpose.
+- **Temporal Alignment**: Operations align with authorized business hours, time zones, maintenance windows, or observation periods.
 - **Health Reassessment**: Dwell does not prove continued foothold readiness; bounded checks may refresh health when authorized, while expired or conflicting evidence requires reconciliation before dependent actions.
+- **Envelope Expiry**: Reaching the deadline blocks new dependent dispatch. The campaign records a bounded-completion outcome that distinguishes proven objectives and assessed scope from untested or unresolved hypotheses and residual uncertainty. Expiry does not imply success, failure of every objective, or complete coverage.
 
 ---
 

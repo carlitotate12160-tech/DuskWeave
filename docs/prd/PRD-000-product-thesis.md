@@ -73,10 +73,12 @@ Sophisticated threat actors do not conduct sweeping port scans or high-frequency
 - Passive and contextual queries are prioritized over active network probes.
 - High-volume requests that trigger obvious anomalous network volume are treated as operational failures during planning.
 
-### 4.3 Campaign Tempo & Deliberate Dwell
-Adversary campaigns unfold over days, weeks, or months. DuskWeave treats time and operational tempo as first-class campaign dimensions:
-- Emulation plans incorporate deliberate dwell periods, respecting business hours, maintenance schedules, and natural operational rhythms.
-- Dwell is recognized as an active strategic choice, not an idle error state.
+### 4.3 Campaign Tempo, Duration & Deliberate Dwell
+DuskWeave supports rapid validation, bounded campaigns, and persistent campaigns under one campaign model. Extended duration is a product capability, not a requirement for every engagement. The operator-authorized engagement envelope states the deadline or observation period, permitted operating windows, activity and concurrency bounds, footprint tolerance, objectives, pause/resume and retest permissions, and stopping conditions. The campaign selects tempo only within that envelope.
+
+Adversary campaigns may unfold over days, weeks, or months, but fidelity comes from evidence-led decisions, continuity, adaptation, re-entry, and objective pursuit rather than artificial delay. Rapid engagements proceed as quickly as their evidence and safety obligations allow. Deliberate dwell is used only when it serves an authorized assessment purpose such as an observation window, temporal alignment, survivability evaluation, or waiting for an expected environmental change.
+
+A persistent campaign retains accountable state across sparse scheduled activation or a trigger eligible under its current authorization, source rules, and exercise mode; it does not imply continuous target activity. A privileged Observer/Grader signal cannot activate or steer a blind campaign, while separately authorized defender-informed feedback retains its distinct label and evaluation boundary under INV-007. Operations respect business hours, maintenance schedules, natural operational rhythms, and current authority. Dwell is an active strategic choice, not an idle error state.
 
 ### 4.4 Living-Off-The-Land & Native-Environment Awareness
 Rather than deploying heavy custom payloads or unvetted foreign tooling, DuskWeave emphasizes native-environment awareness:
@@ -169,3 +171,4 @@ DuskWeave achieves its product mission when:
 2. If primary footholds or network segments are isolated, the platform autonomously re-evaluates terrain, recognizes secondary pathways, and adapts its trajectory without aborting.
 3. Zero instances of raw client credentials or sensitive records appear in persistent storage, temporary files, caches, logs, traces, crash diagnostics, reports, or cognitive prompts across the campaign lifecycle; any authorized ephemeral proof transfer produces only opaque durable proof.
 4. Defender assessment correlates verified campaign actions and objective outcomes with sensor coverage, detection, prevention, and response within a defined observation window. It distinguishes a substantiated control gap from missing telemetry and can verify improvement through a separately authorized retest.
+5. An operator can authorize a rapid, bounded, or persistent engagement envelope. Expiry of its deadline stops further dependent work and produces an accountable bounded-completion result that distinguishes proven objectives, assessed scope, untested or unresolved hypotheses, and residual uncertainty; elapsed time alone never implies success or complete coverage.
