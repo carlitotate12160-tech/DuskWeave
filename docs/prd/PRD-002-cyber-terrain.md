@@ -5,6 +5,7 @@
 | **Document ID** | PRD-002 |
 | **Title** | Cyber Terrain |
 | **Status** | ACCEPTED |
+| **Acceptance clarification** | Product owner, 2026-09-28: STALE applies to expired OBSERVED/CORROBORATED claims; PROVISIONAL remains origin-uncertain when freshness expires |
 | **Stage** | Stage 2 — Campaign Semantics |
 | **Direct Dependencies** | PRD-001 |
 | **Target Seal** | DW-PRD-002 |
@@ -97,19 +98,19 @@ Every entity, attribute, and relationship in Cyber Terrain carries an explicit e
 - **CORROBORATED**: Confirmed by multiple independent sources, disparate techniques, or consistent repeat observations over time (e.g., port banner match confirmed by authenticated registry query).
 - **INFERRED**: Derived logically from established terrain facts and protocol specifications (e.g., inferring a domain controller exists based on DNS SRV records).
 - **HYPOTHETICAL**: A plausible candidate entity or relationship postulated by cognitive planners as an operational hypothesis, awaiting empirical verification.
-- **STALE**: An entity or relationship that was previously corroborated, but whose observation freshness window has expired without re-verification.
+- **STALE**: An entity, attribute, or relationship claim previously OBSERVED or CORROBORATED whose freshness window has expired without adequate refresh. Its prior evidential status and provenance remain in history. Expiry alone does not refute the claim, add corroboration, or validate a PROVISIONAL origin. PROVISIONAL is also subject to freshness: once expired, the claim is ineligible as a current premise but remains PROVISIONAL until its origin and claim undergo a Terrain-accepted evidence-based transition. If the origin fails validation or is abandoned, the existing PROVISIONAL rule downgrades it to HYPOTHETICAL.
 - **REFUTED**: An entity or relationship that was previously accepted or postulated, but has been affirmatively disproven by recent observation (e.g., host no longer responds, service uninstalled).
 - **PROVISIONAL**: A sourced observation from a transient or unvalidated position that has passed initial validation and reconciliation but whose origin remains unverified. It is recorded within CyberTerrain for orientation and hypothesis formation, not as an established terrain fact or a sole premise for scope, trust, access, expansion, objective, or other consequential action. If its origin fails validation or is abandoned, it is downgraded to HYPOTHETICAL without erasing its provenance or history.
 
 ### 3.2 Provenance, Freshness, & Temporal Decay
 Target environments are dynamic: IP leases expire, virtual machines terminate, services relocate, and firewall rules change.
-- **Provenance**: Every terrain fact tracks its originating observation event, capability source, method of discovery, and originating position validation status.
-- **First and Last Observed**: Every entity and relationship maintains precise timestamps for initial discovery and most recent corroboration.
+- **Provenance**: Every terrain claim tracks its originating observation event, capability source, method of discovery, and originating position validation status.
+- **First and Last Observed**: Every entity, attribute, and relationship claim maintains precise timestamps for initial discovery and most recent observation, plus the most recent corroboration when one exists.
 - **Freshness Rule**: **Terrain at $T_0$ is not automatically valid at $T_1$**. Confidence in terrain validity decays over time unless refreshed by operational interaction. Planners must account for staleness before relying on historical terrain state.
 
 ### 3.3 Tiered Epistemic Confidence
 
-Observations carry different operational stakes. A port responding on a host is a low-risk fact; the identity of a Domain Controller governing an entire trust domain is a campaign-critical determination. Forcing identical reconciliation rigor on both wastes operational tempo and diverges from how real operators assess their environment.
+Observations carry different operational stakes. A port responding on a host is a low-stakes sourced observation; the identity of a Domain Controller governing an entire trust domain is a campaign-critical determination. Forcing identical reconciliation rigor on both wastes operational tempo and diverges from how real operators assess their environment.
 
 Cyber Terrain classifies observations into three confidence tiers:
 
