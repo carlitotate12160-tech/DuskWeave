@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | ADR-007 |
 | **Title** | FootholdGraph and AttackPathView Separation |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
 | **Stage** | Stage 3 — Foundation ADRs |
 | **Direct Dependencies** | [ADR-002](ADR-002-domain-boundaries.md), [ADR-006](ADR-006-cyber-terrain-storage-model.md) — ACCEPTED |
 | **Supporting Architecture** | [ADR-001](ADR-001-modular-monolith.md), [ADR-003](ADR-003-domain-events.md), [ADR-005](ADR-005-postgres-system-of-record.md) — ACCEPTED |
@@ -72,7 +72,7 @@ A path can be plausible, currently eligible for a particular proposal, blocked, 
 
 AttackPathView may be rebuilt from compatible published owner views and accepted outcome references. An optional PostgreSQL materialization or in-memory view is a disposable projection and carries its input revisions, evaluation time and campaign/mode eligibility. It is never an independent source of environmental or access truth. Pathing stores no raw credentials, live execution handles, raw sensitive evidence or privileged Observer/Grader input in a blind projection.
 
-Pathing may keep multiple competing hypotheses and recommend observe, dwell, attempt, alternate, re-entry or stop. It may expose sourced analytical attributes and candidate rankings, but intent-weighted selection belongs to the bounded reasoning/operator use case. Scoring or traversal cannot collapse uncertainty into fact, reduce epistemic tier, expand scope or choose an action by itself. A shortest or highest-ranked route is only an analytical candidate.
+Pathing may keep multiple competing hypotheses and recommend observe, dwell, attempt, alternate, re-entry or stop. It may expose sourced analytical attributes and candidate rankings. Operator-authorized mission priorities may parameterize bounded reasoning. Intent-weighted selection belongs to the bounded reasoning use case, not to Pathing owner state. Scoring or traversal cannot collapse uncertainty into fact, reduce epistemic tier, expand scope or choose an action by itself. A shortest or highest-ranked route is only an analytical candidate.
 
 ## 7. Transition and validation flow
 
@@ -130,7 +130,7 @@ This ADR selects no SQL schema, graph crate/database, ranking formula, path algo
 | Position A is presumed lost while B is independently healthy | Suspend A-dependent paths; B remains usable within current bounds. |
 | B uses a live tunnel through A | Access records the current dependency; loss of A suspends use through it without declaring B lost, then reconciles any alternate mechanism or fresh B evidence. |
 | B has both a live mechanism through A and a healthy direct mechanism | Presumed loss of A suspends only the A-dependent mechanism; the direct mechanism remains eligible after its own current checks, and B is not declared lost. |
-| Parallel transient attempts reach D1, D2 and D3 with validate, fail and unknown outcomes | Access accepts only validated D1; D2 creates no foothold; D3 remains unresolved; Pathing updates each dependent candidate without global rollback or optimistic promotion. |
+| Parallel bounded attempts target D1, D2 and D3: D1 validates, D2 reaches transient access but fails validation, and D3 has an unknown external outcome | Access accepts only D1. D2 creates no foothold and its provisional observations follow the required downgrade lifecycle. D3 establishes neither transient access nor a foothold and remains unresolved. Pathing updates only affected candidates without global rollback or optimistic promotion. |
 | Historical route A→B succeeded yesterday | May inform a hypothesis; cannot establish current route, access or retry authority. |
 | Chain link reaches a new target and returns an unexpected identity | Stop dependent links, retain bounded outcome, reconcile before another proposal. |
 | Access commits B then crashes before notifying Pathing | Durable Access state and publication obligation survive; Pathing eventually rebuilds without execution. |
@@ -141,4 +141,4 @@ This ADR selects no SQL schema, graph crate/database, ranking formula, path algo
 
 The selected architecture supports adaptive, human-like campaign work through competing hypotheses and bounded decisions while keeping current access explicit. It deliberately prevents consequential use from a one-shot transient position before the required validation; this is an authorized-emulation safety trade-off, not a claim that real adversaries always wait. Costs include owner-view mapping, dependency references, projection lag, invalidation and recovery reconciliation. These are future contract/integration verification obligations, not executed runtime tests; the repository remains document-only.
 
-ADR-007 is **PROPOSED** for product-owner review. Its acceptance would complete the authored Stage 3 ADR set, but DW-FOUNDATION-001 still requires a final cross-foundation coherence check and explicit seal action. Runtime implementation remains unauthorized.
+ADR-007 was **ACCEPTED** by the product owner on 2026-09-28 after clarifying parallel attempt, transient-access and validation outcomes. The authored Stage 3 ADR set is complete, but DW-FOUNDATION-001 still requires a final cross-foundation coherence check and explicit seal action. Runtime implementation remains unauthorized.
