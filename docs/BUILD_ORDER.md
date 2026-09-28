@@ -45,11 +45,11 @@ Current seal:
 
 Current engineering state:
 
-`Stage 3 — Foundation ADRs; PRD-000..006 and ADR-001..007 ACCEPTED; coherence check pending`
+`Stage 3 — Foundation ADRs; PRD-000..006 and ADR-001..007 ACCEPTED; cross-foundation reconciliation complete; explicit foundation seal pending`
 
 Current design document:
 
-`ADR-007 Foothold & Path Separation (ACCEPTED); cross-foundation coherence check pending`
+`ADR-007 Foothold & Path Separation (ACCEPTED); next action: explicit product-owner DW-FOUNDATION-001 seal decision`
 
 DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 
@@ -60,7 +60,7 @@ DW-DESIGN-002 authored four linked PRDs, accepted by the product owner on 2026-0
 - PRD-005 Objective Loop
 - PRD-006 Adaptation
 
-PRD-000 INV-004 now defines tier-proportionate corroboration, and INV-007 retains the current campaign position boundary. PRD-002..006 preserve provenance, epistemic limits, authorized action, and reversible proof. All seven PRDs and ADR-001..007 are ACCEPTED. ADR-001 acceptance on 2026-09-27 includes the core-plus-workers alternative and shared-failure/recovery clarification; PRD-001 distinguishes presumed from confirmed loss consistently with PRD-003. ADR-002 was accepted on 2026-09-27 after the product owner's four requested boundary clarifications. ADR-003 was accepted on 2026-09-28 after its B1-B7 revision. ADR-004 was accepted on 2026-09-28 with the revised reasoning/inference boundaries. ADR-005 was accepted by the product owner on 2026-09-28 for PostgreSQL as the sole initial campaign-core system of record; no SQLite deployment mode was selected. ADR-006 was accepted by the product owner on 2026-09-28 after freshness, mode/causal eligibility, historical-view, Observer-boundary and STALE/PROVISIONAL clarifications. ADR-007 was accepted by the product owner on 2026-09-28 after clarifying the parallel-attempt review case and the ownership of intent-weighted selection. Acceptance does not seal the foundation; a final cross-foundation coherence check and explicit DW-FOUNDATION-001 seal action remain required. Runtime and the foundation seal remain pending.
+PRD-000 INV-004 now defines tier-proportionate corroboration, and INV-007 retains the current campaign position boundary. PRD-002..006 preserve provenance, epistemic limits, authorized action, and reversible proof. All seven PRDs and ADR-001..007 are ACCEPTED. ADR-001 acceptance on 2026-09-27 includes the core-plus-workers alternative and shared-failure/recovery clarification; PRD-001 distinguishes presumed from confirmed loss consistently with PRD-003. ADR-002 was accepted on 2026-09-27 after the product owner's four requested boundary clarifications. ADR-003 was accepted on 2026-09-28 after its B1-B7 revision. ADR-004 was accepted on 2026-09-28 with the revised reasoning/inference boundaries. ADR-005 was accepted by the product owner on 2026-09-28 for PostgreSQL as the sole initial campaign-core system of record; no SQLite deployment mode was selected. ADR-006 was accepted by the product owner on 2026-09-28 after freshness, mode/causal eligibility, historical-view, Observer-boundary and STALE/PROVISIONAL clarifications. ADR-007 was accepted by the product owner on 2026-09-28 after clarifying the parallel-attempt review case and the ownership of intent-weighted selection. DW-FOUNDATION-COHERENCE-001 reconciled F1–F5 and reran the cross-foundation document checks. Acceptance and this reconciliation do not seal the foundation; an explicit product-owner DW-FOUNDATION-001 seal action remains required. Runtime and the foundation seal remain pending.
 
 ## Mandatory invariants
 

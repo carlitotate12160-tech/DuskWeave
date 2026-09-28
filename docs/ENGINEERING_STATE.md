@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Stage 3 — Foundation ADRs (PRD-000..006 and ADR-001..007 ACCEPTED; cross-foundation coherence check pending)
+- **Current Phase**: Stage 3 — Foundation ADRs (PRD-000..006 and ADR-001..007 ACCEPTED; cross-foundation reconciliation complete; explicit foundation seal decision pending)
 - **Active Seal**: `DW-BOOTSTRAP-001`
 - **Seal Status**: **SEALED** (Exit criteria completely verified)
 - **Target Foundation Seal**: `DW-FOUNDATION-001` (Memerlukan Stage 0 s.d. Stage 3 selesai)
@@ -62,7 +62,8 @@ Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`
 - **ADR-006 acceptance**: Pemilik produk menerima ADR-006 pada 2026-09-28 setelah penyelarasan STALE/PROVISIONAL dan review kelayakan view. PostgreSQL tetap menjadi owner state durable Terrain; graf Rust yang bounded hanya view turunan disposable setelah bukti workload. Expiry dievaluasi saat penggunaan, view yang mode/scope/kausalitasnya tidak eligible ditolak, dan snapshot as-known dibedakan dari interpretasi retrospektif. Acceptance tidak memilih crate graf, tidak menerima ADR-007, dan tidak mengotorisasi runtime.
 - **ADR-007 acceptance**: Pemilik produk menerima FootholdGraph and AttackPathView Separation pada 2026-09-28. Access memiliki posisi tervalidasi, kondisi/kehilangan, dan dependency operasional yang benar-benar hidup; Pathing memiliki kandidat dan proyeksi transisi yang rebuildable dengan revision sumber. Review memperjelas dependency transport transitif versus provenance credential, health per dimensi/mekanisme, invalidasi dari seluruh owner premise yang relevan, projection lag yang tidak boleh menjadi dasar safety, serta direct fallback. Kasus paralel membedakan D1 yang tervalidasi, D2 yang mencapai transient access tetapi gagal validasi dan menjalani downgrade lifecycle, serta D3 dengan unknown external outcome yang tidak membentuk access claim. Operator-authorized priorities hanya memparameterisasi bounded reasoning; intent-weighted selection milik reasoning use case, bukan Pathing owner state. Transient access, tool success, rute historis, dan cache path tidak menciptakan foothold atau dispatch authority. ADR-007 berstatus `ACCEPTED`; foundation masih memerlukan coherence check dan seal eksplisit.
 - **Quality enforcement**: Hard cap McCabe adalah 7 per fungsi. Repository masih document-only; analyzer, runtime tests, dependency gates, dan CI belum tersedia. ADR-002 mendefinisikan kewajiban verifikasi saat implementasi diotorisasi, bukan hasil test.
-- **Runtime / foundation seal**: belum diotorisasi oleh urutan build; `DW-FOUNDATION-001` belum sealed.
+- **DW-FOUNDATION-COHERENCE-001 reconciliation**: F1–F5 diperbaiki dalam PRD-000/001, QUALITY_BAR.md, dan footer ADR-002/005. Pemeriksaan silang Position/transient/validated, current state/history/correction, stop/freeze/termination, crate/module ownership, link relatif foundation, status, dan INV-001..007 diulang; satu review adversarial atas hasil perubahan menajamkan cakupan safety freeze. Tidak ada seal atau otorisasi runtime dari pekerjaan ini.
+- **Runtime / foundation seal**: belum diotorisasi oleh urutan build; `DW-FOUNDATION-001` belum sealed. Next action: keputusan seal eksplisit pemilik produk.
 
 ## 6. Engineering setup maintenance
 
@@ -72,4 +73,4 @@ yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
 - Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
 - Distinct adversarial review: `.agents/skills/duskweave-adversarial-review/SKILL.md`.
 - Setup navigation: `docs/workflows/START_HERE.md`.
-- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. Acceptance PRD-000..006 dan ADR-001..007 dicatat terpisah; cross-foundation coherence check, runtime, dan foundation seal belum selesai.
+- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. Acceptance PRD-000..006 dan ADR-001..007 dicatat terpisah; reconciliation foundation selesai, sedangkan runtime dan keputusan seal foundation masih menunggu.

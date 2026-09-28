@@ -28,8 +28,8 @@ Keterbacaan, keterawatan, dan isolasi tanggung jawab domain ditegakkan melalui b
    - Dilarang membuat struct/class yang memegang referensi ke lebih dari satu domain agregat utama.
    - Tidak boleh ada modul `CampaignManager`, `SystemManager`, `GlobalContext`, atau sejenisnya.
 2. **Pemisahan 5 Model Operasional (INV-002)**:
-   - `CyberTerrain`, `FootholdGraph`, `AttackPathView`, `ObjectiveState`, dan `CampaignTrajectory` tidak boleh berada dalam crate atau modul yang sama secara terpusat.
-   - Hubungan antar-model dimodelkan melalui Domain Events atau referensi ID terputus (*loose coupling*), bukan nested struct langsung.
+   - `CyberTerrain`, `FootholdGraph`, `AttackPathView`, `ObjectiveState`, dan `CampaignTrajectory` memiliki owner, aturan mutasi, dan kontrak publik yang terpisah. Batas visibilitas modul dan arah dependensi harus mencegah impor implementasi atau mutable aggregate milik model lain.
+   - Beberapa model boleh berada dalam satu crate atau deployable jika batas tersebut tetap dapat ditegakkan; satu crate per model bukan syarat. Hubungan antar-owner melalui kontrak bertipe, bounded view/referensi ID, atau event sesuai ADR-002/003, bukan nested mutable struct atau akses langsung ke state privat.
 
 ---
 

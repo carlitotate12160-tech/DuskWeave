@@ -84,7 +84,7 @@ Rather than deploying heavy custom payloads or unvetted foreign tooling, DuskWea
 - The platform evaluates how normal business workflows can be traversed without introducing foreign artifacts.
 
 ### 4.5 Campaign Continuity
-Threat actors survive operator handoffs, network disruptions, and endpoint reboots. DuskWeave maintains campaign continuity by storing immutable operational models, enabling campaigns to pause, resume, re-evaluate footholds, and execute re-entry without losing accumulated knowledge.
+Threat actors survive operator handoffs, network disruptions, and endpoint reboots. DuskWeave maintains campaign continuity through owner-maintained current operational state and append-only accepted historical records with linked corrections. Current state changes through accepted transitions; immutable point-in-time views preserve what was known at a stated frontier. This enables campaigns to pause, resume, re-evaluate footholds, and attempt authorized re-entry without losing accumulated knowledge. No universal event-sourcing model is required.
 
 ### 4.6 Threat-Informed Design Framing
 DuskWeave draws structural inspiration from observed adversary tradecraft patterns:

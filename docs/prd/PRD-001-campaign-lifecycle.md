@@ -17,12 +17,12 @@ This document specifies the operational lifecycle, semantic states, transitions,
 
 To maintain conceptual rigor and prevent conflation of concerns, the lifecycle enforces clear distinctions between core semantic concepts:
 
-- **State**: The current verified operational condition of a campaign entity (e.g., campaign status, foothold health, terrain snapshot). State is deterministic, grounded in evidence, and immutable once recorded.
-- **Event**: A discrete, point-in-time occurrence or execution outcome (e.g., network probe completed, execution succeeded, connection dropped). Events serve as the audit record and trigger transitions.
+- **State**: The owner's current, evidence-qualified operational assessment of a campaign entity (e.g., campaign status or foothold health). It may change only through accepted transitions under that owner's rules. A point-in-time snapshot is immutable as a view of a stated frontier; accepted historical records and linked corrections are append-only. No universal event-sourcing mechanism is required.
+- **Event**: A discrete occurrence or reported execution outcome (e.g., a network probe completed or a connection dropped). An accountable owner accepts its own domain transition and publishes the resulting immutable record under ADR-003; a reported outcome alone is neither accepted state nor proof of objective success. CampaignTrajectory retains required decision, attempt and outcome history.
 - **Observation**: A signal, datum, or output perceived from the environment with provenance and an epistemic status. It may inform a hypothesis after tier-appropriate validation and reconciliation; it is not automatically a corroborated fact or execution authority under PRD-000 INV-004 and PRD-002.
 - **Decision**: A deliberate choice made by a reasoning worker to select one candidate proposal among evaluated alternatives.
 - **Objective**: A declared mission goal representing a desired real-world or emulation milestone (e.g., demonstrate access to core transaction database).
-- **Position**: The operational standing of the campaign across cyber terrain, defined by the set of active, validated footholds and their reachable horizons.
+- **Position / access vantage**: A campaign's situated access context may be transient or validated. An observed transient vantage remains unvalidated and permits only authorized bounded read-only PROVISIONAL orientation; an unknown attempt outcome establishes no vantage. Only an Access-validated position becomes a FootholdGraph node or a consequential origin. The campaign's current operational standing considers validated positions and their current usable horizons without promoting transient access to a foothold.
 
 ---
 
@@ -63,7 +63,7 @@ The Access Loop governs the transition from external discovery to validated oper
 ### 3.1 Transient Access vs. Validated Foothold
 A critical invariant of the DuskWeave lifecycle is that **`TransientAccess` does not become a `Foothold` without explicit `AccessValidation`**:
 
-Transient access is an observed, bounded effect whose repeatability or context is still unverified. A validated foothold requires reconciled evidence of reliable bounded execution and retrievable results, exact identity and privilege context, environmental boundary, stability, and current authorized scope. A candidate path, a tool return, or reachability alone does not establish a foothold. [PRD-003](PRD-003-access-and-footholds.md) develops access evidence and health transitions; until it is accepted, these lifecycle requirements remain governing.
+Transient access is an observed, bounded effect whose repeatability or context is still unverified. A validated foothold requires reconciled evidence of reliable bounded execution and retrievable results, exact identity and privilege context, environmental boundary, stability, and current authorized scope. A candidate path, a tool return, or reachability alone does not establish a foothold. [PRD-003](PRD-003-access-and-footholds.md) owns the accepted access evidence and health transitions.
 
 ### 3.2 Access Survivability
 Once a foothold is established, the campaign evaluates access survivability without requiring invasive persistence:
@@ -82,26 +82,26 @@ A timeout, reboot, or failed contact prompts health reassessment; it does not by
 
 ## 4. Recursive Expansion Loop
 
-Internal traversal and network expansion revisit observation, reconciliation, authorized transition, and validation from current positions. This is a recursive lifecycle relationship, not a mandatory lateral-movement stage; [PRD-004](PRD-004-expansion-loop.md) owns candidate evidence, authorized attempts, and new-position validation when accepted.
+Internal traversal and network expansion revisit observation, reconciliation, authorized transition, and validation from current positions. This is a recursive lifecycle relationship, not a mandatory lateral-movement stage; [PRD-004](PRD-004-expansion-loop.md) owns candidate evidence, authorized attempts, and new-position validation.
 
 ### 4.1 Lateral Movement as Recursive Traversal
 Lateral movement is not an isolated phase of a kill chain. It is the repeated, hypothesis-driven traversal of trust boundaries within the recursive expansion loop. Each traversal yields new observations, expands known terrain, and potentially yields additional footholds.
 
 ### 4.2 Multi-Dimensional Access Expansion
-Expansion may change host, identity, privilege, application, service, network-reach, or trust position within authorized bounds. It cannot be measured solely by credentials acquired. [PRD-004](PRD-004-expansion-loop.md) owns the specific evidence and transition semantics for these dimensions when accepted.
+Expansion may change host, identity, privilege, application, service, network-reach, or trust position within authorized bounds. It cannot be measured solely by credentials acquired. [PRD-004](PRD-004-expansion-loop.md) owns the specific evidence and transition semantics for these dimensions.
 
 ---
 
 ## 5. Objective Processing Loop
 
-The Objective Loop discovers mission-relevant targets, validates a scoped claim, gathers sufficient authorized proof, and reviews fulfillment. Collection or transfer is conditional, not a mandatory lifecycle step. [PRD-005](PRD-005-objective-loop.md) owns target-specific proof transitions and review criteria when accepted.
+The Objective Loop discovers mission-relevant targets, validates a scoped claim, gathers sufficient authorized proof, and reviews fulfillment. Collection or transfer is conditional, not a mandatory lifecycle step. [PRD-005](PRD-005-objective-loop.md) owns target-specific proof transitions and review criteria.
 
 ### 5.1 Dynamic Objective Discovery
-Strategic mission goals are defined at campaign inception, but concrete targets may emerge as terrain changes. Material terrain or position changes require revisiting objective opportunity; discovery alone does not establish objective success. [PRD-005](PRD-005-objective-loop.md) owns target validation and fulfillment semantics when accepted.
+Strategic mission goals are defined at campaign inception, but concrete targets may emerge as terrain changes. Material terrain or position changes require revisiting objective opportunity; discovery alone does not establish objective success. [PRD-005](PRD-005-objective-loop.md) owns target validation and fulfillment semantics.
 
 ### 5.2 Emulation Boundaries & Zero-Retention
 In strict adherence to **INV-005 (Sensitive Data Zero-Retention)**:
-- **Collection**: Use sufficient non-sensitive evidence when available. PRD-000 INV-005 governs the conditional, expressly authorized minimum client-content download into the ephemeral sensitive boundary for opaque proof; unavailable containment makes the proof attempt ineligible or inconclusive. [PRD-005](PRD-005-objective-loop.md) develops target-specific evidence and review when accepted.
+- **Collection**: Use sufficient non-sensitive evidence when available. PRD-000 INV-005 governs the conditional, expressly authorized minimum client-content download into the ephemeral sensitive boundary for opaque proof; unavailable containment makes the proof attempt ineligible or inconclusive. [PRD-005](PRD-005-objective-loop.md) defines target-specific evidence and review.
 - **Staging & Transfer**: Only synthetic, non-sensitive, or derived opaque proof may be staged, delivered, or reported; raw client material remains subject to PRD-000 INV-005 and is discarded after the attempt.
 
 ### 5.3 Objective Review Outcomes
@@ -131,7 +131,7 @@ Adaptation is an active control mechanism operating across all four loops, not a
 Changes in reconciled campaign evidence, access health, objective opportunity, authorized scope, or operational tempo may require reassessment. A raw signal remains an observation; timeout or denial does not automatically prove a cause or access loss.
 
 ### 7.2 Multi-Loop Adaptation Routing
-Reassessment may revisit Strategic, Access, Expansion, or Objective decisions without imposing a fixed sequence. [PRD-006](PRD-006-adaptation.md) owns the detailed decision triggers, routing, retries, and stopping conditions when accepted.
+Reassessment may revisit Strategic, Access, Expansion, or Objective decisions without imposing a fixed sequence. [PRD-006](PRD-006-adaptation.md) owns the detailed decision triggers, routing, retries, and stopping conditions.
 
 ### 7.3 Campaign Adaptation and Defender Assessment
 Blind campaign adaptation uses authorized mission context and reconciled evidence from its position. A separately authorized defender-informed exercise may additionally use bounded, labeled defender feedback. PRD-000 INV-007 owns that distinction and the treatment of telemetry obtained through a current, authorized campaign position. Defender assessment and blind campaign outcomes remain independently identifiable.
@@ -140,18 +140,20 @@ Blind campaign adaptation uses authorized mission context and reconciled evidenc
 
 ## 8. Campaign Termination & Completion Criteria
 
-A campaign enters its terminal lifecycle state under explicitly defined conditions:
+Termination ends campaign operations and preserves the accountable outcome; it is distinct from dwell, an access loss at one position, or a recoverable safety freeze. A stop or freeze immediately blocks new dispatch within its applicable scope and initiates safe handling of in-flight work; campaign-wide revocation or safety freeze blocks all campaign dispatch. Unknown external effects remain unresolved until reconciled; cancellation is not proof that an action did not occur.
 
 ### 8.1 Successful Completion
-- All declared primary objectives have been fulfilled, validated, and substantiated with opaque proof.
-- Clean disengagement is completed (temporary session handles closed, staging locations verified clean).
-- Final audit trajectory is sealed for observer analysis.
+- Declared primary objectives have been fulfilled, validated, and substantiated with approved opaque proof.
+- Safe disengagement has completed within current authorization and its result is recorded. Close or release bounded execution resources and verify cleanup where permitted and observable; do not claim cleanup when it cannot be verified.
+- Accepted decisions, attempts, outcomes and unresolved limits remain available as append-only history for observer analysis.
 
-### 8.2 Campaign Failure & Exhaustion
-A campaign terminates as failed only under strict operational conditions:
-- **Scope Exhaustion**: All authorized target paths, access vectors, and expansion hypotheses have been explored without achieving objectives.
-- **Unrecoverable Access Loss**: All active and alternate footholds are lost, and all re-entry pathways are blocked or exhausted within authorized scope.
-- **Safety Tripwire Activation**: An unresolvable safety, scope, or authorization violation is detected by the deterministic policy kernel, initiating immediate operational freeze.
+### 8.2 Other terminal outcomes
+- **Operator-requested termination**: The authorized operator can end the campaign without claiming objective success or exhaustion. Stop dispatch, perform only permitted safe disengagement, and record the request, disposition and remaining uncertainty.
+- **Authorization withdrawal**: Withdrawn authority immediately blocks new dispatch and any further target operation requiring that authority. Stop or cancel affected in-flight work to the extent possible, preserve its uncertain outcomes, and end the campaign if no separately valid authority permits continuation. Withdrawal alone is not objective failure and never authorizes a cleanup action against the target.
+- **Scope exhaustion or unrecoverable access loss**: After assessment of authorized alternatives and re-entry routes, the campaign may end without fulfilled objectives. A lost individual position or an unexplored, still-authorized alternative does not by itself establish exhaustion.
+- **Unrecoverable safety condition**: A safety freeze first suspends campaign operations; an action-specific safety stop suspends its dependent work. Resume only after the condition is resolved, current authority and premises are rechecked, and permitted recovery is explicitly established. If safe recovery is unavailable or the operator ends the campaign, record termination with the unresolved condition; a freeze alone is not automatically terminal.
+
+Safe disengagement is bounded by the authorization still in force: cease dispatch, attempt permitted cancellation and resource release, avoid new target actions after withdrawal, and report incomplete cleanup or unknown effects honestly. Termination does not rewrite accepted history; later reconciliations append linked corrections. This PRD selects no enum, implementation state machine, or timeout.
 
 ---
 
