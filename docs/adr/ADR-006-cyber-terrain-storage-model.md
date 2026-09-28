@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | ADR-006 |
 | **Title** | Cyber Terrain Storage Model |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
 | **Stage** | Stage 3 — Foundation ADRs |
 | **Direct Dependency** | [ADR-005](ADR-005-postgres-system-of-record.md) — ACCEPTED |
 | **Supporting Architecture** | [ADR-001](ADR-001-modular-monolith.md), [ADR-002](ADR-002-domain-boundaries.md), [ADR-003](ADR-003-domain-events.md), [ADR-004](ADR-004-rust-core-language.md) — ACCEPTED |
@@ -119,4 +119,4 @@ Technical references checked 2026-09-28: [petgraph graph-type trade-offs](https:
 
 The product owner approved the PRD-002 §3.1 clarification on 2026-09-28: STALE covers an expired previously OBSERVED or CORROBORATED claim, retaining its evidential history; expiry alone neither refutes nor corroborates it. PROVISIONAL is independently subject to freshness but remains origin-uncertain PROVISIONAL when expired until an evidence-based Terrain transition. Failed or abandoned origin validation follows the accepted downgrade to HYPOTHETICAL. This resolves the former conflict with Tier 1 in PRD-002 §3.3; §5 evaluates time eligibility even when no durable status transition occurs.
 
-ADR-006 remains **PROPOSED** pending separate product-owner acceptance. Approval of the upstream PRD clarification does not accept this ADR. ADR-007 remains unauthored and depends on ADR-006 acceptance. DW-FOUNDATION-001 is unsealed; no runtime or execution isolation topology is selected here.
+Product owner accepted ADR-006 on 2026-09-28 after the STALE/PROVISIONAL vocabulary resolution and revised view-eligibility review. PostgreSQL remains Terrain's durable owner state; any bounded Rust graph is a disposable derived view selected only after workload evidence. This acceptance does not select a graph crate, accept ADR-007, authorize runtime implementation, or seal DW-FOUNDATION-001.
