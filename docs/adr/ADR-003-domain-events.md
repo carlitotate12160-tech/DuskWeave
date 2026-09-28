@@ -4,7 +4,8 @@
 | :--- | :--- |
 | **Document ID** | ADR-003 |
 | **Title** | Domain Events Architecture |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
+| **Acceptance** | Product owner, 2026-09-28: accepted revised B1-B7 clarifications and review cases |
 | **Stage** | Stage 3 — Foundation ADRs |
 | **Direct Dependency** | [ADR-002](ADR-002-domain-boundaries.md) — ACCEPTED |
 | **Supporting Architecture** | [ADR-001](ADR-001-modular-monolith.md) — ACCEPTED |
@@ -62,12 +63,35 @@ Subscriptions are explicit and bounded by producer, event family, consumer respo
 
 Blind-campaign routes and their caches exclude privileged Observer/Grader feeds. Legitimately campaign-acquired telemetry remains a separately sourced observation under INV-007. Defender-informed labels and source provenance survive forwarding, derivation and replay; changing a label cannot launder privileged input into blind context.
 
+### 5.1 Consumer effects and required consequences
+
+Each consumer contract declares its permitted effects, the state owner it may affect, required validation and completion criteria. These categories describe effects, not mandatory classes or exactly-one-category assignments.
+
+| Effect | Permitted within the consumer's responsibility | Prohibited |
+| :--- | :--- | :--- |
+| Reconsideration | Request bounded reassessment through the receiving owner's intent-specific interface | Treat the request as an accepted change or mutate another owner's state |
+| Projection maintenance | Invalidate, refresh or rebuild an owned derived view after contract, provenance, ordering and domain checks | Present unresolved premises as current or overwrite source-domain truth |
+| History contribution | Append a sourced, non-sensitive record through the historical owner's contract | Rewrite authoritative history or write another owner's persistence directly |
+| Evidence supply | Supply eligible evidence for the receiving owner's reconciliation | Promote evidence into accepted truth or bypass admission/claim validation |
+
+A cohesive consumer may combine declared effects within its responsibility. A complete, valid event may suffice for deterministic projection maintenance when the consumer contract permits it; an additional source read is not universally required. Effects on another owner require that owner's intent-specific acceptance. Any resulting domain event is published by that affected owner, not impersonated by the initiating consumer.
+
+A consequence is REQUIRED if its absence would violate an invariant or product-required history obligation, leave a consequential cross-domain premise stale/invalid without detection, or break evidence needed for a deterministic authority check. CampaignTrajectory's required decision/action/transition history follows PRD-001 and ADR-002; INV-006 additionally protects that accepted history from alteration. Recording Access loss required by those contracts is not optional merely because another position can keep executing.
+
+A consequence is OPTIONAL only if omission preserves those invariants, required history, detectable premise validity and authorization evidence. Presentation is not automatically optional if a governing contract requires the output. Classification belongs to the declared semantic obligation, not permanently to a subscriber implementation. Replacing a consumer is allowed only when the replacement preserves its required effects, outstanding obligations and completion evidence; disabling the subscriber cannot erase the obligation.
+
+### 5.2 Campaign isolation
+
+No implicit cross-engagement or cross-campaign routing, domain-state application, or reuse of reasoning context is permitted. Overlapping targets or a shared process do not confer sharing authority. This is an isolation rule, not a commitment to concurrent campaigns or a multi-tenant deployment.
+
+Separately authorized Observer/operator evaluation may read multiple campaigns only under explicit access and purpose bounds, preserving campaign/source/mode labels and without feeding the result into blind reasoning. This paragraph grants no new access permission. Campaign-to-campaign terrain/evidence sharing requires an accepted design with explicit provenance and INV-007 analysis; independent destination admission, tier assessment and current authority would be necessary, but do not alone authorize sharing.
+
 ## 6. Publication and processing guarantees
 
 1. An accepted transition and the obligation to publish its required event must not be separated by an unrecoverable failure window. Publish only after the owner transition is accepted durably. The future persistence design must provide atomic recording of state and publication obligation, or an equivalent recoverable guarantee; best-effort publish after save is insufficient.
 2. Required delivery uses at-least-once delivery semantics with stable identity across redelivery. Deduplication binds identity to its accountable producer and engagement/campaign scope; identity cannot be reused for a new semantic event. Redelivery preserves the event's semantic content; per-attempt transport metadata is not a new domain event. Acceptance records a recoverable publication obligation; a consumer records completion only after its own required effects are durable. A lost acknowledgment may cause redelivery.
 3. Each required consumer must make reprocessing of the same event safe. Its local model effects and completion record must be atomically recorded or equivalently recoverable. A duplicate cannot create a second foothold, repeat a fulfillment transition, or append the same logical history item again.
-4. Stable identity with conflicting content is an integrity conflict, not an ordinary duplicate. Reject or isolate processing using safe metadata, preserve the conflict evidence permitted by data rules, and block affected dependencies until resolved.
+4. Stable identity with conflicting content is an integrity conflict, not an ordinary duplicate. Reject or isolate processing using safe metadata, preserve permitted conflict evidence, and block affected dependencies until resolved. The producing owner is accountable for reconciliation against verifiable accepted state and provenance, then a new append-only resolution/correction record referencing the disputed identity; the original identity is not reused for replacement content. Producer assertion alone, first/last arrival, or a consumer's arbitrary choice cannot resolve the conflict. Consumers verify the resolution and their current premises before releasing dependent work. Exhausted bounded recovery raises a visible anomaly for operator attention; campaign-wide freeze requires the applicable safety/authority condition, not merely one local conflict. Conflict handling never permits retention or echoing of raw sensitive variants.
 5. Producer acceptance does not wait for every consumer's completion and does not claim global atomic acceptance. Pending or failed required propagation remains visible. A dependent action must not proceed using an unrefreshed projection; it must obtain current premises from their owners or wait for reconciliation.
 6. Retries are bounded per recovery attempt. Persistent failure or incompatible input produces a visible unresolved delivery obligation; no silent dropping, infinite hot retry, or false completion. Resume requires an explicit recovery path. Required history or evidence recording failure blocks dependent actions whose audit/evidence preconditions cannot be established.
 7. Optional notifications may be regenerated or lost only where their contract explicitly permits it. Required invalidation, evidence and historical consequences cannot be silently reclassified as optional to improve throughput.
@@ -82,7 +106,9 @@ An older event may contribute missing history but cannot overwrite newer accepte
 
 Correction is a new accountable event referencing the affected claim; authoritative records are not edited or deleted. Terrain's downgrade after failed origin validation invalidates dependent projections. Origin validation success requests tier-aware reconsideration and never silently corroborates the claim. Objective eligibility must be reassessed when referenced Terrain, Access or Mission premises cease to support it.
 
-Revocation, safety freeze and dispatch validity cannot depend solely on an asynchronously delivered notification. Deterministic authority checks current permission and required origin/evidence at dispatch. If current validity cannot be established, the action does not proceed. Cancellation and safety-stop handling cannot be trapped behind ordinary event backlog; mechanisms remain with the relevant execution design.
+Correction applies only to the referenced claim and its stated scope according to the owner's revision and causal relationships, not delivery or recording order alone. Current projections must reflect the applicable corrected claim and invalidate unsupported dependent premises; a late superseded event cannot restore them. Missing predecessors or conflicting corrections remain unresolved pending owner reconciliation. Given the same compatible accepted records, resolved causal/revision relationships, evaluation time and applicable reconciliation rules, rebuild must yield the same applicable corrected state despite delivery-order differences. Historical views preserve what was known, decided and done at the time, with the correction linked separately. A correction neither erases past actions or effects nor automatically executes compensation; any new target action must follow current authority and the full execution path.
+
+Revocation, safety freeze and dispatch validity cannot depend solely on an asynchronously delivered notification. Deterministic authority checks current permission and required origin/evidence at dispatch. If current validity cannot be established, the action does not proceed. Cancellation and safety-stop handling cannot be trapped behind ordinary event backlog. No design may require revocation, scope-withdrawal or safety-freeze enforcement, or effective cancellation of in-flight work, to wait for ordinary domain events in one ordered processing queue. Fresh dispatch checks prevent new unauthorized work but do not themselves stop work already in flight. Historical notifications may use ordinary delivery only when enforcement and stopping do not depend on that backlog. Specific authority freshness, stopping guarantees and separation mechanisms remain with execution design; no queue/channel technology or timing budget is selected here.
 
 ## 8. Replay, execution and sensitive-data failure
 
@@ -94,7 +120,9 @@ An interrupted external attempt with unknown outcome stays unresolved until evid
 
 Raw sensitive content never enters event storage, retry buffers, quarantine/dead-letter payloads, logs, traces or diagnostics. Admission rejects prohibited content without echoing it; only safe identifiers, rejection categories and approved non-sensitive provenance may survive. Authorized proof derivation remains inside the isolated ephemeral boundary and discards raw content on all required exits. Event delivery cannot extend its lifetime.
 
-Event versions have explicit semantic compatibility rules. An unsupported version is not coerced into the nearest known type or silently skipped by a required consumer. Schema migrations must preserve provenance and meaning without rewriting authoritative audit evidence; concrete encodings, migration machinery and retention design are deferred.
+Event versions have explicit semantic compatibility rules. Before an upgrade activates new producers or consumers, every outstanding durable obligation and retained record still needed for campaign continuation or required historical inspection must have a verified processing path: a compatible reader or validated translation/migration preserving meaning, provenance and authoritative originals. An affected upgrade is blocked if that path is absent; paused campaigns are included. This is a continuity obligation, not an indefinite promise to read every version or an implicit major-version epoch policy.
+
+Forward compatibility is not guaranteed. An older consumer facing an unsupported newer event must expose the unresolved obligation and use its bounded recovery path rather than coerce or silently skip it. Rollout must account for required consumers still running older versions. Compatibility verification covers semantic results, not parsing alone; migration must not rewrite authoritative audit evidence. Concrete encodings, tooling and retention windows remain downstream decisions.
 
 ## 9. Consequences and deferred decisions
 
@@ -128,5 +156,12 @@ ADR-005 must resolve persistence and atomicity mechanisms before runtime claims 
 | Provisional origin later fails validation | Downgrade remains sourced and dependent views lose their unsupported premise |
 | Privileged defender event is relabeled or replayed toward blind reasoning | Source/mode admission rejects contamination |
 | Rejected input contains a synthetic sensitive sentinel | Sentinel never appears in persistent events, retries, quarantine, logs or diagnostic outputs |
+| One cohesive consumer supplies evidence and updates its owned projection | Declared effects pass owner validation; no blanket one-category restriction or foreign write authority |
+| Required Access-loss history is classified optional, or its subscriber is replaced | Reject lost history obligations; allow replacement only with preserved effects and outstanding completion evidence |
+| A producer merely asserts which conflicting event is correct | Dependencies remain blocked until a verifiable append-only resolution is accepted by the affected consumers |
+| An upgrade cannot process records needed by a paused campaign | Block the affected upgrade; a supported reader or semantically validated migration is required |
+| Ordinary event backlog grows while scope is withdrawn and work is in flight | New dispatch is blocked under current authority; effective cancellation must not wait for ordinary backlog |
+| Two campaign contexts concern the same target | No implicit event/state/context sharing; separately authorized evaluation does not grant campaign-to-campaign reuse |
+| A correction arrives before its predecessor, or an older claim arrives after correction | Resolve owner revision/causality before dependent use; delivery permutations yield the same corrected current view while preserving historical decisions |
 
-This is DESIGN-only. Review checks ownership, failure/recovery semantics, scope, references and consistency with accepted authority. The cases above are future contract/integration verification obligations, not executed runtime tests. ADR-003 remains PROPOSED pending review and product-owner acceptance; DW-FOUNDATION-001 remains unsealed.
+This is DESIGN-only. Review checks ownership, failure/recovery semantics, scope, references and consistency with accepted authority. The cases above are future contract/integration verification obligations, not executed runtime tests. ADR-003 is ACCEPTED by the product owner on 2026-09-28 after the B1-B7 revision. ADR-004 is the next design dependency; DW-FOUNDATION-001 remains unsealed and runtime implementation is not authorized by this acceptance.
