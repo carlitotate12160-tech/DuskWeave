@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | PRD-008 |
 | **Title** | Evidence Model |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
 | **Stage** | Stage 4 — Reality & Evidence |
 | **Direct Dependency** | [PRD-007 Observation Model](PRD-007-observation-model.md) — ACCEPTED |
 | **Target Seal** | DW-DOMAIN-001 |
@@ -229,4 +229,4 @@ ADR-008 remains responsible for architectural separation of Observation and Fact
 
 ---
 
-**Authoring boundary:** PRD-008 is `PROPOSED`. It does not accept ADR-008 or ADR-009, change the active `DW-FOUNDATION-001` seal, seal `DW-DOMAIN-001`, or authorize runtime, acquisition tooling, capability execution, or Stage 5 implementation.
+**Acceptance boundary:** PRD-008 is `ACCEPTED` by explicit product-owner decision on 2026-09-28. This acceptance does not accept ADR-008 or ADR-009, change the active `DW-FOUNDATION-001` seal, seal `DW-DOMAIN-001`, or authorize runtime, acquisition tooling, capability execution, or Stage 5 implementation.
