@@ -24,11 +24,11 @@ A **ProofEnvelope** binds one declared client proof claim to its eligible eviden
 | **Client proof claim** | A narrow statement offered to a declared client audience about an accepted campaign result or limitation. | Broader access, impact, causality, control failure, or current validity beyond its stated bounds. |
 | **Proof basis** | Owner-qualified EvidenceEnvelope references and permitted non-sensitive or opaque material selected to substantiate the client proof claim. | New evidence, inherited universal sufficiency, or permission to retrieve raw content. |
 | **ProofEnvelope** | The bounded client-facing association among a proof claim, proof basis, result, context, limitations, review, and release disposition. | A report template, evidence store, owner state, or action authority. |
-| **Reported finding** | A client-facing interpretation of one or more released proof claims as a security weakness, exposure, validated path, objective result, cleanup condition, or assessment limitation. | An automatically verified root cause, business impact, or universal severity. |
+| **Reported finding** | A client-facing interpretation of one or more released proof claims as a security weakness, exposure, validated path, objective result, cleanup condition, or assessment limitation, kept under a stable client-facing reference with traceability to its supporting released proof revisions. | An automatically verified root cause, business impact, universal severity, or remediation priority. |
 | **Proof view** | An audience-appropriate presentation derived from the same released ProofEnvelope semantics. | Permission to alter, omit, or strengthen the underlying claim. |
 | **Release disposition** | The decision of the designated engagement delivery authority to release, withhold, supersede, or correct a proof for a declared audience and purpose. | Acceptance by the client, mutation of owner state, or authorization of campaign execution. |
 
-A ProofEnvelope identity is distinct from an EvidenceEnvelope identity, owner-claim identity, finding identity, report revision, and delivery receipt. Each retained ProofEnvelope keeps a stable logical identity and linked revision lineage within its engagement and disclosure purpose; identifier and fingerprint mechanisms remain deferred. References preserve the ownership boundaries.
+A ProofEnvelope identity is distinct from an EvidenceEnvelope identity, owner-claim identity, finding identity, report revision, and delivery receipt. Each retained ProofEnvelope keeps a stable logical identity and linked revision lineage within its engagement and disclosure purpose; identifier and fingerprint mechanisms remain deferred. Each retained reported finding keeps a stable client-facing reference within its engagement and maps to the released ProofEnvelope revisions that currently or historically support it, including linked corrections, withdrawals, and retests. This traceability does not create a case manager, remediation tracker, or new owner of evidence or client risk. References preserve the ownership boundaries.
 
 ## 3. Actors, ownership, and release authority
 
@@ -61,7 +61,7 @@ Every ProofEnvelope must make the following product meaning available where appl
 10. **Sensitivity and disclosure disposition**: redaction or transformation applied, any bounded safe reference, intended recipients, and restrictions on further disclosure.
 11. **Review and release disposition**: accountable technical review outcome and final release decision for the declared audience and purpose.
 12. **Stable proof identity, correction, and supersession**: stable logical identity for the retained proof and links among corrected, withdrawn, or superseding revisions without rewriting what was previously released.
-13. **Actionable next step where applicable**: bounded remediation direction, validation condition, or retest question without asserting an unverified root cause or selecting the client's remediation plan.
+13. **Actionable remediation and validation**: for a reported weakness or exposure, specific remediation direction proportionate to the verified result and a validation or retest condition. A concrete correction is stated only when the eligible basis establishes it; otherwise the proof states the intended control objective, the evidence or client input still needed, and a bounded validation question. This does not assert an unverified root cause or select the client's remediation priority.
 
 These are product semantics, not a database schema, serialized type, PDF layout, portal workflow, cryptographic format, or mandatory field set for every audience. Later contracts may choose representations without weakening the meanings.
 
@@ -93,13 +93,15 @@ Severity or priority may be included when the engagement's accepted assessment m
 
 Failed, prevented, or inconclusive actions may be reported when material to the client question. Failure does not prove that a named control caused prevention. Control-effect claims require the separately eligible evidence, coverage, observation window, and mode permitted by PRD-000 and PRD-008.
 
-Campaign completion proof may summarize objectives reached, not reached, partially demonstrated, or not assessed; bounded coverage; unknown external effects; and residual uncertainty. Deadline expiry, termination, or lack of a finding is never represented as proof that no weakness exists.
+Campaign completion proof references the declared authorized scope and may summarize objectives reached, not reached, partially demonstrated, or not assessed; bounded coverage; unknown external effects; and residual uncertainty. It distinguishes subjects or objectives that were in scope but not attempted, in scope and attempted but inconclusive, and outside the authorized engagement boundary. Deadline expiry, termination, or lack of a finding is never represented as proof that no weakness exists.
 
 ## 7. Proof views, reports, and audience consistency
 
 A technical view may emphasize basis, conditions, reproducibility, affected subject, and remediation validation. An executive view may emphasize demonstrated consequence, mission relevance, coverage, and residual risk. Both must preserve the same claim strength, result, scope, time, and limitations.
 
 A report may organize multiple ProofEnvelopes approved for the same disclosure with narrative and prioritization, but the report is a projection rather than a new truth owner. One proof may appear in more than one approved view; tailoring language cannot remove a material limitation or convert inference into fact.
+
+When the delivery purpose concerns an attack chain or campaign narrative, the report may compose approved ProofEnvelopes into a bounded narrative. Accepted AttackPathView and CampaignTrajectory claims may supply only ordering and context already substantiated by those proofs. The composition preserves demonstrated ordering, material temporal and positional dependencies, failed or inconclusive transitions, and limitations. It cannot admit an owner claim without eligible proof, infer a missing edge, convert a projected path into proof, or take ownership of Path or Trajectory truth.
 
 Drafts are not released proof. A material change to claim, basis, result, audience, disclosure boundary, or limitation after sign-off creates a new accountable revision and requires release reconsideration. Formatting-only changes that preserve meaning do not create new evidence or owner state.
 
@@ -121,7 +123,7 @@ Every released proof states the time or interval to which its claim applies. His
 
 A later evidence correction, owner-state change, authority change, or discovered contradiction triggers reconsideration of affected unreleased and released proof. A linked correction, withdrawal, or superseding revision preserves the earlier client-facing record without allowing it to override the newer disposition.
 
-A retest produces a new result linked to the earlier proof. It does not overwrite the original, imply that remediation was continuous between tests, or turn an untested condition into fixed. Retest scope and method differences remain visible.
+A retest produces a new result linked to the earlier proof and, where applicable, the stable client-facing finding reference. It does not overwrite the original, imply that remediation was continuous between tests, or turn an untested condition into fixed. Retest scope and method differences remain visible.
 
 Cleanup proof for a temporary managed campaign artifact reports only its accepted opaque disposition and non-sensitive manifest reference under PRD-000 and PRD-001. Expiry, a cleanup command, or target unreachability is not verified removal. Residue or unverified cleanup remains explicit with bounded operator-facing remediation guidance.
 
@@ -148,7 +150,7 @@ A validated synthetic foothold has accepted evidence for bounded execution, outp
 
 ### 11.2 Scanner result without validation
 
-A scanner reports a likely vulnerability. No owner-qualified evidence demonstrates the claimed effect. The item may guide an authorized future proposal, but client proof remains unsubstantiated rather than presenting the scanner result as a confirmed finding.
+A scanner reports a likely vulnerability. No owner-qualified evidence demonstrates the claimed effect. After the signal observation itself receives owner qualification, a ProofEnvelope may report only the narrow informational or inconclusive observation that the scanner produced signal X from declared vantage V at time T, with its method limits. Exploitability remains unsubstantiated, the signal is not a confirmed finding, and any target-side validation remains a separately authorized action.
 
 ### 11.3 Proven path with bounded edges
 
@@ -181,13 +183,13 @@ A technical view contains safe validation conditions and remediation checks; an 
 3. Proof formation cannot accept owner claims, resolve evidence conflicts, refresh stale reality, dispatch execution, or become a sixth operational model.
 4. Safe reviewability is sufficient for an authorized competent tester to understand and, where appropriate, validate the result; a fingerprint alone cannot replace required technical basis.
 5. Proof uses least disclosure and excludes raw sensitive material, unrestricted target output, credentials, exploit payloads, and persistence material.
-6. Verified result, inferred root cause, prospective business impact, severity assessment, and client risk decision remain distinct.
+6. Verified result, inferred root cause, prospective business impact, severity assessment, and client risk decision remain distinct; every reported weakness or exposure includes proportionate remediation direction and a validation or retest condition without overstating root cause.
 7. Tool success, scanner output, ATT&CK mapping, event delivery, access, path, objective, control effect, and cleanup each retain their own proof burden.
-8. Technical and executive views preserve the same claim strength, scope, time, result, and material limitations.
+8. Technical and executive views preserve the same claim strength, scope, time, result, and material limitations; an attack-chain or campaign narrative preserves accepted ordering, material dependencies, failed or inconclusive transitions, and limitations without owning Path or Trajectory truth.
 9. Final release requires bounded engagement delivery authority, but assembly and review do not create a per-action or campaign-wide human gate, and delivery authority cannot override technical or sensitivity ineligibility.
-10. Each retained proof has stable logical identity; corrections, withdrawals, retests, and superseding revisions remain linked without rewriting prior released meaning.
+10. Each retained proof has stable logical identity, and each retained reported finding has a stable client-facing reference mapped to its supporting released proof revisions; corrections, withdrawals, retests, and superseding revisions remain linked without rewriting prior released meaning.
 11. Late contamination blocks propagation, preserves only safe accountability semantics, triggers recipient and dependent-finding assessment, and defers remediation mechanism to PRD-010/ADR-011.
-12. Campaign completion honestly reports bounded coverage, objectives, unknown outcomes, cleanup disposition, and residual uncertainty without claiming that untested weakness is absent.
+12. Campaign completion references declared authorized scope and distinguishes in-scope not attempted, in-scope attempted but inconclusive, and outside the authorized engagement boundary while reporting objectives, cleanup disposition, unknown outcomes, and residual uncertainty without claiming that untested weakness is absent.
 13. Delivery receipt does not imply client agreement, remediation, or acceptance of risk.
 14. Proof assembly, rendering, release, correction, or delivery cannot repeat a target action or alter authoritative audit evidence.
 
