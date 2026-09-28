@@ -4,7 +4,8 @@
 | :--- | :--- |
 | **Document ID** | ADR-004 |
 | **Title** | Rust Core Language Selection |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
+| **Acceptance** | Product owner, 2026-09-28: accepted language ownership and the revised reasoning/inference boundaries |
 | **Stage** | Stage 3 - Foundation ADRs |
 | **Direct Dependencies** | [ADR-001](ADR-001-modular-monolith.md), [ADR-002](ADR-002-domain-boundaries.md), [ADR-003](ADR-003-domain-events.md) - all ACCEPTED |
 | **Product Authority** | PRD-000..006 - all ACCEPTED; see [PRD registry](../prd/README.md) |
@@ -50,7 +51,15 @@ Select **Rust for first-party campaign core domain and application logic**. Keep
 | Native helpers and external SDKs | Zig only for a demonstrated native-helper requirement; C/C++ only for necessary FFI or unavoidable SDK integration. Placement and admission require the later native-boundary design. |
 | Research | Python/Nim remain research-only unless an accepted ADR promotes a specific component. Research code cannot enter an execution path by being wrapped in an adapter. |
 
-Short-lived reasoners receive bounded context and return proposals. This decision does not select an LLM provider or inference runtime. Using a Rust SDK or a Go transport client never grants model mutation or action authority.
+Rust owns bounded campaign use cases that assemble sourced context, govern reasoning-episode budgets and lifecycle, and admit reasoner proposals as untrusted input. Selecting Rust for the core does not require inference in Rust. Inference language, runtime and provider remain unselected. Inference behind an external interface is the starting direction, not a permanent deployment constraint or a choice of HTTP, vLLM or Candle.
+
+A separately supplied inference backend does not determine the language of DuskWeave's use cases. DuskWeave-owned Python reasoning code may enter production only through an accepted ADR admitting that specific component; placing it behind a service interface does not bypass this requirement. Whatever its implementation, a reasoner has no model-mutation or execution authority. Using a Rust SDK or a Go transport client grants neither.
+
+"Thin orchestration" limits coordination responsibility, not reasoning depth. Within its bounded episode, a reasoner must be able to compare hypotheses, consider observing more or taking no target action, and identify evidence that would disconfirm its proposal, as required by PRD-006. Each loop keeps its bounded use cases; no universal orchestrator absorbs their models or decisions. Proposal admission is not model acceptance or execution authorization.
+
+Malformed proposals may be returned for correction through bounded reasoning attempts. A corrected proposal is fresh untrusted input and must pass the applicable validation; the caller cannot silently reinterpret malformed content into an authorized action or relax checks to obtain acceptance. Exhausted correction budgets leave the episode unresolved without dispatch from the invalid proposal. Retrying an LLM call never authorizes repeating an external action with an unknown outcome; ADR-003 reconciliation obligations still apply.
+
+Caller language alone does not determine model capability, and cross-language outputs are not presumed identical. Model version, tokenizer, chat template, sampling configuration and inference runtime can affect results. Future evaluation must record the relevant configuration and measure proposal quality and campaign-boundary compliance on comparable synthetic cases, including valid no-action choices. This is an empirical verification obligation, not a claim of deterministic LLM output or an evaluation-platform design.
 
 ### 4.1 Types express local guarantees
 
@@ -119,6 +128,11 @@ When runtime work is authorized, pin supported toolchains and dependency resolut
 | Replay runs after authorization expires | Projections may rebuild under explicit evaluation rules; replay cannot execute actions or restore authority. |
 | A worker emits raw sensitive output or privileged defender context into a blind result | The applicable boundary blocks propagation to core models, prompts, logs and durable event records. |
 | A function exceeds McCabe 7, or refactoring creates a universal helper | Complexity verification or architecture review blocks delivery until cohesive correction. |
+| Evidence supports observing more or taking no target action | The reasoner may select that outcome with sourced rationale and disconfirming evidence; orchestration does not force an action. |
+| A malformed proposal is repaired or the correction budget is exhausted | Every correction is validated as untrusted input; exhaustion leaves no dispatch from the invalid proposal. |
+| An LLM retry proposes repeating an action whose outcome is unknown | Reconciliation remains required; a new proposal cannot clear the unresolved execution state. |
+| A Python reasoning component is wrapped as an inference service | Its DuskWeave-owned reasoning role still requires specific ADR admission before production use. |
+| Rust and Python callers or inference configurations are compared | Evaluation records relevant configuration and measures proposal quality and boundary compliance; identical output is not assumed. |
 
 These are future compile-time, contract, integration and recovery verification obligations using synthetic fixtures. They are not implemented or executed tests. Document review checks accepted authority, ownership, failure semantics and decision scope only.
 
@@ -126,4 +140,4 @@ These are future compile-time, contract, integration and recovery verification o
 
 Language facts were checked against primary documentation on 2026-09-28: [Rust ownership](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html), [unsafe Rust](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html), [Drop and its caveats](https://doc.rust-lang.org/std/ops/trait.Drop.html), and [Go FAQ](https://go.dev/doc/faq). These explain language facilities and limitations; the architectural choice is a DuskWeave design judgment.
 
-ADR-004 remains **PROPOSED** pending product-owner review. It selects no database, schema, graph representation, IPC protocol, service count, runtime framework or package layout. ADR-005 must wait for acceptance; ADR-005..007 are not authored. This DESIGN-only change does not authorize runtime implementation or seal DW-FOUNDATION-001.
+ADR-004 is **ACCEPTED** by the product owner on 2026-09-28, including the revised reasoning/inference boundaries and review cases. It selects no database, schema, graph representation, IPC protocol, service count, runtime framework or package layout. ADR-005 is the next design dependency; ADR-005..007 are not authored at this acceptance. This records approval of ADR-004 only: the foundation seal defined in build-order section 30 still requires ADR-005..007 and coherent foundation authority. Runtime implementation remains unauthorized.

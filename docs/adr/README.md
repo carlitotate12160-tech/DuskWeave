@@ -31,14 +31,14 @@ Setiap ADR disusun menggunakan struktur baku berikut:
 
 ## 2. ADR Registry & Dependency Index
 
-ADR-001..003 are authored and ACCEPTED; ADR-004 is authored and PROPOSED. Remaining entries are reserved decision slots, not authored or accepted documents. Their legacy PROPOSED labels do not satisfy dependencies; verify the corresponding file and acceptance before proceeding.
+ADR-001..004 are authored and ACCEPTED. Remaining entries are reserved decision slots, not authored or accepted documents. Their legacy PROPOSED labels do not satisfy dependencies; verify the corresponding file and acceptance before proceeding.
 
 | ADR ID | Judul Keputusan | Tahapan Terkait | Ketergantungan Langsung | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **ADR-001** | Modular Monolith Architecture | Stage 3 | PRD-000..006 | `ACCEPTED` |
 | **ADR-002** | Domain Boundaries Definition | Stage 3 | ADR-001 | `ACCEPTED` |
 | **ADR-003** | Domain Events Architecture | Stage 3 | ADR-002 | `ACCEPTED` |
-| **ADR-004** | Rust Core Language Selection | Stage 3 | ADR-001..003 | `PROPOSED` |
+| **ADR-004** | Rust Core Language Selection | Stage 3 | ADR-001..003 | `ACCEPTED` |
 | **ADR-005** | PostgreSQL System of Record | Stage 3 | ADR-003, ADR-004 | `PROPOSED` |
 | **ADR-006** | Cyber Terrain Storage Model | Stage 3 | ADR-005 | `PROPOSED` |
 | **ADR-007** | Foothold & Path Separation | Stage 3 | ADR-002, ADR-006 | `PROPOSED` |
