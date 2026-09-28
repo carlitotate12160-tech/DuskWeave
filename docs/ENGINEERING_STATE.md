@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Stage 4 — Reality & Evidence design (`PRD-007` next)
+- **Current Phase**: Stage 4 — Reality & Evidence design (`PRD-007` PROPOSED; explicit product-owner review next)
 - **Active Seal**: `DW-FOUNDATION-001`
 - **Seal Status**: **SEALED** (explicit product-owner authorization; foundation coherence verified)
 - **Sealed Authority Baseline**: `5883fa52cd063083350a41a293e0bd654d500d63`
@@ -63,7 +63,7 @@ Semua interaksi dan rencana tunduk pada:
 
 ## 6. Next Immediate Action
 
-`DW-FOUNDATION-001` telah sealed. Stage 4 Reality & Evidence sekarang diizinkan, dimulai dengan `PRD-007 Observation Model` sebagai `PROPOSED` design document. PRD-008..010 dan ADR-008..012 tetap menunggu dependency masing-masing; belum ada Nmap, Nuclei, shell adapter, atau runtime implementation.
+`DW-FOUNDATION-001` telah sealed. `PRD-007 Observation Model` kini berstatus `PROPOSED` dan menunggu review serta keputusan eksplisit pemilik produk. PRD-008..010 dan ADR-008..012 tetap menunggu dependency masing-masing; belum ada Nmap, Nuclei, shell adapter, atau runtime implementation.
 
 Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`. Revisi pemilik produk pada 2026-09-27 menetapkan INV-007 Defender Knowledge Boundary di PRD-000 §6 (wording "current campaign position" diselaraskan di seluruh dokumen); PRD-002 diperluas dengan tiered epistemic confidence (Tier 1/2/3) dan status PROVISIONAL; penilaian control gap tetap membedakan bukti konklusif dari telemetry yang tidak lengkap.
 - **DW-DESIGN-002**: PRD-003 Access & Footholds, PRD-004 Expansion Loop, PRD-005 Objective Loop, dan PRD-006 Adaptation diterima pemilik produk pada 2026-09-27 setelah koreksi batas observasi, akses awal, proof sensitif, dan contoh sintetis. Keempatnya `ACCEPTED`; ini bukan seal foundation.

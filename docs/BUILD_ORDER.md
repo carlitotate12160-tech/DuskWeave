@@ -45,11 +45,11 @@ Current seal:
 
 Current engineering state:
 
-`Stage 4 — Reality & Evidence design; DW-FOUNDATION-001 SEALED; PRD-007 Observation Model is the next dependency`
+`Stage 4 — Reality & Evidence design; DW-FOUNDATION-001 SEALED; PRD-007 Observation Model is PROPOSED and awaits explicit product-owner review`
 
 Current design document:
 
-`PRD-007 Observation Model (PLANNED); runtime and tool integration remain unauthorized`
+`PRD-007 Observation Model (PROPOSED; awaiting explicit product-owner review); runtime and tool integration remain unauthorized`
 
 DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 
