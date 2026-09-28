@@ -4,11 +4,12 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Stage 3 — Foundation ADRs (PRD-000..006 and ADR-001..007 ACCEPTED; cross-foundation reconciliation complete; explicit foundation seal decision pending)
-- **Active Seal**: `DW-BOOTSTRAP-001`
-- **Seal Status**: **SEALED** (Exit criteria completely verified)
-- **Target Foundation Seal**: `DW-FOUNDATION-001` (Memerlukan Stage 0 s.d. Stage 3 selesai)
-- **Date Sealed**: 2026-09-27
+- **Current Phase**: Stage 4 — Reality & Evidence design (`PRD-007` next)
+- **Active Seal**: `DW-FOUNDATION-001`
+- **Seal Status**: **SEALED** (explicit product-owner authorization; foundation coherence verified)
+- **Sealed Authority Baseline**: `5883fa52cd063083350a41a293e0bd654d500d63`
+- **Target Next Seal**: `DW-DOMAIN-001` (requires accepted Stage 4 design and Stage 5 domain contracts)
+- **Date Sealed**: 2026-09-28
 
 ---
 
@@ -49,7 +50,20 @@ Semua interaksi dan rencana tunduk pada:
 
 ---
 
-## 5. Next Immediate Action
+## 5. Foundation Seal Evidence
+
+- **Authority completeness**: PRD-000..006 dan ADR-001..007 berstatus `ACCEPTED`.
+- **Coherence**: F1–F7 telah direkonsiliasi; lima operational model, current state/history, termination, crate ownership, engagement envelope, temporary managed artifact, zero-retention, audit integrity, dan defender knowledge boundary tetap selaras.
+- **Document verification**: 24 foundation files dan 82 relative links diperiksa tanpa broken link; `git diff --check` lulus pada baseline seal.
+- **Review**: Satu adversarial review final diselesaikan; finding terakhir mengikat manifest, cleanup evidence, dan remediation instructions ke material non-sensitive/opaque.
+- **Scope**: Seal ini menerima foundation design. Tidak ada runtime, tool integration, payload implementation, atau CI result yang diklaim.
+- **Product-owner action**: Pemilik produk secara eksplisit mengotorisasi `DW-FOUNDATION-001` pada 2026-09-28.
+
+---
+
+## 6. Next Immediate Action
+
+`DW-FOUNDATION-001` telah sealed. Stage 4 Reality & Evidence sekarang diizinkan, dimulai dengan `PRD-007 Observation Model` sebagai `PROPOSED` design document. PRD-008..010 dan ADR-008..012 tetap menunggu dependency masing-masing; belum ada Nmap, Nuclei, shell adapter, atau runtime implementation.
 
 Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`. Revisi pemilik produk pada 2026-09-27 menetapkan INV-007 Defender Knowledge Boundary di PRD-000 §6 (wording "current campaign position" diselaraskan di seluruh dokumen); PRD-002 diperluas dengan tiered epistemic confidence (Tier 1/2/3) dan status PROVISIONAL; penilaian control gap tetap membedakan bukti konklusif dari telemetry yang tidak lengkap.
 - **DW-DESIGN-002**: PRD-003 Access & Footholds, PRD-004 Expansion Loop, PRD-005 Objective Loop, dan PRD-006 Adaptation diterima pemilik produk pada 2026-09-27 setelah koreksi batas observasi, akses awal, proof sensitif, dan contoh sintetis. Keempatnya `ACCEPTED`; ini bukan seal foundation.
@@ -60,12 +74,12 @@ Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`
 - **ADR-004 acceptance**: ADR-004 Rust Core Language ditulis sebagai `PROPOSED`: Rust untuk core, Go untuk integrasi sesuai baseline; tipe hanya menjamin invariant lokal, bukan freshness/otorisasi permanen. Boundary bahasa mempertahankan authority, event recovery, sensitive proof, dan exercise mode. Contoh QUALITY_BAR diselaraskan dengan PRD-003 dan ADR-002. Revisi brainstorming 2026-09-28 memperjelas pemisahan use case Rust dari runtime inferensi yang belum dipilih, kedalaman reasoning, admission proposal tak tepercaya, correction/retry terbatas, promosi Python per komponen melalui ADR, dan evaluasi empiris tanpa asumsi output identik. Pemilik produk menerima revisi pada 2026-09-28; ADR-004 `ACCEPTED`. Persetujuan ini mengunci keputusan ADR-004, bukan seal foundation; section 30 build-order masih mensyaratkan ADR-005..007 dan koherensi seluruh foundation.
 - **ADR-005 acceptance**: Pemilik produk menerima ADR-005 pada 2026-09-28: PostgreSQL menjadi satu-satunya initial campaign-core system of record tanpa mode SQLite. Transaksi lokal pemilik memakai durable outbox/inbox, concurrency/recovery eksplisit, dan pembatasan audit/sensitive data. Evaluasi graf in-memory adalah tugas desain ADR-006; DuckDB untuk Observer belum dipilih dan tetap menunggu tahap Observer. Estimasi host 2 OCPU / 12 GB adalah perencanaan sementara, bukan hasil benchmark atau jaminan deployment. ADR-005 `ACCEPTED`; ini bukan schema, implementasi runtime, atau klaim audit tamper-proof. Pada saat acceptance ADR-005, ADR-006/007 belum ditulis.
 - **ADR-006 acceptance**: Pemilik produk menerima ADR-006 pada 2026-09-28 setelah penyelarasan STALE/PROVISIONAL dan review kelayakan view. PostgreSQL tetap menjadi owner state durable Terrain; graf Rust yang bounded hanya view turunan disposable setelah bukti workload. Expiry dievaluasi saat penggunaan, view yang mode/scope/kausalitasnya tidak eligible ditolak, dan snapshot as-known dibedakan dari interpretasi retrospektif. Acceptance tidak memilih crate graf, tidak menerima ADR-007, dan tidak mengotorisasi runtime.
-- **ADR-007 acceptance**: Pemilik produk menerima FootholdGraph and AttackPathView Separation pada 2026-09-28. Access memiliki posisi tervalidasi, kondisi/kehilangan, dan dependency operasional yang benar-benar hidup; Pathing memiliki kandidat dan proyeksi transisi yang rebuildable dengan revision sumber. Review memperjelas dependency transport transitif versus provenance credential, health per dimensi/mekanisme, invalidasi dari seluruh owner premise yang relevan, projection lag yang tidak boleh menjadi dasar safety, serta direct fallback. Kasus paralel membedakan D1 yang tervalidasi, D2 yang mencapai transient access tetapi gagal validasi dan menjalani downgrade lifecycle, serta D3 dengan unknown external outcome yang tidak membentuk access claim. Operator-authorized priorities hanya memparameterisasi bounded reasoning; intent-weighted selection milik reasoning use case, bukan Pathing owner state. Transient access, tool success, rute historis, dan cache path tidak menciptakan foothold atau dispatch authority. ADR-007 berstatus `ACCEPTED`; foundation masih memerlukan coherence check dan seal eksplisit.
+- **ADR-007 acceptance**: Pemilik produk menerima FootholdGraph and AttackPathView Separation pada 2026-09-28. Access memiliki posisi tervalidasi, kondisi/kehilangan, dan dependency operasional yang benar-benar hidup; Pathing memiliki kandidat dan proyeksi transisi yang rebuildable dengan revision sumber. Review memperjelas dependency transport transitif versus provenance credential, health per dimensi/mekanisme, invalidasi dari seluruh owner premise yang relevan, projection lag yang tidak boleh menjadi dasar safety, serta direct fallback. Kasus paralel membedakan D1 yang tervalidasi, D2 yang mencapai transient access tetapi gagal validasi dan menjalani downgrade lifecycle, serta D3 dengan unknown external outcome yang tidak membentuk access claim. Operator-authorized priorities hanya memparameterisasi bounded reasoning; intent-weighted selection milik reasoning use case, bukan Pathing owner state. Transient access, tool success, rute historis, dan cache path tidak menciptakan foothold atau dispatch authority. ADR-007 berstatus `ACCEPTED`; coherence check berikutnya diselesaikan dan foundation kemudian sealed secara eksplisit pada 2026-09-28.
 - **Quality enforcement**: Hard cap McCabe adalah 7 per fungsi. Repository masih document-only; analyzer, runtime tests, dependency gates, dan CI belum tersedia. ADR-002 mendefinisikan kewajiban verifikasi saat implementasi diotorisasi, bukan hasil test.
-- **DW-FOUNDATION-COHERENCE-001 reconciliation**: F1–F5 diperbaiki dalam PRD-000/001, QUALITY_BAR.md, dan footer ADR-002/005. Pemeriksaan silang Position/transient/validated, current state/history/correction, stop/freeze/termination, crate/module ownership, link relatif foundation, status, dan INV-001..007 diulang; satu review adversarial atas hasil perubahan menajamkan cakupan safety freeze. F6 kemudian diterima pemilik produk: rapid, bounded, dan persistent engagement memakai satu campaign model dengan operator-authorized envelope; extended duration bukan kewajiban setiap engagement, tidak ada artificial delay, dan expiry menghasilkan bounded-completion report beserta residual uncertainty. Concrete duration presets dan scheduler tetap deferred. F7 kemudian diterima pemilik produk: continuity tidak bergantung pada target-side persistence; arbitrary malware dan unmonitored implant dilarang; temporary managed artifact hanya capability opsional mendatang dengan otorisasi eksplisit, lease/capability bounds, manifest non-sensitive, revocation, expiry, cleanup plan, opaque cleanup evidence, serta residual reporting yang jujur. Format, signing, isolation, transport, dan cleanup mechanism tetap deferred ke Capability/Runtime design. Tidak ada seal atau otorisasi runtime dari pekerjaan ini.
-- **Runtime / foundation seal**: belum diotorisasi oleh urutan build; `DW-FOUNDATION-001` belum sealed. Next action: keputusan seal eksplisit pemilik produk.
+- **DW-FOUNDATION-COHERENCE-001 reconciliation**: F1–F5 diperbaiki dalam PRD-000/001, QUALITY_BAR.md, dan footer ADR-002/005. Pemeriksaan silang Position/transient/validated, current state/history/correction, stop/freeze/termination, crate/module ownership, link relatif foundation, status, dan INV-001..007 diulang; satu review adversarial atas hasil perubahan menajamkan cakupan safety freeze. F6 kemudian diterima pemilik produk: rapid, bounded, dan persistent engagement memakai satu campaign model dengan operator-authorized envelope; extended duration bukan kewajiban setiap engagement, tidak ada artificial delay, dan expiry menghasilkan bounded-completion report beserta residual uncertainty. Concrete duration presets dan scheduler tetap deferred. F7 kemudian diterima pemilik produk: continuity tidak bergantung pada target-side persistence; arbitrary malware dan unmonitored implant dilarang; temporary managed artifact hanya capability opsional mendatang dengan otorisasi eksplisit, lease/capability bounds, manifest non-sensitive, revocation, expiry, cleanup plan, opaque cleanup evidence, serta residual reporting yang jujur. Format, signing, isolation, transport, dan cleanup mechanism tetap deferred ke Capability/Runtime design. Reconciliation F1–F7 ini sendiri tidak mengotorisasi runtime; seal dicatat terpisah melalui tindakan eksplisit pemilik produk.
+- **Foundation / Stage 4 boundary**: `DW-FOUNDATION-001` SEALED pada authority baseline `5883fa52cd063083350a41a293e0bd654d500d63`. Stage 4 authoring diizinkan; runtime, capability execution, dan tool integration belum diotorisasi.
 
-## 6. Engineering setup maintenance
+## 7. Engineering setup maintenance
 
 Instruksi Project dan tiga skill terpisah disiapkan melalui pekerjaan konfigurasi
 yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
@@ -73,4 +87,4 @@ yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
 - Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
 - Distinct adversarial review: `.agents/skills/duskweave-adversarial-review/SKILL.md`.
 - Setup navigation: `docs/workflows/START_HERE.md`.
-- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. Acceptance PRD-000..006 dan ADR-001..007 dicatat terpisah; reconciliation foundation selesai, sedangkan runtime dan keputusan seal foundation masih menunggu.
+- Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. `DW-FOUNDATION-001` kini menjadi active seal; Stage 4 authoring berjalan terpisah dari runtime authorization.
