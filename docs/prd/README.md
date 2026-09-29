@@ -40,7 +40,7 @@ Setiap PRD wajib mematuhi aturan berikut:
 | **PRD-007** | Observation Model | Stage 4 | ADR-001..007 | `ACCEPTED` |
 | **PRD-008** | Evidence Model | Stage 4 | PRD-007 | `ACCEPTED` |
 | **PRD-009** | Client Proof | Stage 4 | PRD-008 | `ACCEPTED` |
-| **PRD-010** | Sensitive Data Handling | Stage 4 | PRD-009 | `PLANNED` |
+| **PRD-010** | Sensitive Data Handling | Stage 4 | PRD-009 | `PROPOSED` |
 | **PRD-011** | Capability System | Stage 11 | Stage 10 | `PLANNED` |
 | **PRD-012** | Runtime Isolation | Stage 12 | PRD-011 | `PLANNED` |
 | **PRD-013** | Native Execution | Stage 12 | PRD-012 | `PLANNED` |
