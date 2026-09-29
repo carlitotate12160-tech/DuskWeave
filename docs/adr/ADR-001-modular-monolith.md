@@ -31,7 +31,7 @@ These reports document operations, not software architecture. The modular monoli
 2. Make current position, epistemic status, source, and allowed claim visible at each consequential decision. An OBSERVED or PROVISIONAL entry is not automatically a fact or authorization (PRD-000 INV-004).
 3. Keep CyberTerrain, FootholdGraph, AttackPathView, ObjectiveState, and CampaignTrajectory under separate ownership; no universal mutable campaign object (INV-001/002).
 4. Ensure every executed action passes deterministic scope and safety authority at dispatch, including bounded chains, while cognitive workers only propose (INV-003).
-5. Keep raw client material in the isolated ephemeral sensitive boundary; preserve authoritative audit evidence (INV-005/006).
+5. Keep raw client content in the isolated ephemeral proof boundary and any separately authorized operational secret in isolated campaign-scoped custody; expose only opaque references and safe metadata to the core; preserve authoritative audit evidence (INV-005/006).
 6. Enforce the mode-specific defender knowledge boundary without making the Observer an invisible tactical oracle (INV-007).
 
 ## 3. Options considered
@@ -51,7 +51,7 @@ The core composes bounded decisions from separately owned model views through ty
 
 A rapid, pre-assessed chain may avoid a new cognitive planning episode or full evidence reconciliation between every link. **Every action still faces current deterministic scope and safety checks at dispatch.** Unexpected target, identity, origin, scope, or outcome stops dependent links until reassessment. Provisional observations may promptly inform orientation and candidate hypotheses from transient positions; they cannot alone validate a foothold, scope crossing, consequential transition, or objective proof. The core keeps these epistemic distinctions without imposing a mandatory state-machine script on operator decisions.
 
-The isolated execution environment, ephemeral sensitive proof boundary, defender assessment plane, and external tools may require process separation or independent deployment. This ADR chooses the shape of the **campaign core only**; it does not collapse trust boundaries into one process. Later ADRs specify those boundaries without turning this foundation decision into a service topology mandate.
+The isolated execution environment, ephemeral sensitive proof boundary, campaign-scoped secret custody, defender assessment plane, and external tools may require process separation or independent deployment. This ADR chooses the shape of the **campaign core only**; it does not collapse trust boundaries into one process. Later ADRs specify those boundaries without turning this foundation decision into a service topology mandate.
 
 ## 5. Architectural obligations and failure handling
 
@@ -59,7 +59,7 @@ The isolated execution environment, ephemeral sensitive proof boundary, defender
 - A proposal carries the hypothesis, current position, authorization scope, expected and disconfirming evidence, and stopping condition needed for review. Its presence never grants execution authority.
 - A validated, narrow Tier 1 observation may be available quickly as OBSERVED; higher-stakes claims require stronger support. Transient-origin observation remains PROVISIONAL until its origin is resolved. A source or tempo change never silently promotes the claim.
 - If authorization is withdrawn, a dispatch check fails, or a chain premise changes, the relevant action or chain stops. Independent healthy positions may continue under their own authority. Timeout does not automatically mean confirmed foothold loss.
-- Durable decision and proof output contains only non-sensitive provenance and approved opaque evidence. Raw client material never enters core state, prompts, traces, or reporting.
+- Durable decision and proof output contains only non-sensitive provenance and approved opaque evidence. Raw client content and operational authentication material never enter core state, ordinary persistence, prompts, traces, or reporting. The core may retain only an opaque campaign-scoped custody reference and safe eligibility/disposition metadata.
 - Blind reasoning can use effects visible from its authorized current campaign position. Privileged Observer/Grader/defender feeds cannot enter its context. Defender-informed feedback requires a separately authorized and labeled exercise.
 
 ## 6. Consequences
@@ -78,7 +78,7 @@ The isolated execution environment, ephemeral sensitive proof boundary, defender
 | INV-002 Separate models | Five model owners with bounded interfaces; no shared mutable aggregate. |
 | INV-003 Reasoning != execution | Specialists propose; deterministic authority gates every dispatch; executor remains isolated. |
 | INV-004 Observation != fact | Tier and status remain explicit; provisional/observed data cannot silently become fact or authority. |
-| INV-005 Sensitive zero-retention | Core receives only approved opaque proof and non-sensitive provenance; raw content remains in an isolated ephemeral boundary. |
+| INV-005 Sensitive isolation and secret custody | Core receives only approved opaque proof, opaque campaign-scoped secret references, and safe non-sensitive metadata; raw values remain in their isolated proof or custody boundary. |
 | INV-006 Audit integrity | Core and campaign capabilities have no authority to alter authoritative audit evidence. |
 | INV-007 Defender Knowledge Boundary | Blind context excludes privileged assessment feeds; campaign-visible evidence and separately labeled defender-informed mode obey PRD-000. |
 
@@ -90,4 +90,4 @@ The isolated execution environment, ephemeral sensitive proof boundary, defender
 4. An objective uses permitted client content: the core sees only derived opaque proof; raw content is discarded within the isolated ephemeral boundary on success or failure.
 5. One position becomes presumed lost while another remains healthy: only dependent work pauses; the core does not infer confirmed loss or global campaign failure.
 
-This is a design decision and has no runtime validation yet. It neither prescribes service topology for the trust boundaries nor decides domain-event schemas, database, graph representation, language, process protocol, or tooling. ADR-001 was accepted by the product owner on 2026-09-27 with the refinements recorded above. ADR-002 is the next design dependency; this acceptance does not authorize runtime implementation or seal DW-FOUNDATION-001.
+This is a design decision and has no runtime validation yet. It neither prescribes service topology for the trust boundaries nor decides domain-event schemas, database, graph representation, language, process protocol, or tooling. ADR-001 was accepted by the product owner on 2026-09-27 with the refinements recorded above. ADR-002 was the next design dependency at that acceptance; it did not authorize runtime implementation or seal DW-FOUNDATION-001. On 2026-09-29 the product owner authorized the INV-005 campaign-scoped secret-custody amendment reflected here; the historical foundation seal is reopened pending explicit reseal.

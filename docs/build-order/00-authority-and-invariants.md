@@ -94,20 +94,11 @@ Inference tidak boleh diam-diam berubah menjadi fact.
 
 ---
 
-## INV-005 — Sensitive data zero-retention
+## INV-005 — Sensitive data isolation and campaign-scoped secret custody
 
-Raw:
+Raw client content dan operational authentication material tidak boleh mencapai five operational models, campaign-core PostgreSQL, event/retry payload, log, trace, crash diagnostic, evidence/proof, operator surface, atau reasoning/LLM context.
 
-```text
-credential material
-customer records
-financial records
-authentication stores
-```
-
-tidak boleh mencapai persistence layer.
-
-Proof harus diturunkan sebelum persistence.
+Client content untuk proof hanya boleh berada dalam isolated ephemeral proof boundary sampai opaque proof diturunkan. Operational secret yang diotorisasi terpisah boleh dipertahankan dan digunakan ulang hanya dalam isolated custody milik satu campaign, dengan scope, current authority, dan finite lifetime; core hanya menyimpan opaque reference serta metadata non-secret. Custody bersifat non-durable secara default dan boleh survive pause/restart hanya bila resumability diotorisasi secara eksplisit. Tidak ada reuse lintas campaign/retest. Expiry, revocation, invalidation, campaign termination, atau authorization withdrawal mengakhiri eligibility dan memicu disposal serta honest disposition. Mekanisme storage, cryptography, recovery, dan sanitization tetap deferred; custody bukan operational model keenam atau general credential vault.
 
 ---
 

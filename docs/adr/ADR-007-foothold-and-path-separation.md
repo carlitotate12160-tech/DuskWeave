@@ -60,7 +60,7 @@ FootholdGraph owns health and usability distinctions required by PRD-003: valida
 
 Freshness and the no-successful-contact threshold can expire solely because evaluation time advances. Every position use and health assessment evaluates them against the applicable engagement parameters rather than trusting the last durable label or waiting for a notification. Expired validation makes the position stale and unusable as a consequential origin until refreshed. Exceeding the accepted operational threshold supports presumed loss, not confirmed loss. When Access accepts an explicit health/loss transition, it commits the change and required publication obligation; no periodic write is required merely to make time pass.
 
-Durable owner state lives behind Access's PostgreSQL port under ADR-005. It may retain a lost position as a sourced historical access claim, but persistence does not keep a live session or make the position currently usable. Raw credentials, authentication stores and tool/session handles do not enter FootholdGraph. An opaque bounded capability reference may identify an execution-boundary resource, but every use still requires current authority, eligibility and origin checks.
+Durable owner state lives behind Access's PostgreSQL port under ADR-005. It may retain a lost position as a sourced historical access claim, but persistence does not keep a live session or make the position currently usable. Raw credentials, authentication stores and tool/session handles do not enter FootholdGraph. An opaque bounded capability reference or campaign-scoped secret reference may identify an execution-boundary resource, but neither reveals the value or grants authority; every use still requires current authority, custody availability, capability eligibility and the applicable origin condition.
 
 A core restart or restored database preserves accepted records, not live capability. Before consequential use, Access reconciles capability availability, position identity/context, freshness, outstanding loss/correction events and any in-flight unknown outcome. It does not mark all positions healthy from the last durable status or blindly repeat validation actions whose effects are unknown.
 
@@ -114,7 +114,7 @@ This ADR selects no SQL schema, graph crate/database, ranking formula, path algo
 | INV-002 | Access truth and path projection remain separate from Terrain, Objectives and Trajectory. |
 | INV-003 | Position/path records never authorize or directly invoke execution. |
 | INV-004 | Candidates and outcomes retain evidence limits; success is not access validation. |
-| INV-005 | No raw credentials, client content or authentication stores in either model/cache. |
+| INV-005 | No raw credentials, client content or authentication stores in either model/cache; only bounded opaque custody references and safe metadata may be present. |
 | INV-006 | Corrections append; campaign capabilities cannot rewrite authoritative records. |
 | INV-007 | Blind projections exclude privileged feeds; mode/source survive derivation and replay. |
 
@@ -136,9 +136,9 @@ This ADR selects no SQL schema, graph crate/database, ranking formula, path algo
 | Access commits B then crashes before notifying Pathing | Durable Access state and publication obligation survive; Pathing eventually rebuilds without execution. |
 | Pathing cache contains a newer loss followed by a late old health event | Owner revisions prevent revival; affected projection remains invalidated or reconciles. |
 | Privileged defender feedback appears in blind Pathing cache | Reject the input/view; no relabeling into campaign evidence. |
-| Core restarts with a formerly healthy position and an unknown in-flight attempt | Reconcile capability and outcome; do not restore health or repeat the action automatically. |
+| Core restarts with a formerly healthy position and an unknown in-flight attempt | Reconcile capability, campaign-scoped secret availability, current authority and outcome; do not restore health, reacquire a secret, or repeat the action automatically. |
 | Same host is reached under a different identity/privilege | Treat as a distinct access claim requiring validation; do not widen the existing position. |
 
 The selected architecture supports adaptive, human-like campaign work through competing hypotheses and bounded decisions while keeping current access explicit. It deliberately prevents consequential use from a one-shot transient position before the required validation; this is an authorized-emulation safety trade-off, not a claim that real adversaries always wait. Costs include owner-view mapping, dependency references, projection lag, invalidation and recovery reconciliation. These are future contract/integration verification obligations, not executed runtime tests; the repository remains document-only.
 
-ADR-007 was **ACCEPTED** by the product owner on 2026-09-28 after clarifying parallel attempt, transient-access and validation outcomes. The authored Stage 3 ADR set completed cross-foundation reconciliation, and the product owner explicitly sealed DW-FOUNDATION-001 on 2026-09-28. Stage 4 design may proceed; runtime remains governed by later accepted dependencies.
+ADR-007 was **ACCEPTED** by the product owner on 2026-09-28 after clarifying parallel attempt, transient-access and validation outcomes. The authored Stage 3 ADR set completed cross-foundation reconciliation, and the product owner explicitly sealed DW-FOUNDATION-001 on 2026-09-28. Stage 4 design may proceed; runtime remains governed by later accepted dependencies. On 2026-09-29 the product owner authorized the INV-005 campaign-scoped secret-reference amendment reflected here; the historical foundation seal is reopened pending explicit reseal.

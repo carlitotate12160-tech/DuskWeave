@@ -6,7 +6,7 @@
 | **Title** | Observation Model |
 | **Status** | ACCEPTED |
 | **Stage** | Stage 4 — Reality & Evidence |
-| **Direct Dependencies** | [PRD-000..006](README.md) and [ADR-001..007](../adr/README.md) — ACCEPTED; `DW-FOUNDATION-001` SEALED |
+| **Direct Dependencies** | [PRD-000..006](README.md) and [ADR-001..007](../adr/README.md) — ACCEPTED; `DW-FOUNDATION-001` historically sealed 2026-09-28 and reopened 2026-09-29 pending explicit reseal |
 | **Target Seal** | DW-DOMAIN-001 |
 | **Acceptance** | Product owner, 2026-09-28 — accepted after reconciliation of observation/reconnaissance, owner-qualified use, freshness, protected-edge, and raw-input boundaries |
 

@@ -81,7 +81,7 @@ First-party domain and application core code must forbid unsafe Rust. This is no
 
 Necessary native integration stays outside domain/application code behind a bounded adapter and a reviewed safety contract. This ADR grants no permission to load an execution tool or sensitive-proof component into the core through FFI. Required isolation remains governed by ADR-001/002 and later execution/proof decisions.
 
-Ownership and borrowing help control memory access. They do not prove business correctness, prevent all logical races, bound resource use, or isolate mutually distrusting components. Raw client proof material remains inside the isolated ephemeral sensitive boundary. Memory deallocation is not proof of erasure; destructors are not a sufficient cleanup guarantee for abnormal termination.
+Ownership and borrowing help control memory access. They do not prove business correctness, prevent all logical races, bound resource use, or isolate mutually distrusting components. Raw client proof material remains inside the isolated ephemeral proof boundary. Any separately authorized operational secret remains inside campaign-scoped custody and the eligible execution boundary; Rust core code receives only an opaque reference and safe metadata. Memory deallocation is not proof of erasure; destructors are not a sufficient cleanup guarantee for abnormal termination.
 
 ## 5. Failure, concurrency and recovery obligations
 
@@ -110,7 +110,7 @@ When runtime work is authorized, pin supported toolchains and dependency resolut
 | INV-002 Separate models | Distinct model owners and mutation interfaces; cross-context references do not confer ownership. |
 | INV-003 Reasoning != execution | Types and ports preserve proposal, authority, Gateway, Broker and Adapter boundaries; no bypass of a preceding boundary. |
 | INV-004 Observation != fact | Parsing and types do not promote evidence. PROVISIONAL transient observations retain their limits; exploitation tempo does not lower evidence tiers. |
-| INV-005 Sensitive zero-retention | Core contracts exclude raw client proof material; ownership or destructors do not substitute for ephemeral isolation and cleanup. |
+| INV-005 Sensitive isolation and secret custody | Core contracts exclude raw client proof and operational secret values; ownership or destructors do not substitute for isolated custody, bounded lifetime, or cleanup. |
 | INV-006 Audit integrity | Explicit recoverable outcomes and ADR-003 event obligations; language or adapter code gains no authority to rewrite authoritative evidence. |
 | INV-007 Defender Knowledge Boundary | Mode/campaign admission applies to data, cached context and outcomes; blind reasoning excludes privileged feeds while permitting effects visible from its authorized acquisition context. |
 
@@ -140,4 +140,4 @@ These are future compile-time, contract, integration and recovery verification o
 
 Language facts were checked against primary documentation on 2026-09-28: [Rust ownership](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html), [unsafe Rust](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html), [Drop and its caveats](https://doc.rust-lang.org/std/ops/trait.Drop.html), and [Go FAQ](https://go.dev/doc/faq). These explain language facilities and limitations; the architectural choice is a DuskWeave design judgment.
 
-ADR-004 is **ACCEPTED** by the product owner on 2026-09-28, including the revised reasoning/inference boundaries and review cases. It selects no database, schema, graph representation, IPC protocol, service count, runtime framework or package layout. ADR-005 is the next design dependency; ADR-005..007 are not authored at this acceptance. This records approval of ADR-004 only: the foundation seal defined in build-order section 30 still requires ADR-005..007 and coherent foundation authority. Runtime implementation remains unauthorized.
+ADR-004 is **ACCEPTED** by the product owner on 2026-09-28, including the revised reasoning/inference boundaries and review cases. It selects no database, schema, graph representation, IPC protocol, service count, runtime framework or package layout. ADR-005 is the next design dependency; ADR-005..007 are not authored at this acceptance. This records approval of ADR-004 only: the foundation seal defined in build-order section 30 still requires ADR-005..007 and coherent foundation authority. Runtime implementation remains unauthorized. On 2026-09-29 the product owner authorized the INV-005 campaign-scoped secret-custody boundary amendment reflected here; the historical foundation seal is reopened pending explicit reseal.

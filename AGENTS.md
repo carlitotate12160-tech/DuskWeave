@@ -79,7 +79,7 @@ Never expose arbitrary execution directly to reasoning workers.
 
 Never treat observations as verified facts without reconciliation/evidence.
 
-Never persist raw credential material, customer records, financial records, or sensitive authentication stores.
+Never place raw client content or operational authentication material in core state, ordinary persistence, logs, evidence, operator surfaces, or reasoning context. An explicitly authorized operational secret may be retained and reused only inside isolated campaign-scoped secret custody under PRD-000 INV-005; the core receives only an opaque reference and safe metadata.
 
 Apply PRD-000 INV-007: blind campaign reasoning may adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized current campaign position, subject to source, epistemic status, and sensitive-data rules. Privileged defender/Observer/Grader feeds remain outside blind reasoning; separately authorized defender-informed exercises are labeled and evaluated apart.
 

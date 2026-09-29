@@ -11,9 +11,9 @@
 
 ## 1. Purpose and product outcome
 
-DuskWeave must demonstrate authorized access and objective impact without becoming a repository, viewing surface, or reasoning channel for raw client-sensitive material. When an accepted proof condition cannot be satisfied with synthetic, metadata-only, or other non-sensitive evidence, an expressly authorized minimum DuskWeave-acquired or managed copy of prohibited raw material may exist only inside an isolated ephemeral sensitive boundary long enough to produce an approved opaque derivation.
+DuskWeave must demonstrate authorized access and objective impact without turning ordinary campaign components into a repository, viewing surface, or reasoning channel for raw client-sensitive material. When an accepted proof condition cannot be satisfied with synthetic, metadata-only, or other non-sensitive evidence, an expressly authorized minimum DuskWeave-acquired or managed copy of prohibited raw material may exist only inside an isolated ephemeral proof boundary long enough to produce an approved opaque derivation. Separately authorized operational authentication material may remain reusable across campaign steps only inside isolated campaign-scoped secret custody.
 
-The product outcome is bounded handling with honest disposition: ordinary campaign components receive only non-sensitive semantics; raw content is unavailable to operators, reasoners, evidence history, proof delivery, and durable infrastructure; every boundary attempt ends in a safe disposal outcome or an explicit unresolved incident. The boundary does not authorize acquisition, expand engagement scope, accept an evidence claim, or determine client risk.
+The product outcome is bounded handling with honest disposition: ordinary campaign components receive only non-sensitive semantics and opaque references; raw values are unavailable to operators, reasoners, evidence history, proof delivery, and campaign-core durable infrastructure. Proof content ends after its derivation attempt. An operational secret may instead remain until its bounded campaign lifetime ends, because forced reacquisition would repeat target actions and lose campaign continuity. Neither boundary authorizes acquisition, expands engagement scope, accepts an evidence claim, or determines client risk.
 
 Sensitive handling is a cross-cutting product constraint rather than a sixth operational model. CyberTerrain, FootholdGraph, AttackPathView, ObjectiveState, and CampaignTrajectory retain their existing owners. EvidenceEnvelope and ProofEnvelope may retain only approved non-sensitive or opaque outputs and safe accountability metadata.
 
@@ -23,48 +23,47 @@ Sensitive handling is a cross-cutting product constraint rather than a sixth ope
 | :--- | :--- | :--- |
 | **Sensitive value** | Raw client or third-party material whose exposure, persistence, or reuse is prohibited or restricted; later contracts may represent this meaning as `Sensitive<T>`. | A runtime type, permission to acquire the value, or permission to disclose it. |
 | **Prohibited raw material** | Credentials, password hashes, private keys, authentication stores, personal records, customer or financial data, unrestricted target output, and other content disallowed from ordinary DuskWeave surfaces. | That every item may enter the proof boundary; source authorization remains separate. |
-| **Ephemeral sensitive boundary** | An isolated, purpose-bound processing context in which expressly permitted minimum content may exist only for the active derivation and disposal lifecycle. | A durable vault, quarantine archive, evidence store, operational model, or generic data-processing platform. |
+| **Ephemeral proof boundary** | An isolated, purpose-bound processing context in which expressly permitted minimum client content may exist only for the active derivation and disposal lifecycle. | Secret custody, a durable quarantine archive, evidence store, operational model, or generic data-processing platform. |
+| **Operational secret** | Authentication material separately authorized for use by campaign capabilities, such as a credential, hash, token, ticket, key, or comparable value. | Proof, campaign state, operator knowledge, or execution authority merely because it was obtained. |
+| **Campaign-scoped secret custody** | An isolated responsibility that may hold an operational secret for bounded reuse within one campaign, declared target/identity/capability scope, current authority, and finite lifetime. | A sixth operational model, general credential vault, cross-campaign store, evidence source, or authority to acquire/use the value. |
+| **Opaque secret reference** | A non-secret identifier plus safe scope, provenance, eligibility, availability, lifetime, and disposition metadata used to request an authorized execution-time secret presentation. | The secret value, a recoverable derivative, a bearer authorization, or proof that custody remains available. |
 | **Approved opaque derivation** | A bounded non-sensitive result that substantiates a declared claim without exposing the source content or enabling practical reconstruction or arbitrary guess testing beyond that claim. | Universal proof, a copy of the source, or permission to retrieve the source later. |
-| **Ordinary surface** | Any campaign, evidence, reporting, reasoning, operator, telemetry, retry, diagnostic, or durable surface outside the sensitive boundary. | A place where redaction after persistence makes raw content acceptable. |
+| **Ordinary surface** | Any campaign-core, evidence, reporting, reasoning, operator, telemetry, retry, diagnostic, or durable surface outside the applicable proof or custody boundary. | A place where redaction after persistence makes raw content acceptable. |
 | **Safe accountability metadata** | Non-sensitive context needed to account for authorization, handling attempt, disposition, incident, and affected references without reproducing source content. | A hidden encoding, fingerprint oracle, or recoverable substitute for the raw material. |
 | **Contamination incident** | Known or credible escape—or a potential escape that declared verification coverage cannot rule out—of prohibited raw material to an ordinary surface, unauthorized recipient, replica, or persistence mechanism. | Proof that every copy is known, contained, or remediated. |
 | **Disposal assurance** | The bounded conclusion about whether the attempted disposal completed and whether recovery is infeasible under the accepted sensitivity and threat assumptions. | Absolute future-proof irretrievability or permission to hide residual uncertainty. |
 
 A value remains sensitive through copying, parsing, transformation, or summarization until an accountable egress decision admits a specific derivation as non-sensitive for a declared purpose. A hash, fingerprint, redaction, encoding, or model summary is not automatically opaque or safe.
 
-Zero-retention remains a safety property, while assurance that it was achieved is bounded by the declared sensitive boundary and deployment coverage. A known or credible escape, or a potential escape that this coverage cannot rule out, is treated as a contamination incident rather than evidence of successful zero retention.
+Zero-retention remains the safety property for proof content and for all ordinary surfaces. Campaign-scoped retention of an operational secret is a narrow, separately authorized exception inside its custody boundary, not evidence retention or permission for ordinary persistence. Assurance is bounded by the declared boundary and deployment coverage. A known or credible escape, or a potential escape that this coverage cannot rule out, is treated as a contamination incident rather than evidence of successful isolation or disposal.
 
 ## 3. Actors, ownership, and separation of authority
 
 - The **engagement authority** defines the authorized purpose, target and source bounds, permitted content category, proof condition, recipients, and stopping conditions. It cannot waive INV-005 or authorize raw content as a deliverable.
 - The **operational-model owner** declares the claim and evidentiary need but cannot authorize collection or inspect prohibited raw content merely because it owns the claim.
 - An **authorized capability** may introduce material to the boundary only within its separately validated action authority. Capability success does not admit the material or retain it.
-- The **sensitive-boundary function** enforces purpose, isolation, bounded lifetime, output restrictions, and disposal accountability. It owns no campaign truth and cannot dispatch target actions.
+- The **proof-boundary function** enforces derivation purpose, isolation, attempt-bounded lifetime, output restrictions, and disposal accountability. It owns no campaign truth and cannot dispatch target actions.
+- The **campaign-scoped secret-custody function** holds only separately authorized operational secrets, resolves them only for an eligible execution path, and enforces campaign/scope/lifetime/disposal bounds. It owns no campaign truth, cannot reason or self-authorize, and exposes no raw value to ordinary components.
 - The **derivation function** attempts the predeclared transformation. Its candidate output remains sensitive until egress admission succeeds.
 - The **egress authority** decides whether a candidate derivation is non-sensitive and eligible for its declared EvidenceEnvelope or ProofEnvelope purpose. It does not accept claim sufficiency, mutate owner state, or authorize proof release. Egress admission may be automated under later accepted contracts and need not create a per-value human gate.
 - The **sensitive-remediation authority** handles contamination and affected replicas independently of campaign execution. It cannot falsify campaign history or grant new target authority.
 - The **audit owner** preserves safe accountable history. Campaign capabilities cannot alter authoritative audit evidence.
 
-One component or deployable may support several of these functions only when their permissions, inputs, outputs, and accountability remain separable. No universal custody manager may combine acquisition, campaign state, evidence acceptance, proof release, secret storage, incident response, and audit control.
+One component or deployable may support several of these functions only when their permissions, inputs, outputs, and accountability remain separable. No universal custody manager may combine acquisition, campaign state, evidence acceptance, proof release, secret storage, incident response, and audit control. Secret custody is a bounded trust-boundary responsibility, not a new operational model or a mandate for a separate service.
 
 ## 4. Required handling authorization semantics
 
-Before permitted client content enters the boundary, the following product meaning must be established where applicable:
+Before permitted client content enters the proof boundary, five grouped product decisions must be established where applicable:
 
-1. **Engagement and campaign context**: the isolated context and current authorization under which handling occurs.
-2. **Declared proof condition**: the narrow access or objective claim, accountable owner, and exact result the derivation is intended to establish.
-3. **Least-intrusive proof justification**: why the selected proof is the least intrusive adequate option and why relevant synthetic, metadata, canary, or other non-sensitive alternatives are insufficient or not applicable. This does not require executing every alternative.
-4. **Source and scope bounds**: the authorized resource, validated position, content category, and any third-party or jurisdictional limitation.
-5. **Minimum selection bound**: the smallest practical record, field, interval, or other bounded portion permitted for the derivation.
-6. **Permitted transformation**: the declared derivation purpose and the properties required before its result may leave the boundary.
-7. **Lifetime and termination conditions**: the period or attempt boundary and the success, failure, interruption, cancellation, expiry, or withdrawal conditions that end handling.
-8. **Eligible egress purpose**: the specific EvidenceEnvelope, ProofEnvelope, review, or safe accountability use allowed to receive an admitted derivation.
-9. **Disposal and assurance obligation**: the required disposal outcome, verification basis, accountable authority, and treatment of uncertainty.
-10. **Incident path**: the safe escalation and remediation authority if content escapes, disposal cannot be established, or authorization changes.
+1. **Context and proof purpose**: the campaign, current authority, narrow claim, accountable owner, intended result, and least-intrusive justification. Relevant non-sensitive alternatives need not all be executed, but their inapplicability or insufficiency is stated.
+2. **Source and minimum scope**: the authorized resource, validated position, content category, third-party or jurisdictional limits, and smallest practical selection.
+3. **Transformation and egress**: the permitted derivation and the specific EvidenceEnvelope, ProofEnvelope, review, or safe accountability purpose eligible to receive an admitted non-sensitive result.
+4. **Lifetime and disposal**: the attempt boundary, ending conditions, required disposal outcome, verification basis, accountable authority, and treatment of uncertainty.
+5. **Incident path**: the safe escalation and remediation authority if content escapes, disposal cannot be established, or authorization changes.
 
 Authorization may cover a bounded class of materially equivalent proof attempts when their purpose, source class, selection limit, transformation, egress, and disposal obligations are the same. This avoids a mandatory human gate for every value while preventing authorization from silently broadening through repetition.
 
-Access to a resource, possession of a credential, or approval of an objective does not by itself authorize raw-content handling. The client-content proof exception does not authorize acquiring passwords, private keys, authentication stores, or bulk datasets. Any later capability that must use a secret for execution requires its own accepted product and runtime authority; this PRD grants none.
+Access to a resource, possession of a credential, or approval of an objective does not by itself authorize raw-content handling or secret use. The client-content proof exception does not authorize acquiring passwords, private keys, authentication stores, or bulk datasets. Operational secret acquisition and execution remain separately authorized capability actions; this PRD defines their handling outcome but grants neither acquisition nor runtime authority.
 
 ## 5. Least-content handling
 
@@ -78,23 +77,35 @@ Third-party content encountered on an authorized client system receives the same
 
 ## 6. Boundary lifecycle and propagation
 
-A handling attempt follows one bounded semantic lifecycle:
+A proof-handling attempt follows one bounded semantic lifecycle:
 
 1. validate current action authority and the handling authorization;
-2. admit only the permitted minimum content directly into the sensitive boundary;
+2. admit only the permitted minimum content directly into the proof boundary;
 3. restrict use to the declared transformation and proof condition;
 4. treat every intermediate and candidate output as sensitive;
 5. admit only a specifically approved non-sensitive derivation through egress;
 6. end raw access and perform the required disposal on success, failure, interruption, expiry, cancellation, or withdrawal;
 7. record only safe accountability metadata and the honest disposal disposition.
 
-A DuskWeave-acquired or managed copy of prohibited raw material, and its sensitive intermediates, must not enter durable storage, temporary files, caches, queues, event or retry payloads, logs, traces, metrics labels, crash diagnostics, core dumps, test fixtures, reports, operator interfaces, clipboard-like surfaces, model prompts, training corpora, or authoritative audit payloads. Later architecture must choose a boundary whose normal operation does not replicate sensitive values into those surfaces.
+A DuskWeave-acquired or managed copy of proof content, and its sensitive intermediates, must not enter durable storage, temporary files, caches, queues, event or retry payloads, logs, traces, metrics labels, crash diagnostics, core dumps, test fixtures, reports, operator interfaces, clipboard-like surfaces, model prompts, training corpora, or authoritative audit payloads. Operational secrets are equally prohibited from those ordinary surfaces but follow the distinct custody lifecycle in §6.1. Later architecture must choose boundaries whose normal operation does not replicate sensitive values into prohibited surfaces.
 
 Routine non-sensitive capture remains governed by PRD-007 admission and does not enter this lifecycle merely because it is unprocessed technical output. This PRD governs prohibited raw material and sensitive intermediates, not the client's original data that remains in the client system.
 
 No general raw-data quarantine is permitted. Temporary containment inside the same boundary may continue only while an active disposal or contamination response is being performed. It cannot become an investigation archive, debugging store, or delayed evidence bucket.
 
 Process failure, host failure, lost connectivity, or campaign termination does not change sensitivity or make content eligible for persistence. If the system cannot establish that all boundary-held material followed the required disposition, the attempt remains unresolved and dependent claims cannot treat cleanup as complete.
+
+### 6.1 Campaign-scoped operational secret custody
+
+Operational secret custody exists only when a separate engagement and capability authority permits acquisition or client provision of the secret and identifies the campaign, source/provenance, secret category, target and identity bounds, eligible capability class, finite lifetime, stopping conditions, and disposal obligation. A class authorization may cover materially equivalent uses, but possession or successful prior use never expands scope or replaces current deterministic authority.
+
+The raw value may be presented only inside the custody and eligible execution boundary. The five operational models, campaign-core PostgreSQL, events and retries, observations, EvidenceEnvelope, ProofEnvelope, operators, reasoners, logs, traces, crash surfaces, and reports receive only an opaque reference and safe metadata such as campaign binding, category, source reference, scope, eligibility, availability, expiry, and disposition. Safe metadata cannot contain a reversible value, verifier, reusable hash, or lookup oracle.
+
+Custody is non-durable by default. It may survive an authorized pause, core restart, or worker replacement only when the engagement expressly requires campaign resumability. That product permission does not select a store, encryption, key, process, container, or recovery mechanism. The secret remains confined to the same campaign and cannot be reused for another campaign, retest, customer, mode, or scope merely because the target or value appears identical.
+
+Every use resolves the opaque reference only after current campaign, action, target, identity, applicable origin condition, capability, scope, safety, and secret-lifetime checks pass. A denied, expired, revoked, invalidated, unavailable, or unresolved reference cannot be retried through automatic reacquisition, replay of the originating target action, or substitution of a recovered value. The affected action stops or follows a separately authorized changed premise.
+
+Use eligibility ends at the earliest applicable lease expiry, secret invalidation, revocation, campaign termination, or authorization withdrawal. A recoverable safety freeze blocks use but may keep custody sealed only while current authority and lifetime still permit recovery. Ending custody triggers disposal of DuskWeave-held copies and a safe disposition; it does not claim that the original client-side credential was revoked or erased. Unverified cleanup, suspected replicas, or exposure outside custody becomes a contamination incident; target-side revocation or cleanup remains a separately authorized client/capability action, and withdrawal never creates that authority.
 
 ## 7. Opaque derivation and egress admission
 
@@ -149,14 +160,14 @@ Contamination blocks only affected data flow, evidence use, proof, and disclosur
 ## 10. Authority, stopping, and completion semantics
 
 - **Boundary unavailable or ineligible**: do not acquire client content; use an eligible non-sensitive proof or report the claim as inconclusive.
-- **Authorization absent, expired, or withdrawn**: block new admission immediately. Dispose of local boundary-held material without initiating a new target-side action; preserve uncertain external effects.
+- **Authorization absent, expired, or withdrawn**: block new proof admission and secret resolution immediately. Dispose of locally held proof material and any custody whose lifetime ended, without initiating a new target-side action; preserve uncertain external effects.
 - **Selection bound exceeded**: stop intake, contain only inside the active boundary, and dispose or escalate safely.
 - **Derivation failure**: dispose of sensitive inputs and intermediates; do not persist them for debugging or automatic retry.
 - **Egress uncertainty**: withhold the output and narrow the dependent claim.
 - **Disposal uncertainty**: open or retain the affected incident and report residual risk; do not claim verified zero retention.
 - **External recipient or replica unavailable**: preserve safe accountability and the unresolved remediation requirement without inventing control over that surface.
-- **Campaign termination**: finish only local sensitive disposal and safe incident handling that require no withdrawn target authority; target-side cleanup remains governed by PRD-001.
-- **Safety freeze**: block affected handling and new egress immediately; resume only after current authority and boundary eligibility are re-established.
+- **Campaign termination**: revoke every campaign-scoped secret reference, finish only local sensitive disposal and safe incident handling that require no withdrawn target authority, and record each safe or unresolved disposition; target-side cleanup remains governed by PRD-001.
+- **Safety freeze**: block affected proof handling, secret resolution, and new egress immediately. Custody may remain sealed only while its current authority and lifetime still allow recoverable suspension; resume only after authority and boundary eligibility are re-established.
 
 For any affected handling stop or incident, the operator or control team receives only a safe outcome containing the stable incident or handling reference, affected operation, disposition, residual risk, and permitted next action or escalation. The outcome may indicate that the dependent claim is inconclusive, that a broader safety freeze is required by current authority, or that the client incident owner must act; it never includes a raw preview or creates a universal case-management workflow or response-time commitment.
 
@@ -176,24 +187,32 @@ Synthetic and metadata proof cannot establish a narrowly declared objective. Exp
 
 An authorized diagnostic unexpectedly returns a credential alongside eligible metadata. The credential is not admitted to Observation, EvidenceEnvelope, logs, operator display, or reasoning. It is disposed of inside the boundary; only its category, affected attempt reference, and safe disposition remain. Its presence does not authorize credential use.
 
-### 11.4 Derivation crash
+### 11.4 Authorized credential reuse
+
+A capability obtains an operational credential under separate action authority. Custody binds it to Campaign A, the permitted target/identity and capability class, and a finite lifetime. Access, Pathing, and reasoning receive only an opaque reference and safe eligibility metadata. Two later expansion actions may request that reference, but custody presents the value only after each action passes current authority and origin checks. A pause does not force reacquisition when resumability was expressly authorized. Campaign A termination revokes the reference and triggers local disposal; Campaign B cannot reuse it.
+
+### 11.5 Custody unavailable after restart
+
+Campaign A resumes after a core restart, but the applicable custody value is unavailable. The opaque reference becomes unavailable; the campaign does not reconstruct it from metadata, replay the acquisition action, or claim the prior foothold is currently usable. Adaptation may use a separately authorized changed premise.
+
+### 11.6 Derivation crash
 
 The derivation process terminates after receiving permitted minimum content and before egress. No candidate output is released. If the boundary can validate disposal of all held material, the claim remains inconclusive with a safe failed-attempt record. If not, a contamination incident remains open.
 
-### 11.5 Late log contamination
+### 11.7 Late log contamination
 
 A prohibited fragment is later found in an ordinary diagnostic sink. Propagation and dependent proof release stop. Safe references identify affected consumers; the independent remediation path addresses the bytes and any replicas while a linked correction preserves the historical account. A campaign capability never edits the audit record.
 
-### 11.6 Backup or recipient uncertainty
+### 11.8 Backup or recipient uncertainty
 
 A contaminated ordinary store may have entered a backup, or an invalid release may have reached a client recipient. A deletion request or primary-store cleanup does not prove all copies are gone. The incident records inaccessible surfaces and residual risk until accountable validation is available.
 
 ## 12. Observable acceptance criteria
 
-1. Reviewers can distinguish a sensitive value, ephemeral boundary, approved opaque derivation, safe accountability metadata, contamination incident, and disposal assurance without creating a sixth operational model.
-2. Within the declared sensitive boundary and deployment coverage, verification can establish that prohibited raw material and sensitive intermediates reached no durable, cognitive, operator-facing, telemetry, retry, diagnostic, evidence, proof, or audit payload surface during successful, failed, interrupted, expired, cancelled, or withdrawn handling. A known or credible escape, or a potential escape that this coverage cannot rule out, becomes a contamination incident and cannot be reported as zero retention achieved.
+1. Reviewers can distinguish a sensitive value, ephemeral proof boundary, campaign-scoped secret custody, opaque secret reference, approved opaque derivation, safe accountability metadata, contamination incident, and disposal assurance without creating a sixth operational model.
+2. Within the declared proof/custody boundaries and deployment coverage, verification can establish that prohibited raw material and sensitive intermediates reached no ordinary durable, cognitive, operator-facing, telemetry, retry, diagnostic, evidence, proof, or audit payload surface during successful, failed, interrupted, expired, cancelled, or withdrawn handling. A known or credible escape, or a potential escape that this coverage cannot rule out, becomes a contamination incident and cannot be reported as successful isolation or disposal.
 3. A proof attempt documents a least-intrusive proof justification, stops when sufficient, and admits only the minimum authorized client content when relevant non-sensitive options are insufficient or not applicable; it need not execute every alternative.
-4. Access, objective approval, possession of a secret, or capability success cannot independently authorize client-content handling.
+4. Access, objective approval, possession of a secret, or capability success cannot independently authorize client-content handling, secret retention, or secret use.
 5. Every candidate output remains sensitive until purpose-bound egress admission establishes that it is non-sensitive and adequately resistant to reconstruction or arbitrary guess testing.
 6. A hash, redaction, process exit, delete request, cleanup command, expiry, or tool-success result cannot by itself establish opaque proof or validated disposal.
 7. No raw-data quarantine, debugging archive, training corpus, or speculative future-use store is created.
@@ -204,6 +223,10 @@ A contaminated ordinary store may have entered a backup, or an invalid release m
 12. Cross-engagement, cross-campaign, cross-mode, and third-party material remain isolated and require their own authority; similarity does not authorize reuse.
 13. Runtime wiring, cryptography, storage, sanitization technique, and key management remain unselected until their ADRs and contracts are accepted.
 14. PRD-007 Observation, PRD-008 EvidenceEnvelope, and PRD-009 ProofEnvelope receive only eligible non-sensitive semantics and retain their existing ownership.
+15. A separately authorized operational secret can be reused across eligible steps and an expressly authorized resumable pause without exposing its value outside campaign-scoped custody or creating a new human approval for every materially equivalent use.
+16. Every secret use rechecks current campaign, action, target, identity, applicable origin condition, capability, scope, safety, availability, and lifetime; an opaque reference never acts as bearer authority.
+17. Secret custody defaults to non-durable, never crosses campaign/retest boundaries, and ends on the earliest applicable expiry, invalidation, revocation, campaign termination, or authorization withdrawal with an honest disposal disposition.
+18. After custody loss or an unknown execution outcome, recovery does not reconstruct the secret, replay acquisition, or repeat a target-side action automatically.
 
 ## 13. Explicit non-goals and deferred work
 
@@ -213,14 +236,14 @@ This PRD does not define:
 - container, process, memory-locking, swap, core-dump, filesystem, queue, broker, telemetry, crash, backup, replication, or cloud-isolation mechanisms;
 - encryption algorithms, proof fingerprints, engagement keys, key custody, cryptographic erasure, overwrite, purge, media destruction, or sanitization tooling;
 - a universal data-classification engine, DLP platform, custody manager, privacy programme, records manager, evidence store, report manager, or incident-response suite;
-- a durable raw-data quarantine, credential vault, secret-recovery service, debugging archive, client-data lake, model-training corpus, or reuse across engagements;
-- permission to acquire passwords, private keys, authentication stores, bulk datasets, memory images, unrestricted target output, or any content outside an expressly authorized proof condition;
+- a durable raw-data quarantine, general-purpose or cross-campaign credential vault, secret-recovery service, debugging archive, client-data lake, model-training corpus, or reuse across engagements;
+- independent permission to acquire passwords, private keys, tokens, authentication stores, bulk datasets, memory images, unrestricted target output, or any content outside an expressly authorized proof or capability condition;
 - payload behavior, collection commands, exfiltration channels, target-side staging, acquisition retry, client backup repair, recipient-side erasure, or target cleanup;
 - legal interpretation, data-subject consent, breach-notification law, jurisdiction selection, contractual retention, client risk acceptance, or regulatory compliance certification;
 - absolute future-proof irretrievability, guaranteed knowledge of every replica, or proof that an external recipient deleted data.
 
-ADR-011 must choose the sensitive-data barrier architecture and remediation authority boundaries. ADR-010 and ADR-012 govern proof fingerprints and engagement proof keys only after their dependencies are accepted. ADR-009 must preserve safe accepted-history and correction semantics without retaining prohibited bytes. Domain contracts later define the applicable handling and failure contracts; runtime remains unauthorized.
+ADR-011 must choose the sensitive-data barrier architecture, campaign-scoped secret-custody boundary, and remediation authority boundaries. ADR-010 and ADR-012 govern proof fingerprints and engagement proof keys only after their dependencies are accepted. ADR-009 must preserve safe accepted-history and correction semantics without retaining prohibited bytes. PRD-011/ADR-013/ADR-015 and PRD-012/ADR-016 must later define secret-enabled capability admission, execution-time presentation, isolation, cancellation, and recovery contracts. Runtime remains unauthorized.
 
 ---
 
-**Authoring boundary:** PRD-010 is `PROPOSED`. It does not accept ADR-008..012, change the active `DW-FOUNDATION-001` seal, seal `DW-DOMAIN-001`, or authorize sensitive-data acquisition, runtime isolation, sanitization tooling, proof cryptography, capability execution, or Stage 5 implementation.
+**Authoring boundary:** PRD-010 is `PROPOSED`. It does not accept ADR-008..012, reseal `DW-FOUNDATION-001`, seal `DW-DOMAIN-001`, or authorize sensitive-data acquisition, runtime isolation, sanitization tooling, proof cryptography, capability execution, or Stage 5 implementation.
