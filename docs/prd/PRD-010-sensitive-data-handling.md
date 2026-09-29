@@ -11,7 +11,7 @@
 
 ## 1. Purpose and product outcome
 
-DuskWeave must demonstrate authorized access and objective impact without becoming a repository, viewing surface, or reasoning channel for raw client-sensitive material. When an accepted proof condition cannot be satisfied with synthetic, metadata-only, or other non-sensitive evidence, expressly authorized minimum client content may exist only inside an isolated ephemeral sensitive boundary long enough to produce an approved opaque derivation.
+DuskWeave must demonstrate authorized access and objective impact without becoming a repository, viewing surface, or reasoning channel for raw client-sensitive material. When an accepted proof condition cannot be satisfied with synthetic, metadata-only, or other non-sensitive evidence, an expressly authorized minimum DuskWeave-acquired or managed copy of prohibited raw material may exist only inside an isolated ephemeral sensitive boundary long enough to produce an approved opaque derivation.
 
 The product outcome is bounded handling with honest disposition: ordinary campaign components receive only non-sensitive semantics; raw content is unavailable to operators, reasoners, evidence history, proof delivery, and durable infrastructure; every boundary attempt ends in a safe disposal outcome or an explicit unresolved incident. The boundary does not authorize acquisition, expand engagement scope, accept an evidence claim, or determine client risk.
 
@@ -27,10 +27,12 @@ Sensitive handling is a cross-cutting product constraint rather than a sixth ope
 | **Approved opaque derivation** | A bounded non-sensitive result that substantiates a declared claim without exposing the source content or enabling practical reconstruction or arbitrary guess testing beyond that claim. | Universal proof, a copy of the source, or permission to retrieve the source later. |
 | **Ordinary surface** | Any campaign, evidence, reporting, reasoning, operator, telemetry, retry, diagnostic, or durable surface outside the sensitive boundary. | A place where redaction after persistence makes raw content acceptable. |
 | **Safe accountability metadata** | Non-sensitive context needed to account for authorization, handling attempt, disposition, incident, and affected references without reproducing source content. | A hidden encoding, fingerprint oracle, or recoverable substitute for the raw material. |
-| **Contamination incident** | Known or credible escape of prohibited raw material to an ordinary surface, unauthorized recipient, replica, or persistence mechanism. | Proof that every copy is known, contained, or remediated. |
+| **Contamination incident** | Known or credible escape—or a potential escape that declared verification coverage cannot rule out—of prohibited raw material to an ordinary surface, unauthorized recipient, replica, or persistence mechanism. | Proof that every copy is known, contained, or remediated. |
 | **Disposal assurance** | The bounded conclusion about whether the attempted disposal completed and whether recovery is infeasible under the accepted sensitivity and threat assumptions. | Absolute future-proof irretrievability or permission to hide residual uncertainty. |
 
 A value remains sensitive through copying, parsing, transformation, or summarization until an accountable egress decision admits a specific derivation as non-sensitive for a declared purpose. A hash, fingerprint, redaction, encoding, or model summary is not automatically opaque or safe.
+
+Zero-retention remains a safety property, while assurance that it was achieved is bounded by the declared sensitive boundary and deployment coverage. A known or credible escape, or a potential escape that this coverage cannot rule out, is treated as a contamination incident rather than evidence of successful zero retention.
 
 ## 3. Actors, ownership, and separation of authority
 
@@ -51,7 +53,7 @@ Before permitted client content enters the boundary, the following product meani
 
 1. **Engagement and campaign context**: the isolated context and current authorization under which handling occurs.
 2. **Declared proof condition**: the narrow access or objective claim, accountable owner, and exact result the derivation is intended to establish.
-3. **Lesser-proof exhaustion**: why synthetic material, metadata, canaries, or other non-sensitive evidence is insufficient for that condition.
+3. **Least-intrusive proof justification**: why the selected proof is the least intrusive adequate option and why relevant synthetic, metadata, canary, or other non-sensitive alternatives are insufficient or not applicable. This does not require executing every alternative.
 4. **Source and scope bounds**: the authorized resource, validated position, content category, and any third-party or jurisdictional limitation.
 5. **Minimum selection bound**: the smallest practical record, field, interval, or other bounded portion permitted for the derivation.
 6. **Permitted transformation**: the declared derivation purpose and the properties required before its result may leave the boundary.
@@ -66,7 +68,7 @@ Access to a resource, possession of a credential, or approval of an objective do
 
 ## 5. Least-content handling
 
-The product first seeks proof that avoids client content. Synthetic markers, canaries, bounded metadata, safe technical observations, and already approved opaque material are preferred. Once the declared proof burden is satisfied, collection for that condition stops.
+The product selects the least intrusive proof adequate for the declared condition. Synthetic markers, canaries, bounded metadata, safe technical observations, and already approved opaque material are preferred when applicable, but authorization does not require executing each alternative before a justified bounded client-content attempt. Once the declared proof burden is satisfied, collection for that condition stops.
 
 If client content is still necessary, the proposal identifies and the current action and handling authorities validate the minimum bounded portion needed for the predeclared derivation. The authorized capability may admit no more than that bound. Convenience, possible future analysis, model training, debugging, completeness, or speculative reuse cannot justify additional content. Unrestricted command output, database dumps, mailbox exports, directory trees, memory images, authentication stores, and similar bulk material are ineligible unless another accepted product decision expressly changes the governing authority.
 
@@ -86,7 +88,9 @@ A handling attempt follows one bounded semantic lifecycle:
 6. end raw access and perform the required disposal on success, failure, interruption, expiry, cancellation, or withdrawal;
 7. record only safe accountability metadata and the honest disposal disposition.
 
-Raw content and sensitive intermediates must not enter durable storage, temporary files, caches, queues, event or retry payloads, logs, traces, metrics labels, crash diagnostics, core dumps, test fixtures, reports, operator interfaces, clipboard-like surfaces, model prompts, training corpora, or authoritative audit payloads. Later architecture must choose a boundary whose normal operation does not replicate sensitive values into those surfaces.
+A DuskWeave-acquired or managed copy of prohibited raw material, and its sensitive intermediates, must not enter durable storage, temporary files, caches, queues, event or retry payloads, logs, traces, metrics labels, crash diagnostics, core dumps, test fixtures, reports, operator interfaces, clipboard-like surfaces, model prompts, training corpora, or authoritative audit payloads. Later architecture must choose a boundary whose normal operation does not replicate sensitive values into those surfaces.
+
+Routine non-sensitive capture remains governed by PRD-007 admission and does not enter this lifecycle merely because it is unprocessed technical output. This PRD governs prohibited raw material and sensitive intermediates, not the client's original data that remains in the client system.
 
 No general raw-data quarantine is permitted. Temporary containment inside the same boundary may continue only while an active disposal or contamination response is being performed. It cannot become an investigation archive, debugging store, or delayed evidence bucket.
 
@@ -144,7 +148,7 @@ Contamination blocks only affected data flow, evidence use, proof, and disclosur
 
 ## 10. Authority, stopping, and completion semantics
 
-- **Boundary unavailable or ineligible**: do not acquire client content; use lesser proof or report the claim as inconclusive.
+- **Boundary unavailable or ineligible**: do not acquire client content; use an eligible non-sensitive proof or report the claim as inconclusive.
 - **Authorization absent, expired, or withdrawn**: block new admission immediately. Dispose of local boundary-held material without initiating a new target-side action; preserve uncertain external effects.
 - **Selection bound exceeded**: stop intake, contain only inside the active boundary, and dispose or escalate safely.
 - **Derivation failure**: dispose of sensitive inputs and intermediates; do not persist them for debugging or automatic retry.
@@ -153,6 +157,8 @@ Contamination blocks only affected data flow, evidence use, proof, and disclosur
 - **External recipient or replica unavailable**: preserve safe accountability and the unresolved remediation requirement without inventing control over that surface.
 - **Campaign termination**: finish only local sensitive disposal and safe incident handling that require no withdrawn target authority; target-side cleanup remains governed by PRD-001.
 - **Safety freeze**: block affected handling and new egress immediately; resume only after current authority and boundary eligibility are re-established.
+
+For any affected handling stop or incident, the operator or control team receives only a safe outcome containing the stable incident or handling reference, affected operation, disposition, residual risk, and permitted next action or escalation. The outcome may indicate that the dependent claim is inconclusive, that a broader safety freeze is required by current authority, or that the client incident owner must act; it never includes a raw preview or creates a universal case-management workflow or response-time commitment.
 
 Engagement delivery authority cannot override failed sensitivity admission, unresolved contamination, or unsafe egress. Legal, privacy, records, and contractual authorities may further restrict handling; their absence or disagreement blocks the affected operation rather than being decided by DuskWeave.
 
@@ -185,14 +191,14 @@ A contaminated ordinary store may have entered a backup, or an invalid release m
 ## 12. Observable acceptance criteria
 
 1. Reviewers can distinguish a sensitive value, ephemeral boundary, approved opaque derivation, safe accountability metadata, contamination incident, and disposal assurance without creating a sixth operational model.
-2. Raw sensitive material reaches no durable, cognitive, operator-facing, telemetry, retry, diagnostic, evidence, proof, or audit payload surface during successful, failed, interrupted, expired, cancelled, or withdrawn handling.
-3. A proof attempt uses synthetic or non-sensitive evidence first, stops when sufficient, and admits only the minimum authorized client content when lesser proof is insufficient.
+2. Within the declared sensitive boundary and deployment coverage, verification can establish that prohibited raw material and sensitive intermediates reached no durable, cognitive, operator-facing, telemetry, retry, diagnostic, evidence, proof, or audit payload surface during successful, failed, interrupted, expired, cancelled, or withdrawn handling. A known or credible escape, or a potential escape that this coverage cannot rule out, becomes a contamination incident and cannot be reported as zero retention achieved.
+3. A proof attempt documents a least-intrusive proof justification, stops when sufficient, and admits only the minimum authorized client content when relevant non-sensitive options are insufficient or not applicable; it need not execute every alternative.
 4. Access, objective approval, possession of a secret, or capability success cannot independently authorize client-content handling.
 5. Every candidate output remains sensitive until purpose-bound egress admission establishes that it is non-sensitive and adequately resistant to reconstruction or arbitrary guess testing.
 6. A hash, redaction, process exit, delete request, cleanup command, expiry, or tool-success result cannot by itself establish opaque proof or validated disposal.
 7. No raw-data quarantine, debugging archive, training corpus, or speculative future-use store is created.
 8. Boundary failure produces an inconclusive or limited claim rather than persistence, automatic recollection, or repeated target action.
-9. Late contamination blocks affected propagation and disclosure, identifies downstream dependencies through safe references, and preserves linked corrections without copying prohibited content.
+9. Late contamination and other affected handling incidents block affected propagation and disclosure, identify downstream dependencies through safe references, preserve linked corrections without copying prohibited content, and provide the operator or control team only the safe incident or handling reference, affected operation, disposition, residual risk, and permitted next action or escalation.
 10. Sensitive remediation remains independent of campaign execution; when prohibited bytes contaminate an authoritative audit surface, only a separately authorized audit-preserving correction or remediation path may remove or neutralize those bytes while retaining safe linked accountability, and it cannot falsify, disable, or conceal authoritative audit history.
 11. Disposal uncertainty, inaccessible replicas, backup exposure, and recipient-side uncertainty remain explicit residual risk rather than successful zero-retention claims.
 12. Cross-engagement, cross-campaign, cross-mode, and third-party material remain isolated and require their own authority; similarity does not authorize reuse.
