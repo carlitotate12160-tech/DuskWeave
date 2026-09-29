@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | PRD-009 |
 | **Title** | Client Proof |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
 | **Stage** | Stage 4 — Reality & Evidence |
 | **Direct Dependency** | [PRD-008 Evidence Model](PRD-008-evidence.md) — ACCEPTED |
 | **Target Seal** | DW-DOMAIN-001 |
@@ -212,4 +212,4 @@ ADR-010 will choose proof-fingerprint architecture only after its dependencies a
 
 ---
 
-**Authoring boundary:** PRD-009 is `PROPOSED`. It does not accept ADR-008..010, accept PRD-010, change the active `DW-FOUNDATION-001` seal, seal `DW-DOMAIN-001`, or authorize runtime, proof delivery infrastructure, acquisition tooling, capability execution, or Stage 5 implementation.
+**Acceptance record:** The product owner explicitly accepted PRD-009 on 2026-09-29 after refinement of actionable remediation, stable client-facing finding traceability, bounded scanner-signal reporting, attack-narrative composition, and completion-scope distinctions. This acceptance does not accept ADR-008..010 or PRD-010, change the active `DW-FOUNDATION-001` seal, seal `DW-DOMAIN-001`, or authorize runtime, proof delivery infrastructure, acquisition tooling, capability execution, or Stage 5 implementation.
