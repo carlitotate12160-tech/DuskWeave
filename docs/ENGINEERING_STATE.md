@@ -6,11 +6,13 @@
 - **Workspace**: `D:/DuskWeave`
 - **Current Phase**: Stage 4 — Reality & Evidence design (`PRD-007..010` ACCEPTED; `ADR-008` research-first design next)
 - **Active Seal**: `DW-FOUNDATION-001`
-- **Seal Status**: **REOPENED — READY FOR EXPLICIT RESEAL DECISION** (product-owner-authorized INV-005 amendment reconciled; no automatic reseal)
-- **Historical Sealed Authority Baseline**: `5883fa52cd063083350a41a293e0bd654d500d63`
-- **Target Next Seal**: explicit `DW-FOUNDATION-001` reseal; `DW-DOMAIN-001` remains later and requires accepted Stage 4 design plus Stage 5 domain contracts
+- **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified)
+- **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
+- **Prior Sealed Authority Baseline**: `5883fa52cd063083350a41a293e0bd654d500d63`
+- **Target Next Seal**: `DW-DOMAIN-001`, after accepted Stage 4 design and Stage 5 domain contracts
 - **Date Historically Sealed**: 2026-09-28
 - **Date Reopened**: 2026-09-29
+- **Date Resealed**: 2026-09-29
 
 ---
 
@@ -54,17 +56,17 @@ Semua interaksi dan rencana tunduk pada:
 ## 5. Foundation Seal Evidence
 
 - **Authority completeness**: PRD-000..006 dan ADR-001..007 berstatus `ACCEPTED`.
-- **Coherence**: Historical F1–F7 reconciliation remains recorded. The 2026-09-29 INV-005 amendment preserves five operational models and ordinary-surface zero exposure while allowing bounded campaign-scoped operational-secret custody. Refreshed cross-foundation terminology and status scans found no new contradiction; the foundation remains reopened only for an explicit reseal decision.
-- **Document verification**: Current check covered 41 tracked Markdown files and 87 relative links with zero broken links; all changed documents remain below 400 lines and `git diff --check` passes. Historical baseline evidence remains attributable to the 2026-09-28 seal.
+- **Coherence**: Historical F1–F7 reconciliation remains recorded. The accepted 2026-09-29 INV-005 amendment preserves five operational models and ordinary-surface zero exposure while allowing bounded campaign-scoped operational-secret custody. Refreshed cross-foundation terminology and status scans found no new contradiction.
+- **Document verification**: The reseal check covered 41 tracked Markdown files and 87 relative links with zero broken links; all documents remain below 400 lines, current-status scans are coherent, and `git show --check` passes for the sealed baseline.
 - **Review**: One refreshed adversarial review covered initial access without a foothold, authorized reuse, resumable restart, custody loss, cross-campaign isolation, PostgreSQL/evidence contamination, safety freeze, termination/withdrawal, in-flight uncertainty, and the distinction between disposing DuskWeave-held copies and revoking the client-side credential. No blocking contradiction remains.
-- **Scope**: Seal ini menerima foundation design. Tidak ada runtime, tool integration, payload implementation, atau CI result yang diklaim.
-- **Product-owner action**: Pemilik produk secara eksplisit mengotorisasi `DW-FOUNDATION-001` pada 2026-09-28.
+- **Scope**: Seal ini menerima foundation design pada baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. Tidak ada runtime, tool integration, payload implementation, atau CI result yang diklaim.
+- **Product-owner action**: Pemilik produk secara eksplisit mengotorisasi reseal `DW-FOUNDATION-001` pada 2026-09-29 setelah menerima PRD-010.
 
 ---
 
 ## 6. Next Immediate Action
 
-`DW-FOUNDATION-001` historically sealed on 2026-09-28 and remains reopened only until the explicitly authorized 2026-09-29 reseal is recorded after final coherence verification. `PRD-007 Observation Model`, `PRD-008 Evidence Model`, `PRD-009 Client Proof`, dan `PRD-010 Sensitive Data Handling` berstatus `ACCEPTED`. ADR-008 masih unauthored/unaccepted; sebelum penyusunan, tahap berikutnya wajib meneliti sumber primer tentang praktik operator nyata lalu memisahkan fakta sumber dari inference arsitektur. ADR-009..012 tetap menunggu dependency masing-masing. Belum ada Nmap, Nuclei, shell adapter, atau runtime implementation.
+`DW-FOUNDATION-001` telah direseal secara eksplisit pada 2026-09-29 terhadap authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. `PRD-007 Observation Model`, `PRD-008 Evidence Model`, `PRD-009 Client Proof`, dan `PRD-010 Sensitive Data Handling` berstatus `ACCEPTED`. ADR-008 masih unauthored/unaccepted; sebelum penyusunan, tahap berikutnya wajib meneliti sumber primer tentang praktik operator nyata lalu memisahkan fakta sumber dari inference arsitektur. ADR-009..012 tetap menunggu dependency masing-masing. Belum ada Nmap, Nuclei, shell adapter, atau runtime implementation.
 
 Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`. Revisi pemilik produk pada 2026-09-27 menetapkan INV-007 Defender Knowledge Boundary di PRD-000 §6 (wording "current campaign position" diselaraskan di seluruh dokumen); PRD-002 diperluas dengan tiered epistemic confidence (Tier 1/2/3) dan status PROVISIONAL; penilaian control gap tetap membedakan bukti konklusif dari telemetry yang tidak lengkap.
 - **DW-DESIGN-002**: PRD-003 Access & Footholds, PRD-004 Expansion Loop, PRD-005 Objective Loop, dan PRD-006 Adaptation diterima pemilik produk pada 2026-09-27 setelah koreksi batas observasi, akses awal, proof sensitif, dan contoh sintetis. Keempatnya `ACCEPTED`; ini bukan seal foundation.
@@ -82,7 +84,7 @@ Sesuai `docs/BUILD_ORDER.md`, PRD-000, PRD-001, dan PRD-002 berstatus `ACCEPTED`
 - **PRD-010 acceptance / INV-005 reconciliation**: Pemilik produk menerima Sensitive Data Handling pada 2026-09-29 setelah review praktik assessment nyata serta sanitization assurance. Proof content tetap attempt-ephemeral, sedangkan operational authentication material yang diotorisasi terpisah boleh digunakan ulang hanya dalam isolated campaign-scoped custody. Core, PostgreSQL, event/retry, observation/evidence/proof, operator, dan reasoner hanya menerima opaque reference serta safe metadata. Custody non-durable secara default, dapat survive pause/restart hanya untuk resumability yang eksplisit, tidak boleh cross-campaign/retest, setiap penggunaan memerlukan current authority, dan termination/withdrawal memicu disposal serta honest disposition. Storage, cryptography, recovery, sanitization, dan runtime mechanism tetap deferred.
 - **Quality enforcement**: Hard cap McCabe adalah 7 per fungsi. Repository masih document-only; analyzer, runtime tests, dependency gates, dan CI belum tersedia. ADR-002 mendefinisikan kewajiban verifikasi saat implementasi diotorisasi, bukan hasil test.
 - **DW-FOUNDATION-COHERENCE-001 reconciliation**: F1–F5 diperbaiki dalam PRD-000/001, QUALITY_BAR.md, dan footer ADR-002/005. Pemeriksaan silang Position/transient/validated, current state/history/correction, stop/freeze/termination, crate/module ownership, link relatif foundation, status, dan INV-001..007 diulang; satu review adversarial atas hasil perubahan menajamkan cakupan safety freeze. F6 kemudian diterima pemilik produk: rapid, bounded, dan persistent engagement memakai satu campaign model dengan operator-authorized envelope; extended duration bukan kewajiban setiap engagement, tidak ada artificial delay, dan expiry menghasilkan bounded-completion report beserta residual uncertainty. Concrete duration presets dan scheduler tetap deferred. F7 kemudian diterima pemilik produk: continuity tidak bergantung pada target-side persistence; arbitrary malware dan unmonitored implant dilarang; temporary managed artifact hanya capability opsional mendatang dengan otorisasi eksplisit, lease/capability bounds, manifest non-sensitive, revocation, expiry, cleanup plan, opaque cleanup evidence, serta residual reporting yang jujur. Format, signing, isolation, transport, dan cleanup mechanism tetap deferred ke Capability/Runtime design. Reconciliation F1–F7 ini sendiri tidak mengotorisasi runtime; seal dicatat terpisah melalui tindakan eksplisit pemilik produk.
-- **Foundation / Stage 4 boundary**: `DW-FOUNDATION-001` historically SEALED pada authority baseline `5883fa52cd063083350a41a293e0bd654d500d63`, lalu REOPENED pada 2026-09-29 untuk INV-005 reconciliation dan explicit reseal. Stage 4 authoring tetap diizinkan; runtime, capability execution, dan tool integration belum diotorisasi.
+- **Foundation / Stage 4 boundary**: `DW-FOUNDATION-001` direseal secara eksplisit pada authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0` setelah INV-005 reconciliation; baseline historis sebelumnya tetap `5883fa52cd063083350a41a293e0bd654d500d63`. Stage 4 authoring tetap diizinkan; runtime, capability execution, dan tool integration belum diotorisasi.
 
 ## 7. Engineering setup maintenance
 
