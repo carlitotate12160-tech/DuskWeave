@@ -303,21 +303,28 @@ shell
 
 ## Sensitive-data rule
 
-Raw sensitive material must remain in an ephemeral sensitive boundary.
+Minimum client content used for proof must remain inside an isolated ephemeral
+proof boundary and be discarded after the active derivation attempt.
 
-It must not be:
+Separately authorized operational authentication material may be retained and
+reused only inside isolated campaign-scoped secret custody under PRD-000
+INV-005. The core and every ordinary surface receive only an opaque reference
+and safe non-secret metadata; custody is non-durable by default and may survive
+an authorized pause or restart only when resumability expressly requires it.
+
+Neither proof content nor an operational secret value may enter:
 
 ```text
-serialized
-logged
-stored
-sent to an LLM
-included in tracing
-written to crash diagnostics
-included in reports
+core or operational-model state
+ordinary persistence, cache, event, or retry payload
+logs, tracing, or crash diagnostics
+operator or report surfaces
+LLM or reasoning context
 ```
 
-Persistent proof must use approved opaque proof material.
+Persistent proof must use approved opaque proof material. Campaign termination,
+authorization withdrawal, revocation, invalidation, or the applicable expiry
+ends secret eligibility and requires an honest custody disposition.
 
 ---
 

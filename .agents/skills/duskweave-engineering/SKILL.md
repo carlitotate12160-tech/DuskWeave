@@ -57,11 +57,14 @@ Do not reduce key terrain to vulnerability severity.
 
 Maintain INV-001..007 as defined in the repository:
 no God Object; separate models; reasoning != execution; observation != fact;
-sensitive-data zero-retention; audit integrity; the mode-specific Defender Knowledge Boundary.
-Proposals do not confer execution authority. Tool success does not prove a goal.
-Do not let campaign capabilities alter authoritative audit evidence.
-Keep raw sensitive client material outside persistence, logs, traces, LLM context,
-reports, fixtures, and crash artifacts. Use synthetic examples.
+sensitive-data isolation and campaign-scoped secret custody; audit integrity;
+the mode-specific Defender Knowledge Boundary. Proposals do not confer execution
+authority. Tool success does not prove a goal. Do not let campaign capabilities
+alter authoritative audit evidence. Keep proof content attempt-ephemeral. Keep
+raw client content and operational secret values outside core and ordinary
+persistence, logs, traces, LLM context, reports, fixtures, and crash artifacts;
+separately authorized operational secrets may remain only in isolated
+campaign-scoped custody under PRD-000 INV-005. Use synthetic examples.
 Apply PRD-000 INV-007: blind campaigns can adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized current campaign position, with epistemic and sensitive-data limits. Privileged defender/Observer/Grader feeds cannot serve as an oracle in blind mode. A separately authorized defender-informed exercise or retest may expose bounded feedback, labeled and evaluated apart from blind results.
 
 Follow the language baseline: Rust for correctness-sensitive core and authority;

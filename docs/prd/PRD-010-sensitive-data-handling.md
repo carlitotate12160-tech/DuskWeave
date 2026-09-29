@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | PRD-010 |
 | **Title** | Sensitive Data Handling |
-| **Status** | PROPOSED |
+| **Status** | ACCEPTED |
 | **Stage** | Stage 4 — Reality & Evidence |
 | **Direct Dependency** | [PRD-009 Client Proof](PRD-009-client-proof.md) — ACCEPTED |
 | **Target Seal** | DW-DOMAIN-001 |
@@ -246,4 +246,4 @@ ADR-011 must choose the sensitive-data barrier architecture, campaign-scoped sec
 
 ---
 
-**Authoring boundary:** PRD-010 is `PROPOSED`. It does not accept ADR-008..012, reseal `DW-FOUNDATION-001`, seal `DW-DOMAIN-001`, or authorize sensitive-data acquisition, runtime isolation, sanitization tooling, proof cryptography, capability execution, or Stage 5 implementation.
+**Acceptance boundary:** PRD-010 was explicitly accepted by the product owner on 2026-09-29 after reconciliation of attempt-ephemeral proof handling and campaign-scoped operational-secret custody. Acceptance does not accept ADR-008..012, seal `DW-DOMAIN-001`, or authorize sensitive-data acquisition, runtime isolation, sanitization tooling, proof cryptography, capability execution, or Stage 5 implementation. `DW-FOUNDATION-001` reseal is recorded separately after coherence verification.

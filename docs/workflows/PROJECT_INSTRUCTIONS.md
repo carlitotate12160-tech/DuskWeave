@@ -62,8 +62,10 @@ Evidence determines accepted state. Observation and inference are not facts.
 INVARIANTS
 No God Objects, universal Agent, GlobalContext, or mixed-responsibility ToolManager.
 Keep domain logic independent of tool clients and infrastructure.
-Never retain raw sensitive client material, including logs, traces, LLM context,
-reports, test fixtures, or crash diagnostics.
+Keep proof content attempt-ephemeral. Keep raw client content and operational
+secret values outside core and ordinary persistence, logs, traces, LLM context,
+reports, test fixtures, and crash diagnostics. Separately authorized operational
+secrets may remain only in isolated campaign-scoped custody under PRD-000 INV-005.
 Campaign capabilities cannot alter authoritative audit evidence.
 Separate campaign execution from defender-observer telemetry.
 Never use defender verdicts as an adaptive evasion oracle.

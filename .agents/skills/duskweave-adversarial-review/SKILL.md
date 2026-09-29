@@ -32,8 +32,9 @@ outranks this portable skill; never borrow BlackBread rules.
    paths for dead code, disconnected islands, and orphan writes. A unit test
    alone does not prove production reachability. Require a relevant consumer
    path test where the stage can execute it.
-4. Challenge INV-001..007, especially sensitive-data zero-retention, audit
-   integrity, and PRD-000's mode-specific Defender Knowledge Boundary.
+4. Challenge INV-001..007, especially INV-005 sensitive-data isolation,
+   campaign-scoped secret custody, audit integrity, and PRD-000's mode-specific
+   Defender Knowledge Boundary.
    In blind mode, privileged defender/Observer/Grader feeds cannot act as an
    oracle; campaign-visible effects and legitimately acquired telemetry require
    validated position, scope, provenance, and observation/fact reconciliation.

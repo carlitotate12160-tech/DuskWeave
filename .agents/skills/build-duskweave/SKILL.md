@@ -43,7 +43,7 @@ Apply INV-001..007 from invariant packet 00:
 - Separate the five operational models.
 - Reasoning produces proposals; deterministic authority validates execution.
 - Observations require reconciliation; inference is not automatically fact.
-- Raw sensitive client material never enters persistent storage or LLM context.
+- Proof content remains attempt-ephemeral; raw client content and operational secret values never enter core or ordinary persistence, evidence, operator, or LLM surfaces. A separately authorized operational secret may remain only in isolated campaign-scoped custody under PRD-000 INV-005.
 - Campaign capabilities cannot alter authoritative audit evidence.
 - PRD-000 INV-007 governs defender knowledge: exclude privileged defender/Observer/Grader feeds from blind reasoning; permit reconciled campaign-visible effects and legitimately acquired telemetry within authorized position and sensitive-data bounds; label and evaluate separately any authorized defender-informed exercise.
 
@@ -123,7 +123,7 @@ Do not dismiss a real defect merely because the current packet cannot fix it.
 ## Review and delivery
 
 Inspect the diff for authority compliance, domain ownership, coupling, evidence,
-freshness, failure semantics, zero-retention, audit integrity, and the mode-specific Defender Knowledge Boundary.
+freshness, failure semantics, INV-005 sensitive-data isolation and campaign-scoped secret custody, audit integrity, and the mode-specific Defender Knowledge Boundary.
 Perform one adversarial review cycle; fix valid in-scope findings.
 Recheck the final changed result and any tests affected by those fixes.
 Follow repository PR/merge rules where applicable. Never create or report a live
