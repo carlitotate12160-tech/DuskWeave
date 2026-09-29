@@ -1,0 +1,36 @@
+name: doc-check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Whitespace and conflict-marker check
+        shell: bash
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base commit; skipping range check"
+            exit 0
+          fi
+          git diff --check "$BASE"..HEAD
+
+      - name: Markdown link and anchor check
+        run: python scripts/check_links.py
