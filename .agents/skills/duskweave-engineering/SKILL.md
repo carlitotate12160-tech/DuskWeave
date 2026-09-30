@@ -64,7 +64,9 @@ alter authoritative audit evidence. Keep proof content attempt-ephemeral. Keep
 raw client content and operational secret values outside core and ordinary
 persistence, logs, traces, LLM context, reports, fixtures, and crash artifacts;
 separately authorized operational secrets may remain only in isolated
-campaign-scoped custody under PRD-000 INV-005. Use synthetic examples.
+campaign-scoped custody under PRD-000 INV-005. Use non-sensitive examples for
+DESIGN and isolated deterministic tests; real-client pilot claims require
+explicitly authorized real observations, not synthetic success evidence.
 Apply PRD-000 INV-007: blind campaigns can adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized current campaign position, with epistemic and sensitive-data limits. Privileged defender/Observer/Grader feeds cannot serve as an oracle in blind mode. A separately authorized defender-informed exercise or retest may expose bounded feedback, labeled and evaluated apart from blind results.
 
 Follow the language baseline: Rust for correctness-sensitive core and authority;
@@ -95,8 +97,10 @@ Do not preselect a database, broker, service topology, or framework from a title
 For contracts, specify inputs, outputs, failures, state ownership, and provenance
 only when the corresponding design stage is permitted.
 
-Treat threat research as evidence, not architecture authority. When needed, use
-primary incident reporting. Distinguish documented behavior from design inference.
+Treat threat research as evidence, not architecture authority. Research material
+ambiguity unresolved by accepted authority and available evidence; do not require
+an operator study for every PRD/ADR. When needed, use primary incident reporting.
+Distinguish documented behavior from operational inference and design decisions.
 Keep threat-actor-specific scenarios outside generic core domains.
 ATT&CK mappings are optional metadata, not the campaign lifecycle.
 

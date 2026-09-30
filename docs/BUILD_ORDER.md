@@ -45,11 +45,13 @@ Current seal:
 
 Current engineering state:
 
-`Stage 4 — Reality & Evidence design; DW-FOUNDATION-001 SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0; PRD-007..010 ACCEPTED; ADR-008 research-first design next`
+`Stage 4 — Reality & Evidence design; DW-FOUNDATION-001 SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0; PRD-007..010 ACCEPTED; ADR-008 authored PROPOSED; owner review next`
 
 Current design document:
 
-`ADR-008 Observation & Fact Separation (not yet authored or accepted); research into real operator practice and primary sources must precede drafting; runtime and tool integration remain unauthorized`
+[ADR-008 Observation & Fact Separation](adr/ADR-008-observation-fact-separation.md) is authored `PROPOSED`; explicit review/acceptance of the full text is next. Targeted research resolves material ambiguity rather than imposing an operator study for every PRD/ADR. Runtime and tool integration remain unauthorized.
+
+[Arah MVP dan deferred scope](MVP_AND_DEFERRED_SCOPE.md) records owner-approved direction and the bounded CODE/TEST -> DEMO -> REVIEW/FIX -> SEAL rhythm. Minimum contracts, milestone file maps, and any sequencing/language amendment still require a scoped decision before implementation; this index does not silently remove existing dependencies.
 
 DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 

@@ -36,8 +36,11 @@ outranks this portable skill; never borrow BlackBread rules.
    campaign-scoped secret custody, audit integrity, and PRD-000's mode-specific
    Defender Knowledge Boundary.
    In blind mode, privileged defender/Observer/Grader feeds cannot act as an
-   oracle; campaign-visible effects and legitimately acquired telemetry require
-   validated position, scope, provenance, and observation/fact reconciliation.
+   oracle. Eligible external/pre-access observations do not require a foothold;
+   transient read-only acquisition retains its PROVISIONAL limits. Legitimately
+   acquired telemetry requires an authorized current campaign position, scope,
+   provenance, and owner reconciliation. Validated-origin requirements apply to
+   consequential follow-on use under the governing contract, not every effect.
    Defender-informed exercises require separate authorization, labeling, and
    evaluation. Observer silence without verified coverage is inconclusive.
 5. For DESIGN documents, check meaning, cross-document dependencies, scope,
@@ -50,6 +53,30 @@ authority, impact, a reproducible counterexample where feasible, and the
 smallest remedy. Classify VALID, FALSE_POSITIVE, or UNVERIFIED; distinguish
 blocking from nonblocking. An out-of-scope valid defect remains valid.
 If no defect survives scrutiny, state the evidence checked and residual limits.
+
+## Operational evidence and proportionality
+
+Check actual authorized vantage, available capability, source/mode eligibility,
+observed result, uncertainty, footprint, and stopping conditions. Do not assume
+origin internals, complete sensor coverage, template safety, or current authority.
+Prefer the smallest informative authorized behavior; do not invent tradecraft
+or architecture to close an evidence gap.
+
+Research only material ambiguity unresolved by accepted authority and available
+evidence. Prefer dated primary sources; separate source facts, operational
+inference, and DuskWeave decisions. Do not require a comprehensive operator study
+for each review or introduce global approval/corroboration gates.
+
+Match evidence to the stage: DESIGN uses source checks and counterexamples;
+IMPLEMENT requires applicable deterministic failure tests and real wiring;
+DEMO uses explicitly authorized client evidence with bounded claims. Isolated
+negative tests remain necessary; never require hazardous fault injection on a
+client. A pilot is not universal safety or stealth proof.
+
+Anchor findings in the actual artifact. If an attributed snippet or behavior is
+absent, mark attribution UNVERIFIED; retain hypothetical cases as review cases,
+not proven defects. Respect owner-specific burden and the actual ADR-004
+component responsibility when reviewing Rust-first changes.
 
 ## Boundaries and handoff
 
