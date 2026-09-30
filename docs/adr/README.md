@@ -31,7 +31,7 @@ Setiap ADR disusun menggunakan struktur baku berikut:
 
 ## 2. ADR Registry & Dependency Index
 
-ADR-001..007 are authored and ACCEPTED. ADR-008 is authored and PROPOSED, awaiting explicit review and acceptance. ADR-009..024 remain reserved decision slots, not authored or accepted documents. Their legacy PROPOSED labels do not satisfy dependencies; verify the corresponding file and acceptance before proceeding.
+ADR-001..008 are authored and ACCEPTED. ADR-009..024 remain reserved decision slots, not authored or accepted documents. Their legacy PROPOSED labels do not satisfy dependencies; verify the corresponding file and acceptance before proceeding.
 
 | ADR ID | Judul Keputusan | Tahapan Terkait | Ketergantungan Langsung | Status |
 | :--- | :--- | :--- | :--- | :--- |
@@ -42,7 +42,7 @@ ADR-001..007 are authored and ACCEPTED. ADR-008 is authored and PROPOSED, awaiti
 | **ADR-005** | PostgreSQL System of Record | Stage 3 | ADR-003, ADR-004 | `ACCEPTED` |
 | **ADR-006** | Cyber Terrain Storage Model | Stage 3 | ADR-005 | `ACCEPTED` |
 | **ADR-007** | Foothold & Path Separation | Stage 3 | ADR-002, ADR-006 | `ACCEPTED` |
-| **ADR-008** | [Observation & Fact Separation](ADR-008-observation-fact-separation.md) | Stage 4 | PRD-007, ADR-003 | `PROPOSED` |
+| **ADR-008** | [Observation & Fact Separation](ADR-008-observation-fact-separation.md) | Stage 4 | PRD-007, ADR-003 | `ACCEPTED` |
 | **ADR-009** | Evidence Immutability | Stage 4 | PRD-008, ADR-008 | `PROPOSED` |
 | **ADR-010** | Proof Fingerprint Architecture | Stage 4 | PRD-009, ADR-009 | `PROPOSED` |
 | **ADR-011** | Sensitive Data Barrier | Stage 4 | PRD-010, ADR-010 | `PROPOSED` |

@@ -5,7 +5,7 @@
 | Recorded | 2026-09-30 |
 | Review base | `d7297dad0f5269b3d95e2bd9dc1d28919c2ecd97` |
 | Status | Owner-approved direction; downstream architecture and implementation remain subject to accepted authority |
-| Authority | PRD-000..010 and ADR-001..007; DW-FOUNDATION-001 unchanged |
+| Authority | PRD-000..010 and ADR-001..008; DW-FOUNDATION-001 unchanged |
 | Purpose | Preserve MVP boundaries and future candidates without designing future subsystems now |
 
 ## 1. MVP direction
@@ -45,6 +45,6 @@ Existing Terrain and Pathing contracts own environmental relationships and candi
 
 Before moving a candidate into implementation: identify the real mission need and owning context, resolve material ambiguity, amend only conflicting accepted decisions, accept the necessary architecture/contracts, and issue one bounded entrypoint-to-consumer packet with failure-path verification.
 
-The owner approved the selected ADR-008 review refinements and the limited relationship-aware MVP direction on 2026-09-30. The roadmap direction and selected refinements are accepted; [full ADR-008](adr/ADR-008-observation-fact-separation.md) is now authored PROPOSED and awaits separate explicit review/acceptance. Engineering/adversarial skills and current status now reflect targeted research, source eligibility and stage-appropriate evidence. Minimum milestone contracts, bounded sequencing changes and the affected ADR-004 language amendment remain pending.
+The owner approved the selected ADR-008 review refinements and the limited relationship-aware MVP direction on 2026-09-30. The roadmap direction and selected refinements are accepted; [full ADR-008](adr/ADR-008-observation-fact-separation.md) was explicitly accepted by the owner on 2026-09-30. Engineering/adversarial skills and current status now reflect targeted research, source eligibility and stage-appropriate evidence. Minimum milestone contracts, bounded sequencing changes and the affected ADR-004 language amendment remain pending.
 
-Next work is review of the full ADR-008, followed by the smallest bounded MVP sequencing/language decision and minimum contracts needed to issue M0. Future candidates do not authorize runtime, tool acquisition, exploit execution, third-party testing, automatic acceptance or a change to DW-FOUNDATION-001.
+Next work is the smallest bounded MVP sequencing/language decision and minimum contracts needed to issue M0. Future candidates do not authorize runtime, tool acquisition, exploit execution, third-party testing, automatic acceptance or a change to DW-FOUNDATION-001.

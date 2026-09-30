@@ -2,13 +2,13 @@
 
 | Metadata | Value |
 | :--- | :--- |
-| Status | PROPOSED |
+| Status | ACCEPTED |
 | Date | 2026-09-30 |
 | Authoring base | `d7297dad0f5269b3d95e2bd9dc1d28919c2ecd97` |
 | Stage | 4 — Reality & Evidence |
 | Direct dependencies | PRD-007; ADR-003 (ACCEPTED) |
 | Governing authority | PRD-000..010; ADR-001..007 (ACCEPTED) |
-| Acceptance boundary | Owner approved the outline/refinements; this authored ADR awaits explicit review and acceptance |
+| Acceptance | Product owner, 2026-09-30; authored ADR accepted at reviewed HEAD `3a8ab67e8aa0e30a7b2e18c0103565f2a1f8b669`; memo language wording corrected without changing this decision |
 
 ## 1. Context & problem statement
 
@@ -26,7 +26,7 @@ premises for consequential use.
 The architecture must enforce these distinctions through bounded interactions,
 without creating a sixth operational model or a generic promotion lifecycle.
 
-The [review memo](../workflows/DW-DESIGN-ADR008-REVIEW.md) separates source facts
+The historical [research/review memo](../workflows/DW-DESIGN-ADR008-REVIEW.md) separates source facts
 from architectural inference. It is targeted research, not a comprehensive
 operator study. The [MVP direction](../MVP_AND_DEFERRED_SCOPE.md) records delivery
 scope separately; it supplies no runtime permission.
@@ -241,6 +241,7 @@ timeouts, queues, additional storage, runtime topology, sanitizer/isolation/
 cryptography mechanisms, CTI connectors and executable capability admission
 remain deferred. Already accepted ADR-003/005 durability is not deferred again.
 
-Next: product-owner review of this authored PROPOSED ADR. ADR-009..012 retain
-their dependency requirements. No automatic acceptance, runtime/acquisition/
-capability authorization, or change to DW-FOUNDATION-001 occurs.
+The product owner accepted this ADR on 2026-09-30. Next: a bounded MVP sequencing
+and minimum-contract decision before issuing M0. ADR-009..012 retain applicable
+dependency requirements; their acceptance is not implied. This acceptance grants
+no runtime/acquisition/capability authority or change to DW-FOUNDATION-001.

@@ -1,12 +1,12 @@
-# ADR-008 Review Memo and Minimal Decision Outline
+# ADR-008 Historical Research and Review Memo
 
 | Metadata | Value |
 | :--- | :--- |
-| Status | Outline/refinements owner-approved on 2026-09-30; historical research memo; full ADR-008 authored PROPOSED separately |
+| Status | HISTORICAL RESEARCH ARCHIVE; full ADR-008 ACCEPTED by the owner on 2026-09-30; no additional acceptance gate |
 | Review base | `d7297dad0f5269b3d95e2bd9dc1d28919c2ecd97` |
 | Branch | `design/inv007-defender-knowledge-boundary` |
 | Date | 2026-09-30 |
-| Authority | PRD-000..010 and ADR-001..007 ACCEPTED |
+| Authority at review base | PRD-000..010 and ADR-001..007 ACCEPTED |
 | Active seal | DW-FOUNDATION-001; baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0` |
 | Scope | Targeted CTI ambiguity, observation/fact outline, and proposed MVP delivery workflow |
 
@@ -16,7 +16,7 @@ The repository remains document-only. The review base adds document-link CI to t
 
 The owner requests an hours-bounded MVP, Rust first, single tenant, real-client pilot evidence, preserved DuskWeave identity, and research only for material ambiguities. This memo researches the distinction between external knowledge, test artifacts, target observations, and accepted claims. It does not claim a comprehensive operator-practice study.
 
-The following records the reviewed proposals and their research basis. The owner approved the selected refinements and MVP direction on 2026-09-30; the [full ADR-008](../adr/ADR-008-observation-fact-separation.md) is now authored PROPOSED and awaits its own acceptance. No foundation reseal, runtime, target acquisition, CTI connector, or capability execution is authorized by this memo.
+The following records the reviewed proposals and their research basis. The owner approved the selected refinements and MVP direction on 2026-09-30; the [full ADR-008](../adr/ADR-008-observation-fact-separation.md) was explicitly accepted by the owner on 2026-09-30. This memo preserves source facts and pre-decision reasoning; the accepted ADR is the decision authority and this archive requires no further approval. No foundation reseal, runtime, target acquisition, CTI connector, or capability execution is authorized by this memo.
 
 ## 2. Primary-source findings and architectural inference
 
@@ -51,11 +51,11 @@ Public feed content remains untrusted data. Its embedded instructions, links, co
 1. The proposed CTI list conflates intelligence, executable test artifacts, technique documentation, and hosting platforms. They require distinct treatment; no accepted PRD change is needed to preserve that distinction.
 2. "Nuclei templates are non-destructive" and "Atomic tests are already safe" are unsupported blanket assertions contradicted by documented execution and environment-changing behavior.
 3. KEV inclusion is not proof of client vulnerability. An unavailable feed or absent entry is not evidence of safety.
-4. The Rust-first adapter direction conflicts with the Go baseline in [ADR-004](../adr/ADR-004-rust-core-language.md). Resolve that through a bounded amendment before the affected implementation.
+4. [ADR-004](../adr/ADR-004-rust-core-language.md) already permits Rust implementations of core persistence, messaging and external-client ports. An amendment is needed only where a component responsibility departs from the Go baseline for tool adapters, collectors, network/integration workers or telemetry adapters. Rust-first is not a blanket conflict and this outstanding component-specific decision does not block ADR-008.
 5. At the review base, Engineering State and Build Order prescribed broad research and serial stages. Their current status now records targeted research and owner-approved MVP direction; a bounded sequencing amendment and minimum implementation contracts remain outstanding.
 6. Concrete external-knowledge input/consumer contracts and capability/execution contracts are not yet accepted. ADR-008 must not invent or authorize those integrations.
 
-## 5. Proposed ADR-008 decision outline
+## 5. Historical ADR-008 decision outline
 
 **Decision:** admit only eligible, bounded, non-sensitive observations at the appropriate input boundary; let each receiving model owner accept or reject claims and qualify non-authoritative use through its own contract.
 
@@ -108,4 +108,4 @@ Defer OpenCTI/MISP hosting and a general feed framework. This proposal selects n
 
 Document review checks ownership, source eligibility, protected-edge scope, provisional use, freshness, correction, sensitive custody, and absence of runtime choices. Future contract tests must demonstrate those guarantees; no runtime tests have been run.
 
-Product-owner review of the outline/refinements is complete; the full ADR-008 has been authored as PROPOSED and requires separate explicit review/acceptance. Accepted PRDs/ADRs and DW-FOUNDATION-001 remain unchanged. No capability, payload, CTI feed connector, target action, or new runtime language is admitted here.
+Product-owner acceptance of the full ADR-008 is recorded on 2026-09-30. This memo is retained for source traceability and imposes no additional review, approval or runtime gate. Other accepted PRDs/ADRs and DW-FOUNDATION-001 remain unchanged. No capability, payload, CTI feed connector, target action, or new runtime language is admitted here.
