@@ -16,6 +16,10 @@ Readability, maintainability, and domain-responsibility isolation are enforced t
 | **Runtime diff per PR/slice** | `< 300 LOC` | `400 LOC` | Must be split into incremental slices (*SPLIT_REQUIRED*). |
 | **Cyclomatic complexity (McCabe)** | `<= 7` per function | `7` per function | A value `> 7` violates the budget; refactor by cohesive responsibility. |
 
+Recorded delivery-budget exceptions (scoped, non-recurring; duplicate records are invalid):
+
+M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=f52cfcc53c183f7c852fba191f9da14858c7ae5d; cap=1200; initial-only
+
 ### Code splitting rules:
 - Strictly forbidden to create dumping-ground files such as `utils.rs`, `helpers.rs`, `common.rs`, or `misc.rs`.
 - File splits must reflect cohesive sub-domains (for example, separating `transition.rs`, `validation.rs`, `error.rs`).
