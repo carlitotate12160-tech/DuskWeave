@@ -64,7 +64,7 @@ outside the business CLI.
 ## Receipts
 
 ```text
-register result=accepted operation=<uuid> event=<uuid> history=<completed|pending|anomaly>
+register result=accepted engagement=<uuid> campaign=<uuid> operation=<uuid> event=<uuid> history=<completed|pending|anomaly>
 register result=unknown  operation=<uuid> action=reconcile_before_retry
 ```
 
@@ -79,8 +79,10 @@ permits an explicit unchanged-intent retry with the same operation.
 | Real CLI register → durable Mission/outbox → history; fresh-process inspect | `tests/registration_cli.rs` |
 | Rollback (explicit + conflicting commit leaves nothing) | `tests/registration_recovery.rs` |
 | Same-intent dedup; conflicting identity; occupied-campaign refusal | `tests/registration_postgres.rs` |
-| Producer lost ack → verified-absence retry; consumer lost ack → one effect | `tests/registration_recovery.rs` |
+| Producer unknown outcome with nothing committed → verified-absence retry; delivery attempt failure before consumer commit → one effect | `tests/registration_recovery.rs` |
+| Producer/consumer ACK lost after real commit → reconcile Committed, original event identity, one effect | `tests/registration_commit_ack.rs` |
 | Pending delivery; original-ID recovery/redelivery | `tests/registration_recovery.rs` |
+| Nil engagement/campaign/operation/event rejected at owner boundary | `tests/mission_registration.rs` |
 | Deterministic concurrency, single winner, visible refusal | `tests/registration_postgres.rs` |
 | Wrong scope/source/version/revision; invalid construction; unsupported commands | `tests/mission_registration.rs`, `tests/registration_cli.rs`, `tests/registration_postgres.rs` |
 | Sensitive sentinel; strict/bounded input; no rejected-byte persistence/echo | `tests/mission_registration.rs`, `tests/registration_cli.rs` |

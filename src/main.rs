@@ -53,15 +53,12 @@ fn flag<'a>(args: &[(&'a str, &'a str)], name: &str) -> Res<&'a str> {
         .ok_or(Fail::Input("invalid_args"))
 }
 
-fn dsn() -> Res<String> {
-    match env::var("DW_DATABASE_URL") {
-        Ok(v) if !v.trim().is_empty() => Ok(v),
-        _ => Err(Fail::Config("missing_env")),
-    }
-}
-
 fn runtime_config() -> Res<postgres::Config> {
-    let cfg: postgres::Config = dsn()?.parse().map_err(|_| Fail::Config("invalid_dsn"))?;
+    let raw = env::var("DW_DATABASE_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .ok_or(Fail::Config("missing_env"))?;
+    let cfg: postgres::Config = raw.parse().map_err(|_| Fail::Config("invalid_dsn"))?;
     check_config(&cfg)?;
     Ok(cfg)
 }

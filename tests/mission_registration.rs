@@ -294,3 +294,30 @@ fn reconcile_surfaces_anomaly() {
         Ok(ReconcileOutcome::Conflicted)
     );
 }
+
+#[test]
+fn register_rejects_nil_identities() {
+    // Owner/API boundary negative controls: each of the four identities
+    // must be non-nil even when construction bypasses the CLI parser.
+    let (op, ev) = (OperationId(uuid(50)), EventId(uuid(60)));
+    let mut i = input();
+    i.engagement_id = EngagementId(Uuid::nil());
+    assert!(matches!(
+        Mission::register(&i, op, ev, 9),
+        Err(Fail::Input(_))
+    ));
+    let mut i = input();
+    i.campaign_id = CampaignId(Uuid::nil());
+    assert!(matches!(
+        Mission::register(&i, op, ev, 9),
+        Err(Fail::Input(_))
+    ));
+    assert!(matches!(
+        Mission::register(&input(), OperationId(Uuid::nil()), ev, 9),
+        Err(Fail::Input(_))
+    ));
+    assert!(matches!(
+        Mission::register(&input(), op, EventId(Uuid::nil()), 9),
+        Err(Fail::Input(_))
+    ));
+}

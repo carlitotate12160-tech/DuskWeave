@@ -181,6 +181,13 @@ impl Mission {
         event_id: EventId,
         now_unix: i64,
     ) -> Res<(Self, MissionRegistered)> {
+        if input.engagement_id.0.is_nil()
+            || input.campaign_id.0.is_nil()
+            || operation_id.0.is_nil()
+            || event_id.0.is_nil()
+        {
+            return Err(Fail::Input("nil_identity"));
+        }
         input.fields.validate()?;
         let mission = Mission {
             engagement_id: input.engagement_id,

@@ -13,14 +13,15 @@ use uuid::Uuid;
 mod db_support;
 use db_support::*;
 
-/// Deterministic consumer-boundary fault: fails the first `deliver` call
-/// with a storage error, then delegates to the real PostgreSQL adapter.
-struct FaultOnceTraj {
+/// Deterministic consumer-boundary fault: the first `deliver` call fails
+/// BEFORE the real commit — nothing is delivered — then delegates.
+/// This is a delivery attempt failure, not a lost consumer ACK.
+struct FaultBeforeDeliverTraj {
     inner: PgTrajectory,
     armed: bool,
 }
 
-impl TrajectoryPort for FaultOnceTraj {
+impl TrajectoryPort for FaultBeforeDeliverTraj {
     fn deliver(&mut self, ev: &MissionRegistered) -> Res<Delivered> {
         if self.armed {
             self.armed = false;
@@ -33,8 +34,9 @@ impl TrajectoryPort for FaultOnceTraj {
     }
 }
 
-/// Deterministic producer-boundary fault: the first commit attempt reports
-/// an unknown outcome (lost acknowledgment) without delegating.
+/// Deterministic producer-boundary fault: reports an unknown outcome
+/// WITHOUT attempting the real commit — nothing is committed — so the
+/// caller may retry after verified absence.
 struct FaultOnceStore<S> {
     inner: S,
     armed: bool,
@@ -66,11 +68,11 @@ impl<S: MissionStore> MissionStore for FaultOnceStore<S> {
 }
 
 #[test]
-fn consumer_fault_after_commit_reconciles_with_one_effect() {
+fn consumer_fault_before_commit_reconciles_with_one_effect() {
     let _g = db();
     let (e, c) = scope(0x5100);
     let (mut alloc, mut store, _) = ports();
-    let mut traj = FaultOnceTraj {
+    let mut traj = FaultBeforeDeliverTraj {
         inner: PgTrajectory::new(runtime_client()),
         armed: true,
     };

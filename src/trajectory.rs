@@ -15,8 +15,7 @@ pub enum Delivered {
 pub enum HistoryStatus {
     Completed,
     Pending,
-    /// Integrity anomaly for this event identity; blocks completion even
-    /// if an accepted row exists.
+    /// Integrity anomaly; blocks completion even if an accepted row exists.
     Anomaly,
 }
 
