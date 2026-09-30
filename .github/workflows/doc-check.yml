@@ -131,7 +131,7 @@ jobs:
           curl -fsSL -o /tmp/cargo-audit.tgz \
             "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.2/cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz"
           tar -xzf /tmp/cargo-audit.tgz -C /tmp
-          /tmp/cargo-audit-x86_64-unknown-linux-musl/cargo-audit audit
+          /tmp/cargo-audit-x86_64-unknown-linux-musl-v0.22.2/cargo-audit audit
 
       - name: Always clean up PostgreSQL container
         if: always()
