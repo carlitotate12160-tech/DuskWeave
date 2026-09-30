@@ -62,10 +62,16 @@ fn ensure_setup() {
     });
 }
 
-/// Spawn the CLI with an explicit environment allowlist.
+/// Spawn the CLI with an explicit environment allowlist. Windows child
+/// processes additionally need SystemRoot for Winsock/DNS; it is still an
+/// allowlist, not the ambient environment.
 fn cli(args: &[&str], dsn: Option<&str>) -> Output {
     let mut cmd = Command::new(BIN);
     cmd.env_clear();
+    #[cfg(windows)]
+    if let Some(root) = std::env::var_os("SystemRoot") {
+        cmd.env("SystemRoot", root);
+    }
     if let Some(d) = dsn {
         cmd.env("DW_DATABASE_URL", d);
     }

@@ -65,7 +65,10 @@ fn qualify_runtime_rejects_ddl_capable_role() {
         .as_nanos();
     let role = format!("dw_q_{:x}", nanos & 0xFFFF_FFFF);
     assert!(role.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
-    let mut admin = admin_client();
+    // Grants target the isolated test database, not the admin maintenance db.
+    let mut admin_cfg = dsn("DW_TEST_ADMIN_DATABASE_URL");
+    admin_cfg.dbname(dsn("DW_TEST_DATABASE_URL").get_dbname().unwrap());
+    let mut admin = admin_cfg.connect(NoTls).unwrap();
     admin
         .batch_execute(&format!(
             "DROP ROLE IF EXISTS {role}; \
