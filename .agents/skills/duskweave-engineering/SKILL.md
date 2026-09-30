@@ -27,8 +27,7 @@ Read in order:
 7. QUALITY_BAR.md.
 8. The repository's relevant skill and the assigned packet.
 
-Authority: PRODUCT / authoritative PRD > ACCEPTED ADR > DOMAIN CONTRACT > QUALITY_BAR.md
-> AGENTS.md > SKILL.md > IMPLEMENTATION.
+Use the authority order defined by AGENTS.md and docs/BUILD_ORDER.md.
 Use each PRD's repository-defined authoritative status; drafts cannot override
 accepted authority during implementation, FIX, or review.
 Repository skills govern repository procedure; this installed skill is a portable
@@ -37,6 +36,16 @@ Do not treat planned ADR titles, draft documents, chat proposals, or a green tes
 run as accepted architecture. Missing documents do not authorize invention.
 
 ## Domain anchors
+
+Preserve DuskWeave's offensive identity: authorized, objective-led adversary
+emulation with active hypothesis testing, access validation, bounded expansion,
+and evidence-led adaptation. Do not turn it into a scanner, passive monitoring
+tool, or fully defensive workflow. Non-destructive does not mean read-only.
+Prefer informative actions with the least unnecessary footprint; a blocked route
+can motivate other in-scope hypotheses, not automatic campaign abandonment or
+assumed permission to bypass protection. Product capability is not authorization
+to implement or execute it in the current milestone. Preserve hours-bounded MVP
+delivery while retaining longer continuity as a later capability.
 
 Preserve four nested operational loops:
 Strategic > Access > Expansion > Objective; adaptation overlays all four.
@@ -69,10 +78,9 @@ DESIGN and isolated deterministic tests; real-client pilot claims require
 explicitly authorized real observations, not synthetic success evidence.
 Apply PRD-000 INV-007: blind campaigns can adapt to genuinely campaign-visible effects and defender telemetry legitimately obtained from an authorized current campaign position, with epistemic and sensitive-data limits. Privileged defender/Observer/Grader feeds cannot serve as an oracle in blind mode. A separately authorized defender-informed exercise or retest may expose bounded feedback, labeled and evaluated apart from blind results.
 
-Follow the language baseline: Rust for correctness-sensitive core and authority;
-Go for adapters, collectors, integrations; Zig only for justified native helpers;
-C/C++ for interoperability; Python/Nim in research unless an accepted ADR promotes
-a specific component. Do not introduce production languages by skill instruction.
+Read ADR-004 for component-specific language ownership. Rust core infrastructure
+ports do not automatically require a Go amendment. Do not introduce languages
+or reinterpret accepted responsibilities through a skill summary.
 
 ## Architecture workflow
 
@@ -117,8 +125,16 @@ an instruction to plan the implementation; if authority is unresolved,
 stop and resolve it in the proper product or architecture step first.
 Specify mode, verified base, dependencies, exact allowed files, non-goals,
 acceptance criteria, tests or document checks, review gates, and STOP conditions.
-For any runtime packet, identify the real entrypoint and consumer files in the
-allowed map; require a traced runtime path and a test through that path.
+Before issuing a ready packet, inspect current source, consumers, test fixtures,
+CI and supported environments. Establish budget feasibility after formatting,
+including migrations/config and cumulative PR changes. Resolve known file-map,
+environment, dependency and budget conflicts here; do not knowingly send an
+impossible packet and use the executor's STOP as its expected outcome. Record
+estimates as estimates; any exception must be scoped and authorized in policy.
+Do not remove behavior, explanatory comments or readable formatting to fit LOC.
+List exact editable files separately from read-only caller/consumer references.
+For runtime packets, trace the real entrypoint and consumer and require a test
+through that path. An unchanged caller need not be editable.
 A changed production component consumed only by unit tests is an island.
 If there is no authorized entrypoint/consumer in scope, split or defer the
 runtime packet. Do not impose runtime wiring checks on DESIGN-only documents.
@@ -148,6 +164,20 @@ temporal staleness, evidence strength, sensitive-data boundaries, and scope.
 Use current repository budgets; do not borrow limits from other projects.
 
 ## Reporting and stop behavior
+
+Keep quality claims measurable: requirement -> owner -> failure case -> assertion
+-> execution environment -> candidate SHA. Select verification for actual risk;
+do not require every tool on every change. Skills guide work; compiler/tests,
+CI and branch protection enforce their configured gates. Verify those gates
+instead of assuming they exist. Green CI is necessary where required, not proof
+of complete semantics, portability, operational readiness or absence of alerts.
+Do not label generated code enterprise-ready or military-certified without a
+defined assurance scope and evidence; no skill grants such certification.
+
+Use the repository's authority-loading rules: establish context once, recheck
+identity/HEAD/status on every delivery, then reread changed authority and newly
+affected boundaries. Do not repeatedly load unrelated stages. Keep current stage
+and seals in ENGINEERING_STATE, never copied into portable skills or memory.
 
 Return governing authority, assumptions, scope, artifacts/findings, validation,
 remaining blockers, and readiness. Distinguish authored, reviewed, accepted,

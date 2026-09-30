@@ -74,3 +74,40 @@ M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=f52cfcc53c183f7c852fba191f9da
 - **Scope failure**: Remove unused runtime artifacts or complete wiring within the file map. If the file map does not permit the required consumer/test, STOP with `SPLIT_REQUIRED` and list the exact paths. Do not hide an island in a helper module or write code only to satisfy a test.
 - **DESIGN-only**: These checks apply to documents as reference and authority consistency; runtime reachability evidence is N/A until runtime exists.
 - **Dependency audit**: External dependencies must be minimal, go through strict curation, and be security-audited (`cargo audit`).
+
+
+## 6. Assurance evidence and packet feasibility
+
+- Preserve the authorized offensive outcome and PRD-000 invariants. A passive
+  substitute or stub is not delivery of an accepted active capability.
+- Before issuing a runtime packet, inspect its current source, real consumers,
+  fixtures, CI, supported environments and cumulative budget. Resolve known
+  infeasibility before coding; distinguish estimates from measured counts.
+  A budget exception requires explicit scoped authorization, not executor discretion.
+- Keep existing caps. Never shrink required behavior, remove explanatory comments,
+  compress formatting or perform unrelated/out-of-map cleanup to satisfy a counter.
+  Small files and low complexity are checks, not proof of sound ownership.
+- Bind material acceptance criteria to requirement, owner, observable assertion,
+  failure boundary, environment and candidate SHA. Report actual commands/results;
+  distinguish static review, local execution and exact-candidate CI evidence.
+- Exercise real persistence/roles for transaction behavior. For lost acknowledgment,
+  assert durable commit before caller failure, then scoped identity/effect count
+  after fresh recovery. Pre-commit faults prove a different case.
+- Verify environment-sensitive behavior on platforms claimed as supported.
+  Record OS/architecture, toolchain, DB and runtime privilege context. An untested
+  platform remains unverified; a missing local service is not itself a product bug.
+- Enforce applicable deterministic runtime checks in CI when runtime is delivered.
+  Inspect required-check wiring, skipped jobs/tests and candidate results.
+  Green scans do not prove zero alerts or semantic correctness.
+- Select additional property/fuzz/concurrency checks for concrete changed risks;
+  do not require unrelated tooling or a generic coverage percentage for every slice.
+- Keep infrastructure secrets in authorized configuration boundaries; no hardcoded
+  defaults or secret-bearing diagnostics. Infrastructure env does not replace
+  PRD-010 campaign custody. Preserve safe deterministic test controls without
+  presenting them as client pilot proof.
+- Treat missing required evidence as UNVERIFIED/BLOCKED, not PASS. Candidate CI
+  may supply execution evidence unavailable locally, but cannot waive an explicit
+  local gate. Repeat checks when changes or unresolved risks warrant them.
+- Separate author review, independent review, owner acceptance, merge and seal.
+  Enterprise readiness requires a defined deployment/assurance scope and evidence;
+  a prompt or skill cannot certify military compliance.
