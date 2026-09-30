@@ -107,12 +107,14 @@ fn cmd_prepare(args: &[String]) -> Res<()> {
     let (e, _c) = scope(&f)?;
     let mut alloc = PgAllocator::new(connect()?);
     let op = registration::prepare_operation(&mut alloc)?;
+    // codeql[rust/cleartext-logging] scoped UUID handles only, no secret data
     println!("operation={op} engagement={e}");
     Ok(())
 }
 
 fn emit_register(got: Res<registration::Receipt>, op: OperationId) -> Res<()> {
     match got {
+        // codeql[rust/cleartext-logging] bounded receipt: safe IDs/status only
         Ok(r) => println!(
             "register result=accepted engagement={} campaign={} operation={} event={} history={}",
             r.engagement_id,
