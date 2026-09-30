@@ -23,14 +23,19 @@ the active build-order packet, relevant authority, QUALITY_BAR.md, and the packe
 Use packet 07 for delivery rules when needed. Do not load unrelated stages.
 Read supplied snapshots as snapshots; do not claim they prove current repository state.
 
-Follow:
-PRODUCT / authoritative PRD > ACCEPTED ADR > DOMAIN CONTRACT > QUALITY_BAR.md
-> AGENTS.md > SKILL.md > IMPLEMENTATION.
+Use the authority order defined by AGENTS.md and docs/BUILD_ORDER.md.
 Draft PRDs cannot override accepted authority in IMPLEMENT, FIX, or review.
 A portable installed copy does not override the repository's current skill.
 Report material mismatches before executing under stale instructions.
 
 ## Always-loaded domain boundaries
+
+Preserve the offensive campaign purpose: authorized active validation, access,
+expansion and objective proof under accepted contracts. Non-destructive does not
+mean read-only. Do not replace offensive behavior with passive monitoring or
+scanner-only output. Low unnecessary footprint and evidence-led adaptation are
+engineering requirements, not a universal ban on active work. Current packet
+authorization still determines which capabilities may be built or executed.
 
 Preserve Strategic, Access, Expansion, and Objective loops with adaptation
 across all four. Do not implement them as a mandatory one-pass kill chain.
@@ -43,18 +48,23 @@ Apply INV-001..007 from invariant packet 00:
 - Separate the five operational models.
 - Reasoning produces proposals; deterministic authority validates execution.
 - Observations require reconciliation; inference is not automatically fact.
-- Proof content remains attempt-ephemeral; raw client content and operational secret values never enter core or ordinary persistence, evidence, operator, or LLM surfaces. A separately authorized operational secret may remain only in isolated campaign-scoped custody under PRD-000 INV-005.
+- Keep proof content attempt-ephemeral and raw client content/operational secrets
+  outside core and ordinary surfaces. Separately authorized operational secrets
+  may remain only in isolated campaign-scoped custody under PRD-000 INV-005.
 - Campaign capabilities cannot alter authoritative audit evidence.
-- PRD-000 INV-007 governs defender knowledge: exclude privileged defender/Observer/Grader feeds from blind reasoning; permit reconciled campaign-visible effects and legitimately acquired telemetry within authorized position and sensitive-data bounds; label and evaluate separately any authorized defender-informed exercise.
+- Follow PRD-000 INV-007: exclude privileged defender-oracle feeds from blind
+  reasoning; allow eligible campaign-visible effects and legitimately acquired
+  telemetry under position/source/sensitive-data bounds. Keep separately
+  authorized defender-informed exercises labeled and evaluated independently.
 
 Retain freshness and provenance when the packet touches environmental knowledge.
 Initial access is not automatically a validated foothold; a candidate path is not
 a proven transition; successful execution is not automatically objective success.
 Keep tool-native schemas and clients outside the domain.
 
-Use Rust for correctness-sensitive core/authority and Go for adapters/collectors.
-Use Zig only for a justified native helper, C/C++ for interoperability, and
-Python/Nim in research unless accepted authority explicitly allows otherwise.
+Use ADR-004's component-specific language ownership. Rust core infrastructure
+ports are not automatically Go integrations. Do not add a production language
+or speculative adapter merely because a skill mentions one.
 
 ## Preflight
 
@@ -65,6 +75,10 @@ Before editing:
 4. Read existing files in the allowed map and their relevant consumers.
 5. Check conflicting work/PRs only where repository delivery rules require it.
 6. List required verification commands/checks and any unavailable capability.
+
+Reuse verified authority context only while its relevant files are unchanged.
+Recheck HEAD, status and authority deltas; read newly affected boundaries.
+Do not use stale memory, stage labels, or old CI as current evidence.
 
 Do not reset user changes, invent missing checks, assume remote protection, or
 claim CI results from a local run. Missing tools are explicit blockers when a gate
@@ -97,7 +111,21 @@ then refactor without changing semantics.
 Test happy paths, illegal transitions, failure boundaries, and relevant invariant
 negative controls. Avoid tests that only mirror private implementation structure.
 Use deterministic fixtures; do not use real client secrets or external targets.
+Test controls are not client pilot evidence. Preserve the actual authorized
+offensive outcome in later capability packets; do not substitute a harmless
+stub and report that an active capability was delivered.
 Run repository-required checks. Respect QUALITY_BAR.md budgets and language gates.
+Run the smallest relevant failing test before a behavior fix; never fabricate
+historical RED evidence for coverage-only tests of already-correct behavior.
+For transaction/recovery work, inject failure at the claimed boundary and assert
+durable state before recovery, original identity, scope and effect count after
+recovery. A fault before commit does not prove lost acknowledgment after commit.
+Verify environment-sensitive behavior on each platform claimed as supported;
+Linux success alone cannot establish Windows subprocess/environment correctness.
+Use real restricted runtime roles for DB assertions; admin is fixture setup only.
+Require infrastructure secrets through the packet's environment/config boundary,
+without hardcoded defaults or value-bearing diagnostics. This does not authorize
+campaign-secret storage outside INV-005 custody.
 Do not add unused scaffolding, speculative abstractions, or unrelated cleanup.
 For each changed runtime component, show a real path from an authorized
 production entrypoint through caller/port, registration or injection,
@@ -123,8 +151,10 @@ Do not dismiss a real defect merely because the current packet cannot fix it.
 ## Review and delivery
 
 Inspect the diff for authority compliance, domain ownership, coupling, evidence,
-freshness, failure semantics, INV-005 sensitive-data isolation and campaign-scoped secret custody, audit integrity, and the mode-specific Defender Knowledge Boundary.
-Perform one adversarial review cycle; fix valid in-scope findings.
+freshness, failure semantics, INV-005 custody/isolation, audit integrity, and
+the mode-specific Defender Knowledge Boundary.
+Perform author self-review and the assigned distinct adversarial review step;
+switching skills alone is not independent review. Fix substantiated findings.
 Recheck the final changed result and any tests affected by those fixes.
 Follow repository PR/merge rules where applicable. Never create or report a live
 PR, remote check, protected branch, or merge when no such evidence exists.
@@ -134,6 +164,8 @@ Report:
 - packet/mode and verified base/head;
 - artifacts and exact files changed;
 - tests/checks actually run and their results;
+- candidate SHA, commands, relevant assertions, OS/toolchain/DB/role context,
+  local versus CI evidence, and required checks not executed;
 - runtime wiring trace and consumer-path test, or DESIGN N/A;
 - dead-code/island/orphan disposition for changed scope;
 - review findings and dispositions;
@@ -143,6 +175,13 @@ Report:
 Do not promote documents to ACCEPTED, update seals, or edit engineering state
 unless the packet allows those files and the acceptance step is authorized.
 No automatic next-stage execution.
+Treat missing required execution evidence as BLOCKED/UNVERIFIED, never PASS.
+Exact-candidate CI logs may establish checks that could not run locally; respect
+any explicit local gate and report the remaining limitation. Inspect skipped
+jobs/tests and actual scenario assertions. A completed scanner job does not
+establish zero findings. A quality label is not evidence or certification.
+Measure the cumulative budget against the authorized base. Do not compensate
+for over-budget work by unrelated cleanup, comment removal, or out-of-map edits.
 
 ## STOP conditions
 
