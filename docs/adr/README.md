@@ -2,30 +2,30 @@
 
 ## Purpose & Conventions
 
-Direktori ini berisi seluruh dokumen keputusan arsitektur (*Architecture Decision Records* / ADR) untuk DuskWeave.
+This directory contains all architecture decision records for DuskWeave.
 
-ADR menduduki tingkat otoritas kedua (**Level 2: Architectural HOW**) dalam repositori DuskWeave. ADR menentukan struktur arsitektur teknis turunan dari kebutuhan produk (PRD).
+ADRs hold the second level of authority (**Level 2: Architectural HOW**) in the DuskWeave repository. An ADR defines the technical architecture structure derived from product requirements (PRDs).
 
 ---
 
-## 1. Format & Konvensi ADR
+## 1. ADR Format & Conventions
 
-Setiap ADR disusun menggunakan struktur baku berikut:
+Every ADR is written using the following fixed structure:
 
 1. **Title & Status**:
    - Status: `PROPOSED` | `ACCEPTED` | `REJECTED` | `DEPRECATED` | `SUPERSEDED`
 2. **Context & Problem Statement**:
-   - Latar belakang arsitektur dan kebutuhan yang mendasari keputusan.
+   - Architectural background and the needs underlying the decision.
 3. **Decision Drivers**:
-   - Faktor pendorong (performa, determinisme, batas isolasi, penegakan invariant).
+   - Driving factors (performance, determinism, isolation bounds, invariant enforcement).
 4. **Considered Options**:
-   - Alternatif solusi yang dipertimbangkan beserta kelebihan dan kelemahannya.
+   - Solution alternatives considered, with their strengths and weaknesses.
 5. **Decision Outcome**:
-   - Opsi terpilih dan alasan pemilihannya.
+   - The chosen option and the reasons for choosing it.
 6. **Consequences**:
-   - Dampak arsitektur (positif, negatif, dan mitigasi risiko).
+   - Architectural impact (positive, negative, and risk mitigation).
 7. **Invariant Compliance Matrix**:
-   - Penjelasan kepatuhan eksplisit terhadap INV-001 hingga INV-007.
+   - Explicit compliance explanation for INV-001 through INV-007.
 
 ---
 
@@ -33,7 +33,7 @@ Setiap ADR disusun menggunakan struktur baku berikut:
 
 ADR-001..008 are authored and ACCEPTED. ADR-009..024 remain reserved decision slots, not authored or accepted documents. Their legacy PROPOSED labels do not satisfy dependencies; verify the corresponding file and acceptance before proceeding.
 
-| ADR ID | Judul Keputusan | Tahapan Terkait | Ketergantungan Langsung | Status |
+| ADR ID | Decision Title | Related Stage | Direct Dependency | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **ADR-001** | Modular Monolith Architecture | Stage 3 | PRD-000..006 | `ACCEPTED` |
 | **ADR-002** | Domain Boundaries Definition | Stage 3 | ADR-001 | `ACCEPTED` |

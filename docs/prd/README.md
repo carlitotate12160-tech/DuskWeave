@@ -2,33 +2,33 @@
 
 ## Purpose & Conventions
 
-Direktori ini berisi seluruh dokumen kebutuhan produk (*Product Requirements Documents* / PRD) untuk DuskWeave.
+This directory contains all product requirements documents for DuskWeave.
 
-PRD menduduki tingkat otoritas tertinggi (**Level 1: WHAT / WHY**) dalam repositori DuskWeave. Tidak ada arsitektur teknis atau implementasi kode yang sah tanpa PRD pendukung yang telah berstatus `ACCEPTED`.
+PRDs hold the highest level of authority (**Level 1: WHAT / WHY**) in the DuskWeave repository. No technical architecture or code implementation is legitimate without a supporting PRD that has reached `ACCEPTED` status.
 
 ---
 
-## 1. Aturan Penulisan PRD
+## 1. PRD Writing Rules
 
-Setiap PRD wajib mematuhi aturan berikut:
-1. **Fokus pada Semantik, Masalah, dan Batasan**:
-   - Menjelaskan masalah spesifik yang ingin dipecahkan.
-   - Menjelaskan siapa aktor atau peran terkait.
-   - Menjelaskan kriteria keberhasilan dan model semantik.
-   - Menjelaskan apa yang secara eksplisit berada di luar cakupan (*out of scope*).
-2. **Larangan Detail Teknis**:
-   - Dilarang memuat skema database (SQL / relational schema).
-   - Dilarang memuat kode pemrograman atau struct (Rust/Go/C++).
-   - Dilarang memuat argumen command-line tool (CLI flags).
-   - Dilarang memuat spesifikasi protokol jaringan tingkat rendah.
-3. **Batas Ukuran**:
-   - Target panjang 4–6 halaman terstruktur.
+Every PRD must comply with the following rules:
+1. **Focus on Semantics, Problems, and Constraints**:
+   - Describe the specific problem to be solved.
+   - Describe the relevant actors or roles.
+   - Describe success criteria and the semantic model.
+   - Describe what is explicitly out of scope.
+2. **Technical Detail Prohibition**:
+   - Must not contain database schemas (SQL / relational schema).
+   - Must not contain programming code or structs (Rust/Go/C++).
+   - Must not contain command-line tool arguments (CLI flags).
+   - Must not contain low-level network protocol specifications.
+3. **Size Limit**:
+   - Target length of 4-6 structured pages.
 
 ---
 
 ## 2. PRD Registry & Dependency Index
 
-| PRD ID | Judul Dokumen | Tahapan Terkait | Ketergantungan Langsung | Status |
+| PRD ID | Document Title | Related Stage | Direct Dependency | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **PRD-000** | Product Thesis | Stage 1 | None | `ACCEPTED` |
 | **PRD-001** | Campaign Lifecycle | Stage 2 | PRD-000 | `ACCEPTED` |

@@ -19,7 +19,7 @@ ADR-011-sensitive-data-barrier.md
 ADR-012-engagement-proof-key.md
 ```
 
-Output utama:
+Primary outputs:
 
 ```text
 Observation
@@ -28,11 +28,11 @@ ProofEnvelope
 Sensitive<T>
 ```
 
-Belum ada Nmap.
+No Nmap yet.
 
-Belum ada Nuclei.
+No Nuclei yet.
 
-Belum ada shell adapter.
+No shell adapter yet.
 
 ---
 
@@ -55,7 +55,7 @@ below remain in force outside an accepted bounded M0 lane.
 
 # 7. Stage 5 — Domain contracts
 
-Sekarang baru implement domain contracts dalam Rust.
+Only now implement the domain contracts in Rust.
 
 Recommended crates:
 
@@ -70,7 +70,7 @@ dw-trajectory
 dw-evidence
 ```
 
-Implement hanya:
+Implement only:
 
 ```text
 types
@@ -80,7 +80,7 @@ domain events
 repository ports
 ```
 
-Tidak ada external-tool execution.
+There is no external-tool execution.
 
 Seal:
 
@@ -125,9 +125,9 @@ DWELL
 REENTRY
 ```
 
-`ADAPTATION` bukan state akhir.
+`ADAPTATION` is not a terminal state.
 
-Ia adalah re-planning mechanism.
+It is a re-planning mechanism.
 
 ---
 

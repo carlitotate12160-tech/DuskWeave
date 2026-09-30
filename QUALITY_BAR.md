@@ -2,71 +2,71 @@
 
 ## Purpose
 
-Dokumen ini mendefinisikan standar mutu rekayasa perangkat lunak, ambang batas kompleksitas, batas ukuran modul, dan disiplin pengujian yang wajib dipenuhi oleh seluruh kode di repositori **DuskWeave**.
+This document defines the software engineering quality standards, complexity thresholds, module size budgets, and testing discipline that all code in the **DuskWeave** repository must meet.
 
 ---
 
 ## 1. Module & File Size Budgets
 
-Keterbacaan, keterawatan, dan isolasi tanggung jawab domain ditegakkan melalui batasan ukuran file:
+Readability, maintainability, and domain-responsibility isolation are enforced through file size limits:
 
-| Metrik | Ambang Batas Ideal | Batas Review Keras (*Hard Cap*) | Tindakan Jika Melampaui |
+| Metric | Ideal Threshold | Hard Cap | Action When Exceeded |
 | :--- | :--- | :--- | :--- |
-| **Ukuran Modul/File** | `< 300 LOC` | `400 LOC` | Wajib dipecah berdasarkan batas tanggung jawab domain (*split by responsibility*). |
-| **Runtime Diff per PR/Slice** | `< 300 LOC` | `400 LOC` | Wajib dipecah menjadi beberapa slice bertahap (*SPLIT_REQUIRED*). |
-| **Kompleksitas Siklomatik (McCabe)** | `≤ 7` per fungsi | `7` per fungsi | Nilai `> 7` melanggar batas; wajib refactor berdasarkan tanggung jawab yang kohesif. |
+| **Module/File size** | `< 300 LOC` | `400 LOC` | Must be split by domain responsibility (*split by responsibility*). |
+| **Runtime diff per PR/slice** | `< 300 LOC` | `400 LOC` | Must be split into incremental slices (*SPLIT_REQUIRED*). |
+| **Cyclomatic complexity (McCabe)** | `<= 7` per function | `7` per function | A value `> 7` violates the budget; refactor by cohesive responsibility. |
 
-### Aturan Pemecahan Kode:
-- **Dilarang keras** membuat file penampung sampah seperti `utils.rs`, `helpers.rs`, `common.rs`, atau `misc.rs`.
-- Pemecahan file harus mencerminkan sub-domain yang kohesif (misalnya memisahkan `transition.rs`, `validation.rs`, `error.rs`).
+### Code splitting rules:
+- Strictly forbidden to create dumping-ground files such as `utils.rs`, `helpers.rs`, `common.rs`, or `misc.rs`.
+- File splits must reflect cohesive sub-domains (for example, separating `transition.rs`, `validation.rs`, `error.rs`).
 
 ---
 
 ## 2. Invariant & God-Object Prevention
 
 1. **Zero God Objects (INV-001)**:
-   - Dilarang membuat struct/class yang memegang referensi ke lebih dari satu domain agregat utama.
-   - Tidak boleh ada modul `CampaignManager`, `SystemManager`, `GlobalContext`, atau sejenisnya.
-2. **Pemisahan 5 Model Operasional (INV-002)**:
-   - `CyberTerrain`, `FootholdGraph`, `AttackPathView`, `ObjectiveState`, dan `CampaignTrajectory` memiliki owner, aturan mutasi, dan kontrak publik yang terpisah. Batas visibilitas modul dan arah dependensi harus mencegah impor implementasi atau mutable aggregate milik model lain.
-   - Beberapa model boleh berada dalam satu crate atau deployable jika batas tersebut tetap dapat ditegakkan; satu crate per model bukan syarat. Hubungan antar-owner melalui kontrak bertipe, bounded view/referensi ID, atau event sesuai ADR-002/003, bukan nested mutable struct atau akses langsung ke state privat.
+   - Do not create a struct/class that holds references to more than one major domain aggregate.
+   - There must be no `CampaignManager`, `SystemManager`, `GlobalContext`, or similar modules.
+2. **Separation of the 5 Operational Models (INV-002)**:
+   - `CyberTerrain`, `FootholdGraph`, `AttackPathView`, `ObjectiveState`, and `CampaignTrajectory` have separate owners, mutation rules, and public contracts. Module visibility boundaries and dependency direction must prevent importing another model's implementation or mutable aggregate.
+   - Several models may live in one crate or deployable as long as those boundaries remain enforceable; one crate per model is not a requirement. Cross-owner relationships go through typed contracts, bounded views/ID references, or events per ADR-002/003 — not nested mutable structs or direct access to private state.
 
 ---
 
-## 3. Disiplin Pengujian (Testing Bar)
+## 3. Testing Discipline (Testing Bar)
 
 1. **Strict Test-Driven Development (TDD)**:
-   - Siklus wajib: **Red (failing test) → Green (implementasi minimal) → Refactor**.
-   - Tidak ada kode fitur yang boleh di-commit tanpa test yang memvalidasi perilakunya terlebih dahulu.
-2. **Cakupan Pengujian Invariant**:
-   - Seluruh aturan invarian (INV-001 s.d. INV-007) wajib memiliki *negative control tests* (pengujian yang membuktikan bahwa pelanggaran invariant pasti digagalkan dan ditolak).
-   - Pengujian transisi state harus memvalidasi baik jalur sukses (*happy path*) maupun transisi ilegal (*illegal state transitions*).
-3. **Determinisme Mutlak**:
-   - Test tidak boleh bergantung pada sleep/timer tak tentu, urutan eksekusi acak tanpa seed, atau jaringan eksternal.
-   - Dilarang membiarkan test berstatus `skip`, `ignore`, atau `allow_failure` tanpa persetujuan eksplisit.
+   - Mandatory cycle: **Red (failing test) → Green (minimal implementation) → Refactor**.
+   - No feature code may be committed without a test that validates its behavior first.
+2. **Invariant Test Coverage**:
+   - All invariants (INV-001 through INV-007) must have *negative control tests* (tests proving that a violation of the invariant is definitely rejected).
+   - State transition tests must validate both the happy path and illegal state transitions.
+3. **Absolute Determinism**:
+   - Tests must not depend on arbitrary sleeps/timers, unseeded random execution order, or external networks.
+   - Tests must not be left as `skip`, `ignore`, or `allow_failure` without explicit approval.
 
 ---
 
-## 4. Keamanan Tipe & Desain Bahasa (Rust Focus)
+## 4. Type Safety & Language Design (Rust Focus)
 
 1. **Parse, Don't Validate**:
-   - Validasi data masukan di perbatasan sistem; tipe spesifik menjaga invariant struktural melalui konstruksi dan mutasi yang terkontrol. Freshness, otorisasi, dan kondisi lingkungan tetap diperiksa saat keputusan digunakan; tipe tidak menjamin keabsahan klaim eksternal sepanjang waktu.
+   - Validate input data at system boundaries; specific types preserve structural invariants through controlled construction and mutation. Freshness, authorization, and environmental conditions are still checked when a decision is used; types do not guarantee the validity of external claims over time.
 2. **Typestate Pattern**:
-   - Gunakan typestate bila memperjelas transisi lokal yang sah, tanpa state machine generik untuk seluruh kampanye. Kandidat akses dimiliki Pathing, bukan FootholdGraph. View posisi tervalidasi tidak menyediakan eksekusi langsung; setiap dispatch tetap melewati authority terkini, Capability Gateway, Execution Broker, dan adapter.
+   - Use typestate where it clarifies locally valid transitions, without a generic state machine for the whole campaign. Access candidates are owned by Pathing, not FootholdGraph. A validated-position view does not provide direct execution; every dispatch still passes through current authority, the Capability Gateway, the Execution Broker, and the adapter.
 3. **Newtype Pattern**:
-   - Cegah kebingungan ID dengan membungkus identifier primitif ke dalam tipe kuat (contoh: `struct EntityId(Uuid)`, `struct FootholdId(Uuid)`).
-4. **Penanganan Error Eksplisit**:
-   - Dilarang menggunakan `unwrap()` atau `expect()` pada production code path.
-   - Semua kegagalan harus direpresentasikan menggunakan `Result<T, DomainError>`.
+   - Prevent ID confusion by wrapping primitive identifiers in strong types (example: `struct EntityId(Uuid)`, `struct FootholdId(Uuid)`).
+4. **Explicit Error Handling**:
+   - Do not use `unwrap()` or `expect()` on production code paths.
+   - All failures must be represented using `Result<T, DomainError>`.
 
 ---
 
-## 5. Standar Kebersihan Kode (Code Hygiene)
+## 5. Code Hygiene Standards
 
-- **Formatting**: Wajib lolos `cargo fmt -- --check`.
-- **Linting**: Wajib lolos `cargo clippy --all-targets -- -D warnings`.
-- **Zero Dead Code / No Islands**: Setiap perubahan runtime harus memiliki jalur nyata dari entrypoint yang diotorisasi menuju komponen baru, consumer produksi, dan hasil yang dapat diamati. Export, registrasi tanpa penggunaan, atau pemanggilan yang hanya muncul dalam unit test tidak cukup.
-- **Wiring proof per packet**: Laporan IDE menyebut entrypoint → caller/port → changed component → consumer/output, serta bukti test yang melewati jalur tersebut. Periksa producer/consumer event, adapter, konfigurasi, migrasi, dan error path yang diubah. Jalur yang benar-benar tidak ada adalah blocker; simbol yang dipakai melalui mekanisme dinamis harus didukung bukti wiring, bukan dianggap dead code hanya karena pencarian teks.
-- **Scope failure**: Hapus artefak runtime yang tidak dipakai atau selesaikan wiring dalam file map. Jika file map tidak mengizinkan consumer/test yang diperlukan, STOP dengan `SPLIT_REQUIRED` serta daftar path tepatnya. Jangan menyembunyikan island di modul helper atau membuat kode hanya untuk memuaskan test.
-- **DESIGN-only**: Pemeriksaan ini berlaku pada dokumen sebagai konsistensi rujukan dan authority; bukti runtime reachability dinyatakan N/A sebelum runtime ada.
-- **Audit Dependensi**: Dependensi eksternal harus seminimal mungkin, melalui proses kurasi ketat, dan diaudit keamanannya (`cargo audit`).
+- **Formatting**: Must pass `cargo fmt -- --check`.
+- **Linting**: Must pass `cargo clippy --all-targets -- -D warnings`.
+- **Zero Dead Code / No Islands**: Every runtime change must have a real path from an authorized entrypoint to the new component, a production consumer, and an observable result. An export, an unused registration, or a call that only appears in a unit test is not sufficient.
+- **Wiring proof per packet**: The IDE report names entrypoint -> caller/port -> changed component -> consumer/output, plus test evidence exercising that path. Check changed event producers/consumers, adapters, configuration, migrations, and error paths. A genuinely missing path is a blocker; symbols used through dynamic mechanisms need wiring evidence, not a "dead code" dismissal based on text search alone.
+- **Scope failure**: Remove unused runtime artifacts or complete wiring within the file map. If the file map does not permit the required consumer/test, STOP with `SPLIT_REQUIRED` and list the exact paths. Do not hide an island in a helper module or write code only to satisfy a test.
+- **DESIGN-only**: These checks apply to documents as reference and authority consistency; runtime reachability evidence is N/A until runtime exists.
+- **Dependency audit**: External dependencies must be minimal, go through strict curation, and be security-audited (`cargo audit`).

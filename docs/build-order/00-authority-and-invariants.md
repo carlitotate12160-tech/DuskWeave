@@ -1,6 +1,6 @@
 # 0. Authority hierarchy
 
-Urutan authority:
+Authority order:
 
 ```text
 1. PRODUCT THESIS / PRD
@@ -12,26 +12,26 @@ Urutan authority:
 7. IMPLEMENTATION
 ```
 
-Aturan:
+Rules:
 
-- `PRD` menentukan **WHAT / WHY**.
-- `ADR` menentukan **architectural HOW**.
-- `Domain contract` menentukan interface yang boleh diimplementasikan.
-- `AGENTS.md` menentukan cara contributor/model bekerja.
-- `.agents/skills/build-duskweave/SKILL.md` menentukan workflow reasoning/implementation.
-- Code tidak boleh menciptakan architecture baru tanpa authority di atasnya.
+- `PRD` defines **WHAT / WHY**.
+- `ADR` defines **architectural HOW**.
+- `Domain contract` defines the interfaces that may be implemented.
+- `AGENTS.md` defines how contributors/models work.
+- `.agents/skills/build-duskweave/SKILL.md` defines the reasoning/implementation workflow.
+- Code may not create new architecture without authority above it.
 
-`AGENTS.md` dan `.agents/skills/build-duskweave/SKILL.md` tidak boleh mengubah keputusan PRD/ADR.
+`AGENTS.md` and `.agents/skills/build-duskweave/SKILL.md` may not change PRD/ADR decisions.
 
 ---
 
 # 1. Hard invariants
 
-Semua fase tunduk pada invariant berikut.
+All phases are subject to the following invariants.
 
 ## INV-001 — No God Object
 
-Tidak boleh ada object/service seperti:
+No object/service such as:
 
 ```text
 CampaignManager
@@ -42,13 +42,13 @@ WorldManager
 ToolManager
 ```
 
-yang mengetahui sebagian besar sistem.
+may know most of the system.
 
 ---
 
 ## INV-002 — Separate operational models
 
-Lima model harus tetap terpisah:
+The five models must remain separate:
 
 ```text
 CyberTerrain
@@ -58,7 +58,7 @@ ObjectiveState
 CampaignTrajectory
 ```
 
-Tidak boleh digabung menjadi satu `CampaignState` raksasa.
+They may not be merged into one giant `CampaignState`.
 
 ---
 
@@ -76,13 +76,13 @@ Capability Gateway
 Executor
 ```
 
-LLM tidak memperoleh arbitrary execution authority.
+The LLM does not obtain arbitrary execution authority.
 
 ---
 
 ## INV-004 — Observation != fact
 
-Observation harus melalui:
+Observation must pass through:
 
 ```text
 Observation
@@ -90,21 +90,21 @@ Observation
 → state delta
 ```
 
-Inference tidak boleh diam-diam berubah menjadi fact.
+Inference may not silently become fact.
 
 ---
 
 ## INV-005 — Sensitive data isolation and campaign-scoped secret custody
 
-Raw client content dan operational authentication material tidak boleh mencapai five operational models, campaign-core PostgreSQL, event/retry payload, log, trace, crash diagnostic, evidence/proof, operator surface, atau reasoning/LLM context.
+Raw client content and operational authentication material must not reach the five operational models, campaign-core PostgreSQL, event/retry payloads, logs, traces, crash diagnostics, evidence/proof, operator surfaces, or reasoning/LLM context.
 
-Client content untuk proof hanya boleh berada dalam isolated ephemeral proof boundary sampai opaque proof diturunkan. Operational secret yang diotorisasi terpisah boleh dipertahankan dan digunakan ulang hanya dalam isolated custody milik satu campaign, dengan scope, current authority, dan finite lifetime; core hanya menyimpan opaque reference serta metadata non-secret. Custody bersifat non-durable secara default dan boleh survive pause/restart hanya bila resumability diotorisasi secara eksplisit. Tidak ada reuse lintas campaign/retest. Expiry, revocation, invalidation, campaign termination, atau authorization withdrawal mengakhiri eligibility dan memicu disposal serta honest disposition. Mekanisme storage, cryptography, recovery, dan sanitization tetap deferred; custody bukan operational model keenam atau general credential vault.
+Client content for proof may exist only inside an isolated ephemeral proof boundary until opaque proof is derived. A separately authorized operational secret may be retained and reused only inside isolated custody belonging to a single campaign, with scope, current authority, and finite lifetime; the core stores only an opaque reference and non-secret metadata. Custody is non-durable by default and may survive pause/restart only when resumability is explicitly authorized. No cross-campaign/retest reuse. Expiry, revocation, invalidation, campaign termination, or authorization withdrawal ends eligibility and triggers disposal plus honest disposition. Storage, cryptography, recovery, and sanitization mechanisms remain deferred; custody is not a sixth operational model or a general credential vault.
 
 ---
 
 ## INV-006 — Audit integrity
 
-Campaign capability tidak boleh:
+A campaign capability may not:
 
 ```text
 delete authoritative evidence
@@ -117,6 +117,6 @@ falsify audit records
 
 ## INV-007 — Defender Knowledge Boundary
 
-Definisi otoritatif berada di [PRD-000 §6](../prd/PRD-000-product-thesis.md). Kampanye blind dapat beradaptasi pada efek keamanan yang benar-benar terlihat dari posisi kampanye saat ini; feed istimewa milik defender/Observer/Grader tidak boleh dipakai sebagai oracle kampanye blind. Telemetri defender yang diperoleh secara sah dari posisi kampanye yang diizinkan tunduk pada scope, provenance, rekonsiliasi, dan batas data sensitif. Exercise atau retest yang diberi bounded defender feedback memerlukan otorisasi terpisah, pelabelan, serta evaluasi yang terpisah dari hasil blind. Control-gap assessment tetap dimiliki Observer/Grader.
+The authoritative definition lives in [PRD-000 §6](../prd/PRD-000-product-thesis.md). A blind campaign may adapt to security effects genuinely visible from the current campaign position; privileged defender/Observer/Grader feeds must not be used as an oracle for a blind campaign. Defender telemetry legitimately obtained from an authorized campaign position is subject to scope, provenance, reconciliation, and sensitive-data limits. Exercises or retests given bounded defender feedback require separate authorization, labeling, and evaluation apart from blind results. Control-gap assessment remains owned by Observer/Grader.
 
 ---
