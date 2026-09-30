@@ -36,6 +36,23 @@ Belum ada shell adapter.
 
 ---
 
+# M0 lane — accepted bounded sequencing
+
+The owner requested minimum M0 contract authoring on 2026-09-30.
+[M0 mission/planning/history](../contracts/M0-mission-authority-history.md)
+and its sequencing exception were ACCEPTED by the owner on 2026-09-30.
+Only local Mission/planning responsibility and required Trajectory history may
+be implemented before full Stage 5/10 coverage, through issued bounded packets.
+M0A/B/C remain vertical deliveries; target acquisition/execution is unauthorized.
+
+ADR-003/005 durability and append-only history remain mandatory. ADR-009..012
+are deferred only for this non-evidence/non-proof/non-custody/non-acquisition
+behavior; the contract identifies their later triggers. No five-model skeleton,
+tool execution or full DW-DOMAIN-001 seal is implied. Full-stage requirements
+below remain in force outside an accepted bounded M0 lane.
+
+---
+
 # 7. Stage 5 — Domain contracts
 
 Sekarang baru implement domain contracts dalam Rust.
