@@ -45,13 +45,13 @@ Current seal:
 
 Current engineering state:
 
-`Stage 4 — Reality & Evidence design; DW-FOUNDATION-001 SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0; PRD-007..010 ACCEPTED; ADR-008 ACCEPTED; bounded MVP sequencing/minimum-contract decision next`
+`Stage 4 — Reality & Evidence design; DW-FOUNDATION-001 SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0; PRD-007..010 ACCEPTED; ADR-008 ACCEPTED; M0 minimum contract/sequencing draft PROPOSED, review next`
 
 Current design document:
 
-[ADR-008 Observation & Fact Separation](adr/ADR-008-observation-fact-separation.md) is `ACCEPTED` by the product owner on 2026-09-30. Next is the bounded MVP sequencing/minimum-contract decision needed for M0. Targeted research resolves material ambiguity rather than imposing an operator study for every PRD/ADR. Runtime and tool integration remain unauthorized.
+[ADR-008 Observation & Fact Separation](adr/ADR-008-observation-fact-separation.md) is `ACCEPTED` by the product owner on 2026-09-30. The [minimum M0 contract](contracts/M0-mission-authority-history.md) is authored `PROPOSED`, including the bounded sequencing exception for local mission/planning controls and history. Review/acceptance of that draft is next; no full domain seal or implementation is implied. Targeted research resolves material ambiguity rather than imposing an operator study for every PRD/ADR. Runtime and tool integration remain unauthorized.
 
-[Arah MVP dan deferred scope](MVP_AND_DEFERRED_SCOPE.md) records owner-approved direction and the bounded CODE/TEST -> DEMO -> REVIEW/FIX -> SEAL rhythm. Minimum contracts, milestone file maps, and any sequencing/language amendment still require a scoped decision before implementation; this index does not silently remove existing dependencies.
+[Arah MVP dan deferred scope](MVP_AND_DEFERRED_SCOPE.md) records owner-approved direction and the bounded CODE/TEST -> DEMO -> REVIEW/FIX -> SEAL rhythm. The M0 draft identifies which evidence/proof/custody decisions can wait for their actual behavior. Its bounded sequencing exception still requires explicit acceptance, and the first runtime packet must contain resolved contracts and an exact file map. Existing dependencies for the full domain/evidence/execution stages are preserved.
 
 DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
 
