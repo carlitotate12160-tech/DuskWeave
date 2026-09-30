@@ -1,6 +1,6 @@
 # 2. Stage 0 — Repository authority bootstrap
 
-Selesaikan sebelum PRD implementation detail.
+Complete before PRD implementation detail.
 
 Files:
 
@@ -16,7 +16,7 @@ docs/adr/README.md
 
 `SKILL.md` at repository root is a compatibility pointer only; the canonical skill content lives at `.agents/skills/build-duskweave/SKILL.md`.
 
-Tidak ada runtime code pada stage ini.
+There is no runtime code at this stage.
 
 Seal:
 
@@ -44,7 +44,7 @@ Author:
 PRD-000-product-thesis.md
 ```
 
-Harus menjawab hanya:
+It must answer only:
 
 ```text
 What is DuskWeave?
@@ -54,7 +54,7 @@ What is explicitly outside scope?
 What makes campaign emulation different from vulnerability scanning?
 ```
 
-Jangan masukkan:
+Do not include:
 
 ```text
 database schema
@@ -79,7 +79,7 @@ DW-PRD-000
 
 # 4. Stage 2 — Campaign semantics
 
-Author secara berurutan:
+Author in sequence:
 
 ```text
 PRD-001-campaign-lifecycle.md
@@ -106,13 +106,13 @@ PRD-005
 PRD-006
 ```
 
-Jangan mengerjakan `PRD-006` sebelum semantics previous state jelas.
+Do not work on `PRD-006` before the semantics of the previous state are clear.
 
 ---
 
 # 5. Stage 3 — Foundation ADRs
 
-Baru setelah PRD-000..006 accepted.
+Only after PRD-000..006 are accepted.
 
 Author:
 
@@ -157,6 +157,6 @@ Graph separation:
 ADR-007
 ```
 
-Tidak ada tool integration pada stage ini.
+There is no tool integration at this stage.
 
 ---
