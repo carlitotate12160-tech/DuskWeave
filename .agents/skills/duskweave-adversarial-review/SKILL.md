@@ -7,6 +7,13 @@ description: Independently challenge a DuskWeave DESIGN, IMPLEMENT, or FIX packe
 
 ## Mandate
 
+Preserve DuskWeave's authorized offensive campaign identity. Challenge defects
+without downgrading accepted active validation, access, expansion or objective
+proof into a defensive-only/scanner-only product. Non-destructive does not mean
+read-only. Test both false permission and unjustified refusal/early abandonment
+where the accepted capability requires adaptation. No review authorizes target
+activity or capabilities absent from the current packet.
+
 Review the actual artifact against DuskWeave authority. Seek credible failure
 cases and unsupported claims; do not merely endorse the author or replay their
 self-review. A separate skill is a distinct review workflow, not proof that a
@@ -18,6 +25,8 @@ assigned packet, relevant accepted PRDs/ADRs/contracts, and `QUALITY_BAR.md`.
 Compare exact base and current head or supplied artifact revision. If only a
 snapshot is available, label the review provisional. Repository authority
 outranks this portable skill; never borrow BlackBread rules.
+Apply AGENTS.md authority-loading rules: reuse unchanged verified context,
+recheck identity/HEAD/status, and reread affected authority and boundaries.
 
 ## Review method
 
@@ -47,6 +56,28 @@ outranks this portable skill; never borrow BlackBread rules.
    links, counterexamples, and no premature runtime architecture. State that
    runtime wiring is N/A for a document-only packet.
 6. Recheck changed artifacts after valid fixes; do not demand unrelated tests.
+
+Review packet feasibility as well as implementation: exact edit map versus
+read-only dependencies, real fixtures, supported platforms, and cumulative
+budget. A conforming LOC count cannot excuse an out-of-map edit or degraded
+readability. Trace state ownership and dependency direction; small files alone
+do not prove absence of a God Object or spaghetti dependencies.
+
+For recovery claims, locate the exact injected fault relative to the real
+commit/effect. Require pre-recovery durable-state assertions, fresh recovery
+context, scoped original identity and effect counts. Comments, test names and
+pre-commit mocks cannot prove post-commit failure behavior. Scope port-boundary
+fault results honestly; they do not prove every physical network/crash scenario.
+
+Inspect CI configuration and actual logs tied to the candidate SHA, including
+PR merge-checkout association when relevant. Separate static reasoning, local
+execution and remote execution. Report environment, role, skipped tests and
+coverage limits. Local environment failure is not a demonstrated product bug;
+candidate CI can supply execution evidence but does not waive an explicit local
+gate or establish an untested platform. Treat unavailable evidence as UNVERIFIED.
+Inspect actual security findings separately from scanner completion. Verify
+required branch checks if claiming merge readiness; green jobs alone do not
+prove that protection or approval requirements are satisfied.
 
 For each finding give exact source/path or observed behavior, the conflicting
 authority, impact, a reproducible counterexample where feasible, and the
@@ -82,8 +113,10 @@ component responsibility when reviewing Rust-first changes.
 
 Review-only requests produce findings; do not edit, self-accept, seal, or merge.
 When explicitly assigned FIX, use `build-duskweave` and its allowed file map.
-Escalate missing authority as AUTHORITY_CONFLICT, changed baseline as
-DESIGN_DRIFT, and materially wider fixes as SPLIT_REQUIRED with exact paths.
+Report unavailable authority as UNVERIFIED with the exact missing source; use
+AUTHORITY_CONFLICT only for demonstrated contradictory governing instructions.
+Use DESIGN_DRIFT for a changed pinned baseline and SPLIT_REQUIRED for a missing
+required dependency or materially wider fix, naming the exact paths/decision.
 Do not invent a PR, CI result, remote check, or independent reviewer identity.
 Return verified base/head, scope, findings and dispositions, checks actually
 run, blockers, readiness, and the next permitted packet boundary.

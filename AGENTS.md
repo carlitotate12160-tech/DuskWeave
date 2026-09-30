@@ -4,6 +4,12 @@
 
 Build DuskWeave as a persistent campaign reasoning and adversary-emulation platform with strict separation between cognition, deterministic authority, execution, observation, and proof.
 
+Preserve authorized offensive campaign behavior: active validation, access,
+expansion, adaptation and objective proof under the accepted product contracts.
+Non-destructive does not mean read-only. Low unnecessary footprint does not
+turn the platform into passive monitoring or a fully defensive product.
+Current milestone and campaign authority still bound implementation/execution.
+
 The repository is not a collection of attack scripts.
 
 It is a campaign operating system.
@@ -56,6 +62,13 @@ Before making changes, read:
 7. QUALITY_BAR.md
 8. relevant skill under .agents/skills/ and the assigned packet
 ```
+
+Establish these sources at the start of a task/session. On subsequent edits,
+recheck repository identity, HEAD, worktree status and relevant authority changes;
+reuse unchanged verified context and reread changed/newly affected boundaries.
+After context loss, rebuild the required context. Do not reread unrelated stages.
+Current acceptance/seal status comes from docs/ENGINEERING_STATE.md; old memory,
+startup examples and portable skill copies cannot establish current authority.
 
 Do not infer architectural authority from existing implementation when PRD/ADR says otherwise.
 
