@@ -2,12 +2,12 @@
 
 | Metadata | Value |
 | :--- | :--- |
-| Status | PROPOSED — owner requested authoring; contract and bounded sequencing exception await acceptance |
+| Status | ACCEPTED — product owner, 2026-09-30; reviewed revision `561f277e481748a73b81486de53ed40fa55967b0`, with bounded clarifications below |
 | Date | 2026-09-30 |
 | Verified authoring base | `c8b9cba275dbd3bb663ae38ba0d83c0f6e690717` |
 | Scope | Rust core; local mission/planning controls and durable non-sensitive history |
 | Authority | Accepted PRD-000/001; ADR-001..005; INV-001..007 and QUALITY_BAR |
-| Boundary | No runtime, target acquisition or milestone seal authorized by this draft |
+| Boundary | Local M0 core implementation permitted through issued bounded packets; no target acquisition/execution or milestone seal authorized |
 
 ## 1. Observable outcome and smallest scope
 
@@ -30,11 +30,11 @@ Mission/lifecycle responsibility, this narrow planning assessment, and the
 Trajectory history consumer. No empty Terrain/Access/Pathing/Objective crates,
 generic manager, all-domain context, LLM, graph cache or tenant framework.
 
-## 2. Dependencies and bounded sequencing proposal
+## 2. Dependencies and accepted bounded sequencing
 
 The current [stage packet](../build-order/02-reality-and-domain.md) describes
 full Reality/Evidence design before full domain implementation, with Trajectory
-implementation later. Propose a limited M0 lane before completing that sequence:
+implementation later. The owner accepts a limited M0 lane before completing that sequence:
 only this mission/history behavior. It does not claim DW-DOMAIN-001 completion
 or remove dependencies from evidence, proof, acquisition or execution.
 
@@ -79,6 +79,16 @@ speculative capability interface may substitute for that path.
 ## 4. Minimum command and query semantics
 
 Names below identify intents, not chosen Rust signatures or wire schemas.
+Exercise mode is declared registration metadata. M0 does not vary planning
+assessment behavior by mode; later observation/evidence/acquisition contracts
+enforce mode-dependent restrictions. A label alone grants no defender-informed
+scope or privileged feed eligibility.
+
+The application use case issues a stable operation handle before domain
+acceptance/mutation; retries and reconciliation reuse that same handle within
+its engagement/campaign. The CLI carries the handle, not an identity-generation
+policy; the aggregate does not generate application operation identities.
+An identifier alone grants no authority, and conflicting content is rejected.
 
 | Intent | Applicable input | Output and required effect |
 | :--- | :--- | :--- |
@@ -137,7 +147,12 @@ reauthorization contract must not be inferred from replay or re-registration.
 - Restart reconciles obligations and reads current Mission time/withdrawal before
   any new assessment. Restore/replay cannot reactivate a campaign; operator
   confirmation of current authority is required before continuation, preserves
-  original bounds, and never silently extends them.
+  original bounds, and never silently extends them. If withdrawal persistence
+  is unknown/unreconciled at startup, all affected campaign assessments stay
+  blocked until reconciliation and current operator confirmation establish
+  whether authority is withdrawn or still valid within those original bounds.
+  Confirmation cannot reactivate withdrawn authority or extend scope/lifetime;
+  uncertainty never receives optimistic admission.
 
 ## 6. Input, isolation and deployment bounds
 
@@ -204,8 +219,18 @@ client evidence, and no real target action is implied by the demo.
 M0 is a milestone, not one oversized runtime packet. Split into bounded vertical
 deliveries, each with a real entrypoint/consumer and meaningful tests, under
 [QUALITY_BAR](../../QUALITY_BAR.md). Do not ship horizontal empty scaffolding.
-Before its first IMPLEMENT packet, accept this contract/sequencing scope and
-resolve the concrete public types, owner persistence/concurrency boundaries,
+
+Candidate deliveries, each end to end rather than grouped by technical layer:
+- M0A: register -> durable Mission/outbox -> Trajectory acceptance/completion ->
+  inspect/reconcile after restart; baseline duplicate/unknown-commit tests included.
+- M0B: planning request -> current scope/time assessment -> durable decision history.
+- M0C: withdrawal -> immediate affected blocking -> durable history/recovery,
+  including failed persistence and startup uncertainty.
+These are bounded deliveries within one M0, not separately complete milestones.
+Domain, persistence, CLI and tests necessary for each outcome travel together;
+no unit-test-only types, unconsumed event producer, or unwired adapter is delivered.
+Before issuing each IMPLEMENT packet, resolve the concrete public types,
+owner persistence/concurrency boundaries,
 allowed files, actual failure tests and deployment assumptions in that packet.
 The engineering partner resolves those decisions before IDE handoff; the IDE
 receives an executable outcome, not an instruction to devise architecture.
@@ -216,4 +241,5 @@ contradictory governing decisions; SPLIT_REQUIRED for evidence/proof/custody,
 acquisition/dispatch, another model, or runtime files outside the accepted map.
 An M0 seal requires explicit owner action at the final verified commit with
 test/demo evidence and limits. DW-FOUNDATION-001 and the full DW-DOMAIN-001
-requirements remain unchanged. This PROPOSED design does not authorize code.
+requirements remain unchanged. Only the accepted local M0 scope may be coded
+through its issued packet; target runtime and later milestones remain unauthorized.
