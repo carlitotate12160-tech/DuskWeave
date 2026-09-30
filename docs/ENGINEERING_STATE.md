@@ -94,4 +94,5 @@ yang diminta pengguna pada 2026-09-27. Ini tidak mengubah seal produk.
 - Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
 - Distinct adversarial review: `.agents/skills/duskweave-adversarial-review/SKILL.md`.
 - Setup navigation: `docs/workflows/START_HERE.md`.
+- GitHub/CI hardening (diminta pengguna, 2026-09-30): default branch `master`; squash-only merge dengan auto-delete head branch; ruleset `default-branch` mewajibkan PR, resolusi conversation, check `ci-ok` (aggregator semua job wajib), dan branch up-to-date tanpa bypass rutin; secret scanning + push protection + Dependabot alerts/security updates aktif; `dependabot.yml` untuk github-actions; `scripts/check_structure.py` menegakkan budget 400 LOC, larangan path `utils/helpers/common/misc/managers`, conflict marker, dan hygiene Rust (aktif saat `.rs` ada). Gate Rust (`cargo fmt/clippy/test --locked`, `cargo audit`, Dependabot cargo, CodeQL) dan PostgreSQL integration menunggu PR Rust pertama / M0A.
 - Seal historis `DW-BOOTSTRAP-001` tetap merujuk baseline sebelumnya. `DW-FOUNDATION-001` kini menjadi active seal; Stage 4 authoring berjalan terpisah dari runtime authorization.
