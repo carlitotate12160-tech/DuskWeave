@@ -115,6 +115,80 @@ fn consumer_conflict_records_append_only_anomaly() {
 }
 
 #[test]
+fn history_rows_preserve_admitted_contract_and_effects() {
+    let _g = db();
+    let (engagement, campaign) = scope(0x3500);
+    let (mut allocator, mut store, mut trajectory) = ports();
+    let receipt = accepted(
+        &mut allocator,
+        &mut store,
+        &mut trajectory,
+        engagement,
+        campaign,
+    );
+    let original = store
+        .outbox_event(engagement, campaign, receipt.operation_id)
+        .unwrap()
+        .unwrap();
+    let original_contract = serde_json::to_value(&original).unwrap();
+    assert_eq!(trajectory.deliver(&original).unwrap(), Delivered::Duplicate);
+    assert_eq!(
+        count("trajectory.registration_history", engagement, campaign),
+        1
+    );
+
+    let mut changed = original_contract.clone();
+    changed["fields"]["authority_revision"] = serde_json::json!(2);
+    let changed: MissionRegistered = serde_json::from_value(changed).unwrap();
+    assert_eq!(trajectory.deliver(&changed).unwrap(), Delivered::Anomaly);
+    assert_eq!(trajectory.deliver(&original).unwrap(), Delivered::Anomaly);
+    assert_eq!(
+        trajectory
+            .status(engagement, campaign, receipt.event_id)
+            .unwrap(),
+        HistoryStatus::Anomaly
+    );
+
+    let rows = runtime_client()
+        .query(
+            "SELECT producer, operation_id, event_id, obligation, status, anomaly_category, \
+             contract, completed_at IS NOT NULL, recorded_at = completed_at \
+             FROM trajectory.registration_history \
+             WHERE engagement_id=$1 AND campaign_id=$2 ORDER BY status",
+            &[&engagement.0, &campaign.0],
+        )
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in &rows {
+        assert_eq!(row.get::<_, &str>(0), PRODUCER);
+        assert_eq!(row.get::<_, Uuid>(1), receipt.operation_id.0);
+        assert_eq!(row.get::<_, Uuid>(2), receipt.event_id.0);
+        assert_eq!(row.get::<_, &str>(3), "trajectory.registration_history.v1");
+    }
+    assert_eq!(rows[0].get::<_, &str>(4), "accepted");
+    assert_eq!(rows[0].get::<_, Option<&str>>(5), None);
+    assert_eq!(rows[0].get::<_, serde_json::Value>(6), original_contract);
+    assert!(rows[0].get::<_, bool>(7));
+    assert!(rows[0].get::<_, Option<bool>>(8).unwrap());
+    assert_eq!(rows[1].get::<_, &str>(4), "anomaly");
+    assert_eq!(
+        rows[1].get::<_, Option<&str>>(5),
+        Some("conflicting_identity")
+    );
+    assert_eq!(rows[1].get::<_, Option<serde_json::Value>>(6), None);
+    assert!(!rows[1].get::<_, bool>(7));
+    assert_eq!(
+        count_where(
+            "trajectory.registration_history",
+            "AND status='accepted'",
+            engagement,
+            campaign
+        ),
+        1
+    );
+}
+
+#[test]
 fn unsupported_contract_stays_unresolved_no_mutation() {
     let _g = db();
     let (e, c) = scope(0x4000);
