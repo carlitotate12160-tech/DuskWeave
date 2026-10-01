@@ -36,43 +36,37 @@ PUNCT_ONLY = re.compile(r"^\s*[,;}{()\[\]]+\s*$")
 FIELD_OR_VARIANT = re.compile(
     r"^\s*[A-Za-z_]\w*(\s*<[^>]*>)?\s*(\([^)]*\)|\{[^}]*\}|\s*:[^,]*)?\s*,?\s*$"
 )
+EXEC_TOKENS = re.compile(
+    r"\b(fn|impl|const|let|unsafe|async|move|for|while|loop|match|if"
+    r"|else|return|break|continue|macro_rules)\b"
+    r"|(?<!')\bstatic\b"
+    r"|[A-Za-z_]\w*!\s*[\(\{\[]|=>"
+)
 
 
 def declarations_only(path):
-    """True iff every non-comment line is a Rust item that emits no
-    coverable lines: attributes, mod/use declarations, type aliases,
-    data declarations and their fields/variants. Anything that could
-    produce a line counter (fn, impl, static, const init, expressions,
-    macro calls) returns False so the file must appear in the report."""
+    """True iff the file contains only Rust items that emit no coverable
+    lines: attributes, mod/use declarations, type aliases, data
+    declarations and their fields/variants. Any executable construct —
+    fn, impl, static/const with a value, expressions, macro calls — even
+    packed onto a shared line returns False, so the file must appear in
+    the report. Uncertainty fails closed."""
     try:
         with open(path, encoding="utf-8") as fh:
-            lines = fh.read().split("\n")
+            text = fh.read()
     except OSError:
         return False
-    in_block = False
-    for line in lines:
-        text = line.strip()
-        while True:
-            if in_block:
-                if "*/" in text:
-                    text = text.split("*/", 1)[1].strip()
-                    in_block = False
-                    continue
-                break
-            if "/*" in text:
-                text = text.split("/*", 1)[0].strip()
-                in_block = True
-                continue
-            break
-        if not text or text.startswith("//"):
+    text = re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    for raw in text.split("\n"):
+        t = raw.split("//", 1)[0].strip()
+        if not t or t.startswith("#"):
             continue
-        if in_block:
+        if EXEC_TOKENS.search(t):
+            return False
+        if DECL_HEADER.match(t) or PUNCT_ONLY.match(t):
             continue
-        if text.startswith("#"):
-            continue
-        if DECL_HEADER.match(text) or PUNCT_ONLY.match(text):
-            continue
-        if FIELD_OR_VARIANT.match(text):
+        if FIELD_OR_VARIANT.match(t):
             continue
         return False
     return True
@@ -106,11 +100,18 @@ def evaluate(report_path, root):
     except (OSError, json.JSONDecodeError) as exc:
         return [f"cannot read report {report_path}: {exc}"], out
 
+    data = doc.get("data") or []
+    if not data:
+        return [f"report {report_path} has no coverage data"], out
+
     reported = {}
-    for entry in doc.get("data", [{}])[0].get("files", []):
+    for entry in data[0].get("files", []):
         rel = relativize(entry.get("filename", ""), root)
         if rel.startswith("../") or not rel.startswith("src/") or not rel.endswith(".rs"):
             problems.append(f"non-production file in report: {entry.get('filename')}")
+            continue
+        if not os.path.isfile(os.path.join(root, rel)):
+            problems.append(f"reported file absent from source tree: {rel}")
             continue
         summ = entry.get("summary", {}).get("lines", {})
         reported[rel] = (int(summ.get("count", 0)), int(summ.get("covered", 0)))
@@ -192,34 +193,49 @@ def selftest():
         cases.append((
             "meets both floors; declarations-only file absent",
             [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
-            True,
+            [], True,
         ))
         cases.append((
             "per-file below 80%",
             [("src/a.rs", 10, 10), ("src/b.rs", 20, 15), ("src/decl.rs", 5, 5)],
-            False,
+            [], False,
         ))
         cases.append((
             "total below 90%",
             [("src/a.rs", 10, 10), ("src/b.rs", 100, 79)],
-            False,
+            [], False,
         ))
         cases.append((
             "production source with code missing from report",
             [("src/a.rs", 10, 10)],
-            False,
+            [], False,
         ))
         cases.append((
             "non-production file in report",
             [("src/a.rs", 10, 10), ("src/b.rs", 10, 9),
              ("tests/registration_cli.rs", 50, 50)],
-            False,
+            [], False,
+        ))
+        cases.append((
+            "missing file hiding single-line executable code",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/sneaky.rs", "pub mod m { pub fn f() {} }\n")], False,
+        ))
+        cases.append((
+            "reported file absent from source tree",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9),
+             ("src/ghost.rs", 10, 10)],
+            [], False,
         ))
 
         failed = 0
-        for name, entries, expect_ok in cases:
+        for name, entries, extra_src, expect_ok in cases:
+            for rel, text in extra_src:
+                write(rel, text)
             path = _fixture(root, entries)
             problems, _lines = evaluate(path, root)
+            for rel, _text in extra_src:
+                os.remove(os.path.join(root, rel))
             ok = not problems
             status = "ok" if ok == expect_ok else "UNEXPECTED"
             if ok != expect_ok:
