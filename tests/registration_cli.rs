@@ -72,6 +72,9 @@ fn cli(args: &[&str], dsn: Option<&str>) -> Output {
     if let Some(root) = std::env::var_os("SystemRoot") {
         cmd.env("SystemRoot", root);
     }
+    if let Some(p) = std::env::var_os("LLVM_PROFILE_FILE") {
+        cmd.env("LLVM_PROFILE_FILE", p);
+    }
     if let Some(d) = dsn {
         cmd.env("DW_DATABASE_URL", d);
     }

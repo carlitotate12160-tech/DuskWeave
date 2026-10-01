@@ -49,6 +49,12 @@ M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=a9da047b2bf0bf4822536187ab3e1
 3. **Absolute Determinism**:
    - Tests must not depend on arbitrary sleeps/timers, unseeded random execution order, or external networks.
    - Tests must not be left as `skip`, `ignore`, or `allow_failure` without explicit approval.
+4. **Line-coverage gate (M0A)**:
+   - CI runs the full suite (unit + PostgreSQL 17 integration + permissions + real CLI subprocess tests) once under `cargo llvm-cov` instrumentation; the existing deterministic assertions remain the behavioral authority.
+   - Fixed floors: `90%` total production line coverage and `80%` line coverage in every reported production source file. Both are enforced by `tests/check_coverage_gate.py` against that run's JSON report; the thresholds are constants in the gate, not inputs.
+   - Denominator: only `src/**/*.rs`. Test files, dependencies, generated code and build output are excluded; a reported file outside `src/` fails the gate. A production source missing from the report fails the gate unless it is declarations-only (no coverable lines).
+   - No `#[coverage(off)]`, ignore annotations, or filename exclusions may be used to hide untested production code.
+   - Line coverage is not branch coverage and does not establish correctness; the scenario assertions remain mandatory.
 
 ---
 

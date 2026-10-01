@@ -99,6 +99,31 @@ permits an explicit unchanged-intent retry with the same operation.
   `QUALITY_BAR.md`; enforced by `scripts/check_runtime_budget.py`.
 - Every source/test file ≤ 400 physical lines; McCabe ≤ 7 per function.
 
+## Coverage
+
+CI measures line coverage for M0A production Rust code (`src/**/*.rs` only)
+by running the complete suite once under `cargo llvm-cov` (pinned 0.9.1,
+digest-verified musl build) on the Linux Rust job against the same real
+PostgreSQL 17 setup. Fixed floors: **90% total production lines** and
+**80% lines per reported production source file**, enforced by
+`tests/check_coverage_gate.py` on the run's JSON report; the JSON plus a
+text summary are uploaded as the `m0a-coverage` artifact (14-day
+retention). Files outside `src/` in the report fail the gate; a
+production source absent from the report fails unless it is
+declarations-only. Line coverage is not branch coverage and does not
+establish correctness; the scenario matrix assertions remain mandatory.
+Windows/MSVC coverage is unverified — the gate evidence is Linux-only.
+
+Local equivalent (requires a disposable PG17 and `cargo-llvm-cov`):
+
+```bash
+cargo llvm-cov clean --workspace
+DW_TEST_DATABASE_URL=... DW_TEST_ADMIN_DATABASE_URL=... \
+  cargo llvm-cov --locked --all-targets --json --output-path target/llvm-cov/m0a-coverage.json
+python3 tests/check_coverage_gate.py target/llvm-cov/m0a-coverage.json
+python3 tests/check_coverage_gate.py --selftest
+```
+
 ## Local verification
 
 ```bash
@@ -109,6 +134,7 @@ cargo audit
 python scripts/check_links.py
 python scripts/check_structure.py
 python -m unittest discover -s tests -p test_runtime_budget.py
+python tests/check_coverage_gate.py --selftest
 python scripts/check_runtime_budget.py --base <expected-base-sha> --head INDEX
 git diff --check && git diff --cached --check
 ```
