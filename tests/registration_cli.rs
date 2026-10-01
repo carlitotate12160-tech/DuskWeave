@@ -3,12 +3,13 @@
 
 use duskweave::mission::OperationId;
 use postgres::{Client, NoTls};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use uuid::Uuid;
 
 const BIN: &str = env!("CARGO_BIN_EXE_duskweave");
 const MIGRATION: &str = include_str!("../migrations/0001_mission_registration.sql");
+const PLANNING_MIGRATION: &str = include_str!("../migrations/0002_planning_assessment.sql");
 
 static DB: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -52,6 +53,7 @@ fn ensure_setup() {
         cfg.dbname(&rt_db);
         let mut a = cfg.connect(NoTls).unwrap();
         a.batch_execute(MIGRATION).unwrap();
+        a.batch_execute(PLANNING_MIGRATION).unwrap();
         a.batch_execute(&format!(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{rt_user}') \
              THEN CREATE ROLE {rt_user} LOGIN PASSWORD '{rt_pass}'; \
@@ -81,6 +83,21 @@ fn cli(args: &[&str], dsn: Option<&str>) -> Output {
     cmd.args(args).output().expect("spawn failed")
 }
 
+fn assess_cli(operation: &str, input: &Path, recover: bool, dsn: Option<&str>) -> Output {
+    cli(
+        &[
+            "assess",
+            "--operation",
+            operation,
+            "--input",
+            input.to_str().unwrap(),
+            "--recover",
+            if recover { "true" } else { "false" },
+        ],
+        dsn,
+    )
+}
+
 fn stdout(o: &Output) -> String {
     String::from_utf8_lossy(&o.stdout).into_owned()
 }
@@ -96,6 +113,17 @@ fn mission_json(e: &str, c: &str) -> String {
         Uuid::from_u128(0x13),
         Uuid::from_u128(0x21)
     )
+}
+
+fn planning_json(e: &str, c: &str, revision: u64, confirmed: bool) -> String {
+    serde_json::json!({
+        "engagement_id": e, "campaign_id": c,
+        "purpose_ref": Uuid::from_u128(0x13),
+        "asset_ref": Uuid::from_u128(0x21),
+        "expected_mission_revision": revision,
+        "current_authority_confirmed": confirmed,
+    })
+    .to_string()
 }
 
 fn fresh_scope() -> (String, String) {
@@ -213,11 +241,33 @@ fn cli_rejects_without_mutation() {
     let e = Uuid::parse_str(&es).unwrap();
     let c = Uuid::parse_str(&cs).unwrap();
     let dsn = runtime_dsn();
+    let assessment_operation = Uuid::from_u128(0xf005).to_string();
 
     for (label, args) in [
         ("unknown", vec!["assess", "--engagement", &es]),
         ("withdraw", vec!["withdraw", "--campaign", &cs]),
         ("missing args", vec!["register", "--operation"]),
+        (
+            "assess missing",
+            vec!["assess", "--operation", "not-a-uuid"],
+        ),
+        ("assess unknown", vec!["assess", "--unknown", "value"]),
+        (
+            "assess duplicate",
+            vec!["assess", "--recover", "true", "--recover", "false"],
+        ),
+        (
+            "assess bad recover",
+            vec![
+                "assess",
+                "--operation",
+                &assessment_operation,
+                "--input",
+                "unused",
+                "--recover",
+                "maybe",
+            ],
+        ),
         (
             "bad uuid",
             vec!["inspect", "--engagement", "not-a-uuid", "--campaign", &cs],
@@ -262,8 +312,10 @@ fn cli_rejects_oversized_input_before_connecting() {
         ],
         None,
     );
-    std::fs::remove_file(&path).ok();
     assert!(!o.status.success());
+    assert!(stdout(&o).contains("size_limit"), "{}", stdout(&o));
+    let o = assess_cli(&Uuid::from_u128(0xf003).to_string(), &path, false, None);
+    std::fs::remove_file(&path).ok();
     assert!(stdout(&o).contains("size_limit"), "{}", stdout(&o));
 }
 
@@ -290,6 +342,36 @@ fn cli_rejects_sensitive_sentinel_cleanly() {
     let all = stdout(&o) + &String::from_utf8_lossy(&o.stderr);
     assert!(!all.contains("S3NTINEL"), "sentinel leaked: {all}");
     assert!(all.contains("schema_violation"), "{all}");
+    let (engagement, campaign) = fresh_scope();
+    let planning = planning_json(&engagement, &campaign, 1, true);
+    let body = format!(
+        "{},\"secret\":\"S3NTINEL-B1A\"}}",
+        planning.trim_end_matches('}')
+    );
+    let path = write_input(&body);
+    let result = assess_cli(&Uuid::from_u128(0xf004).to_string(), &path, false, None);
+    std::fs::remove_file(path).ok();
+    let all = stdout(&result) + &String::from_utf8_lossy(&result.stderr);
+    assert!(all.contains("schema_violation") && !all.contains("S3NTINEL"));
+    assert!(!all.contains("missing_env"));
+    let path = write_input("{");
+    let result = assess_cli(&Uuid::from_u128(0xf004).to_string(), &path, false, None);
+    std::fs::remove_file(path).ok();
+    assert!(stdout(&result).contains("malformed_json"));
+    let (engagement, campaign) = fresh_scope();
+    let valid: serde_json::Value =
+        serde_json::from_str(&planning_json(&engagement, &campaign, 1, true)).unwrap();
+    for (field, value) in [
+        ("engagement_id", serde_json::json!(Uuid::nil())),
+        ("expected_mission_revision", serde_json::json!(0)),
+    ] {
+        let mut invalid = valid.clone();
+        invalid[field] = value;
+        let path = write_input(&invalid.to_string());
+        let result = assess_cli(&Uuid::from_u128(0xf004).to_string(), &path, false, None);
+        std::fs::remove_file(path).ok();
+        assert!(!result.status.success() && !stdout(&result).contains("missing_env"));
+    }
 }
 
 #[test]
@@ -314,4 +396,104 @@ fn cli_refuses_bad_environment_before_connecting() {
     assert!(stdout(&o).contains("non_loopback_host"), "{}", stdout(&o));
     let o = cli(&inspect, Some("postgres://u@127.0.0.1:5432/db"));
     assert!(stdout(&o).contains("missing_credentials"), "{}", stdout(&o));
+}
+
+#[test]
+fn cli_assess_and_fresh_process_recovery_preserve_pending_original() {
+    ensure_setup();
+    let _guard = DB.lock().unwrap_or_else(|e| e.into_inner());
+    let dsn = runtime_dsn();
+    for (register, revision, confirmed, decision) in [
+        (false, 1, true, "unresolved_mission_basis"),
+        (true, 2, false, "refused_revision_mismatch"),
+        (true, 1, false, "unresolved_authority_unconfirmed"),
+        (true, 1, true, "unresolved_evaluation_incomplete"),
+    ] {
+        let (engagement, campaign) = fresh_scope();
+        let prepared = cli(
+            &[
+                "prepare-operation",
+                "--engagement",
+                &engagement,
+                "--campaign",
+                &campaign,
+            ],
+            Some(&dsn),
+        );
+        assert!(prepared.status.success());
+        let operation = stdout(&prepared)
+            .split_whitespace()
+            .find_map(|part| part.strip_prefix("operation="))
+            .unwrap()
+            .to_string();
+        if register {
+            let registration_prepared = cli(
+                &[
+                    "prepare-operation",
+                    "--engagement",
+                    &engagement,
+                    "--campaign",
+                    &campaign,
+                ],
+                Some(&dsn),
+            );
+            let registration_operation = stdout(&registration_prepared)
+                .split_whitespace()
+                .find_map(|part| part.strip_prefix("operation="))
+                .unwrap()
+                .to_string();
+            let registration_input = write_input(&mission_json(&engagement, &campaign));
+            let registration = cli(
+                &[
+                    "register",
+                    "--operation",
+                    &registration_operation,
+                    "--input",
+                    registration_input.to_str().unwrap(),
+                ],
+                Some(&dsn),
+            );
+            std::fs::remove_file(registration_input).ok();
+            assert!(registration.status.success(), "{}", stdout(&registration));
+        }
+        let input = write_input(&planning_json(&engagement, &campaign, revision, confirmed));
+        let absent = assess_cli(&operation, &input, true, Some(&dsn));
+        assert!(absent.status.success());
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&stdout(&absent)).unwrap()["result"],
+            "not_committed"
+        );
+        let fresh = assess_cli(&operation, &input, false, Some(&dsn));
+        assert!(fresh.status.success(), "{}", stdout(&fresh));
+        let original: serde_json::Value = serde_json::from_str(&stdout(&fresh)).unwrap();
+        assert_eq!(original["result"], "durable");
+        assert_eq!(original["contract"]["decision"], decision);
+        assert_eq!(original["history"], "pending");
+        assert_eq!(original["history_reason"], "delivery_not_available");
+        assert_eq!(original["complete_assessment"], false);
+        assert_eq!(original["current_permission"], false);
+        assert_eq!(original["scope"], "not_evaluated");
+        assert_eq!(original["window"], "not_evaluated");
+        assert_eq!(
+            original["basis_status"],
+            if register { "available" } else { "unavailable" }
+        );
+        let recovered = assess_cli(&operation, &input, true, Some(&dsn));
+        std::fs::remove_file(input).ok();
+        assert!(recovered.status.success(), "{}", stdout(&recovered));
+        let recovered: serde_json::Value = serde_json::from_str(&stdout(&recovered)).unwrap();
+        assert_eq!(recovered, original);
+        let mut connection = runtime_dsn()
+            .parse::<postgres::Config>()
+            .unwrap()
+            .connect(NoTls)
+            .unwrap();
+        let engagement_id = Uuid::parse_str(&engagement).unwrap();
+        let campaign_id = Uuid::parse_str(&campaign).unwrap();
+        let durable_count: i64 = connection.query_one(
+            "SELECT count(*) FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&engagement_id, &campaign_id],
+        ).unwrap().get(0);
+        assert_eq!(durable_count, 1);
+    }
 }

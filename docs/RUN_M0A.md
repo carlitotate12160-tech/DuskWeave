@@ -31,6 +31,10 @@ psql "$DW_TEST_ADMIN_DATABASE_URL" -f migrations/0001_mission_registration.sql
 # then, as admin: CREATE ROLE <rt> LOGIN PASSWORD '...'; GRANT dw_runtime TO <rt>;
 ```
 
+For the current B1a-enabled CLI, also apply
+`migrations/0002_planning_assessment.sql` after 0001. See [RUN_B1A](RUN_B1A.md)
+for the assessment command and its permanently pending history in that slice.
+
 ## Commands
 
 ```text
@@ -43,8 +47,8 @@ reconcile --engagement <uuid> --campaign <uuid> --operation <uuid>
 All declared flags are required exactly once; unknown, duplicate, or
 incomplete flags are rejected before any database connection. Input files
 are read bounded (16 KiB + 1 byte) and rejected bytes are never echoed or
-persisted. `assess`, `withdraw`, and any other command fail with
-`error=unknown_command` and mutate nothing.
+persisted. At M0A delivery, `assess` and `withdraw` were unsupported. B1a adds
+`assess`; `withdraw` remains unsupported.
 
 ## Wiring
 
