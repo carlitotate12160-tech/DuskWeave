@@ -106,7 +106,7 @@ user-requested configuration work on 2026-09-27. This does not change the produc
 - Historical seal `DW-BOOTSTRAP-001` still refers to the earlier baseline. `DW-FOUNDATION-001` is now the active seal; Stage 4 authoring runs separately from runtime authorization.
 
 
-## 8. LOC-policy calibration candidate
+## 8. Owner-authorized LOC-policy calibration
 
 Owner-authorized on 2026-10-01 through DW-FIX-LOC-POLICY-001: production/tooling
 files remain <=400; test/benchmark files <=500; Markdown <=600 subject to narrower
@@ -118,8 +118,9 @@ language ownership and the recorded foundation seal baseline are unchanged. The 
 resolve the trigger; numerical CI success is insufficient. Packet sizing includes
 formatted measurement and correction room. Reassess after five runtime deliveries.
 
-This revision is a working-branch candidate pending delivery/review/merge,
-not a new product acceptance or seal. Verified execution base:
+Owner approval applies to engineering policy, not a new product acceptance or
+seal. Delivery/review/merge and candidate CI must be verified from current
+GitHub evidence; this entry does not establish those outcomes. Execution base:
 `a072b2e8ccf7d3311214d5be0d34543179e5f4bf`
 (PR #11 R1 merged); the earlier master/CI entry in section 6 is historical evidence.
 M0A remains implemented, M0B/C pending, M0 DEMO_PENDING and unsealed.
