@@ -4,6 +4,8 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  schedule:
+    - cron: "23 3 * * 1"
 
 permissions:
   contents: read
@@ -42,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -50,9 +54,107 @@ jobs:
       - name: Structure and hygiene check
         run: python scripts/check_structure.py
 
+      - name: Runtime-budget checker unit tests
+        run: python -m unittest discover -s tests -p test_runtime_budget.py
+
+      - name: Resolve diff base
+        id: base
+        shell: bash
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags --depth=50 origin master
+            BASE="$(git merge-base FETCH_HEAD HEAD)"
+          fi
+          git rev-parse --verify "$BASE^{commit}"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Runtime diff budget check
+        run: python scripts/check_runtime_budget.py --base "${{ steps.base.outputs.base }}" --head HEAD
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Start owned PostgreSQL 17 on loopback
+        shell: bash
+        run: |
+          set -e
+          ADMIN_PW="ci-$(openssl rand -hex 16)"
+          RT_PW="ci-$(openssl rand -hex 16)"
+          echo "::add-mask::$ADMIN_PW"
+          echo "::add-mask::$RT_PW"
+          echo "ADMIN_PW=$ADMIN_PW" >> "$GITHUB_ENV"
+          echo "RT_PW=$RT_PW" >> "$GITHUB_ENV"
+          docker run -d --name dwpg \
+            -e POSTGRES_PASSWORD="$ADMIN_PW" \
+            -p 127.0.0.1:5432:5432 \
+            postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+
+      - name: Bounded readiness and runtime role setup
+        shell: bash
+        run: |
+          set -e
+          for i in $(seq 1 30); do
+            if docker exec dwpg pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            [ "$i" = 30 ] && { echo "postgres did not become ready"; exit 1; }
+            sleep 1
+          done
+          {
+            echo "CREATE DATABASE dw_test;"
+            echo "CREATE ROLE dw_test_runtime LOGIN PASSWORD '$RT_PW';"
+          } | docker exec -i dwpg psql -U postgres -v ON_ERROR_STOP=1 >/dev/null
+
+      - name: Rust toolchain 1.94.1
+        run: rustup toolchain install 1.94.1 --profile minimal --component clippy,rustfmt
+
+      - name: Format check
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests against real PostgreSQL 17
+        env:
+          DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
+          DW_TEST_DATABASE_URL: postgres://dw_test_runtime:${{ env.RT_PW }}@127.0.0.1:5432/dw_test
+        run: cargo test --locked --all-targets
+
+      - name: cargo audit
+        run: |
+          curl -fsSL -o /tmp/cargo-audit.tgz \
+            "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.2/cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz"
+          tar -xzf /tmp/cargo-audit.tgz -C /tmp
+          /tmp/cargo-audit-x86_64-unknown-linux-musl-v0.22.2/cargo-audit audit
+
+      - name: Always clean up PostgreSQL container
+        if: always()
+        run: docker rm -f dwpg || true
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: github/codeql-action/init@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3
+        with:
+          languages: rust
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3
+
   ci-ok:
     name: ci-ok
-    needs: [links, structure]
+    needs: [links, structure, rust, codeql]
     if: always()
     runs-on: ubuntu-latest
     steps:
