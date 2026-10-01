@@ -2,6 +2,9 @@
 //! trajectory.* tables; history insertion and completion commit atomically.
 
 use crate::mission::{CampaignId, EngagementId, EventId, MissionRegistered};
+use crate::planning::PlanningAssessed;
+use crate::planning_history::PlanningHistoryPort;
+use crate::postgres_planning_history as planning;
 use crate::postgres_trajectory_history::{self, RegistrationRecord, store_err};
 use crate::registration::TrajectoryPort;
 use crate::trajectory::{Delivered, HistoryStatus, check_event};
@@ -48,5 +51,28 @@ impl TrajectoryPort for PgTrajectory {
 
     fn status(&mut self, e: EngagementId, c: CampaignId, ev: EventId) -> Res<HistoryStatus> {
         postgres_trajectory_history::status(&mut self.client, e.0, c.0, ev.0)
+    }
+}
+
+impl PlanningHistoryPort for PgTrajectory {
+    fn publish(&mut self, event: &PlanningAssessed) -> Res<Delivered> {
+        event.validate()?;
+        planning::qualify(&mut self.client, true)?;
+        let mut tx = self
+            .client
+            .build_transaction()
+            .isolation_level(IsolationLevel::Serializable)
+            .start()
+            .map_err(|e| store_err(&e))?;
+        let outcome = planning::append(&mut tx, event)?;
+        tx.commit().map_err(|e| planning::commit_error(&e))?;
+        Ok(outcome)
+    }
+
+    fn inspect(&mut self, event: &PlanningAssessed) -> Res<Delivered> {
+        event.validate()?;
+        planning::qualify(&mut self.client, false)?;
+        Ok(planning::existing(&mut self.client, event)?
+            .unwrap_or(Delivered::Unresolved("not_recorded")))
     }
 }

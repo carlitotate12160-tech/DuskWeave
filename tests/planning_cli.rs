@@ -141,7 +141,7 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
         ("decision_origin", "durable_record"),
         ("publication_obligation", "trajectory.planning_history.v1"),
         ("history", "pending"),
-        ("history_reason", "delivery_not_available"),
+        ("history_reason", "not_published_at_decision"),
         ("basis_status", "available"),
         ("scope", "not_evaluated"),
         ("window", "not_evaluated"),
