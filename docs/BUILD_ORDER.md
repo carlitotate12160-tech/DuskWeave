@@ -45,11 +45,11 @@ Current seal:
 
 Current engineering state:
 
-`Stage 4 — Reality & Evidence design; DW-FOUNDATION-001 SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0; PRD-007..010 ACCEPTED; ADR-008 ACCEPTED; M0 contract and bounded sequencing ACCEPTED; first local M0A coding packet next`
+`Accepted bounded M0 lane; DW-FOUNDATION-001 remains SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0; PRD-000..010 / ADR-001..008 and M0 contract ACCEPTED; M0A registration/history MERGED; M0B/C pending; M0 DEMO_PENDING and unsealed`
 
 Current design document:
 
-[ADR-008 Observation & Fact Separation](adr/ADR-008-observation-fact-separation.md) is `ACCEPTED` by the product owner on 2026-09-30. The [minimum M0 contract](contracts/M0-mission-authority-history.md) and its bounded sequencing exception are `ACCEPTED` by the owner on 2026-09-30. Next is the first executable M0A packet for durable registration/history; M0B/C add assessment and withdrawal. Local M0 implementation is permitted only through issued bounded packets; no full domain seal is implied. Targeted research resolves material ambiguity rather than imposing an operator study for every PRD/ADR. Target runtime/acquisition and tool integration remain unauthorized.
+[ADR-008 Observation & Fact Separation](adr/ADR-008-observation-fact-separation.md) is `ACCEPTED` by the product owner on 2026-09-30. The [minimum M0 contract](contracts/M0-mission-authority-history.md) and its bounded sequencing exception are `ACCEPTED` by the owner on 2026-09-30. M0A durable registration/history is merged through PR #5. Next is a feasible M0B current-bounds assessment/history packet; M0C adds withdrawal. Exact-master CI and remaining demo/seal obligations are recorded in ENGINEERING_STATE.md. Local M0 implementation is permitted only through issued bounded packets; no full domain seal is implied. Targeted research resolves material ambiguity rather than imposing an operator study for every PRD/ADR. Target runtime/acquisition and tool integration remain unauthorized.
 
 [MVP direction and deferred scope](MVP_AND_DEFERRED_SCOPE.md) records owner-approved direction and the bounded CODE/TEST -> DEMO -> REVIEW/FIX -> SEAL rhythm. The accepted M0 contract identifies which evidence/proof/custody decisions can wait for their actual behavior. Its bounded sequencing exception is accepted; each local M0 runtime packet must contain resolved contracts and an exact file map. Existing dependencies for the full domain/evidence/execution stages are preserved.
 
