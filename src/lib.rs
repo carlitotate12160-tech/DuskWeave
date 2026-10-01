@@ -3,6 +3,9 @@
 
 pub mod input;
 pub mod mission;
+pub mod planning;
+pub mod planning_assessment;
+pub mod planning_input;
 pub mod postgres_mission;
 pub mod postgres_trajectory;
 mod postgres_trajectory_history;

@@ -24,12 +24,28 @@ fn runtime_role_denied_mutation_and_ddl() {
         "UPDATE mission.missions SET revision=9",
         "DELETE FROM mission.missions",
         "UPDATE mission.registration_outbox SET contract='{}'",
+        "UPDATE mission.planning_assessments SET contract='{}'",
+        "DELETE FROM mission.planning_assessments",
+        "TRUNCATE mission.planning_assessments",
         "CREATE TABLE mission.evil(id int)",
         "CREATE TABLE trajectory.evil(id int)",
     ] {
         assert!(
             rt.batch_execute(sql).is_err(),
             "runtime role must be denied: {sql}"
+        );
+    }
+    for privilege in ["SELECT", "INSERT"] {
+        let allowed: bool = rt
+            .query_one(
+                "SELECT has_table_privilege(current_user, 'mission.planning_assessments', $1)",
+                &[&privilege],
+            )
+            .unwrap()
+            .get(0);
+        assert!(
+            allowed,
+            "runtime requires {privilege} on assessment publication"
         );
     }
     // Durability settings must not be weakened for this slice.
