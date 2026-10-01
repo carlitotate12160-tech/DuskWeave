@@ -18,7 +18,8 @@ Readability, maintainability, and domain-responsibility isolation are enforced t
 
 Recorded delivery-budget exceptions (scoped, non-recurring; duplicate records are invalid):
 
-M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=f52cfcc53c183f7c852fba191f9da14858c7ae5d; cap=1200; initial-only
+M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=a9da047b2bf0bf4822536187ab3e1734ac56fc12; cap=1200; initial-only
+(History: originally pinned to base f52cfcc53c183f7c852fba191f9da14858c7ae5d; repointed to a9da047 after protected master advanced via documentation-only PR #6 containing no runtime changes.)
 
 ### Code splitting rules:
 - Strictly forbidden to create dumping-ground files such as `utils.rs`, `helpers.rs`, `common.rs`, or `misc.rs`.

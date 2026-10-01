@@ -62,7 +62,7 @@ def run_budget_inproc(repo: Path, base: str, head: str, pinned: str | None = Non
 
 RECORD = (
     "M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; "
-    "base=f52cfcc53c183f7c852fba191f9da14858c7ae5d; cap=1200; initial-only"
+    "base=a9da047b2bf0bf4822536187ab3e1734ac56fc12; cap=1200; initial-only"
 )
 
 
@@ -203,6 +203,20 @@ class BudgetTests(unittest.TestCase):
             head = fx.commit_all()
             rc, out = run_budget_inproc(fx.repo, mid, head, pinned=fx.base)
             self.assertEqual(rc, 1)  # 400 added > default 400
+            self.assertIn("policy=default cap=400", out)
+
+    def test_stale_previous_base_uses_default_cap(self) -> None:
+        # A superseded baseline must not qualify: the record pins exactly
+        # one protected-master base; evaluating against the prior base is
+        # indistinguishable from any other wrong base.
+        tmp, fx = self.make()
+        with tmp:
+            self.write_map(fx, 401)
+            mid = fx.commit_all()  # mid stands in for the newer pinned base
+            # Candidate contains the exact record + in-map paths, but the
+            # resolved base is the superseded commit, not the pinned one.
+            rc, out = run_budget_inproc(fx.repo, fx.base, mid, pinned=mid)
+            self.assertEqual(rc, 1)
             self.assertIn("policy=default cap=400", out)
 
     def test_absent_or_malformed_record_uses_default(self) -> None:

@@ -92,9 +92,11 @@ permits an explicit unchanged-intent retry with the same operation.
 
 ## Budgets
 
-- Runtime diff cap: packet-scoped exception `M0A_RUNTIME_DIFF_EXCEPTION`
-  (base `f52cfcc53c183f7c852fba191f9da14858c7ae5d`, cap 1200, initial-only)
-  recorded in `QUALITY_BAR.md`; enforced by `scripts/check_runtime_budget.py`.
+- Runtime diff cap: one-shot exception `M0A_RUNTIME_DIFF_EXCEPTION`
+  (baseline `a9da047b2bf0bf4822536187ab3e1734ac56fc12` — protected master at
+  M0A delivery, repointed from `f52cfcc` after docs-only PR #6; cap 1200,
+  applies once to this initial M0A delivery only) recorded in
+  `QUALITY_BAR.md`; enforced by `scripts/check_runtime_budget.py`.
 - Every source/test file ≤ 400 physical lines; McCabe ≤ 7 per function.
 
 ## Local verification

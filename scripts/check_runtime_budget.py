@@ -8,8 +8,8 @@ the count. Fails above the hard cap or on binary production changes.
 
 Default cap is 400. A narrow one-shot exception exists for the initial
 DW-IMPLEMENT-M0A delivery: it applies only when the resolved base is the
-pinned EXPECTED_BASE_SHA, the candidate tree (INDEX or commit — never the
-dirty worktree file) contains the exact M0A exception record in
+pinned protected-master baseline (M0A_BASE), the candidate tree (INDEX or
+commit — never the dirty worktree file) contains the exact M0A exception record in
 QUALITY_BAR.md exactly once, and every changed runtime path is inside the
 declared M0A runtime map. Anything else uses the default 400.
 
@@ -24,11 +24,13 @@ import sys
 HARD_CAP = 400
 PREFERRED_CAP = 300
 
-M0A_BASE = "f52cfcc53c183f7c852fba191f9da14858c7ae5d"
+# Pinned to the protected master at M0A delivery time; originally f52cfcc,
+# repointed after docs-only PR #6 advanced master (no runtime drift).
+M0A_BASE = "a9da047b2bf0bf4822536187ab3e1734ac56fc12"
 M0A_CAP = 1200
 M0A_RECORD = (
     "M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; "
-    "base=f52cfcc53c183f7c852fba191f9da14858c7ae5d; cap=1200; initial-only"
+    "base=a9da047b2bf0bf4822536187ab3e1734ac56fc12; cap=1200; initial-only"
 )
 M0A_RECORD_KEY = "M0A_RUNTIME_DIFF_EXCEPTION"
 M0A_RUNTIME_MAP = frozenset(
