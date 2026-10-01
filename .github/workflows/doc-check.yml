@@ -139,6 +139,7 @@ jobs:
         run: |
           set -e
           cargo llvm-cov clean --workspace
+          mkdir -p target/llvm-cov
           cargo llvm-cov --locked --all-targets --json --output-path target/llvm-cov/m0a-coverage.json
           cargo llvm-cov report --text --output-path target/llvm-cov/m0a-coverage.txt
           cat target/llvm-cov/m0a-coverage.txt
