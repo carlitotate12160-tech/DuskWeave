@@ -5,6 +5,7 @@ pub mod input;
 pub mod mission;
 pub mod postgres_mission;
 pub mod postgres_trajectory;
+mod postgres_trajectory_history;
 pub mod registration;
 pub mod trajectory;
 
