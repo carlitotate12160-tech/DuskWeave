@@ -191,15 +191,21 @@ Preferred source module:
 < 300 LOC
 ```
 
-Architecture review threshold:
+Production/tooling file hard cap:
 
 ```text
 400 LOC
 ```
 
-Large modules must be split by cohesive responsibility.
+Large modules must be split by cohesive responsibility. Test/benchmark files
+have a 500-line cap; Markdown has a separate 600-line cap, subordinate to any
+narrower document-specific rule. See QUALITY_BAR.md for classification/counting.
 
-Test modules are also expected to remain readable and bounded.
+Runtime diff and file size are independent. Prefer runtime diffs below 300;
+above 400 requires explicit cohesion/ownership review in the existing distinct
+review; 600 is the cumulative hard ceiling. Each packet declares its own ceiling
+and measured formatted size with room for corrections. Crossings of the 400
+review trigger alone do not require an exception or SPLIT_REQUIRED.
 
 ---
 

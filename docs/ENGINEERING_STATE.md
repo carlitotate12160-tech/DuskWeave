@@ -102,5 +102,25 @@ user-requested configuration work on 2026-09-27. This does not change the produc
 - Packet execution: `.agents/skills/build-duskweave/SKILL.md`.
 - Distinct adversarial review: `.agents/skills/duskweave-adversarial-review/SKILL.md`.
 - Setup navigation: `docs/workflows/START_HERE.md`.
-- GitHub/CI hardening (user-requested, 2026-09-30): default branch is `master`; squash-only merge with auto-delete of head branches; `default-branch` ruleset requires a PR, conversation resolution, the `ci-ok` check (aggregator of all gated jobs), and an up-to-date branch with no routine bypass; secret scanning + push protection + Dependabot alerts/security updates are enabled; `dependabot.yml` covers github-actions; `scripts/check_structure.py` enforces the 400 LOC budget, forbidden `utils/helpers/common/misc/managers` paths, conflict markers, and Rust hygiene (active once `.rs` files exist). Workflows run on GitHub-hosted runners with minimal token permissions, actions pinned to full SHA, and no client credentials. M0A and PRs #9/#10 now provide Rust formatting/Clippy/full tests under coverage, PostgreSQL 17 integration, cargo audit, CodeQL and fixed 90% total / 80% per-file production line-coverage enforcement. Dependabot cargo is configured. Mutation testing, parser fuzzing, benchmarks, ARM64 matrix, restore/failover qualification and SBOM/signing remain deferred until the behavior requires them.
+- GitHub/CI hardening (user-requested, 2026-09-30): default branch is `master`; squash-only merge with auto-delete of head branches; `default-branch` ruleset requires a PR, conversation resolution, the `ci-ok` check (aggregator of all gated jobs), and an up-to-date branch with no routine bypass; secret scanning + push protection + Dependabot alerts/security updates are enabled; `dependabot.yml` covers github-actions; `scripts/check_structure.py` enforces the category-specific file budgets, forbidden `utils/helpers/common/misc/managers` paths, conflict markers, and Rust hygiene (active once `.rs` files exist). Workflows run on GitHub-hosted runners with minimal token permissions, actions pinned to full SHA, and no client credentials. M0A and PRs #9/#10 now provide Rust formatting/Clippy/full tests under coverage, PostgreSQL 17 integration, cargo audit, CodeQL and fixed 90% total / 80% per-file production line-coverage enforcement. Dependabot cargo is configured. Mutation testing, parser fuzzing, benchmarks, ARM64 matrix, restore/failover qualification and SBOM/signing remain deferred until the behavior requires them.
 - Historical seal `DW-BOOTSTRAP-001` still refers to the earlier baseline. `DW-FOUNDATION-001` is now the active seal; Stage 4 authoring runs separately from runtime authorization.
+
+
+## 8. Owner-authorized LOC-policy calibration
+
+Owner-authorized on 2026-10-01 through DW-FIX-LOC-POLICY-001: production/tooling
+files remain <=400; test/benchmark files <=500; Markdown <=600 subject to narrower
+document rules. Runtime diffs prefer <300, trigger explicit cohesion/ownership
+review above 400 and stop above 600 or the packet's lower declared ceiling.
+Physical counting and SQL inclusion remain. ADR-004 section 6 now references
+the canonical delivery budgets without duplicating a stale runtime ceiling;
+language ownership and the recorded foundation seal baseline are unchanged. The existing distinct review must
+resolve the trigger; numerical CI success is insufficient. Packet sizing includes
+formatted measurement and correction room. Reassess after five runtime deliveries.
+
+Owner approval applies to engineering policy, not a new product acceptance or
+seal. Delivery/review/merge and candidate CI must be verified from current
+GitHub evidence; this entry does not establish those outcomes. Execution base:
+`a072b2e8ccf7d3311214d5be0d34543179e5f4bf`
+(PR #11 R1 merged); the earlier master/CI entry in section 6 is historical evidence.
+M0A remains implemented, M0B/C pending, M0 DEMO_PENDING and unsealed.

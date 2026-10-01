@@ -12,9 +12,27 @@ Readability, maintainability, and domain-responsibility isolation are enforced t
 
 | Metric | Ideal Threshold | Hard Cap | Action When Exceeded |
 | :--- | :--- | :--- | :--- |
-| **Module/File size** | `< 300 LOC` | `400 LOC` | Must be split by domain responsibility (*split by responsibility*). |
-| **Runtime diff per PR/slice** | `< 300 LOC` | `400 LOC` | Must be split into incremental slices (*SPLIT_REQUIRED*). |
+| **Production/tooling file** | `< 300 LOC` | `400 LOC` | Split by cohesive responsibility. |
+| **Test/benchmark file** | Readable, cohesive tests | `500 LOC` | Split by scenario/responsibility. |
+| **Markdown document** | One purpose; navigable | `600 LOC` | Split by purpose; narrower document-specific limits still apply. |
+| **Runtime diff per PR/slice** | `< 300 LOC`; review trigger `> 400` | `600 LOC` | Above 400 requires explicit cohesion/ownership review; above 600 is *SPLIT_REQUIRED*. |
 | **Cyclomatic complexity (McCabe)** | `<= 7` per function | `7` per function | A value `> 7` violates the budget; refactor by cohesive responsibility. |
+
+Counts are physical lines including comments and blanks. File size uses actual
+lines, with or without a final newline. Test files are under `tests/` or `benches/`
+or named `tests.rs`; this classification does not grant a new Rust-hygiene exemption.
+The test allowance is for test-only code. Naming or placing production code as
+a test to evade its cap is forbidden; review verifies actual compilation/wiring.
+The runtime diff counts added plus deleted lines in production paths, SQL migrations
+and named manifests. Docs, `tests/`, lockfiles and CI-only tooling remain outside
+that diff; test modules placed under `src/` still count as source-path changes.
+
+The 600 runtime ceiling is an initial DuskWeave calibration, not an industry
+standard or a target to fill. A >400 result is a review trigger, not a budget
+exception. The existing distinct review must explicitly address one coherent
+behavior, owner boundaries, file footprint, failure/recovery tests and a safe
+system after merge. CI reports the trigger; green numerical checks do not resolve
+that review or grant acceptance. Source-module and McCabe caps remain independent.
 
 Recorded delivery-budget exceptions (scoped, non-recurring; duplicate records are invalid):
 
@@ -90,10 +108,22 @@ M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=a9da047b2bf0bf4822536187ab3e1
 - Before issuing a runtime packet, inspect its current source, real consumers,
   fixtures, CI, supported environments and cumulative budget. Resolve known
   infeasibility before coding; distinguish estimates from measured counts.
-  A budget exception requires explicit scoped authorization, not executor discretion.
-- Keep existing caps. Never shrink required behavior, remove explanatory comments,
+  Each packet pins its cumulative ceiling at or below 600, an exact file map and
+  measured formatted starting/proposed size. Normally reserve 15-20% for corrections
+  before handoff; this is planning headroom, not a target to consume. Reassess tight
+  estimates before execution. >400 requires the review disposition in section 1,
+  not a routine exception. Any exception above the ceiling still needs explicit
+  scoped authorization; the executor cannot enlarge it.
+- Keep the applicable caps. Never shrink required behavior, remove explanatory comments,
   compress formatting or perform unrelated/out-of-map cleanup to satisfy a counter.
   Small files and low complexity are checks, not proof of sound ownership.
+- During execution, stop for material scope/ownership drift or the packet/hard
+  ceiling; crossing the 400 review trigger alone is not SPLIT_REQUIRED. Never add
+  a precursor solely to save a few counted lines. A refactor must be cohesive,
+  directly consumed and supported by behavior-preserving evidence.
+- Reassess this initial calibration after five runtime deliveries using measured
+  diff/footprint, review findings/rework and stopped slices. Tighten or widen only
+  from that evidence, without weakening owner, complexity or failure-test gates.
 - Bind material acceptance criteria to requirement, owner, observable assertion,
   failure boundary, environment and candidate SHA. Report actual commands/results;
   distinguish static review, local execution and exact-candidate CI evidence.

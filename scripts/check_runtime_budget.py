@@ -6,12 +6,13 @@ business-runtime paths only: src/*.rs, migrations/*.sql, Cargo.toml,
 rust-toolchain.toml. Lockfile, tests, docs and CI-only tooling are outside
 the count. Fails above the hard cap or on binary production changes.
 
-Default cap is 400. A narrow one-shot exception exists for the initial
+Default cap is 600; above 400 emits an explicit review trigger.
+A narrow one-shot exception exists for the initial
 DW-IMPLEMENT-M0A delivery: it applies only when the resolved base is the
 pinned protected-master baseline (M0A_BASE), the candidate tree (INDEX or
 commit — never the dirty worktree file) contains the exact M0A exception record in
 QUALITY_BAR.md exactly once, and every changed runtime path is inside the
-declared M0A runtime map. Anything else uses the default 400.
+declared M0A runtime map. Anything else uses the default 600.
 
 Usage: check_runtime_budget.py --base <commit> --head <commit|INDEX>
 INDEX diffs the staged index against base (pre-commit checks).
@@ -21,7 +22,8 @@ import argparse
 import subprocess
 import sys
 
-HARD_CAP = 400
+HARD_CAP = 600
+REVIEW_THRESHOLD = 400
 PREFERRED_CAP = 300
 
 # Pinned to the protected master at M0A delivery time; originally f52cfcc,
@@ -148,6 +150,9 @@ def main() -> int:
     if total > cap:
         print(f"error: runtime diff exceeds {cap} LOC cap")
         return 1
+    if total > REVIEW_THRESHOLD:
+        print(f"review_required=true threshold={REVIEW_THRESHOLD}: "
+              "resolve cohesion/ownership and safe-merge review before acceptance")
     if cap == HARD_CAP and total > PREFERRED_CAP:
         print(f"note: above preferred {PREFERRED_CAP}")
     return 0

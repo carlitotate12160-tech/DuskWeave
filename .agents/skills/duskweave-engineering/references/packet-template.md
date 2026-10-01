@@ -19,9 +19,12 @@ Execute the assigned packet directly. Do not return another implementation plan.
 - Relevant conflicting work check, if required.
 - Required tools and verification capability.
 - Supported/tested OS, architecture, toolchain, database and runtime role.
-- Measured starting cumulative budget, estimated readable change and remaining
-  room. Resolve known infeasibility before issuing the packet, including an
-  authorized scoped exception if needed; do not promise an unmeasured fit.
+- Measured formatted cumulative size, exact packet ceiling (at most 600 runtime
+  lines under ordinary policy), and room for corrections; normally reserve
+  15-20% during planning. Keep production files <=400 and tests <=500.
+  Above 400 runtime lines, include the cohesion/ownership review trigger and
+  required disposition. That trigger alone does not need an exception or STOP.
+  Resolve known infeasibility before handoff; do not promise an unmeasured fit.
 
 ## Authority read
 List only applicable files in the repository-mandated order.
@@ -77,7 +80,10 @@ actual current-head results and skipped tests. Do not weaken a gate to fit scope
 ## Review
 One adversarial pass, fix valid in-scope findings, final changed-result review.
 Distinguish false positives from valid out-of-scope blockers.
-Distinguish author self-review from an independent session. Evaluate changed
+Distinguish author self-review from an independent session. For >400 runtime
+lines, explicitly assess one coherent behavior, owner boundaries, file footprint,
+failure/recovery coverage and safe state after merge. Green CI is not this review.
+Evaluate changed
 behavior and assertions, not test count or scanner completion alone.
 
 ## STOP

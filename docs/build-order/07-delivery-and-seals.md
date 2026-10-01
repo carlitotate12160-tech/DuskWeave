@@ -13,7 +13,9 @@ tests
 Target:
 
 ```text
-runtime diff preferably < 400 LOC
+runtime diff preferably < 300 LOC
+> 400 LOC: explicit cohesion/ownership review
+> 600 LOC: SPLIT_REQUIRED
 ```
 
 Do not intentionally grow a slice merely to hit a minimum.
@@ -45,6 +47,17 @@ not:
 ```text
 move functions randomly to helpers.py
 ```
+
+The 400 file cap applies to production/tooling; test/benchmark files have 500,
+Markdown has 600 unless a narrower document-specific rule applies. Physical
+comments/blanks count. File size is independent of the cumulative runtime diff.
+
+Before issuing a packet, measure the formatted cumulative diff against its exact
+base, declare a ceiling no higher than 600, and normally retain 15-20% planning
+room for corrections. Crossing 400 requires an explicit disposition in the
+existing distinct review; CI green alone does not resolve that disposition.
+Do not add a low-value precursor or remove failure behavior merely to fit 400.
+Split for responsibility, material scope drift or a hard/packet ceiling.
 
 ---
 
