@@ -2,6 +2,9 @@
 
 Use only when authoring a packet. Fill every field from verified DuskWeave sources.
 Do not publish placeholders as ready-to-execute instructions.
+Write task-specific instructions; reference permanent authority instead of
+repeating it. Keep concrete contract, failure assertions, protections and gates.
+This template adds no prompt-length gate or separate planning deliverable.
 
 PROJECT: DuskWeave
 MODE: DESIGN | IMPLEMENT | FIX
@@ -29,6 +32,8 @@ Execute the assigned packet directly. Do not return another implementation plan.
 ## Authority read
 List only applicable files in the repository-mandated order.
 Distinguish accepted authority from documents this packet is tasked to draft.
+Establish context once; on continuation recheck identity/HEAD/status and authority
+deltas, then reread changed/newly affected boundaries. Rebuild lost context.
 
 ## Outcome and bounded context
 State one reviewable outcome, ownership, and behavior.
@@ -51,6 +56,9 @@ The IDE implements the decisions already captured by authority and packet.
 Do not ask it to choose a new architecture or return another plan.
 Keep product semantics in PRDs and architectural decisions in permitted ADRs.
 Do not duplicate entire authority documents in the prompt.
+Separate new behavior from existing reuse. Schedule focused tests and an early
+formatted cumulative-budget check once the complete production path exists,
+before polishing tests/docs. This does not replace pre-handoff feasibility.
 
 ## Non-goals
 List later-stage work and adjacent changes that must not be performed.
@@ -76,9 +84,15 @@ secret defaults and ordinary-surface secret diagnostics. Separate infrastructure
 configuration from campaign custody. Do not claim untested platform support.
 Keep required deterministic checks in CI when runtime is introduced; verify
 actual current-head results and skipped tests. Do not weaken a gate to fit scope.
+Schedule one final full pass per unchanged candidate/platform/configuration;
+an all-targets coverage run executes that same suite. Retain coverage cleanup,
+required platform checks and final-head CI; rerun affected checks after fixes.
+Build/service reuse never substitutes for current test results or fresh recovery.
 
 ## Review
 One adversarial pass, fix valid in-scope findings, final changed-result review.
+Review fixes as a delta unless changed authority/boundaries or unresolved risk
+invalidates earlier evidence. Form counterexamples before the author's verdict.
 Distinguish false positives from valid out-of-scope blockers.
 Distinguish author self-review from an independent session. For >400 runtime
 lines, explicitly assess one coherent behavior, owner boundaries, file footprint,
@@ -94,6 +108,8 @@ Use SPLIT_REQUIRED / AUTHORITY_CONFLICT / DESIGN_DRIFT as appropriate.
 Report base/head, actual artifacts, actual verification, findings, and blockers.
 State whether work is authored, reviewed, accepted, merged, or sealed.
 Record command/results, candidate SHA, platform/DB/role and local/CI provenance.
+When available, include approximate preparation/implementation/check time and
+rework/STOP cause in the delivery report; no new artifact or timing gate.
 Missing evidence is UNVERIFIED/BLOCKED. State residual limits and the exact next
 action; do not substitute enterprise/military labels for assurance evidence.
 Do not grant acceptance or claim seal transitions implicitly.
