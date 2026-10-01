@@ -5,6 +5,8 @@
 
 use duskweave::input::read_register_file;
 use duskweave::mission::{CampaignId, EngagementId, OperationId, RegistrationInput};
+use duskweave::planning_assessment;
+use duskweave::planning_input::read_planning_file;
 use duskweave::postgres_mission::{PgAllocator, PgMissionStore, qualify_runtime};
 use duskweave::postgres_trajectory::PgTrajectory;
 use duskweave::registration;
@@ -147,6 +149,50 @@ fn cmd_register(args: &[String]) -> Res<()> {
     )
 }
 
+fn cmd_assess(args: &[String]) -> Res<()> {
+    let f = flags(args, &["operation", "input", "recover"])?;
+    let operation =
+        OperationId::parse(flag(&f, "operation")?).ok_or(Fail::Input("invalid_args"))?;
+    let recover = match flag(&f, "recover")? {
+        "true" => true,
+        "false" => false,
+        _ => return Err(Fail::Input("invalid_args")),
+    };
+    let request = read_planning_file(Path::new(flag(&f, "input")?))?;
+    let mut allocator = PgAllocator::new(connect()?);
+    let mut store = PgMissionStore::new(connect()?);
+    match planning_assessment::assess(&mut allocator, &mut store, &request, operation, recover) {
+        Ok(Some(event)) => {
+            let contract = serde_json::to_value(&event).map_err(|_| Fail::Store("encode"))?;
+            let receipt = serde_json::json!({
+                "result": "durable", "contract": contract,
+                "decision_origin": "durable_record",
+                "publication_obligation": "trajectory.planning_history.v1",
+                "history": "pending", "history_reason": "delivery_not_available",
+                "basis_status": if event.basis.is_some() { "available" } else { "unavailable" },
+                "scope": "not_evaluated", "window": "not_evaluated",
+                "complete_assessment": false, "current_permission": false,
+            });
+            println!(
+                "{}",
+                serde_json::to_string(&receipt).map_err(|_| Fail::Store("encode"))?
+            );
+            Ok(())
+        }
+        Ok(None) => {
+            println!("{{\"result\":\"not_committed\",\"operation\":\"{operation}\"}}");
+            Ok(())
+        }
+        Err(Fail::Store("commit_unknown")) => {
+            println!(
+                "{{\"result\":\"unknown\",\"operation\":\"{operation}\",\"action\":\"recover_before_retry\"}}"
+            );
+            Err(Fail::Store("commit_unknown"))
+        }
+        Err(error) => Err(error),
+    }
+}
+
 fn emit_inspect(v: Option<registration::InspectView>) {
     match v {
         Some(v) => println!(
@@ -190,6 +236,7 @@ fn run(args: &[String]) -> Res<()> {
     {
         "prepare-operation" => cmd_prepare(args),
         "register" => cmd_register(args),
+        "assess" => cmd_assess(args),
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),
         _ => Err(Fail::Input("unknown_command")),
