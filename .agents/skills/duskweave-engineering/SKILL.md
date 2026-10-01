@@ -120,6 +120,10 @@ Write one executable prompt for one cohesive, reviewable outcome; include all
 files needed for its end-to-end behavior without splitting into trivial
 per-file or per-function prompts. A DESIGN packet may deliver multiple
 dependency-ordered PRDs when the build order authorizes that combined outcome.
+Keep the handoff focused on task-specific decisions, assertions and commands.
+Reference permanent repository rules instead of copying them into every packet;
+retain concrete task protections and failure contracts. Do not add a separate
+planning deliverable, risk-tier approval or prompt-length gate.
 Do not send the IDE an open architectural question, an option comparison, or
 an instruction to plan the implementation; if authority is unresolved,
 stop and resolve it in the proper product or architecture step first.
@@ -131,6 +135,10 @@ including migrations/config and cumulative PR changes. Resolve known file-map,
 environment, dependency and budget conflicts here; do not knowingly send an
 impossible packet and use the executor's STOP as its expected outcome. Record
 estimates as estimates; any exception must be scoped and authorized in policy.
+Separate the cost of new behavior from existing behavior/fixtures reused by it.
+Identify the formatted size evidence and its exact base; a historical probe or
+estimate is not a verified candidate. Resolve a doubtful fit before handoff,
+then require an early executor budget check before polishing tests/docs.
 Do not remove behavior, explanatory comments or readable formatting to fit LOC.
 List exact editable files separately from read-only caller/consumer references.
 For runtime packets, trace the real entrypoint and consumer and require a test
@@ -178,6 +186,12 @@ Use the repository's authority-loading rules: establish context once, recheck
 identity/HEAD/status on every delivery, then reread changed authority and newly
 affected boundaries. Do not repeatedly load unrelated stages. Keep current stage
 and seals in ENGINEERING_STATE, never copied into portable skills or memory.
+Batch independent preflight/read operations and keep a short in-session record
+of loaded sources, decisions and check provenance; it does not replace authority.
+Research a specific unresolved question and stop when sufficient primary evidence
+is available. Reuse that evidence while applicable; external research does not
+override repository authority. Report a known unavailable tool once, continue
+independent work and retain the concrete verification blocker.
 
 Return governing authority, assumptions, scope, artifacts/findings, validation,
 remaining blockers, and readiness. Distinguish authored, reviewed, accepted,

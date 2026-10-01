@@ -32,6 +32,9 @@ recheck identity/HEAD/status, and reread affected authority and boundaries.
 
 1. Establish what was requested, permitted files, acceptance status, evidence,
    and the actual changed scope. Do not treat an author's conclusion as proof.
+   Form counterexamples from authority/source before reading the author's verdict.
+   Prefer a fresh review context when available, retaining access to relevant
+   callers, consumers, fixtures and CI; do not claim institutional independence.
 2. Test the strongest plausible counterexample against each material claim:
    incorrect semantics or state transition, violated ownership/dependency,
    stale/inferred evidence promoted to fact, and an untested failure path.
@@ -55,7 +58,10 @@ recheck identity/HEAD/status, and reread affected authority and boundaries.
 5. For DESIGN documents, check meaning, cross-document dependencies, scope,
    links, counterexamples, and no premature runtime architecture. State that
    runtime wiring is N/A for a document-only packet.
-6. Recheck changed artifacts after valid fixes; do not demand unrelated tests.
+6. After one complete adversarial pass, review the fix delta and affected claims
+   against the previously reviewed head, then verify final-base/head CI. Reopen
+   the full review only for changed authority/boundaries or an unresolved risk
+   that invalidates earlier evidence; do not demand unrelated tests.
 
 Review packet feasibility as well as implementation: exact edit map versus
 read-only dependencies, real fixtures, supported platforms, and cumulative

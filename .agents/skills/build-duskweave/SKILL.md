@@ -84,6 +84,29 @@ Do not reset user changes, invent missing checks, assume remote protection, or
 claim CI results from a local run. Missing tools are explicit blockers when a gate
 requires them. Do not silently weaken a gate.
 
+## Execution cadence
+
+Batch independent preflight/read operations. Record loaded authority and check
+provenance briefly in the session; reread changed/newly affected boundaries only.
+Start with focused contract tests. As soon as the complete production path exists,
+format and measure the actual cumulative budget against the packet base, before
+polishing tests/docs. Preserve the packet's ceilings, correction room and STOP
+conditions; crossing a review trigger alone is not a hard-budget failure.
+
+Reuse Cargo build artifacts during normal iterations; do not routinely cargo clean.
+Keep the owned PostgreSQL service for the session if configuration is unchanged,
+while executing real SQL and fixture isolation on every run. Never reuse a prior
+PASS as current evidence. Preserve required coverage-profile cleanup, fresh-port/
+process recovery assertions, runtime-role checks and platform-specific checks.
+Run DB targets sequentially when their fixtures can interfere.
+
+Perform one final full gate pass per unchanged candidate/platform/configuration.
+A full all-targets coverage run also executes that same full test suite; avoid
+an identical immediate standalone rerun unless independently required. Rerun
+affected checks after fixes and complete required final-head CI. Record changes
+that invalidate prior results. A known unavailable tool remains an explicit
+blocker; do not repeatedly probe it or substitute cached evidence.
+
 ## Mode: DESIGN
 
 Produce only the documents explicitly assigned by the packet.
@@ -171,6 +194,9 @@ Report:
 - review findings and dispositions;
 - remaining blockers and readiness;
 - next action: STOP at the packet boundary.
+
+When available, include approximate preparation/implementation/check time and
+the cause of rework or STOP in this report; no new timer, artifact or gate.
 
 Do not promote documents to ACCEPTED, update seals, or edit engineering state
 unless the packet allows those files and the acceptance step is authorized.
