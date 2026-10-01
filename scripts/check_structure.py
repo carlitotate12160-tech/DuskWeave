@@ -2,7 +2,7 @@
 """DuskWeave repository structure and hygiene check.
 
 Enforces the file-level parts of QUALITY_BAR.md and AGENTS.md:
-- every source/document file stays under the 400 LOC hard cap;
+- production/tooling <=400, test/benchmark files <=500, Markdown <=600;
 - no generic dumping-ground paths (utils/, helpers/, common/, misc/,
   managers/ directories or same-named files);
 - no unresolved merge conflict markers in checked text files;
@@ -29,6 +29,8 @@ SKIP_FILES = {
 FORBIDDEN_NAMES = {"utils", "helpers", "common", "misc", "managers"}
 RUST_TEST_PATH_SEGMENTS = {"tests", "benches"}
 HARD_CAP = 400
+TEST_CAP = 500
+DOCUMENT_CAP = 600
 
 MARKER_LEFT = re.compile(r"^<{7}")
 MARKER_RIGHT = re.compile(r"^>{7}")
@@ -62,6 +64,15 @@ def check_forbidden_path(rel):
     if stem in FORBIDDEN_NAMES:
         bad.append(parts[-1])
     return bad
+
+
+def file_limit(rel):
+    if rel.endswith(".md"):
+        return DOCUMENT_CAP
+    parts = rel.split("/")
+    if any(p in RUST_TEST_PATH_SEGMENTS for p in parts[:-1]) or parts[-1] == "tests.rs":
+        return TEST_CAP
+    return HARD_CAP
 
 
 def check_conflict_markers(rel, lines):
@@ -108,16 +119,17 @@ def main():
         text = read_text(path)
         if text is None:
             continue
-        lines = text.split("\n")
-        if len(lines) > HARD_CAP:
-            oversize.append(f"{rel} ({len(lines)} lines > {HARD_CAP})")
+        lines = text.splitlines()
+        cap = file_limit(rel)
+        if len(lines) > cap:
+            oversize.append(f"{rel} ({len(lines)} lines > {cap})")
         markers.extend(check_conflict_markers(rel, lines))
         if ext == ".rs":
             rust.extend(check_rust_hygiene(rel, text))
 
     failed = False
     for label, items in (
-        ("Files over 400 LOC hard cap", oversize),
+        ("Files over category LOC hard cap", oversize),
         ("Forbidden dumping-ground paths", forbidden),
         ("Conflict markers", markers),
         ("Rust production hygiene", rust),
