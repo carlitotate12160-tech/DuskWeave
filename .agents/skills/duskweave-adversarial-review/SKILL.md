@@ -35,6 +35,23 @@ recheck identity/HEAD/status, and reread affected authority and boundaries.
    Form counterexamples from authority/source before reading the author's verdict.
    Prefer a fresh review context when available, retaining access to relevant
    callers, consumers, fixtures and CI; do not claim institutional independence.
+   Review input carries artifacts and task constraints, not the author's
+   expected verdict.
+   Use `git worktree list` to verify the actual worktree, its checked-out
+   HEAD and branch; verify repository identity and base/candidate claims
+   through the checks above. A stale main folder or a recorded path is not
+   evidence of the active candidate. Check the tracking
+   disposition: a delivered PR is not reported merged, a predecessor merge is
+   reconciled only against live evidence, NO_CHANGE needs a concrete reason,
+   and a needed tracking correction outside the editable map is a reported
+   map defect, not silent scope growth.
+   Challenge build/service reuse claims: single-owner shared target across
+   the whole verification sequence, separate per-packet coverage paths,
+   current-candidate test runs rather than cached PASS or old reports,
+   qualified reuse of the owned local service, fresh disposable database and
+   restricted login per packet, and serialization of fixtures that mutate
+   cluster-wide roles. A reuse claim never authorizes deleting another
+   container, database, role or volume.
 2. Test the strongest plausible counterexample against each material claim:
    incorrect semantics or state transition, violated ownership/dependency,
    stale/inferred evidence promoted to fact, and an untested failure path.

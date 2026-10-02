@@ -13,7 +13,10 @@ Do not load another project's engineering skill or import its roles, milestones,
 code, terminology, limits, or decisions through memory.
 
 Resolve the workspace from the current task and verify its identity from AGENTS.md
-and docs/ENGINEERING_STATE.md. A folder name alone is insufficient.
+and docs/ENGINEERING_STATE.md. A folder name alone is insufficient; confirm the
+actual worktree and branch via `git worktree list` — a recorded path or a dirty
+main folder does not identify the active candidate, and unrelated worktrees are
+preserved rather than cleaned.
 If no workspace is available, use supplied sources for explicitly provisional
 discussion; do not claim a live check, approved packet, acceptance, or seal.
 
@@ -129,6 +132,23 @@ an instruction to plan the implementation; if authority is unresolved,
 stop and resolve it in the proper product or architecture step first.
 Specify mode, verified base, dependencies, exact allowed files, non-goals,
 acceptance criteria, tests or document checks, review gates, and STOP conditions.
+Declare the tracking disposition per AGENTS.md and the template: UPDATE with
+exact files/effects or NO_CHANGE with a concrete reason; ENGINEERING_STATE.md
+joins the editable map when active delivery status or next action changes;
+a candidate never records its own merge, and the actual predecessor merge is
+reconciled at the next packet's preflight.
+Resolve concrete process-scoped artifact paths (ordinary target, per-packet
+coverage and report paths) and the cache ownership rule before handoff: one
+owner holds a shared target for the whole verification sequence, and
+instrumented and ordinary directories stay separate.
+Inspect the actual owned local service before authorizing provisioning: a
+compatible running or stopped container is qualified and reused, not recreated
+for its name; each runtime packet names a fresh disposable database and
+restricted login; fixtures mutating cluster-wide roles serialize; absent
+authorized DSNs block a required database gate.
+For a behavior fix require a genuine failing assertion; for a refactor of
+already-correct behavior require honest passing-baseline characterization,
+not fabricated RED history or an introduced defect.
 Before issuing a ready packet, inspect current source, consumers, test fixtures,
 CI and supported environments. Establish budget feasibility after formatting,
 including migrations/config and cumulative PR changes. Resolve known file-map,

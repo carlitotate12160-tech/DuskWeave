@@ -5,11 +5,15 @@ Do not publish placeholders as ready-to-execute instructions.
 Write task-specific instructions; reference permanent authority instead of
 repeating it. Keep concrete contract, failure assertions, protections and gates.
 This template adds no prompt-length gate or separate planning deliverable.
+These are professional engineering controls, not enterprise certification;
+add no arbitrary docstring quotas, extra approval tiers or unrelated
+full-suite repetition.
 
 PROJECT: DuskWeave
 MODE: DESIGN | IMPLEMENT | FIX
 PACKET: exact identifier
 WORKSPACE: verified path
+BRANCH: actual delivery branch
 EXPECTED_BASE_SHA: verified full commit
 EXPECTED_START_HEAD: verified full commit
 DELIVERY: exact requested artifacts
@@ -18,10 +22,23 @@ Execute the assigned packet directly. Do not return another implementation plan.
 
 ## Preconditions
 - Exact base, branch/worktree rules, and verified current stage.
+- Actual worktree identity: inspect `git worktree list` before treating a
+  dirty or stale main folder as the active candidate; a recorded path is not
+  proof. State how unrelated worktrees and drafts are preserved.
 - Required accepted authority and sealed dependencies.
 - Relevant conflicting work check, if required.
 - Required tools and verification capability.
 - Supported/tested OS, architecture, toolchain, database and runtime role.
+- Concrete process-scoped artifact paths: ordinary target directory,
+  per-packet coverage path and report path, plus the cache ownership rule.
+  One owner holds a shared target for the whole verification sequence,
+  including CLI subprocess tests; instrumented and ordinary directories stay
+  separate. Resolve drafting fields to concrete paths before handoff.
+- Actual owned local service state and its qualification: reuse a compatible
+  owned service rather than recreating it, name a fresh disposable database
+  and restricted login per runtime packet, serialize fixtures that mutate
+  cluster-wide roles, and keep credentials in the authorized environment.
+  Absent authorized DSNs block a required database gate; they do not waive it.
 - Measured formatted cumulative size, exact packet ceiling (at most 600 runtime
   lines under ordinary policy), and room for corrections; normally reserve
   15-20% during planning. Keep production files <=400 and tests <=500.
@@ -63,6 +80,20 @@ before polishing tests/docs. This does not replace pre-handoff feasibility.
 ## Non-goals
 List later-stage work and adjacent changes that must not be performed.
 
+## Tracking disposition
+Declare UPDATE with exact tracking files and effects, or NO_CHANGE with a
+concrete reason. Include docs/ENGINEERING_STATE.md in the editable map when
+active delivery status or the next action changes; include
+docs/BUILD_ORDER.md only when current navigation changes. Reconcile the
+actual predecessor merge at this packet's preflight; do not issue a ready
+packet while a required predecessor merge is still open. A candidate does not
+record its own merge and does not embed its final commit SHA in a committed
+file; the external delivery report carries candidate provenance. A
+review-only packet reports required corrections without editing; an unchanged
+status records NO_CHANGE rather than meaningless churn. A needed correction
+outside the editable map returns SPLIT_REQUIRED with the exact map defect,
+not silent scope expansion.
+
 ## Validation
 DESIGN: scope, document conventions, semantic consistency, links, invariants;
 state runtime wiring N/A.
@@ -79,6 +110,11 @@ Name production checks, failure/recovery tests and relevant negative controls.
 Select fuzz/property/concurrency tests only where the changed risk warrants them.
 For transaction faults, state whether failure is before commit, after durable
 commit before acknowledgment, or during recovery; assert state before recovery.
+A behavior fix requires a genuine failing assertion before the fix. A refactor
+of already-correct behavior reports passing baseline characterization and
+preserved regression evidence; never fabricate RED history or introduce a
+production defect to create it. A material mismatch with higher authority is
+reported, not silently rewritten.
 State mandatory environment variable names without values; prohibit hardcoded
 secret defaults and ordinary-surface secret diagnostics. Separate infrastructure
 configuration from campaign custody. Do not claim untested platform support.
@@ -105,9 +141,15 @@ Pin exact base-drift, authority-conflict, dependency, scope, and budget conditio
 Use SPLIT_REQUIRED / AUTHORITY_CONFLICT / DESIGN_DRIFT as appropriate.
 
 ## Completion
-Report base/head, actual artifacts, actual verification, findings, and blockers.
+Report repository identity, actual worktree, branch, base/head, actual
+artifacts, actual verification, findings, and blockers.
 State whether work is authored, reviewed, accepted, merged, or sealed.
-Record command/results, candidate SHA, platform/DB/role and local/CI provenance.
+State the tracking disposition (UPDATE with exact effects or NO_CHANGE with a
+reason), the candidate delivery state and remaining blockers before handoff,
+and review consistency between the current-phase summary, next action and
+build navigation.
+Record command/results, candidate SHA, platform/toolchain/DB/role, service
+reuse/qualification, cache/report provenance, and local/CI provenance.
 When available, include approximate preparation/implementation/check time and
 rework/STOP cause in the delivery report; no new artifact or timing gate.
 Missing evidence is UNVERIFIED/BLOCKED. State residual limits and the exact next

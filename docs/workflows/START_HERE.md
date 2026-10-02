@@ -28,6 +28,22 @@ Preserve the offensive campaign identity and accepted boundaries. Authorized
 active validation is not replaced by passive monitoring. A current local-only
 milestone does not authorize target acquisition or execution.
 
+The active candidate is the verified worktree named by the packet, not the
+main folder by default: inspect `git worktree list`, confirm branch and base,
+and preserve unrelated worktrees and drafts. A healthy clean worktree may be
+reused for sequential delivery after its branch and base are reverified; a
+recorded path in tracking documents is not proof of the active worktree.
+
+## Local resources
+
+Keep four lifetimes separate: the source worktree, compiled artifacts, the
+local PostgreSQL service, and disposable test data. AGENTS.md owns the
+conventions: process-scoped artifact paths with one owner per shared target
+and per-packet coverage isolation, qualified reuse of a compatible owned
+PostgreSQL service, and a fresh disposable database plus restricted login per
+runtime packet. Reused services and build artifacts never substitute for
+current-candidate test results.
+
 ## Source ownership
 
 - PRDs/accepted ADRs/contracts: product and architecture authority.
