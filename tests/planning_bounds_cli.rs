@@ -29,7 +29,7 @@ impl InputFile {
 
 impl Drop for InputFile {
     fn drop(&mut self) {
-        std::fs::remove_file(&self.0).unwrap();
+        let _ = std::fs::remove_file(&self.0);
     }
 }
 
