@@ -72,7 +72,11 @@ consulting current Mission or requiring that predecessor again.
 
 The consumer row is its atomic inbox, semantic history and completion record.
 Conflicts append bounded identity/category only; no conflicting payload is saved.
-An anomaly blocks completion, even if an earlier accepted row exists. Producer
+Accepted records deduplicate each scoped event and scoped operation identity.
+Anomaly markers deduplicate only on the exact conflicting event/operation
+pair: a distinct pair sharing one axis is durably retained, and a marker
+blocks completion through either axis, even if an earlier accepted row exists.
+Producer
 publication records are immutable; consumer completion does not mutate them.
 Consumer timestamps describe its transaction start and do not replace producer
 timestamps or establish commit wall time/current authority.

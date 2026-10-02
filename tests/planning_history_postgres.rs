@@ -82,15 +82,31 @@ fn both_identity_collisions_are_monotonic_safe_anomalies() {
         }
         assert_eq!(trajectory.inspect(&ev).unwrap(), Delivered::Anomaly);
         assert_eq!(trajectory.publish(&ev).unwrap(), Delivered::Anomaly);
-        effects(&ev, 1, 1);
-        let row = runtime_client().query_one(
-            "SELECT contract, anomaly_category, completed_at IS NULL FROM trajectory.planning_history \
-             WHERE engagement_id=$1 AND campaign_id=$2 AND status='anomaly'",
-            &[&ev.engagement_id.0, &ev.campaign_id.0],
-        ).unwrap();
-        assert!(row.get::<_, Option<Value>>(0).is_none());
-        assert_eq!(row.get::<_, String>(1), "conflicting_identity");
-        assert!(row.get::<_, bool>(2));
+        // Markers record the exact conflicting pair: the changed variant's
+        // pair plus the original pair once republication is attempted under
+        // anomaly dominance. Pairs that coincide collapse to one row.
+        let mut expected = vec![
+            (changed.event_id.0, changed.operation_id.0),
+            (ev.event_id.0, ev.operation_id.0),
+        ];
+        expected.sort();
+        expected.dedup();
+        effects(&ev, 1, expected.len() as i64);
+        let mut pairs: Vec<(Uuid, Uuid)> = runtime_client()
+            .query(
+                "SELECT event_id, operation_id FROM trajectory.planning_history \
+                 WHERE engagement_id=$1 AND campaign_id=$2 AND status='anomaly' \
+                 AND contract IS NULL AND completed_at IS NULL \
+                 AND anomaly_category='conflicting_identity'",
+                &[&ev.engagement_id.0, &ev.campaign_id.0],
+            )
+            .unwrap()
+            .iter()
+            .map(|r| (r.get(0), r.get(1)))
+            .collect();
+        pairs.sort();
+        pairs.dedup();
+        assert_eq!(pairs, expected);
     }
 }
 

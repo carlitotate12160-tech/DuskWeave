@@ -18,8 +18,17 @@ CREATE TABLE IF NOT EXISTS trajectory.planning_history (
             AND contract IS NOT NULL AND completed_at IS NOT NULL AND anomaly_category IS NULL)
         OR (status = 'anomaly' AND contract IS NULL AND completed_at IS NULL
             AND anomaly_category = 'conflicting_identity' AND anomaly_category IS NOT NULL)),
-    PRIMARY KEY (engagement_id, campaign_id, event_id, status),
-    UNIQUE (engagement_id, campaign_id, operation_id, status)
+    PRIMARY KEY (engagement_id, campaign_id, event_id, operation_id, status)
 );
+
+-- Accepted rows deduplicate each scoped identity axis. Anomaly markers
+-- deduplicate only on the exact conflicting pair, so a distinct pair
+-- sharing one axis is durably retained and still observed by either axis.
+CREATE UNIQUE INDEX IF NOT EXISTS planning_history_accepted_event
+    ON trajectory.planning_history (engagement_id, campaign_id, event_id)
+    WHERE status = 'accepted';
+CREATE UNIQUE INDEX IF NOT EXISTS planning_history_accepted_operation
+    ON trajectory.planning_history (engagement_id, campaign_id, operation_id)
+    WHERE status = 'accepted';
 
 GRANT SELECT, INSERT ON trajectory.planning_history TO dw_runtime;
