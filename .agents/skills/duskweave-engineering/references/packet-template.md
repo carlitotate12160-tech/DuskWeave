@@ -126,7 +126,10 @@ required platform checks and final-head CI; rerun affected checks after fixes.
 Build/service reuse never substitutes for current test results or fresh recovery.
 
 ## Review
-One adversarial pass, fix valid in-scope findings, final changed-result review.
+Apply QUALITY_BAR.md section 7 Q1-Q8 with candidate-bound evidence and concrete
+N/A reasons; reference its questions instead of copying the checklist. Include
+applicable function-length and pure-dispatch dispositions; missing measurements
+are UNVERIFIED. One adversarial pass, fix valid in-scope findings, final changed-result review.
 Review fixes as a delta unless changed authority/boundaries or unresolved risk
 invalidates earlier evidence. Form counterexamples before the author's verdict.
 Distinguish false positives from valid out-of-scope blockers.

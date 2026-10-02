@@ -178,6 +178,17 @@ Do not convert a blocked implementation into an unrequested PRD/ADR packet.
 
 ## Review
 
+Apply the verified repository QUALITY_BAR.md section 7 eight-question review.
+Keep that question set canonical there; do not duplicate it in packets or skills.
+Record affected-scope evidence and concrete N/A reasons. Check function-length
+review triggers and qualified pure-dispatch classification under current policy;
+do not mistake unavailable measurement for PASS or split helpers to game counts.
+Reuse unchanged evidence; review correction deltas and affected claims unless
+changed authority/boundaries or unresolved risk invalidates the earlier review.
+If the verified repository predates section 7, follow its existing review rules
+and report the policy-publication mismatch; the portable skill does not override it.
+
+
 Review architectural fit before style. Inspect actual changed artifacts and the
 exact review base/head. Distinguish local review from live PR/CI verification.
 For each finding give source, concrete violation, consequence, and smallest fix.
