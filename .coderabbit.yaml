@@ -1,9 +1,11 @@
 # CodeRabbit configuration — advisory mode only.
 #
 # Reviews post as informational comments: they never request changes, never
-# block merge, and never commit to the branch. Suggested diffs and generated
-# tests remain opt-in actions for a human author. Findings are triaged by the
-# owner; a suggestion is not an obligation.
+# block merge, and never commit to the branch. A single review runs on the
+# first push of a PR; fix commits are never auto re-reviewed, so CodeRabbit
+# cannot chase iterative fixes. Suggested diffs and generated tests remain
+# opt-in actions for a human author. Findings are triaged by the owner;
+# a suggestion is not an obligation.
 #
 # The GitHub App must be installed separately; this file only takes effect
 # after installation on the repository.
@@ -24,6 +26,7 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    auto_incremental_review: false
     ignore_title_keywords:
       - WIP
       - DO NOT MERGE
