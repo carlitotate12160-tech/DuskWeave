@@ -16,7 +16,9 @@ Readability, maintainability, and domain-responsibility isolation are enforced t
 | **Test/benchmark file** | Readable, cohesive tests | `500 LOC` | Split by scenario/responsibility. |
 | **Markdown document** | One purpose; navigable | `600 LOC` | Split by purpose; narrower document-specific limits still apply. |
 | **Runtime diff per PR/slice** | `< 300 LOC`; review trigger `> 400` | `600 LOC` | Above 400 requires explicit cohesion/ownership review; above 600 is *SPLIT_REQUIRED*. |
-| **Cyclomatic complexity (McCabe)** | `<= 7` per function | `7` per function | A value `> 7` violates the budget; refactor by cohesive responsibility. |
+| **Function length** | `<= 50` physical lines | Review trigger, not a universal cap | Above 50, record cohesion/readability disposition; split only by meaningful responsibility. |
+| **Business/other function McCabe** | `<= 7` | `7` | Refactor a measured violation by cohesive responsibility. |
+| **Pure dispatch McCabe** | `<= 7` preferred | `10`, only when qualified below | Review classification and reject business decisions hidden in dispatch. |
 
 Counts are physical lines including comments and blanks. File size uses actual
 lines, with or without a final newline. Test files are under `tests/` or `benches/`
@@ -38,6 +40,26 @@ Recorded delivery-budget exceptions (scoped, non-recurring; duplicate records ar
 
 M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=a9da047b2bf0bf4822536187ab3e1734ac56fc12; cap=1200; initial-only
 (History: originally pinned to base f52cfcc53c183f7c852fba191f9da14858c7ae5d; repointed to a9da047 after protected master advanced via documentation-only PR #6 containing no runtime changes.)
+
+### Function and dispatch classification
+
+Count a function from its declaration through its closing brace, including
+internal comments, blank lines and nested closures; exclude preceding attributes
+and documentation. Apply the 50-line review trigger to production/tooling
+functions and methods. Document a longer cohesive function or split a genuinely
+mixed responsibility; do not introduce forwarding helpers merely to lower counts.
+
+The 10 McCabe allowance applies only to a function that selects an already-owned
+handler from a discriminator and forwards its bounded input/result. It must not
+validate authority, decide business eligibility, mutate domain state, perform I/O,
+add retry/recovery policy, or hide those decisions in match guards. Uncertain or
+mixed classification uses 7. The called business handlers retain their own 7 cap;
+review the complete call path so moving branches does not hide complexity.
+Do not equate match-arm count with McCabe or substitute cognitive complexity.
+Report the measurement method/tool/version, source span and exact candidate;
+unavailable measurement is UNVERIFIED, not a numerical PASS. Existing fmt/Clippy
+success is not proof that these metrics are measured. Analyzer selection and CI
+wiring require their own bounded implementation; this policy installs neither.
 
 ### Code splitting rules:
 - Strictly forbidden to create dumping-ground files such as `utils.rs`, `helpers.rs`, `common.rs`, or `misc.rs`.
@@ -148,3 +170,43 @@ M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=a9da047b2bf0bf4822536187ab3e1
 - Separate author review, independent review, owner acceptance, merge and seal.
   Enterprise readiness requires a defined deployment/assurance scope and evidence;
   a prompt or skill cannot certify military compliance.
+
+## 7. Evidence-based architecture review
+
+Apply these eight questions to the changed behavior and its affected callers,
+consumers and boundaries in author self-review and the existing distinct
+adversarial review. Keep this section canonical; packets and skills reference it.
+
+| ID | Question | Evidence to inspect |
+| --- | --- | --- |
+| Q1 Ownership | Does each component own one coherent responsibility without absorbing sibling decisions or mutable aggregates? | Named owner, mutation rights, public contracts and actual state access; several small files can still form one God Object. |
+| Q2 Dependencies | Is dependency direction explicit, with no cycles, hidden shared mutation or import of a sibling implementation? | Imports, construction/injection and the actual call/data flow; legitimate composition uses narrow ports/views. |
+| Q3 Simplicity | Does each helper, wrapper, type and abstraction protect a real boundary or make behavior clearer? | Production use and explanation of the responsibility; reject unnecessary indirection and count-driven fragmentation. |
+| Q4 Single truth | Does each business invariant have one owning implementation, with representations and consumers consistent? | Compare decision paths, adapters and persistence; repeated checks at separate trust boundaries may be necessary and are not automatically duplication. |
+| Q5 Requirement fit | Does the observable behavior satisfy accepted authority and the sealed packet without scope or semantic drift? | Requirement-to-assertion mapping, allowed files, invariants, compatibility and explicit deferred work. |
+| Q6 Reachability | Is every changed runtime component wired from an authorized entrypoint to a real consumer and observable result? | Entrypoint -> caller/port -> component -> consumer/output plus a relevant path test; an export or unit-test call alone is insufficient. |
+| Q7 Failure integrity | Do failure, retry, concurrency and recovery preserve the required state and effect invariants? | Applicable deterministic counterexamples for commit/ack boundaries, duplicate/conflicting requests, races, cancellation, migration/permission and resource-limit failures; no blind replay of unknown effects. |
+| Q8 Trust and claims | Can any input, stale value, forged artifact or alternate path gain unsupported authority, fact status or sensitive access? | Governing provenance/current-use checks, consumer reachability and applicable INV-003..007 controls; types, digests, coverage and green CI alone do not prove the claim. |
+
+For each applicable question, record a brief disposition and source/assertion
+evidence tied to the candidate. Use PASS, FINDING, UNVERIFIED or N/A with a concrete
+reason; checkboxes alone are insufficient. Record strongest credible counterexamples
+for material claims, not a fixed quota of tests. Distinguish static inspection,
+local execution and exact-candidate CI, including their environment and limits.
+DESIGN/document-only work checks ownership, semantics, links and authority;
+runtime wiring/fault execution is N/A with that reason, not a fabricated test PASS.
+
+Classify suspected findings as VALID, FALSE_POSITIVE or UNVERIFIED and separately
+state blocking impact. A valid finding names the violated invariant, reachable
+path, consequence and smallest root-cause remedy; a theoretical case is not a
+demonstrated defect. Missing required evidence blocks readiness without proving
+a product bug. Do not defer a currently false API claim to a future milestone.
+
+Use one complete adversarial pass. After correction, review the delta and affected
+claims, rebind evidence to the new candidate and complete required checks. Reopen
+the full review only when changed authority/boundaries or unresolved risk invalidates
+earlier evidence. Add detailed parser, provenance, concurrency, persistence,
+secret-custody or execution cases only for affected responsibilities; do not
+re-audit every future milestone. Report READY or NOT READY for the stated review
+scope, with actual blockers and residual limits. A structural PASS is not universal
+proof of safety, absence of God Objects, or enterprise readiness.

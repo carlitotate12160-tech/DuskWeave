@@ -250,6 +250,16 @@ SPLIT_REQUIRED
 
 ---
 
+## Evidence-based review
+
+Apply QUALITY_BAR.md section 7 in author self-review and the existing distinct
+adversarial review: ownership, dependencies, simplicity, single truth,
+requirement fit, reachability, failure integrity, and trust/claims. Record
+candidate-bound evidence and concrete N/A reasons; distinguish findings from
+missing proof. Apply the quality bar's function-length review trigger and pure
+dispatch classification without count-driven helper fragmentation. Review fix
+deltas unless changed boundaries or unresolved risk invalidates earlier evidence.
+
 ## Development workflow
 
 Required sequence:
