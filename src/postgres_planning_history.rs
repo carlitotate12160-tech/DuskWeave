@@ -44,7 +44,10 @@ fn accepted(row: &Row, incoming: &PlanningAssessed) -> Res<bool> {
         .map_err(|_| Fail::Store("contract_decode"))?;
     let stored: PlanningAssessed =
         serde_json::from_value(raw).map_err(|_| Fail::Store("contract_decode"))?;
-    stored.validate()?;
+    stored.validate().map_err(|error| match error {
+        Fail::Store("unsupported_basis") => error,
+        _ => Fail::Store("contract_decode"),
+    })?;
     let event: Uuid = row
         .try_get("event_id")
         .map_err(|_| Fail::Store("contract_decode"))?;
