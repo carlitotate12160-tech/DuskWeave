@@ -5,7 +5,6 @@
 
 use duskweave::input::read_register_file;
 use duskweave::mission::{CampaignId, EngagementId, OperationId, RegistrationInput};
-use duskweave::planning_assessment;
 use duskweave::planning_history;
 use duskweave::planning_input::read_planning_file;
 use duskweave::postgres_mission::{PgAllocator, PgMissionStore, qualify_runtime};
@@ -17,6 +16,8 @@ use postgres::NoTls;
 use std::env;
 use std::path::Path;
 use std::process::ExitCode;
+
+mod authority_confirmation;
 
 fn category(f: Fail) -> &'static str {
     match f {
@@ -162,7 +163,17 @@ fn cmd_assess(args: &[String]) -> Res<()> {
     let request = read_planning_file(Path::new(flag(&f, "input")?))?;
     let mut allocator = PgAllocator::new(connect()?);
     let mut store = PgMissionStore::new(connect()?);
-    match planning_assessment::assess(&mut allocator, &mut store, &request, operation, recover) {
+    let mut response_in = std::io::stdin().lock();
+    let mut challenge_out = std::io::stderr().lock();
+    match authority_confirmation::confirm_if_new(
+        &mut allocator,
+        &mut store,
+        &request,
+        operation,
+        recover,
+        &mut response_in,
+        &mut challenge_out,
+    ) {
         Ok(Some(event)) => {
             let (scope, window) = event.assessment_labels();
             let contract = serde_json::to_value(&event).map_err(|_| Fail::Store("encode"))?;

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use uuid::Uuid;
 
+#[path = "support/authority_confirmation_cli.rs"]
+mod confirm_support;
 #[path = "support/registration_db.rs"]
 mod db_support;
 #[path = "support/planning_history_db.rs"]
@@ -149,7 +151,19 @@ fn real_cli_register_assess_publish_restart_inspect_covers_all_nonpositive_decis
         value["current_authority_confirmed"] = json!(confirmed);
         let file = InputFile::new(&e.to_string(), &value);
         let op = operation(&engagement, &campaign);
-        let assessed = json_output(planning("assess", &op, &file, "false"));
+        // Saved `true` assertions now pass a fresh live exchange in this
+        // invocation; the durable contract and receipt stay unchanged.
+        let assessed = if confirmed {
+            let dsn = std::env::var("DW_TEST_DATABASE_URL").unwrap();
+            let mut session = confirm_support::assess_session(&op, file.path(), false, &dsn);
+            session.affirm(&engagement, &campaign, &op, revision);
+            let finished = session.finish();
+            assert!(finished.status.success());
+            assert!(finished.stderr_tail.is_empty());
+            serde_json::from_slice(&finished.stdout).unwrap()
+        } else {
+            json_output(planning("assess", &op, &file, "false"))
+        };
         assert_eq!(assessed["contract"]["decision"], decision);
         assert_eq!(assessed["contract"]["version"], 2);
         assert_eq!(assessed["scope"], scope_label);
