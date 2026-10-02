@@ -13,6 +13,7 @@ PROJECT: DuskWeave
 MODE: DESIGN | IMPLEMENT | FIX
 PACKET: exact identifier
 WORKSPACE: verified path
+BRANCH: actual delivery branch
 EXPECTED_BASE_SHA: verified full commit
 EXPECTED_START_HEAD: verified full commit
 DELIVERY: exact requested artifacts

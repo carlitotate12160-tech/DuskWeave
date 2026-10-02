@@ -37,9 +37,10 @@ recheck identity/HEAD/status, and reread affected authority and boundaries.
    callers, consumers, fixtures and CI; do not claim institutional independence.
    Review input carries artifacts and task constraints, not the author's
    expected verdict.
-   Verify the report's named repository identity, worktree, branch, base and
-   candidate against `git worktree list`; a stale main folder or a recorded
-   path is not evidence of the active candidate. Check the tracking
+   Use `git worktree list` to verify the actual worktree, its checked-out
+   HEAD and branch; verify repository identity and base/candidate claims
+   through the checks above. A stale main folder or a recorded path is not
+   evidence of the active candidate. Check the tracking
    disposition: a delivered PR is not reported merged, a predecessor merge is
    reconciled only against live evidence, NO_CHANGE needs a concrete reason,
    and a needed tracking correction outside the editable map is a reported
