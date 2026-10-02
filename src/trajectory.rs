@@ -2,6 +2,7 @@
 //! contract. Never imports Mission's aggregate or the application layer.
 
 use crate::mission::{CONTRACT_KIND, CONTRACT_VERSION, MissionRegistered, PRODUCER};
+use crate::planning::PlanningAssessed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delivered {
@@ -40,4 +41,39 @@ pub fn check_event(ev: &MissionRegistered) -> Result<(), &'static str> {
         return Err("scope_violation");
     }
     ev.fields.validate().map_err(|_| "invalid_fields")
+}
+
+pub fn check_planning_predecessor(
+    registered: &MissionRegistered,
+    assessed: &PlanningAssessed,
+) -> Result<(), &'static str> {
+    let basis = assessed.basis.as_ref().ok_or("unsupported_predecessor")?;
+    check_event(registered).map_err(|_| "unsupported_predecessor")?;
+    if [registered.event_id.0, registered.operation_id.0]
+        .iter()
+        .any(uuid::Uuid::is_nil)
+    {
+        return Err("unsupported_predecessor");
+    }
+    let source = (
+        registered.engagement_id,
+        registered.campaign_id,
+        registered.operation_id,
+        registered.owner_revision,
+    );
+    let required = (
+        assessed.engagement_id,
+        assessed.campaign_id,
+        basis.registration_operation_id,
+        basis.revision,
+    );
+    let bounds = (
+        registered.fields.exercise_mode(),
+        registered.fields.starts_at(),
+        registered.fields.ends_at(),
+    );
+    if source != required || bounds != (basis.exercise_mode, basis.starts_at, basis.ends_at) {
+        return Err("unsupported_predecessor");
+    }
+    Ok(())
 }

@@ -6,6 +6,7 @@
 use duskweave::input::read_register_file;
 use duskweave::mission::{CampaignId, EngagementId, OperationId, RegistrationInput};
 use duskweave::planning_assessment;
+use duskweave::planning_history;
 use duskweave::planning_input::read_planning_file;
 use duskweave::postgres_mission::{PgAllocator, PgMissionStore, qualify_runtime};
 use duskweave::postgres_trajectory::PgTrajectory;
@@ -168,7 +169,8 @@ fn cmd_assess(args: &[String]) -> Res<()> {
                 "result": "durable", "contract": contract,
                 "decision_origin": "durable_record",
                 "publication_obligation": "trajectory.planning_history.v1",
-                "history": "pending", "history_reason": "delivery_not_available",
+                "history": "pending", "history_reason": "not_published_at_decision",
+                "history_view": "producer_receipt_as_of_decision",
                 "basis_status": if event.basis.is_some() { "available" } else { "unavailable" },
                 "scope": "not_evaluated", "window": "not_evaluated",
                 "complete_assessment": false, "current_permission": false,
@@ -209,6 +211,45 @@ fn emit_inspect(v: Option<registration::InspectView>) {
     }
 }
 
+fn cmd_planning_history(args: &[String]) -> Res<()> {
+    let f = flags(args, &["operation", "input", "recover"])?;
+    let operation =
+        OperationId::parse(flag(&f, "operation")?).ok_or(Fail::Input("invalid_args"))?;
+    let recover = match flag(&f, "recover")? {
+        "true" => true,
+        "false" => false,
+        _ => return Err(Fail::Input("invalid_args")),
+    };
+    let request = read_planning_file(Path::new(flag(&f, "input")?))?;
+    let mut store = PgMissionStore::new(connect()?);
+    let Some(event) = planning_history::read_decision(&mut store, &request, operation)? else {
+        println!("{{\"result\":\"not_committed\",\"operation\":\"{operation}\"}}");
+        return Ok(());
+    };
+    let view = match connect() {
+        Ok(client) => {
+            planning_history::history_view(&mut PgTrajectory::new(client), &event, recover)
+        }
+        Err(error) => planning_history::history_result(Err(error)),
+    };
+    let receipt = serde_json::json!({
+        "result": "durable", "contract": event,
+        "decision_origin": "durable_record",
+        "basis_status": if event.basis.is_some() { "available" } else { "unavailable" },
+        "publication_obligation": "trajectory.planning_history.v1",
+        "history_source": "trajectory", "history": view.state, "history_reason": view.reason,
+        "complete_history": view.complete,
+        "action": if view.state == "unknown" { "recover_history_before_retry" } else { "none" },
+        "scope": "not_evaluated", "window": "not_evaluated",
+        "complete_assessment": false, "current_permission": false,
+    });
+    println!(
+        "{}",
+        serde_json::to_string(&receipt).map_err(|_| Fail::Store("encode"))?
+    );
+    Ok(())
+}
+
 fn cmd_inspect(args: &[String]) -> Res<()> {
     let f = flags(args, &["engagement", "campaign"])?;
     let (e, c) = scope(&f)?;
@@ -237,6 +278,7 @@ fn run(args: &[String]) -> Res<()> {
         "prepare-operation" => cmd_prepare(args),
         "register" => cmd_register(args),
         "assess" => cmd_assess(args),
+        "planning-history" => cmd_planning_history(args),
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),
         _ => Err(Fail::Input("unknown_command")),

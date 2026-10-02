@@ -2,9 +2,10 @@
 
 B1a adds a Mission-owned local assessment decision and an immutable required
 publication obligation. It does **not** deliver that contract to Trajectory.
-Every assessment receipt reports `history=pending` and
-`history_reason=delivery_not_available`, including recovery. B1b is a separate
-delivery. Neither a successful exit nor a stored decision grants current
+Every assessment receipt reports the original decision-time producer view:
+`history=pending`, `history_reason=not_published_at_decision`, and
+`history_view=producer_receipt_as_of_decision`, including recovery. For current
+Trajectory publication status, use [RUN_B1B](RUN_B1B.md). Neither a successful exit nor a stored decision grants current
 permission or target execution authority.
 
 ## Prerequisites

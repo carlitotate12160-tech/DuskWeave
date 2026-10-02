@@ -469,7 +469,7 @@ fn cli_assess_and_fresh_process_recovery_preserve_pending_original() {
         assert_eq!(original["result"], "durable");
         assert_eq!(original["contract"]["decision"], decision);
         assert_eq!(original["history"], "pending");
-        assert_eq!(original["history_reason"], "delivery_not_available");
+        assert_eq!(original["history_reason"], "not_published_at_decision");
         assert_eq!(original["complete_assessment"], false);
         assert_eq!(original["current_permission"], false);
         assert_eq!(original["scope"], "not_evaluated");

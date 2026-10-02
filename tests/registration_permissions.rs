@@ -27,6 +27,9 @@ fn runtime_role_denied_mutation_and_ddl() {
         "UPDATE mission.planning_assessments SET contract='{}'",
         "DELETE FROM mission.planning_assessments",
         "TRUNCATE mission.planning_assessments",
+        "UPDATE trajectory.planning_history SET status='anomaly'",
+        "DELETE FROM trajectory.planning_history",
+        "TRUNCATE trajectory.planning_history",
         "CREATE TABLE mission.evil(id int)",
         "CREATE TABLE trajectory.evil(id int)",
     ] {
