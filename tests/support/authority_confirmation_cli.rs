@@ -190,21 +190,21 @@ impl Session {
         drop(self.stdin.take());
     }
 
-    /// Close stdin, wait under a bounded deadline, and collect output plus
-    /// all stderr diagnostics (challenge line + any tail).
-    pub fn finish(mut self) -> Finished {
-        self.close_input();
+    fn wait_exit(&mut self, context: &str) -> ExitStatus {
         let deadline = Instant::now() + EXIT_DEADLINE;
-        let status = loop {
+        loop {
             match self.child.try_wait().expect("try_wait") {
-                Some(status) => break status,
+                Some(status) => return status,
                 None if Instant::now() >= deadline => {
                     let _ = self.child.kill();
-                    panic!("CLI did not exit within deadline");
+                    panic!("{context}");
                 }
                 None => std::thread::sleep(Duration::from_millis(5)),
             }
-        };
+        }
+    }
+
+    fn collect(mut self, status: ExitStatus) -> Finished {
         let stdout = self
             .out_tail
             .take()
@@ -227,6 +227,24 @@ impl Session {
             challenge_line,
             stderr_tail,
         }
+    }
+
+    /// Close stdin, wait under a bounded deadline, and collect output plus
+    /// all stderr diagnostics (challenge line + any tail).
+    pub fn finish(mut self) -> Finished {
+        self.close_input();
+        let status = self.wait_exit("CLI did not exit within deadline");
+        self.collect(status)
+    }
+
+    /// Wait for child exit under the same bounded deadline while stdin
+    /// stays open, proving the CLI acts on a complete response line without
+    /// waiting for EOF. A child blocked on EOF fails here instead of being
+    /// rescued by a close.
+    pub fn finish_with_open_input(mut self) -> Finished {
+        let status = self.wait_exit("CLI did not exit while stdin stayed open");
+        self.close_input();
+        self.collect(status)
     }
 }
 
