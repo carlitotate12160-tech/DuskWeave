@@ -11,6 +11,7 @@ pub mod postgres_mission;
 mod postgres_planning_history;
 pub mod postgres_trajectory;
 mod postgres_trajectory_history;
+mod postgres_trajectory_journal;
 pub mod registration;
 pub mod trajectory;
 

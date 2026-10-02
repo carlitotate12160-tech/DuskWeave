@@ -1,11 +1,14 @@
-//! Trajectory-owned planning journal; never queries Mission storage.
+//! Planning-assessed history adapter over the Trajectory journal: role and
+//! durability qualification, the strict typed contract codec, predecessor
+//! interpretation and append orchestration. Never queries Mission storage.
 
 use crate::mission::MissionRegistered;
 use crate::planning::PlanningAssessed;
 use crate::postgres_trajectory_history::store_err;
+use crate::postgres_trajectory_journal::{self, JournalRecord, JournalTable};
 use crate::trajectory::{Delivered, check_planning_predecessor};
 use crate::{Fail, Res};
-use postgres::{Client, GenericClient, Row, Transaction};
+use postgres::{Client, GenericClient, Transaction};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -38,86 +41,35 @@ pub(super) fn qualify(client: &mut Client, publish: bool) -> Res<()> {
     }
 }
 
-fn accepted(row: &Row, incoming: &PlanningAssessed) -> Res<bool> {
-    let raw: Value = row
-        .try_get("contract")
-        .map_err(|_| Fail::Store("contract_decode"))?;
+/// Canonical journal record of an already validated planning contract.
+fn record(ev: &PlanningAssessed) -> Res<JournalRecord> {
+    let contract = serde_json::to_value(ev).map_err(|_| Fail::Store("encode"))?;
+    Ok(JournalRecord {
+        engagement_id: ev.engagement_id,
+        campaign_id: ev.campaign_id,
+        event_id: ev.event_id,
+        operation_id: ev.operation_id,
+        producer: ev.producer.clone(),
+        kind: ev.kind.clone(),
+        version: ev.version,
+        obligation: OBLIGATION.into(),
+        contract,
+    })
+}
+
+/// Strict typed decode of a stored contract into its validated canonical
+/// record. Bounded categories are preserved and corruption is never
+/// reinterpreted as absence or conflict: an invalid basis remains
+/// unsupported_basis and every other decode/validation defect is
+/// contract_decode.
+fn decode(raw: Value) -> Res<JournalRecord> {
     let stored: PlanningAssessed =
         serde_json::from_value(raw).map_err(|_| Fail::Store("contract_decode"))?;
     stored.validate().map_err(|error| match error {
         Fail::Store("unsupported_basis") => error,
         _ => Fail::Store("contract_decode"),
     })?;
-    let event: Uuid = row
-        .try_get("event_id")
-        .map_err(|_| Fail::Store("contract_decode"))?;
-    let operation: Uuid = row
-        .try_get("operation_id")
-        .map_err(|_| Fail::Store("contract_decode"))?;
-    let producer: String = row
-        .try_get("producer")
-        .map_err(|_| Fail::Store("contract_decode"))?;
-    let kind: String = row
-        .try_get("kind")
-        .map_err(|_| Fail::Store("contract_decode"))?;
-    let version: i32 = row
-        .try_get("version")
-        .map_err(|_| Fail::Store("contract_decode"))?;
-    // Catalog columns must carry the validated contract's provenance exactly.
-    let catalog = (
-        stored.engagement_id,
-        stored.campaign_id,
-        stored.event_id.0,
-        stored.operation_id.0,
-        stored.producer.as_str(),
-        stored.kind.as_str(),
-        stored.version as i32,
-    );
-    if catalog
-        != (
-            incoming.engagement_id,
-            incoming.campaign_id,
-            event,
-            operation,
-            producer.as_str(),
-            kind.as_str(),
-            version,
-        )
-    {
-        return Err(Fail::Store("contract_decode"));
-    }
-    Ok(stored == *incoming)
-}
-
-pub(super) fn existing(
-    client: &mut impl GenericClient,
-    ev: &PlanningAssessed,
-) -> Res<Option<Delivered>> {
-    let rows = client
-        .query(
-            "SELECT status, event_id, operation_id, producer, kind, version, contract FROM trajectory.planning_history \
-         WHERE engagement_id=$1 AND campaign_id=$2 AND (event_id=$3 OR operation_id=$4)",
-            &[
-                &ev.engagement_id.0,
-                &ev.campaign_id.0,
-                &ev.event_id.0,
-                &ev.operation_id.0,
-            ],
-        )
-        .map_err(|e| store_err(&e))?;
-    let mut result = None;
-    for row in rows {
-        let status: &str = row
-            .try_get("status")
-            .map_err(|_| Fail::Store("contract_decode"))?;
-        match status {
-            "anomaly" => return Ok(Some(Delivered::Anomaly)),
-            "accepted" if accepted(&row, ev)? => result = Some(Delivered::Completed),
-            "accepted" => return Ok(Some(Delivered::Anomaly)),
-            _ => return Err(Fail::Store("contract_decode")),
-        }
-    }
-    Ok(result)
+    record(&stored)
 }
 
 fn predecessor(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'static str>> {
@@ -164,27 +116,18 @@ fn predecessor(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'stat
     Ok(check_planning_predecessor(&registered, ev).err())
 }
 
-fn anomaly(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<()> {
-    // Only idempotent safe conflict markers use DO NOTHING; accepted content never does.
-    tx.execute(
-        "INSERT INTO trajectory.planning_history \
-         (engagement_id,campaign_id,operation_id,event_id,status,anomaly_category) \
-         VALUES ($1,$2,$3,$4,'anomaly','conflicting_identity') ON CONFLICT DO NOTHING",
-        &[
-            &ev.engagement_id.0,
-            &ev.campaign_id.0,
-            &ev.operation_id.0,
-            &ev.event_id.0,
-        ],
-    )
-    .map_err(|e| store_err(&e))?;
-    Ok(())
+pub(super) fn existing(
+    client: &mut impl GenericClient,
+    ev: &PlanningAssessed,
+) -> Res<Option<Delivered>> {
+    postgres_trajectory_journal::existing(client, JournalTable::Planning, &record(ev)?, decode)
 }
 
 pub(super) fn append(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Delivered> {
-    match existing(tx, ev)? {
+    let record = record(ev)?;
+    match postgres_trajectory_journal::existing(tx, JournalTable::Planning, &record, decode)? {
         Some(Delivered::Anomaly) => {
-            anomaly(tx, ev)?;
+            postgres_trajectory_journal::append_anomaly(tx, JournalTable::Planning, &record)?;
             return Ok(Delivered::Anomaly);
         }
         Some(_) => return Ok(Delivered::Duplicate),
@@ -193,22 +136,7 @@ pub(super) fn append(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Deliver
     if let Some(reason) = predecessor(tx, ev)? {
         return Ok(Delivered::Unresolved(reason));
     }
-    let contract = serde_json::to_value(ev).map_err(|_| Fail::Store("encode"))?;
-    tx.execute(
-        "INSERT INTO trajectory.planning_history \
-         (engagement_id,campaign_id,operation_id,event_id,status,contract,completed_at,obligation,version) \
-         VALUES ($1,$2,$3,$4,'accepted',$5,transaction_timestamp(),$6,$7)",
-        &[
-            &ev.engagement_id.0,
-            &ev.campaign_id.0,
-            &ev.operation_id.0,
-            &ev.event_id.0,
-            &contract,
-            &OBLIGATION,
-            &(ev.version as i32),
-        ],
-    )
-    .map_err(|e| store_err(&e))?;
+    postgres_trajectory_journal::append_accepted(tx, JournalTable::Planning, &record)?;
     Ok(Delivered::Completed)
 }
 
