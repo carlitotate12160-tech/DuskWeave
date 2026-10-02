@@ -43,6 +43,22 @@ pub fn check_event(ev: &MissionRegistered) -> Result<(), &'static str> {
     ev.fields.validate().map_err(|_| "invalid_fields")
 }
 
+/// Version-2 bases carry the owner's scope snapshot; it must equal the
+/// accepted predecessor's scope exactly. Version-1 bases keep the old rules.
+fn scope_matches(registered: &MissionRegistered, assessed: &PlanningAssessed) -> bool {
+    let Some(scope) = assessed
+        .basis
+        .as_ref()
+        .and_then(|basis| basis.scope.as_ref())
+    else {
+        return true;
+    };
+    let fields = &registered.fields;
+    scope.goal_ref == fields.goal_ref
+        && scope.included_assets == fields.included_assets
+        && scope.excluded_assets == fields.excluded_assets
+}
+
 pub fn check_planning_predecessor(
     registered: &MissionRegistered,
     assessed: &PlanningAssessed,
@@ -73,6 +89,9 @@ pub fn check_planning_predecessor(
         registered.fields.ends_at(),
     );
     if source != required || bounds != (basis.exercise_mode, basis.starts_at, basis.ends_at) {
+        return Err("unsupported_predecessor");
+    }
+    if !scope_matches(registered, assessed) {
         return Err("unsupported_predecessor");
     }
     Ok(())

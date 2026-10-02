@@ -1,7 +1,9 @@
 use duskweave::mission::{
     AssetRef, CampaignId, EngagementId, EventId, ExerciseMode, GoalRef, OperationId,
 };
-use duskweave::planning::{MissionBasis, NonpositiveDecision, PlanningAssessed, PlanningRequest};
+use duskweave::planning::{
+    MissionBasis, MissionScope, NonpositiveDecision, PlanningAssessed, PlanningRequest,
+};
 use duskweave::planning_assessment::{self, PlanningStore};
 use duskweave::planning_input::parse_planning;
 use duskweave::registration::OperationAllocator;
@@ -19,6 +21,14 @@ fn request() -> PlanningRequest {
     }
 }
 
+fn scope() -> MissionScope {
+    MissionScope {
+        goal_ref: GoalRef(Uuid::from_u128(3)),
+        included_assets: vec![AssetRef(Uuid::from_u128(4))],
+        excluded_assets: Vec::new(),
+    }
+}
+
 fn basis() -> MissionBasis {
     MissionBasis {
         registration_operation_id: OperationId(Uuid::from_u128(9)),
@@ -26,6 +36,7 @@ fn basis() -> MissionBasis {
         exercise_mode: ExerciseMode::Blind,
         starts_at: 10,
         ends_at: 20,
+        scope: Some(scope()),
     }
 }
 
@@ -76,25 +87,26 @@ fn absent_basis_is_nonpositive_and_strict_input_rejects_unknown_fields() {
 
 #[test]
 fn four_nonpositive_outcomes_follow_owner_precedence() {
+    // Version-1 semantics are retained exactly: no scope or window evaluation.
     let mut request = request();
     assert_eq!(
-        NonpositiveDecision::for_request(&request, None),
+        NonpositiveDecision::for_request(1, &request, None, 15).unwrap(),
         NonpositiveDecision::UnresolvedMissionBasis
     );
     request.expected_mission_revision = 2;
     request.current_authority_confirmed = false;
     assert_eq!(
-        NonpositiveDecision::for_request(&request, Some(&basis())),
+        NonpositiveDecision::for_request(1, &request, Some(&basis()), 15).unwrap(),
         NonpositiveDecision::RefusedRevisionMismatch
     );
     request.expected_mission_revision = 1;
     assert_eq!(
-        NonpositiveDecision::for_request(&request, Some(&basis())),
+        NonpositiveDecision::for_request(1, &request, Some(&basis()), 15).unwrap(),
         NonpositiveDecision::UnresolvedAuthorityUnconfirmed
     );
     request.current_authority_confirmed = true;
     assert_eq!(
-        NonpositiveDecision::for_request(&request, Some(&basis())),
+        NonpositiveDecision::for_request(1, &request, Some(&basis()), 999).unwrap(),
         NonpositiveDecision::UnresolvedEvaluationIncomplete
     );
 }

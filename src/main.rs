@@ -164,6 +164,7 @@ fn cmd_assess(args: &[String]) -> Res<()> {
     let mut store = PgMissionStore::new(connect()?);
     match planning_assessment::assess(&mut allocator, &mut store, &request, operation, recover) {
         Ok(Some(event)) => {
+            let (scope, window) = event.assessment_labels();
             let contract = serde_json::to_value(&event).map_err(|_| Fail::Store("encode"))?;
             let receipt = serde_json::json!({
                 "result": "durable", "contract": contract,
@@ -172,7 +173,7 @@ fn cmd_assess(args: &[String]) -> Res<()> {
                 "history": "pending", "history_reason": "not_published_at_decision",
                 "history_view": "producer_receipt_as_of_decision",
                 "basis_status": if event.basis.is_some() { "available" } else { "unavailable" },
-                "scope": "not_evaluated", "window": "not_evaluated",
+                "scope": scope, "window": window,
                 "complete_assessment": false, "current_permission": false,
             });
             println!(
@@ -232,6 +233,7 @@ fn cmd_planning_history(args: &[String]) -> Res<()> {
         }
         Err(error) => planning_history::history_result(Err(error)),
     };
+    let (scope, window) = event.assessment_labels();
     let receipt = serde_json::json!({
         "result": "durable", "contract": event,
         "decision_origin": "durable_record",
@@ -240,7 +242,7 @@ fn cmd_planning_history(args: &[String]) -> Res<()> {
         "history_source": "trajectory", "history": view.state, "history_reason": view.reason,
         "complete_history": view.complete,
         "action": if view.state == "unknown" { "recover_history_before_retry" } else { "none" },
-        "scope": "not_evaluated", "window": "not_evaluated",
+        "scope": scope, "window": window,
         "complete_assessment": false, "current_permission": false,
     });
     println!(

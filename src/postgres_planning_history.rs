@@ -44,18 +44,34 @@ fn accepted(row: &Row, incoming: &PlanningAssessed) -> Res<bool> {
         .map_err(|_| Fail::Store("contract_decode"))?;
     let stored: PlanningAssessed =
         serde_json::from_value(raw).map_err(|_| Fail::Store("contract_decode"))?;
-    stored.validate()?;
+    stored.validate().map_err(|error| match error {
+        Fail::Store("unsupported_basis") => error,
+        _ => Fail::Store("contract_decode"),
+    })?;
     let event: Uuid = row
         .try_get("event_id")
         .map_err(|_| Fail::Store("contract_decode"))?;
     let operation: Uuid = row
         .try_get("operation_id")
         .map_err(|_| Fail::Store("contract_decode"))?;
+    let producer: String = row
+        .try_get("producer")
+        .map_err(|_| Fail::Store("contract_decode"))?;
+    let kind: String = row
+        .try_get("kind")
+        .map_err(|_| Fail::Store("contract_decode"))?;
+    let version: i32 = row
+        .try_get("version")
+        .map_err(|_| Fail::Store("contract_decode"))?;
+    // Catalog columns must carry the validated contract's provenance exactly.
     let catalog = (
         stored.engagement_id,
         stored.campaign_id,
         stored.event_id.0,
         stored.operation_id.0,
+        stored.producer.as_str(),
+        stored.kind.as_str(),
+        stored.version as i32,
     );
     if catalog
         != (
@@ -63,6 +79,9 @@ fn accepted(row: &Row, incoming: &PlanningAssessed) -> Res<bool> {
             incoming.campaign_id,
             event,
             operation,
+            producer.as_str(),
+            kind.as_str(),
+            version,
         )
     {
         return Err(Fail::Store("contract_decode"));
@@ -76,7 +95,7 @@ pub(super) fn existing(
 ) -> Res<Option<Delivered>> {
     let rows = client
         .query(
-            "SELECT status, event_id, operation_id, contract FROM trajectory.planning_history \
+            "SELECT status, event_id, operation_id, producer, kind, version, contract FROM trajectory.planning_history \
          WHERE engagement_id=$1 AND campaign_id=$2 AND (event_id=$3 OR operation_id=$4)",
             &[
                 &ev.engagement_id.0,
@@ -177,8 +196,8 @@ pub(super) fn append(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Deliver
     let contract = serde_json::to_value(ev).map_err(|_| Fail::Store("encode"))?;
     tx.execute(
         "INSERT INTO trajectory.planning_history \
-         (engagement_id,campaign_id,operation_id,event_id,status,contract,completed_at,obligation) \
-         VALUES ($1,$2,$3,$4,'accepted',$5,transaction_timestamp(),$6)",
+         (engagement_id,campaign_id,operation_id,event_id,status,contract,completed_at,obligation,version) \
+         VALUES ($1,$2,$3,$4,'accepted',$5,transaction_timestamp(),$6,$7)",
         &[
             &ev.engagement_id.0,
             &ev.campaign_id.0,
@@ -186,6 +205,7 @@ pub(super) fn append(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Deliver
             &ev.event_id.0,
             &contract,
             &OBLIGATION,
+            &(ev.version as i32),
         ],
     )
     .map_err(|e| store_err(&e))?;

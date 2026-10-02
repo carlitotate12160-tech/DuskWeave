@@ -52,7 +52,7 @@ fn durable_publication_and_fresh_read_keep_original_identity_and_timestamps() {
         assert_eq!(row.get::<_, String>(1), "trajectory.planning_history.v1");
         assert_eq!(row.get::<_, String>(2), "mission");
         assert_eq!(row.get::<_, String>(3), "planning_assessed");
-        assert_eq!(row.get::<_, i32>(4), 1);
+        assert_eq!(row.get::<_, i32>(4), ev.version as i32);
         assert!(row.get::<_, bool>(5));
     }
 }
@@ -172,7 +172,7 @@ fn invalid_predecessor_and_unsupported_planning_contract_never_complete() {
     let ev = decision(0xb1b7, true);
     let mut trajectory = PgTrajectory::new(runtime_client());
     let mut unsupported = ev.clone();
-    unsupported.version = 2;
+    unsupported.version = 99;
     assert_eq!(
         trajectory.publish(&unsupported),
         Err(Fail::Unresolved("unsupported_contract"))
@@ -198,6 +198,58 @@ fn invalid_predecessor_and_unsupported_planning_contract_never_complete() {
         Delivered::Unresolved("unsupported_predecessor")
     );
     effects(&ev, 0, 0);
+
+    // Version 2 also requires the predecessor's scope snapshot to match the
+    // recorded basis exactly; a scope-disagreeing predecessor stays pending.
+    let scoped = decision(0xb1b9, true);
+    let mut administrator = admin();
+    let original: Value = administrator
+        .query_one(
+            "SELECT contract FROM trajectory.registration_history \
+             WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&scoped.engagement_id.0, &scoped.campaign_id.0],
+        )
+        .unwrap()
+        .get(0);
+    for (path, value) in [
+        (
+            "{fields,goal_ref}",
+            serde_json::json!(Uuid::from_u128(0xb2d9)),
+        ),
+        (
+            "{fields,included_assets}",
+            serde_json::json!([Uuid::from_u128(0xb2da)]),
+        ),
+        ("{fields,excluded_assets}", serde_json::json!([])),
+    ] {
+        administrator
+            .execute(
+                &format!(
+                    "UPDATE trajectory.registration_history \
+                     SET contract=jsonb_set(contract,'{path}',$3) \
+                     WHERE engagement_id=$1 AND campaign_id=$2"
+                ),
+                &[&scoped.engagement_id.0, &scoped.campaign_id.0, &value],
+            )
+            .unwrap();
+        assert_eq!(
+            trajectory.publish(&scoped).unwrap(),
+            Delivered::Unresolved("unsupported_predecessor")
+        );
+    }
+    // Restoring the predecessor's exact scope allows acceptance to proceed.
+    administrator
+        .execute(
+            "UPDATE trajectory.registration_history SET contract=$3 \
+             WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&scoped.engagement_id.0, &scoped.campaign_id.0, &original],
+        )
+        .unwrap();
+    assert_eq!(
+        retry(|| trajectory.publish(&scoped)).unwrap(),
+        Delivered::Completed
+    );
+    effects(&scoped, 1, 0);
 }
 
 #[test]

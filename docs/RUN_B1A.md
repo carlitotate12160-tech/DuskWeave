@@ -2,7 +2,11 @@
 
 B1a adds a Mission-owned local assessment decision and an immutable required
 publication obligation. It does **not** deliver that contract to Trajectory.
-Every assessment receipt reports the original decision-time producer view:
+This document describes the original `version=1` semantics: no purpose, asset,
+or validity-window evaluation. New events now use `version=2` with scope/window
+refusals; see [RUN_B2](RUN_B2.md). Stored v1 records keep these semantics
+unchanged, including on recovery. Every assessment receipt reports the
+original decision-time producer view:
 `history=pending`, `history_reason=not_published_at_decision`, and
 `history_view=producer_receipt_as_of_decision`, including recovery. For current
 Trajectory publication status, use [RUN_B1B](RUN_B1B.md). Neither a successful exit nor a stored decision grants current
@@ -63,17 +67,19 @@ After `commit_unknown`, recover the **same** handle before any fresh retry.
 A durable receipt is one JSON object containing `result=durable`, the validated
 original `PlanningAssessed` contract, `decision_origin=durable_record`, the fixed
 `publication_obligation=trajectory.planning_history.v1`, and explicit
-`scope=not_evaluated`, `window=not_evaluated`, `complete_assessment=false`,
-`current_permission=false`. `basis_status=unavailable` means no current Mission
+`complete_assessment=false`, `current_permission=false`. Under v1 semantics
+`scope=not_evaluated` and `window=not_evaluated`; version 2 replaces them with
+the refusal/matched labels in [RUN_B2](RUN_B2.md). `basis_status=unavailable` means no current Mission
 row was found when the original decision was made; it never defaults an exercise
 mode. A known basis retains its typed mode and registration provenance in the
 contract. All three event timestamps use the producer transaction's epoch
 seconds, not commit wall time or a current-window verdict.
 
-The only decisions are `unresolved_mission_basis`,
+The v1 decisions are `unresolved_mission_basis`,
 `refused_revision_mismatch`, `unresolved_authority_unconfirmed`, and
 `unresolved_evaluation_incomplete`. They follow that precedence and are all
-nonpositive. A verified absent recovery returns `result=not_committed`; database
+nonpositive; version 2 adds the scope/window refusals in [RUN_B2](RUN_B2.md)
+between the authority check and the final unresolved result. A verified absent recovery returns `result=not_committed`; database
 or contract errors are not absence. An unknown commit emits `result=unknown`
 with `action=recover_before_retry` and a failing exit.
 

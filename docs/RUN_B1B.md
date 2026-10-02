@@ -1,8 +1,11 @@
 # RUN_B1B — Publish and Recover Nonpositive Planning History
 
 B1b adds Trajectory recording of an **already durable** B1a decision. It remains
-partial M0B: scope/window evaluation, positive eligibility and withdrawal are
-unfinished. M0 remains DEMO_PENDING and unsealed; no target execution is allowed.
+partial M0B: positive eligibility and withdrawal are unfinished. The v1 receipt
+labels below describe `version=1` events; new `version=2` events carry the
+scoped bounds snapshot and version-aware scope/window labels defined in
+[RUN_B2](RUN_B2.md). M0 remains DEMO_PENDING and unsealed; no target execution
+is allowed.
 
 ## Prerequisites
 
@@ -46,9 +49,11 @@ Its current history view is separately labeled `history_source=trajectory`:
 
 `result=durable` describes the producer decision. Successful query exit is not
 history completion or current permission. Every receipt retains
-`complete_assessment=false`, `current_permission=false`, `scope=not_evaluated`
-and `window=not_evaluated`. The producer-only `assess` receipt is explicitly
-historical; its original pending status is not a current Trajectory query.
+`complete_assessment=false` and `current_permission=false`. Version 1 receipts
+show `scope=not_evaluated` and `window=not_evaluated`; version 2 receipts show
+the original assessment-time labels in [RUN_B2](RUN_B2.md). The producer-only
+`assess` receipt is explicitly historical; its original pending status is not
+a current Trajectory query.
 
 After unknown acknowledgment, use `recover=true` on the **same** identity before
 explicitly republishing. Read-only recovery never creates the missing effect.
@@ -64,7 +69,9 @@ neither an event label nor its UUID authenticates an arbitrary external event.
 
 A basis-bearing event needs same-engagement/campaign accepted registration
 history matching its registration operation, revision, mode and validity bounds
-before first acceptance. Missing/unsupported predecessors stay pending. Deliver
+before first acceptance; version 2 additionally requires an exact scope snapshot
+match to that predecessor's goal/included/excluded references. Missing,
+mismatched, or unsupported predecessors stay pending. Deliver
 registration through existing M0A reconcile before republishing the same decision.
 A valid absent-Mission decision has no registration predecessor requirement.
 Duplicates/read-only recovery retain the original recorded result without

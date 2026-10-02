@@ -53,10 +53,8 @@ fn durable_decision_duplicate_and_recovery_keep_original() {
     let first = planning_assessment::assess(&mut allocator, &mut store, &input, operation, false)
         .unwrap()
         .expect("durable decision");
-    assert_eq!(
-        first.decision,
-        NonpositiveDecision::UnresolvedEvaluationIncomplete
-    );
+    assert_eq!(first.decision, NonpositiveDecision::RefusedExpired);
+    assert_eq!(first.version, 2);
     assert_eq!(
         first.basis.as_ref().unwrap().registration_operation_id,
         registration.operation_id

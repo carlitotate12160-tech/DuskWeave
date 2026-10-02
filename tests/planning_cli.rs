@@ -60,6 +60,25 @@ fn assess(operation: &str, input: &str, recover: bool, dsn: &str) -> Output {
     )
 }
 
+fn prepare(engagement: &str, campaign: &str, dsn: &str) -> String {
+    let output = cli(
+        &[
+            "prepare-operation",
+            "--engagement",
+            engagement,
+            "--campaign",
+            campaign,
+        ],
+        dsn,
+    );
+    assert!(output.status.success(), "prepare-operation failed");
+    String::from_utf8(output.stdout)
+        .expect("operation receipt UTF-8")
+        .split_whitespace()
+        .find_map(|part| part.strip_prefix("operation=").map(str::to_owned))
+        .expect("prepared operation")
+}
+
 fn durable(output: Output) -> Value {
     assert!(output.status.success(), "assess failed");
     assert!(output.stderr.is_empty(), "unexpected CLI stderr");
@@ -92,24 +111,9 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
     effects(engagement, campaign, 0);
 
     let dsn = std::env::var("DW_TEST_DATABASE_URL").expect("DW_TEST_DATABASE_URL required");
-    let prepared = cli(
-        &[
-            "prepare-operation",
-            "--engagement",
-            &engagement.to_string(),
-            "--campaign",
-            &campaign.to_string(),
-        ],
-        &dsn,
-    );
-    assert!(prepared.status.success(), "prepare-operation failed");
-    let prepared_text = std::str::from_utf8(&prepared.stdout).expect("operation receipt UTF-8");
-    let operation = prepared_text
-        .split_whitespace()
-        .find_map(|part| part.strip_prefix("operation="))
-        .expect("prepared operation");
-    assert_ne!(Uuid::parse_str(operation).unwrap(), Uuid::nil());
-    let input_file = InputFile::new(operation);
+    let operation = prepare(&engagement.to_string(), &campaign.to_string(), &dsn);
+    assert_ne!(Uuid::parse_str(&operation).unwrap(), Uuid::nil());
+    let input_file = InputFile::new(&operation);
     let input = json!({
         "engagement_id": engagement.0,
         "campaign_id": campaign.0,
@@ -120,7 +124,7 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
     });
     input_file.write(&input);
 
-    let original = durable(assess(operation, input_file.path(), false, &dsn));
+    let original = durable(assess(&operation, input_file.path(), false, &dsn));
     let contract = &original["contract"];
     assert_eq!(contract["operation_id"], operation);
     assert_eq!(contract["request"], input);
@@ -129,10 +133,11 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
         registration.operation_id.to_string()
     );
     assert_ne!(contract["event_id"], Uuid::nil().to_string());
+    assert_eq!(contract["version"], 2);
     for (field, expected) in [
         ("producer", "mission"),
         ("kind", "planning_assessed"),
-        ("decision", "unresolved_evaluation_incomplete"),
+        ("decision", "refused_expired"),
     ] {
         assert_eq!(contract[field], expected, "contract.{field}");
     }
@@ -143,8 +148,8 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
         ("history", "pending"),
         ("history_reason", "not_published_at_decision"),
         ("basis_status", "available"),
-        ("scope", "not_evaluated"),
-        ("window", "not_evaluated"),
+        ("scope", "matched"),
+        ("window", "expired"),
     ] {
         assert_eq!(original[field], expected, "receipt.{field}");
     }
@@ -153,7 +158,7 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
     effects(engagement, campaign, 1);
 
     assert_eq!(
-        durable(assess(operation, input_file.path(), false, &dsn)),
+        durable(assess(&operation, input_file.path(), false, &dsn)),
         original
     );
     effects(engagement, campaign, 1);
@@ -168,7 +173,7 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
         changed[field] = value;
         input_file.write(&changed);
         for recover in [false, true] {
-            let output = assess(operation, input_file.path(), recover, &dsn);
+            let output = assess(&operation, input_file.path(), recover, &dsn);
             assert!(!output.status.success(), "changed {field} accepted");
             assert!(
                 output.stdout == b"error=integrity_conflict\n",
@@ -181,7 +186,7 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
 
     input_file.write(&input);
     assert_eq!(
-        durable(assess(operation, input_file.path(), true, &dsn)),
+        durable(assess(&operation, input_file.path(), true, &dsn)),
         original
     );
     let row = runtime_client()
@@ -191,11 +196,116 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
             &[
                 &engagement.0,
                 &campaign.0,
-                &Uuid::parse_str(operation).unwrap(),
+                &Uuid::parse_str(&operation).unwrap(),
             ],
         )
         .expect("one scoped planning row");
     assert_eq!(row.get::<_, Value>(0), original["contract"]);
     assert_eq!(row.get::<_, String>(1), "trajectory.planning_history.v1");
     effects(engagement, campaign, 1);
+}
+
+#[test]
+fn cli_assess_and_fresh_process_recovery_preserve_pending_original() {
+    let _guard = db();
+    let dsn = std::env::var("DW_TEST_DATABASE_URL").expect("DW_TEST_DATABASE_URL required");
+    // (register, expected revision, confirmed, decision, scope, window)
+    let cases = [
+        (
+            false,
+            1,
+            true,
+            "unresolved_mission_basis",
+            "not_evaluated",
+            "not_evaluated",
+        ),
+        (
+            true,
+            2,
+            false,
+            "refused_revision_mismatch",
+            "not_evaluated",
+            "not_evaluated",
+        ),
+        (
+            true,
+            1,
+            false,
+            "unresolved_authority_unconfirmed",
+            "not_evaluated",
+            "not_evaluated",
+        ),
+        (true, 1, true, "refused_expired", "matched", "expired"),
+    ];
+    for (i, (register, revision, confirmed, decision, scope_label, window_label)) in
+        cases.iter().enumerate()
+    {
+        let (engagement, campaign) = scope(0xb2d0 + i as u128);
+        let (es, cs) = (engagement.to_string(), campaign.to_string());
+        let operation = prepare(&es, &cs, &dsn);
+        if *register {
+            // Mission registration stays on the real CLI. The fixture keeps
+            // its fixed past window [1700000000, 1700086400).
+            let registration_file = InputFile::new(&format!("reg-{operation}"));
+            registration_file.write(&reg_json(engagement, campaign));
+            let registration_operation = prepare(&es, &cs, &dsn);
+            let registered = cli(
+                &[
+                    "register",
+                    "--operation",
+                    &registration_operation,
+                    "--input",
+                    registration_file.path(),
+                ],
+                &dsn,
+            );
+            assert!(registered.status.success(), "register failed");
+        }
+        let file = InputFile::new(&operation);
+        file.write(&json!({
+            "engagement_id": engagement.0,
+            "campaign_id": campaign.0,
+            "purpose_ref": Uuid::from_u128(0x13),
+            "asset_ref": Uuid::from_u128(0x21),
+            "expected_mission_revision": revision,
+            "current_authority_confirmed": confirmed,
+        }));
+
+        let absent = assess(&operation, file.path(), true, &dsn);
+        assert!(absent.status.success());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&absent.stdout).unwrap()["result"],
+            "not_committed"
+        );
+        let original = durable(assess(&operation, file.path(), false, &dsn));
+        assert_eq!(original["result"], "durable");
+        assert_eq!(original["contract"]["decision"], *decision);
+        assert_eq!(original["history"], "pending");
+        assert_eq!(original["history_reason"], "not_published_at_decision");
+        assert_eq!(original["complete_assessment"], false);
+        assert_eq!(original["current_permission"], false);
+        assert_eq!(original["scope"], *scope_label);
+        assert_eq!(original["window"], *window_label);
+        assert_eq!(
+            original["basis_status"],
+            if *register {
+                "available"
+            } else {
+                "unavailable"
+            }
+        );
+        if *decision == "refused_expired" {
+            assert_eq!(original["contract"]["version"], 2);
+            assert!(
+                original["contract"]["evaluated_at"].as_i64().unwrap() >= 1_700_086_400,
+                "v2 expiry is judged at the recorded evaluation time"
+            );
+        }
+        let recovered = durable(assess(&operation, file.path(), true, &dsn));
+        assert_eq!(recovered, original);
+        assert_eq!(
+            count("mission.planning_assessments", engagement, campaign),
+            1
+        );
+    }
 }

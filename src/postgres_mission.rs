@@ -1,8 +1,11 @@
 //! Mission owner's PostgreSQL adapter. Queries only mission.* tables;
 //! the registration and its outbox contract commit in one transaction.
 
+#[path = "postgres_mission_basis.rs"]
+mod postgres_mission_basis;
+
 use crate::mission::*;
-use crate::planning::{MissionBasis, PlanningAssessed, PlanningRequest};
+use crate::planning::{PlanningAssessed, PlanningRequest};
 use crate::planning_assessment::PlanningStore;
 use crate::registration::{CommitEffect, MissionStore, MissionView, OperationAllocator};
 use crate::{Fail, Res};
@@ -181,41 +184,6 @@ fn stored_row_identity(
         && obligation == "trajectory.planning_history.v1"
 }
 
-fn current_basis(
-    tx: &mut postgres::Transaction,
-    request: &PlanningRequest,
-) -> Res<Option<MissionBasis>> {
-    let row = tx.query_opt(
-        "SELECT operation_id, revision, exercise_mode, starts_at, ends_at FROM mission.missions \
-         WHERE engagement_id=$1 AND campaign_id=$2",
-        &[&request.engagement_id.0, &request.campaign_id.0],
-    ).map_err(|error| store_err(&error))?;
-    row.map(|row| {
-        let mode: String = row.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
-        let exercise_mode = match mode.as_str() {
-            "blind" => ExerciseMode::Blind,
-            "defender_informed" => ExerciseMode::DefenderInformed,
-            _ => return Err(Fail::Store("unsupported_basis")),
-        };
-        let revision: i64 = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
-        if revision <= 0 {
-            return Err(Fail::Store("unsupported_basis"));
-        }
-        let basis = MissionBasis {
-            registration_operation_id: OperationId(
-                row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?,
-            ),
-            revision: revision as u64,
-            exercise_mode,
-            starts_at: row.try_get(3).map_err(|_| Fail::Store("contract_decode"))?,
-            ends_at: row.try_get(4).map_err(|_| Fail::Store("contract_decode"))?,
-        };
-        basis.validate()?;
-        Ok(basis)
-    })
-    .transpose()
-}
-
 impl PlanningStore for PgMissionStore {
     fn assess(
         &mut self,
@@ -246,7 +214,7 @@ impl PlanningStore for PgMissionStore {
         ).map_err(|error| store_err(&error))?.is_some() {
             return Err(Fail::Conflict("integrity_conflict"));
         }
-        let basis = current_basis(&mut tx, request)?;
+        let basis = postgres_mission_basis::current_basis(&mut tx, request)?;
         let timestamp: i64 = tx
             .query_one(
                 "SELECT floor(extract(epoch FROM transaction_timestamp()))::bigint",
