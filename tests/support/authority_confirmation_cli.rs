@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -26,9 +26,9 @@ const EXIT_DEADLINE: Duration = Duration::from_secs(30);
 pub struct Session {
     child: Child,
     stdin: Option<ChildStdin>,
-    stdout: Option<ChildStdout>,
     challenge_rx: Receiver<Vec<u8>>,
     tail: Option<JoinHandle<Vec<u8>>>,
+    out_tail: Option<JoinHandle<Vec<u8>>>,
     first_line: Option<Vec<u8>>,
 }
 
@@ -65,7 +65,7 @@ fn command(args: &[&str], dsn: Option<&str>) -> Command {
 fn spawn(args: &[&str], dsn: Option<&str>) -> Session {
     let mut child = command(args, dsn).spawn().expect("spawn CLI");
     let stdin = child.stdin.take();
-    let stdout = child.stdout.take();
+    let mut stdout = child.stdout.take().expect("piped stdout");
     let mut stderr = BufReader::new(child.stderr.take().expect("piped stderr"));
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let tail = std::thread::spawn(move || {
@@ -76,12 +76,17 @@ fn spawn(args: &[&str], dsn: Option<&str>) -> Session {
         let _ = stderr.read_to_end(&mut rest);
         rest
     });
+    let out_tail = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = stdout.read_to_end(&mut bytes);
+        bytes
+    });
     Session {
         child,
         stdin,
-        stdout,
         challenge_rx: rx,
         tail: Some(tail),
+        out_tail: Some(out_tail),
         first_line: None,
     }
 }
@@ -200,12 +205,12 @@ impl Session {
                 None => std::thread::sleep(Duration::from_millis(5)),
             }
         };
-        let mut stdout = Vec::new();
-        self.stdout
+        let stdout = self
+            .out_tail
             .take()
-            .expect("stdout")
-            .read_to_end(&mut stdout)
-            .expect("read stdout");
+            .expect("stdout drain")
+            .join()
+            .unwrap_or_default();
         let stderr_tail = self
             .tail
             .take()
