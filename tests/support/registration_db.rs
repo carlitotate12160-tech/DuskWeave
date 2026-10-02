@@ -21,6 +21,7 @@ pub const MIGRATION: &str = include_str!("../../migrations/0001_mission_registra
 pub const PLANNING_MIGRATION: &str = include_str!("../../migrations/0002_planning_assessment.sql");
 pub const HISTORY_MIGRATION: &str =
     include_str!("../../migrations/0003_trajectory_planning_history.sql");
+pub const V2_MIGRATION: &str = include_str!("../../migrations/0004_planning_assessment_v2.sql");
 
 /// Serializes DB tests (SSI predicate locks intentionally abort racing
 /// serializable transactions) and applies one-time admin setup.
@@ -102,6 +103,7 @@ fn setup() {
         a.batch_execute(MIGRATION).unwrap();
         a.batch_execute(PLANNING_MIGRATION).unwrap();
         a.batch_execute(HISTORY_MIGRATION).unwrap();
+        a.batch_execute(V2_MIGRATION).unwrap();
         a.batch_execute(&format!(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{rt_user}') \
              THEN CREATE ROLE {rt_user} LOGIN PASSWORD '{rt_pass}'; \

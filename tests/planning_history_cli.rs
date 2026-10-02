@@ -89,11 +89,44 @@ fn planning(command: &str, op: &str, file: &InputFile, recover: &str) -> Output 
 #[test]
 fn real_cli_register_assess_publish_restart_inspect_covers_all_nonpositive_decisions() {
     let _guard = db();
-    for (slot, registered, revision, confirmed, decision) in [
-        (0xb1c0, false, 1, true, "unresolved_mission_basis"),
-        (0xb1c1, true, 2, true, "refused_revision_mismatch"),
-        (0xb1c2, true, 1, false, "unresolved_authority_unconfirmed"),
-        (0xb1c3, true, 1, true, "unresolved_evaluation_incomplete"),
+    for (slot, registered, revision, confirmed, decision, scope_label, window_label) in [
+        (
+            0xb1c0,
+            false,
+            1,
+            true,
+            "unresolved_mission_basis",
+            "not_evaluated",
+            "not_evaluated",
+        ),
+        (
+            0xb1c1,
+            true,
+            2,
+            true,
+            "refused_revision_mismatch",
+            "not_evaluated",
+            "not_evaluated",
+        ),
+        (
+            0xb1c2,
+            true,
+            1,
+            false,
+            "unresolved_authority_unconfirmed",
+            "not_evaluated",
+            "not_evaluated",
+        ),
+        // The fixed fixture window is in the past: v2 evaluates it to refused_expired.
+        (
+            0xb1c3,
+            true,
+            1,
+            true,
+            "refused_expired",
+            "matched",
+            "expired",
+        ),
     ] {
         let (e, c) = scope(slot);
         let (engagement, campaign) = (e.to_string(), c.to_string());
@@ -118,6 +151,9 @@ fn real_cli_register_assess_publish_restart_inspect_covers_all_nonpositive_decis
         let op = operation(&engagement, &campaign);
         let assessed = json_output(planning("assess", &op, &file, "false"));
         assert_eq!(assessed["contract"]["decision"], decision);
+        assert_eq!(assessed["contract"]["version"], 2);
+        assert_eq!(assessed["scope"], scope_label);
+        assert_eq!(assessed["window"], window_label);
         assert_eq!(assessed["history_view"], "producer_receipt_as_of_decision");
         let pending = json_output(planning("planning-history", &op, &file, "true"));
         assert_eq!(pending["history"], "pending");
@@ -130,8 +166,8 @@ fn real_cli_register_assess_publish_restart_inspect_covers_all_nonpositive_decis
         for receipt in [&pending, &completed] {
             assert_eq!(receipt["complete_assessment"], false);
             assert_eq!(receipt["current_permission"], false);
-            assert_eq!(receipt["scope"], "not_evaluated");
-            assert_eq!(receipt["window"], "not_evaluated");
+            assert_eq!(receipt["scope"], scope_label);
+            assert_eq!(receipt["window"], window_label);
         }
         let restarted = json_output(planning("planning-history", &op, &file, "true"));
         assert_eq!(restarted, completed);
