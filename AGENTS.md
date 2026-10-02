@@ -270,6 +270,135 @@ AUTHORITY CHECK
 
 ---
 
+## Source workspace and candidate identity
+
+Before interpreting repository state, inspect `git worktree list` and verify
+repository identity, the actual worktree, its branch and HEAD against the
+packet's expected base. A path recorded in docs/ENGINEERING_STATE.md, an old
+prompt, or a dirty or stale main folder is not proof of the active candidate;
+the packet's verified worktree is.
+
+Every issued packet names repository identity, actual worktree, branch and
+exact base; every delivery report also names the candidate head.
+
+Preserve unrelated work: unless a packet explicitly assigns the cleanup, do
+not clean, reset, stash, stage, promote or delete drafts or worktrees. A
+healthy clean worktree may be reused for
+sequential delivery after its branch and base are reverified; creating a new
+folder for every slice is not itself a quality requirement.
+
+Local machine configuration such as `.cargo/config.toml` belongs to its own
+worktree. Do not read, print, copy, stage, delete or overwrite it, and do not
+propagate local configuration between worktrees.
+
+---
+
+## Tracking reconciliation at completion
+
+Delivery is not complete until repository tracking is reconciled. At
+preflight, compare docs/ENGINEERING_STATE.md with live delivery and merge
+evidence; historical narrative remains historical.
+
+Every packet declares an explicit tracking disposition: UPDATE with the exact
+files and effects, or NO_CHANGE with a concrete reason. Include
+docs/ENGINEERING_STATE.md in the editable map when active delivery status or
+the next action changes; include docs/BUILD_ORDER.md only when current
+navigation changes. Correct factual lag only inside the packet's editable
+map; acceptance, seal and other authority changes remain separately
+authorized. A review-only task reports required tracking corrections without
+acquiring edit permission; an unchanged status records NO_CHANGE rather than
+meaningless churn. If a required correction needs a path omitted from the
+map, return SPLIT_REQUIRED with the exact map defect instead of expanding
+scope silently. Do not issue a ready packet while a required predecessor
+merge is still open.
+
+A candidate commit does not record its own merge: a delivered PR is distinct
+from merged source, and the final candidate SHA belongs to the external
+delivery report, not to a file inside the same commit. The actual predecessor
+merge is reconciled at the next packet's preflight. Before handoff, review
+consistency between the current-phase summary, the next action and build
+navigation.
+
+---
+
+## Local build and coverage artifacts
+
+Compiled artifacts are reusable local resources, separate from source
+isolation. On the current Windows x86_64 MSVC baseline they follow a
+process-scoped convention, not global machine state:
+
+```text
+ordinary build/test artifacts: D:/DuskWeave-build/rust-1.94.1/normal
+instrumented artifacts:        D:/DuskWeave-build/rust-1.94.1/coverage/<packet-id>
+cache qualification reports:   D:/DuskWeave-build/rust-1.94.1/reports/<packet-id>/
+```
+
+Normal commands set `CARGO_TARGET_DIR` explicitly; coverage commands
+additionally set `CARGO_LLVM_COV_TARGET_DIR` explicitly. Each issued packet
+resolves these drafting fields to a concrete coverage path, report path and
+cache ownership rule. Never mix instrumented and ordinary artifact
+directories. A different platform, toolchain or configuration uses its own
+explicitly qualified path.
+
+One owner holds the shared ordinary target directory for the entire
+verification sequence, including native CLI subprocess tests and direct
+binary use; Cargo's compilation lock alone does not prove whole-sequence
+isolation. Do not build, clean or overwrite that target concurrently from
+another worktree. A packet's coverage path likewise has a single owner per
+run and must not mix concurrent runs.
+
+Reuse valid compiled artifacts; do not routinely `cargo clean`. Preserve
+`cargo llvm-cov` profile/workspace cleanup for the selected isolated coverage
+path, then run the current candidate's tests. `--no-run` output or an old
+report is not current verification, and no cache-reuse guarantee or speedup
+claim is valid without measurement.
+
+Set these variables only in the owning shell/process and its child test
+processes. Do not use `setx`, modify user/system environment, alter
+`.cargo/config.toml`, add scripts or wrappers, or change CI. Preserve
+existing target folders. Document effective paths and incomplete
+qualification honestly.
+
+---
+
+## Local services and test evidence
+
+A local PostgreSQL instance is a reusable service; test evidence is not
+reusable. Inspect the actual owned service before provisioning another:
+retain a compatible running container even when its name belongs to an
+earlier slice, and start a compatible stopped container with bounded
+readiness/qualification. A missing service requires the packet's authorized
+pinned setup; a version or ownership mismatch or a port collision is a
+blocker, not permission to delete another container. A service is owned when
+the issuing packet names a previously provisioned container for reuse or
+authorizes new pinned setup; ambiguous ownership is a blocker. Reuse requires
+the container to reside on this Docker host with its container/volume
+retained. Do not change restart policy or
+host configuration outside a packet that authorizes it, and do not install a
+container-management subsystem.
+
+Separate test isolation from service lifetime. Each runtime packet names a
+fresh disposable database and restricted login, with administrative access
+only for fixture setup; reuse fixtures only within their qualified unchanged
+configuration. Execute real SQL, migrations, role qualification and scenario
+assertions on every current-candidate run; never reuse a production or client
+database, blindly import old branch data, or reuse a previous PASS or
+coverage report as current evidence. Fixtures that mutate cluster-wide roles
+serialize: allow only one test owner for the owned cluster while
+role/permission fixtures run, because a separate database alone does not
+isolate cluster-role mutations.
+
+Keep credentials inside the authorized environment/secret boundary; never
+echo DSNs or password values into prompts, logs or reports. Missing
+authorized DSNs are BLOCKED for a required local database gate. No automatic
+database, role, container or volume deletion or bulk reset; any later cleanup
+requires its own bounded ownership and authorization.
+
+CI provides its own hosted database lifecycle; persistent local reuse does
+not establish cross-job CI caches or container persistence.
+
+---
+
 ## Reasoning workers
 
 Reasoning workers should be short-lived specialists.

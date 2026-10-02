@@ -96,6 +96,16 @@ Skills are development workflows, not runtime campaign agents.
 
 DELIVERY
 Identify governing requirement, bounded context, assumptions, and drift first.
+Name repository identity, actual worktree, branch, base and candidate in each
+packet and report; a recorded path is not proof of the active worktree, and
+unrelated worktrees are preserved. Declare a tracking disposition (UPDATE
+with exact files/effects or NO_CHANGE with reason); a delivered PR is not
+merged until verified, and actual predecessor merges reconcile at the next
+packet's preflight. Resolve concrete artifact/coverage/report paths and cache
+ownership per packet; reused artifacts and owned local services never
+substitute for current-candidate evidence, and a refactor of correct behavior
+reports its passing baseline honestly rather than a fabricated RED history.
+These are professional engineering controls, not enterprise certification.
 Write one direct IDE prompt per cohesive, reviewable outcome, with all necessary
 files and checks in scope; avoid per-module prompts and unnecessary scaffolding.
 Own the architecture choice here; the IDE implements accepted decisions and the

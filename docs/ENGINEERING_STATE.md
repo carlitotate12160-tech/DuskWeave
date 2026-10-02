@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B/C pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
+- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); positive admission and M0C pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
 - **Active Seal**: `DW-FOUNDATION-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -66,7 +66,7 @@ All interactions and plans are subject to:
 
 ## 6. Next Immediate Action
 
-Latest verified delivery base: `41aae21fb848fc71b3b85bc862e3d59c0f702b55` on remote `master`; PR #17 merged B2 scoped purpose/asset/window refusals as `version=2` planning events. Exact-master [CI run 36975787549](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36975787549) succeeded. B1a, B1b and B2 are merged partial M0B; see [RUN_B1A](RUN_B1A.md), [RUN_B1B](RUN_B1B.md) and [RUN_B2](RUN_B2.md). Packet R3 (`DW-IMPLEMENT-R3-TRAJECTORY-JOURNAL-REUSE`) authors a behavior-preserving candidate extracting planning-history identity/dedup/conflict persistence into a narrow Trajectory-owned journal consumed by the existing CLI path; this entry records dependencies, not candidate review, merge, owner acceptance, demo or seal. M0C withdrawal and full positive admission remain unfinished. M0 stays DEMO_PENDING and unsealed.
+Latest verified delivery base: `63c452c13fe94928820efd415aa936c8874e49ed` on remote `master`; PR #18 merged R3's behavior-preserving extraction of planning-history identity/dedup/conflict persistence into a narrow Trajectory-owned journal consumed by the existing CLI path on 2026-10-02. Exact-master [CI run 36992649673](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36992649673) succeeded. B1a, B1b, B2 and R3 are merged partial M0B; see [RUN_B1A](RUN_B1A.md), [RUN_B1B](RUN_B1B.md) and [RUN_B2](RUN_B2.md). Packet `DW-FIX-DELIVERY-CONTEXT-AND-BUILD-REUSE` authors a workflow-only candidate covering source-workspace selection, tracking reconciliation, build/coverage ownership and owned-local-service reuse; it carries zero runtime change and this entry records a candidate in delivery, not its review, merge, owner acceptance, demo or seal. M0C withdrawal and full positive admission remain unfinished. M0 stays DEMO_PENDING and unsealed.
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
@@ -74,7 +74,7 @@ Historical repository verification on 2026-10-01: local and remote `master` were
 
 Exact-master CI [run 36806405110](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36806405110) succeeded on that SHA: links, structure/runtime budget, Rust, CodeQL and `ci-ok`. The Rust job reports 29 passing tests, 0 failures/ignored, PostgreSQL 17 integration, and production line coverage 94.43% (695/736); the fixed 90% total / 80% per-source-file gate passed. This is GitHub-hosted CI evidence, not a new local test run, proof of every supported platform, or a client campaign demonstration.
 
-Next: review the authored R3 candidate (behavior-preserving extraction of planning-history journal mechanics into a Trajectory-owned journal), then issue the remaining M0B/M0C packet for withdrawal and restart-refusal demonstration. M0C withdrawal remains a subsequent delivery. M0 is DEMO_PENDING and unsealed; the contract's register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this status correction. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
+Next: deliver the workflow-correction candidate, then inspect the actual new base and remeasure `DW-M0C-C1` (withdraw -> immediate affected blocking -> durable Mission withdrawal/publication -> Trajectory history -> fresh recovery/refusal) before issuing it. M0C withdrawal remains a subsequent delivery. M0 is DEMO_PENDING and unsealed; the contract's register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this status correction. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 

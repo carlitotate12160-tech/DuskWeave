@@ -69,8 +69,14 @@ or speculative adapter merely because a skill mentions one.
 ## Preflight
 
 Before editing:
-1. Verify repository root, branch, HEAD, and the packet's exact expected base.
-2. Inspect working-tree changes; preserve unrelated user work.
+1. Verify repository identity, actual worktree, branch, HEAD, and the
+   packet's exact expected base. Inspect `git worktree list` before treating
+   a dirty or stale main folder as the active candidate; a recorded path is
+   not proof of the active worktree.
+2. Inspect working-tree changes; preserve unrelated user work, worktrees and
+   drafts. Do not clean, stage, or delete them without an explicit packet
+   assignment, and do not copy local machine configuration (for example
+   `.cargo/config.toml`) between worktrees.
 3. Verify active stage and all required accepted/sealed dependencies.
 4. Read existing files in the allowed map and their relevant consumers.
 5. Check conflicting work/PRs only where repository delivery rules require it.
@@ -94,11 +100,30 @@ polishing tests/docs. Preserve the packet's ceilings, correction room and STOP
 conditions; crossing a review trigger alone is not a hard-budget failure.
 
 Reuse Cargo build artifacts during normal iterations; do not routinely cargo clean.
-Keep the owned PostgreSQL service for the session if configuration is unchanged,
-while executing real SQL and fixture isolation on every run. Never reuse a prior
-PASS as current evidence. Preserve required coverage-profile cleanup, fresh-port/
-process recovery assertions, runtime-role checks and platform-specific checks.
-Run DB targets sequentially when their fixtures can interfere.
+Follow the AGENTS.md artifact convention: set the packet's concrete
+`CARGO_TARGET_DIR` (and `CARGO_LLVM_COV_TARGET_DIR` for coverage) only in the
+owning process and its child test processes — never via `setx`, user/system
+environment, `.cargo/config.toml`, wrappers or CI changes. One owner holds the
+shared ordinary target for the whole verification sequence, including CLI
+subprocess tests and direct binary use; keep instrumented and ordinary
+directories separate and give each packet's coverage path one owner. Do not
+build, clean or overwrite the shared target concurrently from another worktree.
+
+Follow the AGENTS.md local-service procedure for the owned PostgreSQL
+instance: reuse it when inspection shows it compatible —
+retain a compatible running container even if named for an earlier slice, or
+start a compatible stopped one with bounded readiness/qualification. A missing
+service uses the packet's authorized pinned setup; a version/ownership mismatch
+or port collision is a blocker, not permission to delete a container. Use the
+packet's named disposable database and restricted login; administrative access
+is fixture setup only. Fixtures mutating cluster-wide roles serialize: one test
+owner for the owned cluster at a time. Keep credentials in the authorized
+environment; absent authorized DSNs mean BLOCKED, not waived evidence. Execute
+real SQL, migrations, role qualification and fixture isolation on every run.
+Never reuse a prior PASS as current evidence. Preserve required coverage-profile
+cleanup, fresh-port/process recovery assertions, runtime-role checks and
+platform-specific checks. Run DB targets sequentially when their fixtures can
+interfere.
 
 Perform one final full gate pass per unchanged candidate/platform/configuration.
 A full all-targets coverage run also executes that same full test suite; avoid
@@ -166,6 +191,9 @@ as unused. When no executable runtime exists, report wiring as N/A for DESIGN.
 
 Reproduce or substantiate the reported finding before editing.
 Classify it as VALID, FALSE_POSITIVE, or UNVERIFIED.
+A behavior fix needs a genuine failing assertion first; a refactor of
+already-correct behavior reports passing baseline characterization and
+preserved regression evidence — never fabricated RED history.
 Fix the root cause within allowed files and verify the affected behavior.
 If a valid fix needs different authority, dependencies, or materially larger scope,
 report the exact dependency and return SPLIT_REQUIRED.
@@ -184,8 +212,12 @@ PR, remote check, protected branch, or merge when no such evidence exists.
 Commit/publish only within the user's authorization and the packet's instructions.
 
 Report:
-- packet/mode and verified base/head;
+- packet/mode and verified base/head, plus repository identity, actual
+  worktree and branch;
 - artifacts and exact files changed;
+- tracking disposition: UPDATE with exact files/effects or NO_CHANGE with a
+  concrete reason, reconciled against live merge evidence; a delivered PR is
+  not reported as merged and its final SHA stays in this report;
 - tests/checks actually run and their results;
 - candidate SHA, commands, relevant assertions, OS/toolchain/DB/role context,
   local versus CI evidence, and required checks not executed;
