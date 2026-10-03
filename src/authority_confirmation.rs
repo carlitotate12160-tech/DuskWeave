@@ -120,10 +120,19 @@ pub(super) fn confirm_if_new(
     if let Some(existing) = planning_history::read_decision(store, request, operation)? {
         return Ok(Some(existing));
     }
-    if request.current_authority_confirmed {
+    // A recorded withdrawal skips the fresh exchange: the producer rereads
+    // the marker inside its transaction and records the durable v3 refusal.
+    // A query failure propagates (denies), never optimistically bypasses.
+    if confirmation_required(store, request)? {
         fresh_confirmation(allocator, request, operation, input, challenge_out)?;
     }
     planning_assessment::assess(allocator, store, request, operation, false)
+}
+
+/// True when a brand-new request still needs the live exchange: no recorded
+/// withdrawal plus a confirmed-assertion request. A query failure propagates.
+fn confirmation_required(store: &mut impl PlanningStore, request: &PlanningRequest) -> Res<bool> {
+    Ok(!store.authority_withdrawn(request)? && request.current_authority_confirmed)
 }
 
 #[cfg(test)]

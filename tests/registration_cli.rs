@@ -12,8 +12,9 @@ const BIN: &str = env!("CARGO_BIN_EXE_duskweave");
 const MIGRATION: &str = include_str!("../migrations/0001_mission_registration.sql");
 const PLANNING_MIGRATION: &str = include_str!("../migrations/0002_planning_assessment.sql");
 const HISTORY_MIGRATION: &str = include_str!("../migrations/0003_trajectory_planning_history.sql");
-const V2_MIGRATION: &str = include_str!("../migrations/0004_planning_assessment_v2.sql");
 const WITHDRAWAL_MIGRATION: &str = include_str!("../migrations/0005_mission_withdrawal.sql");
+const WITHDRAWAL_REFUSAL_MIGRATION: &str =
+    include_str!("../migrations/0006_planning_withdrawal_refusal.sql");
 
 static DB: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -80,8 +81,10 @@ fn ensure_setup() {
         a.batch_execute(MIGRATION).unwrap();
         a.batch_execute(PLANNING_MIGRATION).unwrap();
         a.batch_execute(HISTORY_MIGRATION).unwrap();
-        a.batch_execute(V2_MIGRATION).unwrap();
+        // 0006 widens the version check directly to (1,2,3), reapply-safe
+        // after version-3 refusal rows exist (0004 runs in the upgrade fixture).
         a.batch_execute(WITHDRAWAL_MIGRATION).unwrap();
+        a.batch_execute(WITHDRAWAL_REFUSAL_MIGRATION).unwrap();
         a.batch_execute(&format!(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{rt_user}') \
              THEN CREATE ROLE {rt_user} LOGIN PASSWORD '{rt_pass}'; \

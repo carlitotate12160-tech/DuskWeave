@@ -6,6 +6,10 @@ use crate::mission::{
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
 
+#[path = "planning_withdrawal.rs"]
+mod planning_withdrawal;
+pub use planning_withdrawal::WithdrawalBasis;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanningRequest {
@@ -103,6 +107,7 @@ pub enum NonpositiveDecision {
     RefusedAssetUnknown,
     RefusedNotYetValid,
     RefusedExpired,
+    RefusedAuthorityWithdrawn,
 }
 
 impl NonpositiveDecision {
@@ -199,6 +204,8 @@ pub struct PlanningAssessed {
     pub correlation_id: OperationId,
     pub request: PlanningRequest,
     pub basis: Option<MissionBasis>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub withdrawal: Option<WithdrawalBasis>,
     pub decision: NonpositiveDecision,
     pub evaluated_at: i64,
     pub occurred_at: i64,
@@ -229,6 +236,7 @@ impl PlanningAssessed {
             correlation_id: operation_id,
             request,
             basis,
+            withdrawal: None,
             decision,
             evaluated_at: timestamp,
             occurred_at: timestamp,
@@ -261,11 +269,24 @@ impl PlanningAssessed {
     }
 
     fn validate_contract(&self) -> Res<()> {
-        if self.producer != "mission"
+        if self.contract_header_invalid() {
+            return Err(Fail::Unresolved("unsupported_contract"));
+        }
+        match self.version {
+            1 | 2 => self.validate_legacy_contract()?,
+            _ => self.validate_withdrawal_source()?,
+        }
+        Ok(())
+    }
+
+    fn contract_header_invalid(&self) -> bool {
+        self.producer != "mission"
             || self.kind != "planning_assessed"
-            || !matches!(self.version, 1 | 2)
-            || self.owner_revision != 1
-        {
+            || !matches!(self.version, 1..=3)
+    }
+
+    fn validate_legacy_contract(&self) -> Res<()> {
+        if self.owner_revision != 1 || self.withdrawal.is_some() {
             return Err(Fail::Unresolved("unsupported_contract"));
         }
         if let Some(basis) = &self.basis {
@@ -284,20 +305,28 @@ impl PlanningAssessed {
     }
 
     fn validate_decision(&self) -> Res<()> {
-        if self.decision
-            != NonpositiveDecision::for_request(
+        if self.decision != self.expected_decision()? || self.timestamps_incoherent() {
+            return Err(Fail::Unresolved("invalid_assessment"));
+        }
+        Ok(())
+    }
+
+    fn expected_decision(&self) -> Res<NonpositiveDecision> {
+        match self.version {
+            3 => Ok(NonpositiveDecision::RefusedAuthorityWithdrawn),
+            _ => NonpositiveDecision::for_request(
                 self.version,
                 &self.request,
                 self.basis.as_ref(),
                 self.evaluated_at,
-            )?
-            || self.evaluated_at < 0
+            ),
+        }
+    }
+
+    fn timestamps_incoherent(&self) -> bool {
+        self.evaluated_at < 0
             || self.occurred_at != self.evaluated_at
             || self.recorded_at != self.evaluated_at
-        {
-            return Err(Fail::Unresolved("invalid_assessment"));
-        }
-        Ok(())
     }
 
     pub fn validate(&self) -> Res<()> {

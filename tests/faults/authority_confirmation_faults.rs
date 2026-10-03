@@ -333,3 +333,87 @@ fn complete_line_reaches_assessment_without_eof() {
         "a complete line ends the exchange without waiting for EOF"
     );
 }
+/// A store whose `authority_withdrawn` result is injected; lookup and
+/// mutation calls are counted separately so a denied or skipped exchange is
+/// provably side-effect free.
+struct WithdrawnStore {
+    withdrawn: Res<bool>,
+    lookups: usize,
+    mutations: usize,
+}
+
+impl WithdrawnStore {
+    fn new(withdrawn: Res<bool>) -> Self {
+        Self {
+            withdrawn,
+            lookups: 0,
+            mutations: 0,
+        }
+    }
+}
+
+impl PlanningStore for WithdrawnStore {
+    fn assess(
+        &mut self,
+        _request: &PlanningRequest,
+        _operation_id: OperationId,
+        recover: bool,
+        _allocator: &mut dyn OperationAllocator,
+    ) -> Res<Option<PlanningAssessed>> {
+        if recover {
+            self.lookups += 1;
+        } else {
+            self.mutations += 1;
+        }
+        Ok(None)
+    }
+
+    fn authority_withdrawn(&mut self, _request: &PlanningRequest) -> Res<bool> {
+        self.withdrawn
+    }
+}
+
+#[test]
+fn recorded_withdrawal_skips_fresh_exchange_and_still_assesses() {
+    let mut store = WithdrawnStore::new(Ok(true));
+    let mut out = ProbeWrite::ok();
+    let mut input = OpenReader::new(b"UNCONSUMED");
+    let res = confirm_if_new(
+        &mut FixedAllocator,
+        &mut store,
+        &request(),
+        operation(),
+        false,
+        &mut input,
+        &mut out,
+    );
+    assert_eq!(res.unwrap(), None);
+    assert_eq!(store.lookups, 1);
+    assert_eq!(store.mutations, 1);
+    assert!(
+        out.written.is_empty(),
+        "no challenge for recorded withdrawal"
+    );
+    assert_eq!(input.reads, 0, "no confirmation input consumed");
+}
+
+#[test]
+fn withdrawal_query_failure_denies_without_mutation_or_exchange() {
+    let mut store = WithdrawnStore::new(Err(Fail::Store("storage_error")));
+    let mut out = ProbeWrite::ok();
+    let mut input = OpenReader::new(b"");
+    let res = confirm_if_new(
+        &mut FixedAllocator,
+        &mut store,
+        &request(),
+        operation(),
+        false,
+        &mut input,
+        &mut out,
+    );
+    assert_eq!(res.err(), Some(Fail::Store("storage_error")));
+    assert_eq!(store.lookups, 1);
+    assert_eq!(store.mutations, 0);
+    assert!(out.written.is_empty());
+    assert_eq!(input.reads, 0);
+}

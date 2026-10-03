@@ -1,32 +1,72 @@
-//! Immediately consumed current-Mission row reader. A private member of the
-//! Mission adapter family, called inside the producer's existing SERIALIZABLE
-//! assessment transaction after the duplicate/recovery lookup. Malformed
-//! owner data fails safely; a missing row stays an absent basis.
+//! Immediately consumed current-Mission row reader plus the scoped withdrawal
+//! marker, returned as one adapter-local pair inside the producer's existing
+//! SERIALIZABLE assessment transaction after the duplicate/recovery lookup.
+//! Malformed owner data fails safely; a missing row stays an absent basis.
+//! A marker with a missing/corrupt registration is the caller's unsupported
+//! state, never a fabricated durable refusal here.
 
 use super::store_err;
-use crate::mission::{AssetRef, ExerciseMode, GoalRef, OperationId};
-use crate::planning::{MissionBasis, MissionScope, PlanningRequest};
+use crate::mission::{AssetRef, EventId, ExerciseMode, GoalRef, OperationId};
+use crate::planning::{MissionBasis, MissionScope, PlanningAssessed, PlanningRequest};
+use crate::withdrawal::MissionAuthorityWithdrawn;
 use crate::{Fail, Res};
 
-pub(super) fn current_basis(
+/// Narrow adapter-local pair of the current registration basis and the
+/// optional validated withdrawal marker, both read inside the caller's
+/// transaction. Only the main adapter decides which event version follows.
+pub(super) struct CurrentAuthority {
+    pub(super) basis: Option<MissionBasis>,
+    pub(super) withdrawal: Option<MissionAuthorityWithdrawn>,
+}
+
+pub(super) fn current_authority(
+    tx: &mut postgres::Transaction,
+    request: &PlanningRequest,
+) -> Res<CurrentAuthority> {
+    // The withdrawal-absence SSI read stays in place even when the marker is
+    // absent, preserving the producer's race behavior against fresh withdrawal.
+    let withdrawal = super::postgres_withdrawal::current_marker(tx, request)?;
+    let basis = read_basis(tx, request)?;
+    Ok(CurrentAuthority { basis, withdrawal })
+}
+
+/// Build the v2 or v3 assessment event from the current authority pair inside
+/// the caller's transaction. A marker with a missing registration basis is
+/// unsupported state, never a fabricated durable refusal.
+pub(super) fn assess_event(
+    tx: &mut postgres::Transaction,
+    request: &PlanningRequest,
+    operation_id: OperationId,
+    event_id: EventId,
+    timestamp: i64,
+) -> Res<PlanningAssessed> {
+    let authority = current_authority(tx, request)?;
+    match authority.withdrawal {
+        Some(withdrawal) => PlanningAssessed::new_withdrawn(
+            request.clone(),
+            authority.basis.ok_or(Fail::Store("unsupported_basis"))?,
+            withdrawal,
+            operation_id,
+            event_id,
+            timestamp,
+        ),
+        None => PlanningAssessed::new(
+            request.clone(),
+            authority.basis,
+            operation_id,
+            event_id,
+            timestamp,
+        ),
+    }
+}
+
+fn read_basis(
     tx: &mut postgres::Transaction,
     request: &PlanningRequest,
 ) -> Res<Option<MissionBasis>> {
-    if tx
-        .query_opt(
-            "SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2",
-            &[&request.engagement_id.0, &request.campaign_id.0],
-        )
-        .map_err(|error| store_err(&error))?
-        .is_some()
-    {
-        return Err(Fail::State("authority_withdrawn"));
-    }
     let row = tx
         .query_opt(
-            "SELECT operation_id, revision, exercise_mode, starts_at, ends_at, \
-             goal_ref, included_assets, excluded_assets FROM mission.missions \
-             WHERE engagement_id=$1 AND campaign_id=$2",
+            "SELECT operation_id, revision, exercise_mode, starts_at, ends_at,              goal_ref, included_assets, excluded_assets FROM mission.missions              WHERE engagement_id=$1 AND campaign_id=$2",
             &[&request.engagement_id.0, &request.campaign_id.0],
         )
         .map_err(|error| store_err(&error))?;

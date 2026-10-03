@@ -218,7 +218,6 @@ impl PlanningStore for PgMissionStore {
         ).map_err(|error| store_err(&error))?.is_some() {
             return Err(Fail::Conflict("integrity_conflict"));
         }
-        let basis = postgres_mission_basis::current_basis(&mut tx, request)?;
         let timestamp: i64 = tx
             .query_one(
                 "SELECT floor(extract(epoch FROM transaction_timestamp()))::bigint",
@@ -226,9 +225,9 @@ impl PlanningStore for PgMissionStore {
             )
             .map_err(|error| store_err(&error))?
             .get(0);
-        let event = PlanningAssessed::new(
-            request.clone(),
-            basis,
+        let event = postgres_mission_basis::assess_event(
+            &mut tx,
+            request,
             operation_id,
             EventId(allocator.allocate()?),
             timestamp,
@@ -249,6 +248,11 @@ impl PlanningStore for PgMissionStore {
         .map_err(|error| store_err(&error))?;
         tx.commit().map_err(|_| Fail::Store("commit_unknown"))?;
         Ok(Some(event))
+    }
+
+    fn authority_withdrawn(&mut self, request: &PlanningRequest) -> Res<bool> {
+        request.validate()?;
+        Ok(postgres_withdrawal::current_marker(&mut self.client, request)?.is_some())
     }
 }
 

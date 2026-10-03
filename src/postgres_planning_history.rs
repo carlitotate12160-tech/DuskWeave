@@ -12,6 +12,9 @@ use postgres::{Client, GenericClient, Transaction};
 use serde_json::Value;
 use uuid::Uuid;
 
+#[path = "postgres_planning_withdrawal.rs"]
+mod postgres_planning_withdrawal;
+
 const OBLIGATION: &str = "trajectory.planning_history.v1";
 
 pub(super) fn qualify(client: &mut Client, publish: bool) -> Res<()> {
@@ -125,19 +128,35 @@ pub(super) fn existing(
 
 pub(super) fn append(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Delivered> {
     let record = record(ev)?;
-    match postgres_trajectory_journal::existing(tx, JournalTable::Planning, &record, decode)? {
-        Some(Delivered::Anomaly) => {
-            postgres_trajectory_journal::append_anomaly(tx, JournalTable::Planning, &record)?;
-            return Ok(Delivered::Anomaly);
-        }
-        Some(_) => return Ok(Delivered::Duplicate),
-        None => (),
+    if let Some(existing) = existing_disposition(tx, &record)? {
+        return Ok(existing);
     }
-    if let Some(reason) = predecessor(tx, ev)? {
+    if let Some(reason) = predecessor_gap(tx, ev)? {
         return Ok(Delivered::Unresolved(reason));
     }
     postgres_trajectory_journal::append_accepted(tx, JournalTable::Planning, &record)?;
     Ok(Delivered::Completed)
+}
+
+/// Registration and (for v3) withdrawal predecessor gap, if any.
+fn predecessor_gap(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'static str>> {
+    if let Some(reason) = predecessor(tx, ev)? {
+        return Ok(Some(reason));
+    }
+    postgres_planning_withdrawal::withdrawal_predecessor(tx, ev)
+}
+
+/// Duplicate/anomaly disposition for an already-durable planning record.
+fn existing_disposition(tx: &mut Transaction, record: &JournalRecord) -> Res<Option<Delivered>> {
+    match postgres_trajectory_journal::existing(tx, JournalTable::Planning, record, decode)? {
+        Some(Delivered::Anomaly) => {
+            postgres_trajectory_journal::append_anomaly(tx, JournalTable::Planning, record)?;
+            Ok(Some(Delivered::Anomaly))
+        }
+        Some(Delivered::Completed) => Ok(Some(Delivered::Duplicate)),
+        Some(other) => Ok(Some(other)),
+        None => Ok(None),
+    }
 }
 
 pub(super) fn commit_error(e: &postgres::Error) -> Fail {

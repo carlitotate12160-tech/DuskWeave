@@ -13,6 +13,14 @@ pub trait PlanningStore {
         recover: bool,
         allocator: &mut dyn OperationAllocator,
     ) -> Res<Option<PlanningAssessed>>;
+
+    /// Conservative owner query: does this store prove a recorded
+    /// mission-authority withdrawal for the request scope? The default is
+    /// Ok(false), so an unimplemented or unreadable store can never bypass
+    /// the fresh-confirmation exchange. A true result authorizes refusal only.
+    fn authority_withdrawn(&mut self, _request: &PlanningRequest) -> Res<bool> {
+        Ok(false)
+    }
 }
 
 pub fn assess(

@@ -10,13 +10,16 @@ use duskweave::postgres_mission::{PgAllocator, PgMissionStore};
 use duskweave::postgres_trajectory::PgTrajectory;
 use duskweave::registration;
 use duskweave::trajectory::Delivered;
-use postgres::{Client, NoTls};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 #[path = "support/registration_db.rs"]
 mod db_support;
 use db_support::*;
+
+#[path = "support/upgrade_db.rs"]
+mod upgrade_support;
+use upgrade_support::*;
 
 fn v1_event_json(
     e: EngagementId,
@@ -124,35 +127,6 @@ fn v1_rejects_scope_snapshot_v2_decisions_and_other_versions() {
     );
 }
 
-fn admin_in(dbname: &str) -> Client {
-    let mut config = dsn("DW_TEST_ADMIN_DATABASE_URL");
-    config.dbname(dbname);
-    config
-        .connect(NoTls)
-        .unwrap_or_else(|_| panic!("upgrade admin connection failed"))
-}
-
-fn runtime_in(dbname: &str) -> Client {
-    let mut config = dsn("DW_TEST_DATABASE_URL");
-    config.dbname(dbname);
-    config
-        .connect(NoTls)
-        .unwrap_or_else(|_| panic!("upgrade runtime connection failed"))
-}
-
-fn upgrade_identifier(name: &str) -> Result<(), &'static str> {
-    if name.is_empty()
-        || name.len() > 63
-        || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        || ["postgres", "template0", "template1"]
-            .iter()
-            .any(|n| name.eq_ignore_ascii_case(n))
-    {
-        return Err("invalid_upgrade_identifier");
-    }
-    Ok(())
-}
-
 #[test]
 fn upgrade_identity_is_bounded_and_cannot_name_a_template_or_sql() {
     for name in [
@@ -170,92 +144,6 @@ fn upgrade_identity_is_bounded_and_cannot_name_a_template_or_sql() {
     assert!(upgrade_identifier(&"a".repeat(63)).is_ok());
     assert!(upgrade_identifier(&"a".repeat(64)).is_err());
     assert!(upgrade_identifier("dw_test_v1_upgrade_123").is_ok());
-}
-
-// No Drop cleanup: a failed invocation retains its database for reconciliation.
-struct OwnedUpgradeDatabase {
-    cluster: Client,
-    name: String,
-    oid: u32,
-    owner: u32,
-    created: bool,
-}
-
-impl OwnedUpgradeDatabase {
-    fn create() -> Result<Self, &'static str> {
-        let runtime = dsn("DW_TEST_DATABASE_URL");
-        let primary = runtime.get_dbname().ok_or("missing_primary_identity")?;
-        upgrade_identifier(primary)?;
-        let name = format!("{primary}_v1_upgrade_{}", std::process::id());
-        upgrade_identifier(&name)?;
-        let admin = dsn("DW_TEST_ADMIN_DATABASE_URL");
-        if name == primary || Some(name.as_str()) == admin.get_dbname() {
-            return Err("upgrade_identity_collision");
-        }
-        let mut cluster = admin_in("postgres");
-        if cluster
-            .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&name])
-            .map_err(|_| "upgrade_collision_check_failed")?
-            .is_some()
-        {
-            return Err("upgrade_identity_collision");
-        }
-        cluster
-            .batch_execute("SET statement_timeout='10s'")
-            .map_err(|_| "upgrade_timeout_failed")?;
-        cluster
-            .batch_execute(&format!("CREATE DATABASE \"{name}\" TEMPLATE template0"))
-            .map_err(|_| "upgrade_create_unconfirmed")?;
-        let created = true;
-        eprintln!("upgrade_database={name} stage=created");
-        let row = cluster
-            .query_one(
-                "SELECT oid,datdba,datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user) \
-             FROM pg_database WHERE datname=$1",
-                &[&name],
-            )
-            .map_err(|_| "upgrade_catalog_failed")?;
-        if !row.get::<_, bool>(2) {
-            return Err("upgrade_owner_mismatch");
-        }
-        Ok(Self {
-            cluster,
-            name,
-            oid: row.get(0),
-            owner: row.get(1),
-            created,
-        })
-    }
-
-    fn finish(mut self) -> Result<(), &'static str> {
-        let row = self
-            .cluster
-            .query_one(
-                "SELECT oid,datdba FROM pg_database WHERE datname=$1",
-                &[&self.name],
-            )
-            .map_err(|_| "upgrade_cleanup_catalog_failed")?;
-        if !self.created || row.get::<_, u32>(0) != self.oid || row.get::<_, u32>(1) != self.owner {
-            return Err("upgrade_cleanup_identity_mismatch");
-        }
-        self.cluster
-            .batch_execute("SET statement_timeout='10s'")
-            .map_err(|_| "upgrade_cleanup_timeout_failed")?;
-        self.cluster
-            .batch_execute(&format!("DROP DATABASE \"{}\"", self.name))
-            .map_err(|_| "upgrade_cleanup_failed")?;
-        assert!(
-            self.cluster
-                .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&self.name])
-                .map_err(|_| "upgrade_cleanup_check_failed")?
-                .is_none()
-        );
-        eprintln!(
-            "upgrade_database={} stage=dropped oid={} owner={}",
-            self.name, self.oid, self.owner
-        );
-        Ok(())
-    }
 }
 
 fn register_contract(
