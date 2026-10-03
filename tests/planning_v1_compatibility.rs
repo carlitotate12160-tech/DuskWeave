@@ -1,4 +1,4 @@
-//! Version-1 contract compatibility and the real 0001..0003 -> 0004 upgrade.
+//! Version-1 contract compatibility and the real 0001..0003 -> 0004 -> 0005 upgrade.
 //! v1 events are explicit legacy JSON; production has no v1 constructor.
 
 use duskweave::Fail;
@@ -127,13 +127,135 @@ fn v1_rejects_scope_snapshot_v2_decisions_and_other_versions() {
 fn admin_in(dbname: &str) -> Client {
     let mut config = dsn("DW_TEST_ADMIN_DATABASE_URL");
     config.dbname(dbname);
-    config.connect(NoTls).unwrap()
+    config
+        .connect(NoTls)
+        .unwrap_or_else(|_| panic!("upgrade admin connection failed"))
 }
 
 fn runtime_in(dbname: &str) -> Client {
     let mut config = dsn("DW_TEST_DATABASE_URL");
     config.dbname(dbname);
-    config.connect(NoTls).unwrap()
+    config
+        .connect(NoTls)
+        .unwrap_or_else(|_| panic!("upgrade runtime connection failed"))
+}
+
+fn upgrade_identifier(name: &str) -> Result<(), &'static str> {
+    if name.is_empty()
+        || name.len() > 63
+        || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        || ["postgres", "template0", "template1"]
+            .iter()
+            .any(|n| name.eq_ignore_ascii_case(n))
+    {
+        return Err("invalid_upgrade_identifier");
+    }
+    Ok(())
+}
+
+#[test]
+fn upgrade_identity_is_bounded_and_cannot_name_a_template_or_sql() {
+    for name in [
+        "",
+        "postgres",
+        "POSTGRES",
+        "template0",
+        "template1",
+        "bad-name",
+        "é",
+        "x\";DROP",
+    ] {
+        assert_eq!(upgrade_identifier(name), Err("invalid_upgrade_identifier"));
+    }
+    assert!(upgrade_identifier(&"a".repeat(63)).is_ok());
+    assert!(upgrade_identifier(&"a".repeat(64)).is_err());
+    assert!(upgrade_identifier("dw_test_v1_upgrade_123").is_ok());
+}
+
+// No Drop cleanup: a failed invocation retains its database for reconciliation.
+struct OwnedUpgradeDatabase {
+    cluster: Client,
+    name: String,
+    oid: u32,
+    owner: u32,
+    created: bool,
+}
+
+impl OwnedUpgradeDatabase {
+    fn create() -> Result<Self, &'static str> {
+        let runtime = dsn("DW_TEST_DATABASE_URL");
+        let primary = runtime.get_dbname().ok_or("missing_primary_identity")?;
+        upgrade_identifier(primary)?;
+        let name = format!("{primary}_v1_upgrade_{}", std::process::id());
+        upgrade_identifier(&name)?;
+        let admin = dsn("DW_TEST_ADMIN_DATABASE_URL");
+        if name == primary || Some(name.as_str()) == admin.get_dbname() {
+            return Err("upgrade_identity_collision");
+        }
+        let mut cluster = admin_in("postgres");
+        if cluster
+            .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&name])
+            .map_err(|_| "upgrade_collision_check_failed")?
+            .is_some()
+        {
+            return Err("upgrade_identity_collision");
+        }
+        cluster
+            .batch_execute("SET statement_timeout='10s'")
+            .map_err(|_| "upgrade_timeout_failed")?;
+        cluster
+            .batch_execute(&format!("CREATE DATABASE \"{name}\" TEMPLATE template0"))
+            .map_err(|_| "upgrade_create_unconfirmed")?;
+        let created = true;
+        eprintln!("upgrade_database={name} stage=created");
+        let row = cluster
+            .query_one(
+                "SELECT oid,datdba,datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user) \
+             FROM pg_database WHERE datname=$1",
+                &[&name],
+            )
+            .map_err(|_| "upgrade_catalog_failed")?;
+        if !row.get::<_, bool>(2) {
+            return Err("upgrade_owner_mismatch");
+        }
+        Ok(Self {
+            cluster,
+            name,
+            oid: row.get(0),
+            owner: row.get(1),
+            created,
+        })
+    }
+
+    fn finish(mut self) -> Result<(), &'static str> {
+        let row = self
+            .cluster
+            .query_one(
+                "SELECT oid,datdba FROM pg_database WHERE datname=$1",
+                &[&self.name],
+            )
+            .map_err(|_| "upgrade_cleanup_catalog_failed")?;
+        if !self.created || row.get::<_, u32>(0) != self.oid || row.get::<_, u32>(1) != self.owner {
+            return Err("upgrade_cleanup_identity_mismatch");
+        }
+        self.cluster
+            .batch_execute("SET statement_timeout='10s'")
+            .map_err(|_| "upgrade_cleanup_timeout_failed")?;
+        self.cluster
+            .batch_execute(&format!("DROP DATABASE \"{}\"", self.name))
+            .map_err(|_| "upgrade_cleanup_failed")?;
+        assert!(
+            self.cluster
+                .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&self.name])
+                .map_err(|_| "upgrade_cleanup_check_failed")?
+                .is_none()
+        );
+        eprintln!(
+            "upgrade_database={} stage=dropped oid={} owner={}",
+            self.name, self.oid, self.owner
+        );
+        Ok(())
+    }
 }
 
 fn register_contract(
@@ -151,28 +273,22 @@ fn register_contract(
 #[test]
 fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
     let _guard = db();
-    let mut cluster = admin_in("postgres");
-    let upgrade_db = format!("dw_planning_cli_fix_v1_{}", std::process::id());
-    assert!(
-        cluster
-            .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&upgrade_db])
-            .unwrap()
-            .is_none(),
-        "upgrade database collision; preserve the existing database"
+    let owned = OwnedUpgradeDatabase::create().unwrap();
+    assert_eq!(
+        OwnedUpgradeDatabase::create().err(),
+        Some("upgrade_identity_collision")
     );
-    cluster
-        .batch_execute(&format!("CREATE DATABASE {upgrade_db} TEMPLATE template0"))
-        .unwrap();
-    let identity = cluster
-        .query_one(
-            "SELECT oid,datdba FROM pg_database WHERE datname=$1",
-            &[&upgrade_db],
-        )
-        .unwrap();
-    let owned_identity = (identity.get::<_, u32>(0), identity.get::<_, u32>(1));
-    let mut admin = admin_in(&upgrade_db);
+    let mut admin = admin_in(&owned.name);
+    assert!(
+        admin
+            .query_one("SELECT to_regclass('mission.withdrawals') IS NULL", &[])
+            .unwrap_or_else(|_| panic!("upgrade initial schema check failed"))
+            .get::<_, bool>(0)
+    );
     for migration in [MIGRATION, PLANNING_MIGRATION, HISTORY_MIGRATION] {
-        admin.batch_execute(migration).unwrap();
+        admin
+            .batch_execute(migration)
+            .unwrap_or_else(|_| panic!("upgrade legacy migration failed"));
     }
 
     // Scope A: completed v1 producer + consumer rows on the pre-upgrade schema.
@@ -194,7 +310,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              VALUES ($1,$2,'mission',$3,$4,'accepted',$5,transaction_timestamp())",
             &[&e_a.0, &c_a.0, &reg_op_a, &registered_a.event_id.0, &reg_contract_a],
         )
-        .unwrap();
+        .unwrap_or_else(|_| panic!("upgrade legacy insert failed"));
     admin
         .execute(
             "INSERT INTO mission.planning_assessments \
@@ -202,7 +318,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              VALUES ($1,$2,$3,$4,$5,'trajectory.planning_history.v1')",
             &[&e_a.0, &c_a.0, &op_a, &Uuid::from_u128(0xb2f3), &assessed_a],
         )
-        .unwrap();
+        .unwrap_or_else(|_| panic!("upgrade legacy insert failed"));
     admin
         .execute(
             "INSERT INTO trajectory.planning_history \
@@ -210,7 +326,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              VALUES ($1,$2,$3,$4,'accepted',$5,transaction_timestamp())",
             &[&e_a.0, &c_a.0, &op_a, &Uuid::from_u128(0xb2f3), &assessed_a],
         )
-        .unwrap();
+        .unwrap_or_else(|_| panic!("upgrade legacy insert failed"));
 
     // Scope B: durable v1 producer decision whose publication is still pending.
     let (e_b, c_b) = scope(0xb2f8);
@@ -232,7 +348,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              VALUES ($1,$2,'mission',$3,$4,'accepted',$5,transaction_timestamp())",
             &[&e_b.0, &c_b.0, &reg_op_b, &registered_b.event_id.0, &reg_contract_b],
         )
-        .unwrap();
+        .unwrap_or_else(|_| panic!("upgrade legacy insert failed"));
     admin
         .execute(
             "INSERT INTO mission.planning_assessments \
@@ -240,11 +356,15 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              VALUES ($1,$2,$3,$4,$5,'trajectory.planning_history.v1')",
             &[&e_b.0, &c_b.0, &op_b, &Uuid::from_u128(0xb2fb), &assessed_b],
         )
-        .unwrap();
+        .unwrap_or_else(|_| panic!("upgrade legacy insert failed"));
 
     // The upgrade is transactional and safe to reapply.
-    admin.batch_execute(V2_MIGRATION).unwrap();
-    admin.batch_execute(V2_MIGRATION).unwrap();
+    admin
+        .batch_execute(V2_MIGRATION)
+        .unwrap_or_else(|_| panic!("upgrade 0004 failed"));
+    admin
+        .batch_execute(V2_MIGRATION)
+        .unwrap_or_else(|_| panic!("upgrade 0004 failed"));
     let preserved: i64 = admin
         .query_one(
             "SELECT count(*) FROM mission.planning_assessments pa \
@@ -252,7 +372,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              AND pa.contract = ANY(ARRAY[$5::jsonb,$6::jsonb])",
             &[&e_a.0, &c_a.0, &e_b.0, &c_b.0, &assessed_a, &assessed_b],
         )
-        .unwrap()
+        .unwrap_or_else(|_| panic!("upgrade SQL read failed"))
         .get(0);
     assert_eq!(preserved, 2);
     let history_versions: Vec<i32> = admin
@@ -261,15 +381,41 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              WHERE engagement_id=$1 AND campaign_id=$2",
             &[&e_a.0, &c_a.0],
         )
-        .unwrap()
+        .unwrap_or_else(|_| panic!("upgrade SQL read failed"))
         .iter()
         .map(|r| r.get(0))
         .collect();
     assert_eq!(history_versions, vec![1]);
 
+    for _ in 0..2 {
+        admin
+            .batch_execute(WITHDRAWAL_MIGRATION)
+            .unwrap_or_else(|_| panic!("upgrade 0005 failed"));
+    }
+    let row = admin.query_one(
+        "SELECT (SELECT count(*) FROM mission.withdrawals), \
+         (SELECT count(*) FROM trajectory.withdrawal_history), \
+         (SELECT count(*) FROM mission.planning_assessments WHERE contract=ANY(ARRAY[$1::jsonb,$2::jsonb])), \
+         (SELECT count(*) FROM trajectory.planning_history WHERE version=1 AND contract=$1)",
+        &[&assessed_a, &assessed_b])
+        .unwrap_or_else(|_| panic!("upgrade 0005 preservation check failed"));
+    assert_eq!(
+        (
+            row.get::<_, i64>(0),
+            row.get::<_, i64>(1),
+            row.get::<_, i64>(2),
+            row.get::<_, i64>(3)
+        ),
+        (0, 0, 2, 1)
+    );
+    eprintln!(
+        "upgrade_database={} stage=0005_preserved marker=0 history=0 legacy_producer=2 legacy_history=1",
+        owned.name
+    );
+
     // Post-upgrade recovery returns the original v1 record unchanged through
     // fresh ports, and a pending v1 publication completes under version 1.
-    let mut store = PgMissionStore::new(runtime_in(&upgrade_db));
+    let mut store = PgMissionStore::new(runtime_in(&owned.name));
     let request_a: duskweave::planning::PlanningRequest =
         serde_json::from_value(assessed_a["request"].clone()).unwrap();
     let recovered = read_decision(&mut store, &request_a, OperationId(op_a))
@@ -281,7 +427,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
         assessed_a,
         "v1 contract, timestamps and identities are not rewritten"
     );
-    let mut trajectory = PgTrajectory::new(runtime_in(&upgrade_db));
+    let mut trajectory = PgTrajectory::new(runtime_in(&owned.name));
     assert_eq!(
         trajectory.inspect(&recovered).unwrap(),
         Delivered::Completed
@@ -298,15 +444,15 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
             &[&e_b.0, &c_b.0],
         )
-        .unwrap()
+        .unwrap_or_else(|_| panic!("upgrade SQL read failed"))
         .get(0);
     assert_eq!(v, 1);
 
     // A new v2 assessment publishes on the upgraded schema as version 2.
     let (e_c, c_c) = scope(0xb2fc);
-    let mut allocator = PgAllocator::new(runtime_in(&upgrade_db));
-    let mut store_c = PgMissionStore::new(runtime_in(&upgrade_db));
-    let mut traj_c = PgTrajectory::new(runtime_in(&upgrade_db));
+    let mut allocator = PgAllocator::new(runtime_in(&owned.name));
+    let mut store_c = PgMissionStore::new(runtime_in(&owned.name));
+    let mut traj_c = PgTrajectory::new(runtime_in(&owned.name));
     let op_c = registration::prepare_operation(&mut allocator).unwrap();
     registration::register(
         &mut allocator,
@@ -340,28 +486,9 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
              WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
             &[&e_c.0, &c_c.0],
         )
-        .unwrap()
+        .unwrap_or_else(|_| panic!("upgrade SQL read failed"))
         .get(0);
     assert_eq!(v2, 2);
-    // Explicit success-only cleanup after every upgrade connection is closed.
-    drop((admin, store, trajectory, allocator, store_c, traj_c));
-    let identity = cluster
-        .query_one(
-            "SELECT oid,datdba FROM pg_database WHERE datname=$1",
-            &[&upgrade_db],
-        )
-        .unwrap();
-    assert_eq!(
-        (identity.get::<_, u32>(0), identity.get::<_, u32>(1)),
-        owned_identity
-    );
-    cluster
-        .batch_execute(&format!("DROP DATABASE {upgrade_db}"))
-        .unwrap();
-    assert!(
-        cluster
-            .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&upgrade_db])
-            .unwrap()
-            .is_none()
-    );
+    drop((store, trajectory, allocator, store_c, traj_c, admin));
+    owned.finish().unwrap();
 }

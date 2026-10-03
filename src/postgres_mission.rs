@@ -3,6 +3,8 @@
 
 #[path = "postgres_mission_basis.rs"]
 mod postgres_mission_basis;
+#[path = "postgres_withdrawal.rs"]
+mod postgres_withdrawal;
 
 use crate::mission::*;
 use crate::planning::{PlanningAssessed, PlanningRequest};
@@ -120,7 +122,8 @@ fn commit_tx(
         };
     }
     if tx.query_opt(
-        "SELECT 1 FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3",
+        "SELECT 1 FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 \
+         UNION ALL SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 LIMIT 1",
         &[&m.engagement_id.0, &m.campaign_id.0, &m.operation_id().0],
     ).map_err(|error| store_err(&error))?.is_some() {
         return Err(Fail::Conflict("integrity_conflict"));
@@ -209,7 +212,8 @@ impl PlanningStore for PgMissionStore {
             return Ok(Some(event));
         }
         if tx.query_opt(
-            "SELECT 1 FROM mission.registration_outbox WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3",
+            "SELECT 1 FROM mission.registration_outbox WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 \
+             UNION ALL SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 LIMIT 1",
             &[&request.engagement_id.0, &request.campaign_id.0, &operation_id.0],
         ).map_err(|error| store_err(&error))?.is_some() {
             return Err(Fail::Conflict("integrity_conflict"));
@@ -267,7 +271,9 @@ impl MissionStore for PgMissionStore {
         let row = self
             .client
             .query_opt(
-                "SELECT operation_id, revision, exercise_mode, starts_at, ends_at \
+                "SELECT operation_id, CASE WHEN EXISTS (SELECT 1 FROM mission.withdrawals w \
+                 WHERE w.engagement_id=mission.missions.engagement_id AND w.campaign_id=mission.missions.campaign_id) \
+                 THEN 2 ELSE revision END, exercise_mode, starts_at, ends_at \
                  FROM mission.missions WHERE engagement_id = $1 AND campaign_id = $2",
                 &[&e.0, &c.0],
             )

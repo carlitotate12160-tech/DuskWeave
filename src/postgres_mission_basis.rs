@@ -12,6 +12,16 @@ pub(super) fn current_basis(
     tx: &mut postgres::Transaction,
     request: &PlanningRequest,
 ) -> Res<Option<MissionBasis>> {
+    if tx
+        .query_opt(
+            "SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&request.engagement_id.0, &request.campaign_id.0],
+        )
+        .map_err(|error| store_err(&error))?
+        .is_some()
+    {
+        return Err(Fail::State("authority_withdrawn"));
+    }
     let row = tx
         .query_opt(
             "SELECT operation_id, revision, exercise_mode, starts_at, ends_at, \

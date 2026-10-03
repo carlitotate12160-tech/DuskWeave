@@ -9,6 +9,11 @@ use duskweave::postgres_mission::{PgAllocator, PgMissionStore, qualify_runtime};
 use duskweave::postgres_trajectory::PgTrajectory;
 use duskweave::registration;
 use duskweave::trajectory::HistoryStatus;
+use duskweave::withdrawal::{
+    MissionAuthorityWithdrawn, OBLIGATION, WithdrawalHistoryPort, WithdrawalRequest,
+    WithdrawalStore,
+};
+use duskweave::withdrawal_input::read_withdrawal_file;
 use duskweave::{Fail, Res};
 use postgres::NoTls;
 use std::env;
@@ -175,6 +180,80 @@ fn cmd_inspect(args: &[String]) -> Res<()> {
     Ok(())
 }
 
+/// Flag/input parsing in the fixed order; the parsed operation is captured
+/// even when a later step fails so the bounded receipt still names the target.
+fn parse_withdrawal_command(
+    args: &[String],
+    captured: &mut Option<OperationId>,
+) -> Res<(OperationId, bool, WithdrawalRequest)> {
+    let parsed = flags(args, &["operation", "input", "recover"])?;
+    let operation =
+        OperationId::parse(flag(&parsed, "operation")?).ok_or(Fail::Input("invalid_args"))?;
+    *captured = Some(operation);
+    let recover = flag(&parsed, "recover")?
+        .parse::<bool>()
+        .map_err(|_| Fail::Input("invalid_args"))?;
+    let request = flag(&parsed, "input").and_then(|path| read_withdrawal_file(Path::new(path)))?;
+    Ok((operation, recover, request))
+}
+
+fn durable_receipt(
+    event: MissionAuthorityWithdrawn,
+    history: Res<duskweave::trajectory::Delivered>,
+) -> serde_json::Value {
+    let view = duskweave::planning_history::history_result(history);
+    serde_json::json!({
+        "result": "durable", "contract": event, "authority_state": "withdrawn",
+        "owner_revision": 2, "publication_obligation": OBLIGATION,
+        "history_source": "trajectory", "history": view.state, "history_reason": view.reason,
+        "complete_history": view.complete,
+        "action": if view.complete { "none" } else if view.state == "unknown" {
+            "recover_history_before_retry"
+        } else { "retry_known_withdrawal" },
+    })
+}
+
+fn failure_receipt(error: &Fail, operation: Option<OperationId>) -> serde_json::Value {
+    serde_json::json!({
+        "result": if *error == Fail::Store("commit_unknown") { "unknown" } else { "rejected" },
+        "operation": operation, "reason": category(*error),
+        "action": if *error == Fail::Store("commit_unknown") { "recover_before_retry" } else { "reconcile_authority" },
+    })
+}
+
+fn cmd_withdraw(args: &[String]) -> Res<()> {
+    let mut operation = None;
+    let outcome = (|| {
+        let (operation, recover, request) = parse_withdrawal_command(args, &mut operation)?;
+        let mut store = PgMissionStore::new(connect()?);
+        let mut allocator = PgAllocator::new(connect()?);
+        let Some(event) = store.withdraw(&request, operation, recover, &mut allocator)? else {
+            return Ok(
+                serde_json::json!({"result": "not_committed", "operation": operation,
+            "action": "reconcile_authority"}),
+            );
+        };
+        // Publish failure stays unknown; it cannot reject a committed withdrawal.
+        let history = connect().and_then(|client| {
+            let mut consumer = PgTrajectory::new(client);
+            if recover {
+                consumer.inspect(&event)
+            } else {
+                consumer.publish(&event)
+            }
+        });
+        Ok(durable_receipt(event, history))
+    })();
+    let mut receipt = match &outcome {
+        Ok(receipt) => receipt.clone(),
+        Err(error) => failure_receipt(error, operation),
+    };
+    receipt["current_permission"] = false.into();
+    receipt["continuation_blocked"] = true.into();
+    println!("{receipt}");
+    outcome.map(|_| ())
+}
+
 fn cmd_reconcile(args: &[String]) -> Res<()> {
     let f = flags(args, &["engagement", "campaign", "operation"])?;
     let (e, c) = scope(&f)?;
@@ -194,6 +273,7 @@ fn run(args: &[String]) -> Res<()> {
         "prepare-operation" => cmd_prepare(args),
         "register" => cmd_register(args),
         "assess" => planning_cli::cmd_assess(args),
+        "withdraw" => cmd_withdraw(args),
         "planning-history" => planning_cli::cmd_planning_history(args),
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),

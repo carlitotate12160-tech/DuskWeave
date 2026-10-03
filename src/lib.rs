@@ -14,6 +14,8 @@ mod postgres_trajectory_history;
 mod postgres_trajectory_journal;
 pub mod registration;
 pub mod trajectory;
+pub mod withdrawal;
+pub mod withdrawal_input;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fail {
