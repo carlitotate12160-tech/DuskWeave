@@ -1,232 +1,398 @@
+#!/usr/bin/env python3
+"""McCabe own-complexity gate for tracked DuskWeave Rust sources.
+
+Inventories tracked src/**/*.rs via `git ls-files`, runs the pinned
+rust-code-analysis-cli binary as `-p src -m -O json -o <raw> -j 1 -w`, and
+evaluates every kind="function" node: own = node cyclomatic.sum minus the
+immediate-child sums. Fixed caps (QUALITY_BAR.md): 7 business; the unique
+reviewed pure-dispatch `run` (direct unit child of src/main.rs bound to the
+reviewed source digest) keeps 10. Spans >50 emit REVIEW_TRIGGER without
+failing. Exit 0 = compliance, 1 = cap violations, 2 = tool/report/input
+failure.
+"""
+
 import argparse
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
-import hashlib
-from typing import Dict, Any, List, Set
 
-REVIEWED_RUN_SHA256 = "558499af2367afeb051d01e4c31e82e20087d491fee936c1fa83549bd1bd6d7a"
+CAP_DEFAULT = 7
+CAP_REVIEWED_DISPATCH = 10
+REVIEW_TRIGGER_SPAN = 50
+TOOL_NAME = "rust-code-analysis-cli"
+REQUIRED_VERSION = "rust-code-analysis-cli 0.0.25"
+DISPATCH_FILE = "src/main.rs"
+DISPATCH_NAME = "run"
+REVIEWED_RUN_SHA256 = (
+    "558499af2367afeb051d01e4c31e82e20087d491fee936c1fa83549bd1bd6d7a"
+)
 
-def compute_body_digest(filepath: str, start_line: int, end_line: int) -> str:
-    with open(filepath, 'r', encoding='utf-8') as f:
-        lines = f.read().splitlines()
-    span_lines = lines[start_line - 1:end_line]
-    content = "\n".join(span_lines) + "\n"
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
-def process_node(node: Dict[str, Any], filepath: str, parent_path: str, sibling_idx: int, results: List[Dict[str, Any]], all_identities: Set[str]):
-    kind = node.get("kind", "")
-    node_name = node.get("name", "")
-    
-    # "use ancestry and sibling position for report identity"
-    # To ensure distinct closures don't collapse.
-    identity_name = f"{node_name}@{sibling_idx}"
-    current_path = f"{parent_path}::{identity_name}" if parent_path else identity_name
+class CheckError(Exception):
+    """Tool, report or input failure; maps to exit code 2."""
 
-    if kind == "function":
-        try:
-            cyclomatic = node["metrics"]["cyclomatic"]["sum"]
-            if not isinstance(cyclomatic, (int, float)) or isinstance(cyclomatic, bool):
-                raise ValueError("metrics.cyclomatic.sum must be a number")
-            
-            own = float(cyclomatic)
-            if not own.is_integer():
-                raise ValueError("metrics.cyclomatic.sum must be integral")
-            own = int(own)
-            
-            for child in node.get("spaces", []):
-                child_cyc = child["metrics"]["cyclomatic"]["sum"]
-                if not isinstance(child_cyc, (int, float)) or isinstance(child_cyc, bool):
-                    raise ValueError("child cyclomatic sum must be a number")
-                child_cyc_f = float(child_cyc)
-                if not child_cyc_f.is_integer():
-                    raise ValueError("child cyclomatic sum must be integral")
-                own -= int(child_cyc_f)
-                
-        except KeyError:
-            print("Malformed metric: missing metrics.cyclomatic.sum", file=sys.stderr)
-            sys.exit(2)
-        except ValueError as e:
-            print(f"Malformed metric: {e}", file=sys.stderr)
-            sys.exit(2)
 
-        start_line = node.get("start_line")
-        end_line = node.get("end_line")
-        
-        if not isinstance(start_line, int) or not isinstance(end_line, int) or start_line < 1 or end_line < start_line:
-            print(f"Invalid span: start={start_line}, end={end_line}", file=sys.stderr)
-            sys.exit(2)
-            
-        if own < 1: # "nonnegative child subtraction and own >=1 for functions."
-            # Wait, nonnegative child subtraction means we cannot subtract more than the parent has?
-            # Or does it mean child_cyc >= 0? The subtraction is just own = parent - sum(child).
-            # And own >= 1.
-            print(f"Invalid own metric < 1: {own}", file=sys.stderr)
-            sys.exit(2)
+def _run(argv):
+    try:
+        return subprocess.run(argv, capture_output=True)
+    except OSError as exc:
+        raise CheckError(f"cannot execute {argv[0]!r}: {exc}")
 
-        cap = 7
-        digest = compute_body_digest(filepath, start_line, end_line)
-        norm_file = filepath.replace('\\', '/')
-        
-        if norm_file.endswith("src/main.rs") and node_name == "run":
-            if digest == REVIEWED_RUN_SHA256:
-                cap = 10
-            else:
-                print(f"Warning: src/main.rs::run digest changed. Expected {REVIEWED_RUN_SHA256}, got {digest}")
 
-        results.append({
-            "filepath": norm_file,
-            "path": current_path,
-            "start_line": start_line,
-            "end_line": end_line,
-            "own": own,
-            "cap": cap,
-            "digest": digest
-        })
-        
-        all_identities.add(f"{norm_file}:{current_path}")
+def _git(*args):
+    proc = _run(["git", *args])
+    if proc.returncode != 0:
+        detail = proc.stderr.decode("utf-8", "replace").strip()
+        raise CheckError(f"git {' '.join(args)} failed: {detail or proc.returncode}")
+    return proc.stdout
 
-    # Process children
-    for idx, child in enumerate(node.get("spaces", [])):
-        process_node(child, filepath, current_path, idx, results, all_identities)
 
-def main():
-    parser = argparse.ArgumentParser()
+def check_analyzer(analyzer):
+    if not os.path.isabs(analyzer):
+        raise CheckError("--analyzer must be an absolute path")
+    if not os.path.isfile(analyzer):
+        raise CheckError(f"analyzer binary not found: {analyzer}")
+    proc = _run([analyzer, "--version"])
+    version = proc.stdout.decode("utf-8", "replace").strip()
+    if proc.returncode != 0 or version != REQUIRED_VERSION:
+        raise CheckError(
+            f"analyzer --version must be exactly {REQUIRED_VERSION!r}, "
+            f"got {version!r} (exit {proc.returncode})"
+        )
+    return version
+
+
+def inventory():
+    out = _git("ls-files", "-z", "--", "src/*.rs", "src/**/*.rs")
+    files = sorted(
+        {
+            p.replace("\\", "/")
+            for p in out.decode("utf-8", "replace").split("\0")
+            if p.startswith("src/") and p.endswith(".rs")
+        }
+    )
+    if not files:
+        raise CheckError("empty tracked src/**/*.rs inventory")
+    return files
+
+
+def candidate_sha():
+    proc = _run(["git", "rev-parse", "--verify", "HEAD"])
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.decode("ascii", "replace").strip() or None
+
+
+def run_analyzer(analyzer, raw_dir, diag_dir):
+    if os.path.exists(raw_dir):
+        shutil.rmtree(raw_dir)
+    os.makedirs(raw_dir)
+    proc = _run(
+        [analyzer, "-p", "src", "-m", "-O", "json", "-o", raw_dir, "-j", "1", "-w"]
+    )
+    for name, data in (
+        ("analyzer.stdout.log", proc.stdout),
+        ("analyzer.stderr.log", proc.stderr),
+    ):
+        with open(os.path.join(diag_dir, name), "wb") as fh:
+            fh.write(data)
+    if proc.returncode != 0:
+        tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise CheckError(
+            f"analyzer exited {proc.returncode}: {tail[-1] if tail else 'no stderr'}"
+        )
+
+
+def reconcile_reports(raw_dir, files):
+    """Exactly one report per inventoried source; else fail closed."""
+    expected = {f"{rel}.json" for rel in files}
+    found = set()
+    for dirpath, _, names in os.walk(raw_dir):
+        for name in names:
+            if name.endswith(".json"):
+                rel = os.path.relpath(os.path.join(dirpath, name), raw_dir)
+                found.add(rel.replace(os.sep, "/"))
+    missing, extra = sorted(expected - found), sorted(found - expected)
+    if missing or extra:
+        raise CheckError(
+            f"report inventory mismatch: missing={missing} unexpected={extra}"
+        )
+    return {rel: os.path.join(raw_dir, *f"{rel}.json".split("/")) for rel in files}
+
+
+def _no_dupes(pairs):
+    out = {}
+    for key, value in pairs:
+        if key in out:
+            raise CheckError(f"duplicate JSON key {key!r}")
+        out[key] = value
+    return out
+
+
+def load_report(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh, object_pairs_hook=_no_dupes)
+    except CheckError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CheckError(f"invalid JSON report {path}: {exc}")
+    if not isinstance(data, dict):
+        raise CheckError(f"report {path} root is not an object")
+    return data
+
+
+def _integral_sum(node, at):
+    metrics = node.get("metrics")
+    cyc = metrics.get("cyclomatic") if isinstance(metrics, dict) else None
+    value = cyc.get("sum") if isinstance(cyc, dict) else None
+    bad = (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not float(value).is_integer()
+        or value < 0
+    )
+    if bad:
+        raise CheckError(f"{at}: invalid cyclomatic.sum {value!r}")
+    return int(value)
+
+
+def _span(node, at):
+    start, end = node.get("start_line"), node.get("end_line")
+    if (
+        isinstance(start, bool)
+        or not isinstance(start, int)
+        or isinstance(end, bool)
+        or not isinstance(end, int)
+        or start < 1
+        or end < start
+    ):
+        raise CheckError(f"{at}: invalid span {start}-{end}")
+    return start, end
+
+
+def measure_report(report, rel_src):
+    """Return measured function nodes for one parsed unit report."""
+    metrics = report.get("metrics")
+    nom = metrics.get("nom") if isinstance(metrics, dict) else None
+    total = nom.get("total") if isinstance(nom, dict) else None
+    if (
+        isinstance(total, bool)
+        or not isinstance(total, (int, float))
+        or not float(total).is_integer()
+        or total < 0
+    ):
+        raise CheckError(f"{rel_src}: invalid metrics.nom.total {total!r}")
+    spaces = report.get("spaces")
+    if not isinstance(spaces, list):
+        raise CheckError(f"{rel_src}: missing spaces list")
+    results, identities = [], set()
+
+    def visit(node, ancestry, index, depth):
+        name, kind = node.get("name"), node.get("kind")
+        if not isinstance(name, str) or not isinstance(kind, str):
+            raise CheckError(f"{rel_src}: node missing string kind/name")
+        ident = f"{ancestry}::{name}@{index}"
+        children = node.get("spaces")
+        if not isinstance(children, list):
+            raise CheckError(f"{rel_src} {ident}: spaces is not a list")
+        if kind == "function":
+            start, end = _span(node, f"{rel_src} {ident}")
+            total_cyc = _integral_sum(node, f"{rel_src} {ident}")
+            child_sum = sum(
+                _integral_sum(kid, f"{rel_src} {ident}") for kid in children
+            )
+            own = total_cyc - child_sum
+            if own < 1:
+                raise CheckError(
+                    f"{rel_src} {ident}: own {own} < 1 (immediate children "
+                    f"sum {child_sum} > node {total_cyc})"
+                )
+            if ident in identities:
+                raise CheckError(f"{rel_src} {ident}: duplicate node identity")
+            identities.add(ident)
+            results.append(
+                {
+                    "file": rel_src,
+                    "name": name,
+                    "identity": f"{rel_src} {ident}",
+                    "start_line": start,
+                    "end_line": end,
+                    "span": end - start + 1,
+                    "own": own,
+                    "depth": depth,
+                    "cap": CAP_DEFAULT,
+                    "allowance": None,
+                }
+            )
+        for idx, kid in enumerate(children):
+            visit(kid, ident, idx, depth + 1)
+
+    for idx, top in enumerate(spaces):
+        visit(top, f"{rel_src}@0", idx, 1)
+    if len(results) != int(total):
+        raise CheckError(
+            f"{rel_src}: counted {len(results)} function nodes but "
+            f"metrics.nom.total={int(total)}"
+        )
+    return results
+
+
+def body_digest(src_path, start, end):
+    try:
+        with open(src_path, "rb") as fh:
+            text = fh.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CheckError(f"cannot read source for digest {src_path}: {exc}")
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    if end > len(lines):
+        raise CheckError(f"{src_path}: span {start}-{end} exceeds file length")
+    body = "\n".join(lines[start - 1 : end]) + "\n"
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def resolve_run_allowance(measurements, digest_of):
+    """Bind cap 10 to the unique reviewed direct unit-child run only."""
+    eligible = [
+        m
+        for m in measurements
+        if m["file"] == DISPATCH_FILE
+        and m["name"] == DISPATCH_NAME
+        and m["depth"] == 1
+    ]
+    if not eligible:
+        return {
+            "status": "absent",
+            "detail": "no direct unit-child function run in src/main.rs",
+        }
+    if len(eligible) > 1:
+        return {
+            "status": "ambiguous",
+            "detail": f"{len(eligible)} unit-child run candidates in "
+            f"{DISPATCH_FILE}; none receive cap {CAP_REVIEWED_DISPATCH}",
+        }
+    node = eligible[0]
+    digest = digest_of(node)
+    if digest == REVIEWED_RUN_SHA256:
+        node["cap"] = CAP_REVIEWED_DISPATCH
+        node["allowance"] = "reviewed-dispatch"
+        return {"status": "granted", "identity": node["identity"], "sha256": digest}
+    node["allowance"] = "digest-mismatch"
+    return {
+        "status": "digest_mismatch",
+        "identity": node["identity"],
+        "expected": REVIEWED_RUN_SHA256,
+        "actual": digest,
+        "detail": "run body changed since review; cap stays 7",
+    }
+
+
+def evaluate(measurements):
+    violations = [m for m in measurements if m["own"] > m["cap"]]
+    triggers = [m for m in measurements if m["span"] > REVIEW_TRIGGER_SPAN]
+    return violations, triggers
+
+
+def _brief(m):
+    return {
+        "identity": m["identity"],
+        "start_line": m["start_line"],
+        "end_line": m["end_line"],
+        "own": m["own"],
+        "cap": m["cap"],
+    }
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="McCabe complexity gate")
     parser.add_argument("--analyzer", required=True)
     parser.add_argument("--report-dir", required=True)
-    args = parser.parse_args()
-
-    # Discover src/**/*.rs
-    src_files = []
-    for root, _, files in os.walk("src"):
-        for f in files:
-            if f.endswith(".rs"):
-                src_files.append(os.path.join(root, f))
-
-    if not src_files:
-        print("No source files found.")
-        return
-
-    # Run analyzer
-    raw_dir = os.path.join(args.report_dir, "raw")
-    os.makedirs(raw_dir, exist_ok=True)
-    
-    cmd = [args.analyzer, "-p", "src", "-m", "-O", "json", "-o", raw_dir, "-j", "1", "-w"]
+    args = parser.parse_args(argv)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"Analyzer failed with exit code {result.returncode}")
-            sys.exit(2)
-    except Exception as e:
-        print(f"Analyzer execution failed: {e}")
-        sys.exit(2)
+        if not os.path.isabs(args.report_dir):
+            raise CheckError("--report-dir must be an absolute path")
+        version = check_analyzer(args.analyzer)
+        files = inventory()
+        sha = candidate_sha()
+        os.makedirs(args.report_dir, exist_ok=True)
+        raw_dir = os.path.join(args.report_dir, "raw")
+        run_analyzer(args.analyzer, raw_dir, args.report_dir)
+        report_paths = reconcile_reports(raw_dir, files)
+        measurements = []
+        for rel in files:
+            measurements.extend(measure_report(load_report(report_paths[rel]), rel))
+        allowance = resolve_run_allowance(
+            measurements,
+            lambda m: body_digest(m["file"], m["start_line"], m["end_line"]),
+        )
+        violations, triggers = evaluate(measurements)
 
-    all_results = []
-    all_identities = set()
-    
-    # Track expected reports vs found
-    found_reports = set()
-    for root, _, files in os.walk(raw_dir):
-        for f in files:
-            if f.endswith(".json"):
-                found_reports.add(os.path.join(root, f).replace('\\', '/'))
-                
-    expected_reports = set()
-    for filepath in src_files:
-        norm = filepath.replace('\\', '/')
-        # rca outputs to raw_dir / src / ... .json
-        expected_report = os.path.join(raw_dir, norm + ".json").replace('\\', '/')
-        expected_reports.add(expected_report)
-        
-        if expected_report not in found_reports:
-            print(f"Missing report for {filepath}")
-            sys.exit(2)
-            
-    if len(expected_reports) != len(found_reports):
-        print(f"Unexpected or duplicate reports found. Expected {len(expected_reports)}, found {len(found_reports)}.")
-        sys.exit(2)
+        print(
+            f"tool={version} candidate={sha or 'unknown'} "
+            f"files={len(files)} functions={len(measurements)}"
+        )
+        for m in measurements:
+            tag = " VIOLATION" if m["own"] > m["cap"] else ""
+            note = f" [{m['allowance']}]" if m["allowance"] else ""
+            print(
+                f"{m['identity']} (lines {m['start_line']}-{m['end_line']}): "
+                f"own={m['own']} cap={m['cap']}{note}{tag}"
+            )
+        for m in triggers:
+            print(
+                f"REVIEW_TRIGGER {m['identity']} span {m['span']} "
+                f"> {REVIEW_TRIGGER_SPAN}"
+            )
+        print(f"run allowance: {allowance['status']} "
+              f"{allowance.get('detail', '')}".rstrip())
 
-    total_nom_functions = 0
-    total_nom_closures = 0
-            
-    for filepath in src_files:
-        norm = filepath.replace('\\', '/')
-        report_path = os.path.join(raw_dir, norm + ".json").replace('\\', '/')
-        try:
-            with open(report_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                
-            # Validate JSON object and no duplicate keys (json.load handles this implicitly in standard python, but to strictly reject duplicate keys we can use object_pairs_hook)
-        except json.JSONDecodeError:
-            print(f"Invalid JSON in {report_path}")
-            sys.exit(2)
-            
-        def dict_raise_on_duplicates(ordered_pairs):
-            d = {}
-            for k, v in ordered_pairs:
-                if k in d:
-                    raise ValueError(f"Duplicate key: {k}")
-                d[k] = v
-            return d
+        summary = {
+            "tool": TOOL_NAME,
+            "tool_version": "0.0.25",
+            "candidate_sha": sha,
+            "files": len(files),
+            "functions": len(measurements),
+            "violation_count": len(violations),
+            "review_trigger_count": len(triggers),
+            "violations": [_brief(m) for m in violations],
+            "review_triggers": [_brief(m) for m in triggers],
+            "run_allowance": allowance,
+            "measurements": measurements,
+        }
+        with open(
+            os.path.join(args.report_dir, "summary.json"), "w", encoding="utf-8"
+        ) as fh:
+            json.dump(summary, fh, indent=2)
+            fh.write("\n")
+        with open(
+            os.path.join(args.report_dir, "summary.txt"), "w", encoding="utf-8"
+        ) as fh:
+            fh.write(f"tool={version} candidate={sha or 'unknown'}\n")
+            fh.write(f"files={len(files)} functions={len(measurements)}\n")
+            fh.write(f"violations={len(violations)}\n")
+            for m in violations:
+                b = _brief(m)
+                fh.write(
+                    f"VIOLATION {b['identity']} lines {b['start_line']}-"
+                    f"{b['end_line']} own={b['own']} cap={b['cap']}\n"
+                )
+            fh.write(f"review_triggers={len(triggers)}\n")
+            for m in triggers:
+                fh.write(f"REVIEW_TRIGGER {m['identity']} span {m['span']}\n")
+            fh.write(f"run_allowance={allowance['status']}\n")
 
-        try:
-            with open(report_path, 'r', encoding='utf-8') as f:
-                data = json.load(f, object_pairs_hook=dict_raise_on_duplicates)
-        except ValueError as e:
-            print(f"Invalid JSON (duplicate keys): {e}")
-            sys.exit(2)
-            
-        # check nom.total
-        nom_total = data.get("metrics", {}).get("nom", {}).get("total", 0)
-        
-        # start process
-        count_before = len(all_results)
-        process_node(data, filepath, "", 0, all_results, all_identities)
-        count_after = len(all_results)
-        
-        # Validate recursively counted functions/closures against the root's nom.total.
-        # Wait, the root's nom.total might include trait methods, impl blocks etc.
-        # nom.total is functions + closures.
-        # Our process_node extracts all kind == "function", which includes methods and anonymous closures.
-        # "Validate recursively counted functions/closures against the root's nom.total."
-        functions_found = count_after - count_before
-        if int(nom_total) != functions_found:
-            print(f"Mismatch in function count for {filepath}: nom.total={nom_total}, found={functions_found}")
-            sys.exit(2)
+        if violations:
+            print(f"Failed: {len(violations)} complexity violations.")
+            return 1
+        print("Success: 0 complexity violations.")
+        return 0
+    except (CheckError, OSError) as exc:
+        print(f"complexity check failed: {exc}", file=sys.stderr)
+        return 2
 
-    violations = []
-    for res in all_results:
-        own = res["own"]
-        cap = res["cap"]
-        span = res["end_line"] - res["start_line"] + 1
-        
-        print(f"{res['filepath']} {res['path']} (lines {res['start_line']}-{res['end_line']}): own={own} cap={cap}")
-        
-        if span > 50:
-            print(f"REVIEW_TRIGGER: {res['filepath']} {res['path']} length {span} > 50")
-            
-        if own > cap:
-            violations.append(res)
-            
-    summary = {
-        "total_functions": len(all_results),
-        "violations": len(violations),
-        "details": violations
-    }
-    
-    with open(os.path.join(args.report_dir, "summary.json"), 'w', encoding='utf-8') as f:
-        json.dump(summary, f, indent=2)
-        
-    with open(os.path.join(args.report_dir, "summary.txt"), 'w', encoding='utf-8') as f:
-        f.write(f"Total functions: {len(all_results)}\nViolations: {len(violations)}\n")
-        
-    if violations:
-        print(f"Failed: {len(violations)} complexity violations.")
-        sys.exit(1)
-        
-    print("Success: 0 complexity violations.")
-    sys.exit(0)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a correction rebased onto the merged base and locally verified within 594/600; distinct review/publication pending; C1b versioned durable refusal and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
+- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a durable local mission withdrawal MERGED through PR #22; CI McCabe gate DRAFT DELIVERED with expected baseline rejection; C1b versioned durable refusal and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
 - **Active Seal**: `DW-FOUNDATION-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -74,7 +74,7 @@ The M0C-C1b candidate in `D:/DuskWeave-m0c-c0`, branch `feat/m0c-c1b-durable-ref
 
 An observed enforcement gap in `doc-check.yml` allowed master CI to succeed without measured McCabe complexity enforcement. The `DW-FIX-CI-MCCABE-GATE` draft packet delivers a pinned `rust-code-analysis-cli 0.0.25` analyzer, a strict JSON metric evaluator, negative-control fixtures, and a mandatory workflow gate.
 
-On unchanged protected-base Rust (`73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc`), the drafted gate intentionally fails on 13 inherited violations (measured locally and verified against the parser's logic):
+On unchanged protected-base Rust (`73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc`), the drafted gate intentionally fails on 13 inherited violations measured with the pinned analyzer on Windows and reproduced on Linux CI (22 files, 278 function nodes):
 - `src/planning.rs`: `validate_contract` (own=8), `assessment_labels` (own=9)
 - `src/postgres_mission.rs`: `commit_tx` (own=9), `prior_assessment` anonymous closure (own=8), `assess` (own=16)
 - `src/postgres_mission_basis.rs`: `decode_basis` (own=14)
@@ -86,8 +86,6 @@ On unchanged protected-base Rust (`73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc`), t
 This is a working detector, not a green merge. Expected rejection of the baseline is evidence that enforcement works. The next action is owner-bounded remediation and gate qualification before a green gate merge. This draft candidate records the gate implementation and its test evidence; it does not record its own merge.
 
 ### Historical C1a correction (2026-10-03)
-
-### Current C1a correction (2026-10-03)
 
 The owner rejected a runtime-ceiling increase and authorized direct inspection/refactoring.
 That instruction supersedes the earlier FIX packet's mandatory binary CLI-child partition;
@@ -144,7 +142,7 @@ Historical repository verification on 2026-10-01: local and remote `master` were
 
 Exact-master CI [run 36806405110](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36806405110) succeeded on that SHA: links, structure/runtime budget, Rust, CodeQL and `ci-ok`. The Rust job reports 29 passing tests, 0 failures/ignored, PostgreSQL 17 integration, and production line coverage 94.43% (695/736); the fixed 90% total / 80% per-source-file gate passed. This is GitHub-hosted CI evidence, not a new local test run, proof of every supported platform, or a client campaign demonstration.
 
-Next: Work's distinct delta review of the updated PR #22 candidate covering preservation, integration/fixtures/tracking and the affected failure claims, then a separate owner merge if authorized. Only after that merge lands and the new base is verified may a separately issued packet deliver C1b versioned durable planning refusal and the remaining minimum-M0 work. C1a returns bounded `authority_withdrawn` before allocation/insertion and does not implement that durable refusal event. Full positive admission remains unfinished. M0 is DEMO_PENDING and unsealed; the accepted register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this status correction. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
+C1a returns bounded `authority_withdrawn` before allocation/insertion and does not implement that durable refusal event. Full positive admission remains unfinished. M0 is DEMO_PENDING and unsealed; the accepted register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this status correction. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 
