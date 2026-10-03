@@ -125,3 +125,7 @@ pub(super) fn confirm_if_new(
     }
     planning_assessment::assess(allocator, store, request, operation, false)
 }
+
+#[cfg(test)]
+#[path = "../tests/faults/authority_confirmation_faults.rs"]
+mod fault_tests;
