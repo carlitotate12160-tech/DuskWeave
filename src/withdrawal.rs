@@ -111,14 +111,18 @@ impl MissionAuthorityWithdrawn {
         {
             return Err(Fail::State("unsupported_contract"));
         }
-        if self.affected_entity != self.request.campaign_id
-            || self.causation_id != self.operation_id
-            || self.correlation_id != self.operation_id
-            || self.occurred_at != self.recorded_at
-        {
+        if !self.bound_consistently() {
             return Err(Fail::State("invalid_header"));
         }
         Ok(())
+    }
+
+    /// The event binds exactly to its scope, own operation and one timestamp.
+    fn bound_consistently(&self) -> bool {
+        self.affected_entity == self.request.campaign_id
+            && self.causation_id == self.operation_id
+            && self.correlation_id == self.operation_id
+            && self.occurred_at == self.recorded_at
     }
 }
 

@@ -64,6 +64,13 @@ fn transition_is_immutable_scoped_and_denies_before_allocation_without_history()
             store.withdraw(&input, collision, false, &mut NoAllocation),
             Err(Fail::Conflict("integrity_conflict"))
         );
+        // An existing operation collision still dominates a stale request.
+        let mut stale = input.clone();
+        stale.expected_mission_revision = 2;
+        assert_eq!(
+            store.withdraw(&stale, collision, false, &mut NoAllocation),
+            Err(Fail::Conflict("integrity_conflict"))
+        );
     }
     let withdrawn = store
         .withdraw(&input, op, false, &mut alloc)
@@ -245,11 +252,17 @@ fn producer_catalog_corruption_is_not_recovered_as_success() {
     let mut config = dsn("DW_TEST_ADMIN_DATABASE_URL");
     config.dbname(dsn("DW_TEST_DATABASE_URL").get_dbname().unwrap());
     let mut admin = config.connect(NoTls).unwrap();
-    for changed in [serde_json::json!({}), {
+    let mut corruptions = vec![serde_json::json!({})];
+    for identity in ["event_id", "operation_id", "registration_operation_id"] {
         let mut value = serde_json::to_value(&event).unwrap();
-        value["event_id"] = serde_json::json!(Uuid::from_u128(33));
-        value
-    }] {
+        value[identity] = serde_json::json!(Uuid::from_u128(33));
+        corruptions.push(value);
+    }
+    let mut wrong_scope = event.clone();
+    wrong_scope.request.campaign_id = CampaignId(Uuid::from_u128(34));
+    wrong_scope.affected_entity = wrong_scope.request.campaign_id;
+    corruptions.push(serde_json::to_value(wrong_scope).unwrap());
+    for changed in corruptions {
         admin.execute("UPDATE mission.withdrawals SET contract=$3 WHERE engagement_id=$1 AND campaign_id=$2",
             &[&e.0, &c.0, &changed]).unwrap();
         assert_eq!(
