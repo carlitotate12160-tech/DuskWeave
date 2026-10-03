@@ -233,6 +233,34 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
 }
 
 #[test]
+fn cli_rejects_noncanonical_recover_before_file_or_config() {
+    let sentinel = format!("dw-sensitive-{}", std::process::id());
+    let op = Uuid::from_u128(0x5a5a_0000_0000_0000_0000_0000_0000_0001).to_string();
+    let missing = std::env::temp_dir()
+        .join(format!("dw-absent-{sentinel}.json"))
+        .to_string_lossy()
+        .to_string();
+    assert!(!std::path::Path::new(&missing).exists());
+    let out = cli(
+        &[
+            "assess",
+            "--operation",
+            &op,
+            "--input",
+            &missing,
+            "--recover",
+            &sentinel,
+        ],
+        "not-a-dsn",
+    );
+    assert!(!out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(stdout.trim(), "error=invalid_args");
+    assert!(!stdout.contains(&sentinel));
+    assert!(out.stderr.is_empty());
+}
+
+#[test]
 fn cli_assess_and_fresh_process_recovery_preserve_pending_original() {
     let _guard = db();
     let dsn = std::env::var("DW_TEST_DATABASE_URL").expect("DW_TEST_DATABASE_URL required");

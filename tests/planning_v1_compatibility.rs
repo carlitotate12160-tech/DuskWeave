@@ -152,13 +152,25 @@ fn register_contract(
 fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
     let _guard = db();
     let mut cluster = admin_in("postgres");
+    let upgrade_db = format!("dw_planning_cli_fix_v1_{}", std::process::id());
+    assert!(
+        cluster
+            .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&upgrade_db])
+            .unwrap()
+            .is_none(),
+        "upgrade database collision; preserve the existing database"
+    );
     cluster
-        .batch_execute("DROP DATABASE IF EXISTS dw_b2_upgrade")
+        .batch_execute(&format!("CREATE DATABASE {upgrade_db} TEMPLATE template0"))
         .unwrap();
-    cluster
-        .batch_execute("CREATE DATABASE dw_b2_upgrade")
+    let identity = cluster
+        .query_one(
+            "SELECT oid,datdba FROM pg_database WHERE datname=$1",
+            &[&upgrade_db],
+        )
         .unwrap();
-    let mut admin = admin_in("dw_b2_upgrade");
+    let owned_identity = (identity.get::<_, u32>(0), identity.get::<_, u32>(1));
+    let mut admin = admin_in(&upgrade_db);
     for migration in [MIGRATION, PLANNING_MIGRATION, HISTORY_MIGRATION] {
         admin.batch_execute(migration).unwrap();
     }
@@ -257,7 +269,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
 
     // Post-upgrade recovery returns the original v1 record unchanged through
     // fresh ports, and a pending v1 publication completes under version 1.
-    let mut store = PgMissionStore::new(runtime_in("dw_b2_upgrade"));
+    let mut store = PgMissionStore::new(runtime_in(&upgrade_db));
     let request_a: duskweave::planning::PlanningRequest =
         serde_json::from_value(assessed_a["request"].clone()).unwrap();
     let recovered = read_decision(&mut store, &request_a, OperationId(op_a))
@@ -269,7 +281,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
         assessed_a,
         "v1 contract, timestamps and identities are not rewritten"
     );
-    let mut trajectory = PgTrajectory::new(runtime_in("dw_b2_upgrade"));
+    let mut trajectory = PgTrajectory::new(runtime_in(&upgrade_db));
     assert_eq!(
         trajectory.inspect(&recovered).unwrap(),
         Delivered::Completed
@@ -292,9 +304,9 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
 
     // A new v2 assessment publishes on the upgraded schema as version 2.
     let (e_c, c_c) = scope(0xb2fc);
-    let mut allocator = PgAllocator::new(runtime_in("dw_b2_upgrade"));
-    let mut store_c = PgMissionStore::new(runtime_in("dw_b2_upgrade"));
-    let mut traj_c = PgTrajectory::new(runtime_in("dw_b2_upgrade"));
+    let mut allocator = PgAllocator::new(runtime_in(&upgrade_db));
+    let mut store_c = PgMissionStore::new(runtime_in(&upgrade_db));
+    let mut traj_c = PgTrajectory::new(runtime_in(&upgrade_db));
     let op_c = registration::prepare_operation(&mut allocator).unwrap();
     registration::register(
         &mut allocator,
@@ -331,7 +343,25 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
         .unwrap()
         .get(0);
     assert_eq!(v2, 2);
-    cluster
-        .batch_execute("DROP DATABASE dw_b2_upgrade WITH (FORCE)")
+    // Explicit success-only cleanup after every upgrade connection is closed.
+    drop((admin, store, trajectory, allocator, store_c, traj_c));
+    let identity = cluster
+        .query_one(
+            "SELECT oid,datdba FROM pg_database WHERE datname=$1",
+            &[&upgrade_db],
+        )
         .unwrap();
+    assert_eq!(
+        (identity.get::<_, u32>(0), identity.get::<_, u32>(1)),
+        owned_identity
+    );
+    cluster
+        .batch_execute(&format!("DROP DATABASE {upgrade_db}"))
+        .unwrap();
+    assert!(
+        cluster
+            .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&upgrade_db])
+            .unwrap()
+            .is_none()
+    );
 }
