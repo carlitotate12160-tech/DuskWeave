@@ -42,6 +42,7 @@ jobs:
 
   structure:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,6 +63,34 @@ jobs:
 
       - name: Coverage-gate regression tests
         run: python tests/check_coverage_gate.py --selftest
+
+      - name: Install pinned rust-code-analysis-cli 0.0.25
+        shell: bash
+        run: |
+          set -e
+          curl --retry 3 --max-time 15 -fsSL -o /tmp/rca.tgz "https://github.com/mozilla/rust-code-analysis/releases/download/v0.0.25/rust-code-analysis-linux-cli-x86_64.tar.gz"
+          echo "9ec2a217b8ff191e02dab5d5f2eee6158b63fd975c532b2c5d67c2e6c7249894  /tmp/rca.tgz" | sha256sum -c -
+          tar -xzf /tmp/rca.tgz -C "$RUNNER_TEMP"
+          test "$("$RUNNER_TEMP/rust-code-analysis-cli" --version)" = "rust-code-analysis-cli 0.0.25"
+
+      - name: Complexity checker regression tests
+        env:
+          DW_COMPLEXITY_ANALYZER: ${{ runner.temp }}/rust-code-analysis-cli
+        run: python -m unittest discover -s tests -p 'test_complexity*.py'
+
+      - name: Complexity policy enforcement
+        env:
+          DW_COMPLEXITY_ANALYZER: ${{ runner.temp }}/rust-code-analysis-cli
+        run: python scripts/check_complexity.py --analyzer "$DW_COMPLEXITY_ANALYZER" --report-dir "${{ runner.temp }}/dw-complexity-${{ github.run_id }}-${{ github.run_attempt }}"
+
+      - name: Upload complexity report artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dw-complexity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dw-complexity-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Resolve diff base
         id: base
