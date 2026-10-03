@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use uuid::Uuid;
 
+#[path = "support/authority_confirmation_cli.rs"]
+mod confirm_support;
 #[path = "support/registration_db.rs"]
 mod db_support;
 use db_support::*;
@@ -58,6 +60,24 @@ fn assess(operation: &str, input: &str, recover: bool, dsn: &str) -> Output {
         ],
         dsn,
     )
+}
+
+/// A new `current_authority_confirmed=true` assessment requires the live
+/// challenge/response exchange in the current invocation.
+fn assess_confirmed(
+    operation: &str,
+    input: &str,
+    engagement: &str,
+    campaign: &str,
+    revision: u64,
+    dsn: &str,
+) -> Value {
+    let mut session = confirm_support::assess_session(operation, input, false, dsn);
+    session.affirm(engagement, campaign, operation, revision);
+    let finished = session.finish();
+    assert!(finished.status.success(), "assess failed");
+    assert!(finished.stderr_tail.is_empty(), "unexpected CLI stderr");
+    serde_json::from_slice(&finished.stdout).expect("durable JSON receipt")
 }
 
 fn prepare(engagement: &str, campaign: &str, dsn: &str) -> String {
@@ -124,7 +144,14 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
     });
     input_file.write(&input);
 
-    let original = durable(assess(&operation, input_file.path(), false, &dsn));
+    let original = assess_confirmed(
+        &operation,
+        input_file.path(),
+        &engagement.to_string(),
+        &campaign.to_string(),
+        1,
+        &dsn,
+    );
     let contract = &original["contract"];
     assert_eq!(contract["operation_id"], operation);
     assert_eq!(contract["request"], input);
@@ -277,7 +304,11 @@ fn cli_assess_and_fresh_process_recovery_preserve_pending_original() {
             serde_json::from_slice::<Value>(&absent.stdout).unwrap()["result"],
             "not_committed"
         );
-        let original = durable(assess(&operation, file.path(), false, &dsn));
+        let original = if *confirmed {
+            assess_confirmed(&operation, file.path(), &es, &cs, *revision, &dsn)
+        } else {
+            durable(assess(&operation, file.path(), false, &dsn))
+        };
         assert_eq!(original["result"], "durable");
         assert_eq!(original["contract"]["decision"], *decision);
         assert_eq!(original["history"], "pending");

@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use uuid::Uuid;
 
+#[path = "support/authority_confirmation_cli.rs"]
+mod confirm_support;
 #[path = "support/registration_db.rs"]
 mod db_support;
 use db_support::*;
@@ -132,6 +134,7 @@ struct CliCase {
 fn cli_scope_and_window_refusals_publish_and_recover_identically() {
     let _guard = db();
     let now = db_epoch();
+    let dsn = std::env::var("DW_TEST_DATABASE_URL").unwrap();
     let case = |window, overrides, decision, scope, window_label| CliCase {
         window,
         overrides,
@@ -216,7 +219,24 @@ fn cli_scope_and_window_refusals_publish_and_recover_identically() {
         }
         let file = InputFile::new(&format!("req-{e}"), &body);
         let op = prepare(&engagement, &campaign);
-        let assessed = json_output(planning("assess", &op, &file, "false"));
+        // A saved `current_authority_confirmed=true` request must pass the
+        // fresh live exchange in this invocation; false takes the unchanged
+        // non-interactive path.
+        let assessed = if body["current_authority_confirmed"].as_bool().unwrap() {
+            let mut session = confirm_support::assess_session(&op, file.path(), false, &dsn);
+            session.affirm(
+                &engagement,
+                &campaign,
+                &op,
+                body["expected_mission_revision"].as_u64().unwrap(),
+            );
+            let finished = session.finish();
+            assert!(finished.status.success());
+            assert!(finished.stderr_tail.is_empty());
+            serde_json::from_slice(&finished.stdout).unwrap()
+        } else {
+            json_output(planning("assess", &op, &file, "false"))
+        };
         assert_eq!(assessed["contract"]["version"], 2);
         assert_eq!(assessed["contract"]["decision"], case.decision);
         assert_labels(&assessed, case.scope, case.window_label);
