@@ -9,6 +9,8 @@ use duskweave::postgres_mission::{PgAllocator, PgMissionStore, qualify_runtime};
 use duskweave::postgres_trajectory::PgTrajectory;
 use duskweave::registration;
 use duskweave::trajectory::HistoryStatus;
+use duskweave::withdrawal::{OBLIGATION, WithdrawalHistoryPort, WithdrawalStore};
+use duskweave::withdrawal_input::read_withdrawal_file;
 use duskweave::{Fail, Res};
 use postgres::NoTls;
 use std::env;
@@ -175,6 +177,72 @@ fn cmd_inspect(args: &[String]) -> Res<()> {
     Ok(())
 }
 
+fn cmd_withdraw(args: &[String]) -> Res<()> {
+    let mut operation = None;
+    let outcome = (|| {
+        let f = flags(args, &["operation", "input", "recover"])?;
+        let op = OperationId::parse(flag(&f, "operation")?).ok_or(Fail::Input("invalid_args"))?;
+        operation = Some(op);
+        let recover = match flag(&f, "recover")? {
+            "true" => true,
+            "false" => false,
+            _ => return Err(Fail::Input("invalid_args")),
+        };
+        let request = read_withdrawal_file(Path::new(flag(&f, "input")?))?;
+        let mut store = PgMissionStore::new(connect()?);
+        let mut allocator = PgAllocator::new(connect()?);
+        let Some(event) = store.withdraw(&request, op, recover, &mut allocator)? else {
+            return Ok(
+                serde_json::json!({"result": "not_committed", "operation": op,
+                "action": "reconcile_authority"}),
+            );
+        };
+        let history = match connect() {
+            Ok(client) => {
+                let mut consumer = PgTrajectory::new(client);
+                if recover {
+                    consumer.inspect(&event)
+                } else {
+                    consumer.publish(&event)
+                }
+            }
+            Err(error) => Err(error),
+        };
+        Ok(withdrawal_receipt(event, history))
+    })();
+    let mut receipt = match &outcome {
+        Ok(receipt) => receipt.clone(),
+        Err(error) => serde_json::json!({
+            "result": if *error == Fail::Store("commit_unknown") { "unknown" } else { "rejected" },
+            "operation": operation, "reason": category(*error),
+            "action": if *error == Fail::Store("commit_unknown") { "recover_before_retry" } else { "reconcile_authority" },
+        }),
+    };
+    receipt["current_permission"] = false.into();
+    receipt["continuation_blocked"] = true.into();
+    println!(
+        "{}",
+        serde_json::to_string(&receipt).map_err(|_| Fail::Store("encode"))?
+    );
+    outcome.map(|_| ())
+}
+
+fn withdrawal_receipt(
+    event: duskweave::withdrawal::MissionAuthorityWithdrawn,
+    history: Res<duskweave::trajectory::Delivered>,
+) -> serde_json::Value {
+    let view = duskweave::planning_history::history_result(history);
+    serde_json::json!({
+        "result": "durable", "contract": event, "authority_state": "withdrawn",
+        "owner_revision": 2, "publication_obligation": OBLIGATION,
+        "history_source": "trajectory", "history": view.state, "history_reason": view.reason,
+        "complete_history": view.complete,
+        "action": if view.complete { "none" } else if view.state == "unknown" {
+            "recover_history_before_retry"
+        } else { "retry_known_withdrawal" },
+    })
+}
+
 fn cmd_reconcile(args: &[String]) -> Res<()> {
     let f = flags(args, &["engagement", "campaign", "operation"])?;
     let (e, c) = scope(&f)?;
@@ -194,6 +262,7 @@ fn run(args: &[String]) -> Res<()> {
         "prepare-operation" => cmd_prepare(args),
         "register" => cmd_register(args),
         "assess" => planning_cli::cmd_assess(args),
+        "withdraw" => cmd_withdraw(args),
         "planning-history" => planning_cli::cmd_planning_history(args),
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),

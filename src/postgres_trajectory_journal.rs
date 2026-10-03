@@ -17,12 +17,14 @@ use uuid::Uuid;
 #[derive(Clone, Copy)]
 pub(super) enum JournalTable {
     Planning,
+    Withdrawal,
 }
 
 impl JournalTable {
     fn name(self) -> &'static str {
         match self {
             Self::Planning => "trajectory.planning_history",
+            Self::Withdrawal => "trajectory.withdrawal_history",
         }
     }
 }

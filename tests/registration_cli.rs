@@ -3,6 +3,7 @@
 
 use duskweave::mission::OperationId;
 use postgres::{Client, NoTls};
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use uuid::Uuid;
@@ -10,6 +11,9 @@ use uuid::Uuid;
 const BIN: &str = env!("CARGO_BIN_EXE_duskweave");
 const MIGRATION: &str = include_str!("../migrations/0001_mission_registration.sql");
 const PLANNING_MIGRATION: &str = include_str!("../migrations/0002_planning_assessment.sql");
+const HISTORY_MIGRATION: &str = include_str!("../migrations/0003_trajectory_planning_history.sql");
+const V2_MIGRATION: &str = include_str!("../migrations/0004_planning_assessment_v2.sql");
+const WITHDRAWAL_MIGRATION: &str = include_str!("../migrations/0005_mission_withdrawal.sql");
 
 static DB: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -24,6 +28,27 @@ fn admin_client() -> Client {
 
 fn runtime_dsn() -> String {
     std::env::var("DW_TEST_DATABASE_URL").expect("DW_TEST_DATABASE_URL required")
+}
+
+fn withdrawal_row_counts() -> [i64; 7] {
+    let mut client = runtime_dsn()
+        .parse::<postgres::Config>()
+        .unwrap_or_else(|_| panic!("withdrawal snapshot config failed"))
+        .connect(NoTls)
+        .unwrap_or_else(|_| panic!("withdrawal snapshot connection failed"));
+    let row = client
+        .query_one(
+            "SELECT (SELECT count(*) FROM mission.missions), \
+             (SELECT count(*) FROM mission.registration_outbox), \
+             (SELECT count(*) FROM mission.planning_assessments), \
+             (SELECT count(*) FROM mission.withdrawals), \
+             (SELECT count(*) FROM trajectory.registration_history), \
+             (SELECT count(*) FROM trajectory.planning_history), \
+             (SELECT count(*) FROM trajectory.withdrawal_history)",
+            &[],
+        )
+        .unwrap_or_else(|_| panic!("withdrawal snapshot read failed"));
+    std::array::from_fn(|i| row.get(i))
 }
 
 fn ensure_setup() {
@@ -54,6 +79,9 @@ fn ensure_setup() {
         let mut a = cfg.connect(NoTls).unwrap();
         a.batch_execute(MIGRATION).unwrap();
         a.batch_execute(PLANNING_MIGRATION).unwrap();
+        a.batch_execute(HISTORY_MIGRATION).unwrap();
+        a.batch_execute(V2_MIGRATION).unwrap();
+        a.batch_execute(WITHDRAWAL_MIGRATION).unwrap();
         a.batch_execute(&format!(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{rt_user}') \
              THEN CREATE ROLE {rt_user} LOGIN PASSWORD '{rt_pass}'; \
@@ -273,9 +301,38 @@ fn cli_rejects_without_mutation() {
             vec!["inspect", "--engagement", "not-a-uuid", "--campaign", &cs],
         ),
     ] {
+        let before = if args.first() == Some(&"withdraw") {
+            Some(withdrawal_row_counts())
+        } else {
+            None
+        };
         let o = cli(&args, Some(&dsn));
+        let after = before.map(|_| withdrawal_row_counts());
         assert!(!o.status.success(), "{label} must fail: {}", stdout(&o));
-        assert!(stdout(&o).starts_with("error="), "{label}: {}", stdout(&o));
+        if args.first() == Some(&"withdraw") {
+            assert_eq!(before, after, "malformed withdrawal mutated durable rows");
+            assert!(o.stderr.is_empty(), "withdrawal emitted stderr");
+            let output = stdout(&o);
+            let lines: Vec<_> = output.lines().collect();
+            assert_eq!(lines.len(), 2, "withdrawal output line count");
+            let receipt: Value = serde_json::from_str(lines[0])
+                .unwrap_or_else(|_| panic!("withdrawal rejection JSON invalid"));
+            assert!(
+                receipt
+                    == json!({
+                        "result": "rejected", "operation": null,
+                        "reason": "invalid_args", "action": "reconcile_authority",
+                        "current_permission": false, "continuation_blocked": true
+                    }),
+                "withdrawal rejection receipt mismatch"
+            );
+            assert!(
+                lines[1] == "error=invalid_args",
+                "withdrawal category mismatch"
+            );
+        } else {
+            assert!(stdout(&o).starts_with("error="), "{label}: {}", stdout(&o));
+        }
     }
 
     let path =

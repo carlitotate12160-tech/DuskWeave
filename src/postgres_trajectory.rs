@@ -1,5 +1,7 @@
 //! CampaignTrajectory owner's PostgreSQL adapter. Queries only
 //! trajectory.* tables; history insertion and completion commit atomically.
+#[path = "postgres_withdrawal_history.rs"]
+mod postgres_withdrawal_history;
 
 use crate::mission::{CampaignId, EngagementId, EventId, MissionRegistered};
 use crate::planning::PlanningAssessed;
