@@ -68,7 +68,7 @@ All interactions and plans are subject to:
 
 Latest verified delivery base: `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` on remote `master`, verified live on 2026-10-04 as the squash-merge of [PR #22](https://github.com/carlitotate12160-tech/DuskWeave/pull/22), which merged `DW-M0C-C1A-PR22-RECONCILE`. Exact-master CI run 37134662240 succeeded on that merge. Earlier history: PR #23 merged the baseline-only FIX `DW-FIX-M0-PLANNING-CLI-COMPLEXITY` at `22230eb7458e9ca708db9ffa9df0f339c9bfc038`. PR #21 merged `DW-IMPLEMENT-M0C-C0-FRESH-AUTHORITY` on 2026-10-03. PR #18 merged R3's behavior-preserving extraction of planning-history identity/dedup/conflict persistence. PR #19 merged the zero-runtime-change `DW-FIX-DELIVERY-CONTEXT-AND-BUILD-REUSE`. PR #20 merged the document-only review-policy update.
 
-The M0C-C1b candidate in `D:/DuskWeave-m0c-c0`, branch `feat/m0c-c1b-durable-refusal`, contains in-progress versioned durable planning refusal and positive admission. M0 remains DEMO_PENDING and unsealed.
+The M0C-C1b candidate in `D:/DuskWeave-m0c-c0`, branch `feat/m0c-c1b-durable-refusal`, contains in-progress versioned durable planning refusal; positive admission remains a separate pending delivery. M0 remains DEMO_PENDING and unsealed.
 
 ### CI McCabe Gate Draft (2026-10-04)
 
@@ -84,6 +84,8 @@ On unchanged protected-base Rust (`73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc`), t
 - `src/registration.rs`: `register` (own=10), `reconcile` (own=10)
 
 This is a working detector, not a green merge. Expected rejection of the baseline is evidence that enforcement works. The next action is owner-bounded remediation and gate qualification before a green gate merge. This draft candidate records the gate implementation and its test evidence; it does not record its own merge.
+
+A distinct review of the gate candidate found that the Python checker itself exceeded the enforced own-complexity cap, that report schema/source binding accepted malformed input, and that the C1b tracking claim above was stale. This delta delivery corrects all three: report codec/validation/projection moved to `scripts/complexity_reports.py`, all corrected functions measure own complexity <= 7 (Radon 6.0.1), malformed report input fails closed with exit 2, and the C1b sentence now separates durable refusal (in progress) from positive admission (pending). The candidate remains a draft and is not merge-ready.
 
 ### Historical C1a correction (2026-10-03)
 

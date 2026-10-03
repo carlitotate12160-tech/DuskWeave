@@ -9,7 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-CHECKER = Path(__file__).resolve().parent.parent / "scripts" / "check_complexity.py"
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+CHECKER = SCRIPTS / "check_complexity.py"
 ANALYZER = os.environ.get("DW_COMPLEXITY_ANALYZER")
 
 REVIEWED_RUN_SHA = (
@@ -36,6 +37,7 @@ REVIEWED_RUN_SRC = """fn run(args: &[String]) -> Res<()> {
 OK_RS = "fn gate() {\n" + "    if true {}\n" * 6 + "}\n"
 OVER_RS = "fn gate() {\n" + "    if true {}\n" * 7 + "}\n"
 DECL_RS = "struct A;\nenum E { X }\n"
+UNPARSED_RS = ("fn a() {\n    let x = 1;\n" * 60) + "}\n"
 LONG_RS = "fn long() {\n" + "    let x = 1;\n" * 60 + "}\n"
 SAME_LINE_RS = (
     "fn f() {\n    let a = || { if true {} }; let b = || { if true {} };\n}\n"
@@ -72,11 +74,17 @@ fn b(a: bool, b: bool, c: bool) -> bool {
 """
 
 
-def load_checker():
-    spec = importlib.util.spec_from_file_location("check_complexity", CHECKER)
+def load_module(name):
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+def load_checker():
+    load_module("complexity_reports")
+    return load_module("check_complexity")
 
 
 def git(repo, *args):
@@ -135,28 +143,6 @@ def mk(file="src/main.rs", name="f", depth=1, own=1, span=3):
         "depth": depth,
         "cap": 7,
         "allowance": None,
-    }
-
-
-def fn_node(name, cyc_sum, kids=(), start=1, end=2):
-    return {
-        "kind": "function",
-        "name": name,
-        "start_line": start,
-        "end_line": end,
-        "spaces": list(kids),
-        "metrics": {"cyclomatic": {"sum": float(cyc_sum)}},
-    }
-
-
-def unit_report(nodes, nom_total):
-    return {
-        "kind": "unit",
-        "name": "src/x.rs",
-        "start_line": 1,
-        "end_line": 99,
-        "spaces": list(nodes),
-        "metrics": {"nom": {"total": float(nom_total)}},
     }
 
 
@@ -268,6 +254,15 @@ class CliFixtures(unittest.TestCase):
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             self.assertEqual(summary_of(td)["functions"], 0)
 
+    def test_non_unit_report_root_fails_closed(self):
+        # rca emits a function-kind root for source it cannot fully parse;
+        # schema qualification must reject it rather than measure it.
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/bad.rs": UNPARSED_RS})
+            res = run_checker(td)
+            self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+            self.assertIn("root kind", res.stderr)
+
     def test_long_span_review_trigger_passes(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/long.rs": LONG_RS})
@@ -376,73 +371,6 @@ class PolicyEvaluator(unittest.TestCase):
         self.assertEqual(allow["status"], "digest_mismatch")
         self.assertEqual(ms[0]["cap"], 7)
         self.assertEqual(len(self.checker.evaluate(ms)[0]), 1)
-
-
-class ReportValidation(unittest.TestCase):
-    def setUp(self):
-        self.checker = load_checker()
-
-    def assert_bad(self, fn, *args, needle=""):
-        with self.assertRaises(self.checker.CheckError) as ctx:
-            fn(*args)
-        if needle:
-            self.assertIn(needle, str(ctx.exception))
-
-    def test_load_report_rejects_invalid_and_duplicate_keys(self):
-        with tempfile.TemporaryDirectory() as td:
-            bad = os.path.join(td, "b.json")
-            with open(bad, "w") as fh:
-                fh.write("{not json")
-            self.assert_bad(self.checker.load_report, bad)
-            with open(bad, "w") as fh:
-                fh.write('{"a": 1, "a": 2}')
-            self.assert_bad(self.checker.load_report, bad, needle="duplicate")
-            with open(bad, "w") as fh:
-                fh.write('{"n1": 1, "N1": 2}')
-            self.assertEqual(self.checker.load_report(bad), {"n1": 1, "N1": 2})
-
-    def test_measure_rejects_malformed_metric_and_span(self):
-        c = self.checker
-        bad_metric = fn_node("f", 1)
-        del bad_metric["metrics"]["cyclomatic"]
-        self.assert_bad(
-            c.measure_report, unit_report([bad_metric], 1), "src/x.rs")
-        for value in ("2", True, 1.5, -1):
-            node = fn_node("f", 1)
-            node["metrics"]["cyclomatic"]["sum"] = value
-            self.assert_bad(
-                c.measure_report, unit_report([node], 1), "src/x.rs")
-        for span in ((0, 2), (5, 2), (1.5, 2)):
-            node = fn_node("f", 1, start=span[0], end=span[1])
-            self.assert_bad(
-                c.measure_report, unit_report([node], 1), "src/x.rs",
-                needle="span")
-
-    def test_child_sum_exceeding_parent_fails(self):
-        c = self.checker
-        parent = fn_node("p", 2, kids=[fn_node("c", 5)])
-        self.assert_bad(
-            c.measure_report, unit_report([parent], 2), "src/x.rs")
-
-    def test_nom_total_must_match_counted_functions(self):
-        c = self.checker
-        report = unit_report([fn_node("a", 1), fn_node("b", 1)], 3)
-        self.assert_bad(c.measure_report, report, "src/x.rs")
-        report = unit_report([fn_node("a", 1)], 2)
-        self.assert_bad(c.measure_report, report, "src/x.rs")
-
-    def test_reconcile_rejects_missing_and_extra_reports(self):
-        c = self.checker
-        with tempfile.TemporaryDirectory() as td:
-            os.makedirs(os.path.join(td, "src"))
-            self.assert_bad(
-                c.reconcile_reports, td, ["src/a.rs"], needle="missing")
-            with open(os.path.join(td, "src", "a.rs.json"), "w") as fh:
-                fh.write("{}")
-            with open(os.path.join(td, "src", "b.rs.json"), "w") as fh:
-                fh.write("{}")
-            self.assert_bad(
-                c.reconcile_reports, td, ["src/a.rs"], needle="unexpected")
 
     def test_body_digest_matches_reviewed_binding(self):
         c = self.checker

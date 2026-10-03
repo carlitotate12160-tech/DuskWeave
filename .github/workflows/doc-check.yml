@@ -76,7 +76,7 @@ jobs:
       - name: Complexity checker regression tests
         env:
           DW_COMPLEXITY_ANALYZER: ${{ runner.temp }}/rust-code-analysis-cli
-        run: python -m unittest discover -s tests -p test_complexity.py
+        run: python -m unittest discover -s tests -p 'test_complexity*.py'
 
       - name: Complexity policy enforcement
         env:
