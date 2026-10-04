@@ -40,7 +40,7 @@ def load_report(path):
     except (
         OSError,
         UnicodeDecodeError,
-        json.JSONDecodeError,
+        ValueError,
         RecursionError,
     ) as exc:
         raise CheckError(f"invalid JSON report {path}: {exc}")
@@ -92,7 +92,7 @@ def _node_fields(node, at):
     if not isinstance(node, dict):
         raise CheckError(f"{at}: node is not an object")
     kind = node.get("kind")
-    if kind not in ALLOWED_KINDS:
+    if not isinstance(kind, str) or kind not in ALLOWED_KINDS:
         raise CheckError(f"{at}: unrecognized kind {kind!r}")
     name = node.get("name")
     if not isinstance(name, str):
@@ -166,6 +166,8 @@ def _qualify_root(report, rel_src, source_path):
 
 
 def _integral_sum(node, at):
+    if not isinstance(node, dict):
+        raise CheckError(f"{at}: node is not an object")
     metrics = node.get("metrics")
     cyc = metrics.get("cyclomatic") if isinstance(metrics, dict) else None
     value = cyc.get("sum") if isinstance(cyc, dict) else None
@@ -174,7 +176,10 @@ def _integral_sum(node, at):
 
 def _record_function(node, ident, rel_src, start, end, depth, children, out, seen):
     at = f"{rel_src} {ident}"
-    own = _integral_sum(node, at) - sum(_integral_sum(k, at) for k in children)
+    child_sum = sum(
+        _integral_sum(k, f"{at} child@{i}") for i, k in enumerate(children)
+    )
+    own = _integral_sum(node, at) - child_sum
     if own < 1:
         raise CheckError(
             f"{at}: own {own} < 1 (immediate children exceed node sum)"

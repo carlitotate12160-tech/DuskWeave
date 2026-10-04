@@ -1,13 +1,14 @@
 """Report-boundary controls for the McCabe gate.
 
-Import-level tests for scripts/complexity_reports.py (schema qualification,
-source binding, span and metric validation, reconciliation, projection) plus
-a POSIX analyzer-stub subprocess control proving malformed report input
-reaches CLI exit 2 through the real analyzer boundary.
+Import-level tests for scripts/complexity_reports.py (schema, source
+binding, spans, metrics, reconciliation, projection) plus CLI exit-2
+controls through a controlled analyzer boundary: a real executable shell
+stub on POSIX and a disposable Python child harness everywhere.
 """
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -117,6 +118,19 @@ class SchemaBinding(unittest.TestCase, AssertBad):
         node["spaces"] = "nope"
         self.assert_bad(unit_report([node], 1), needle="spaces")
 
+    def test_non_string_kind_rejected(self):
+        for value in ([], {}, 7, None):
+            node = fn_node("f", 1)
+            node["kind"] = value
+            self.assert_bad(unit_report([node], 1), needle="kind")
+
+    def test_non_object_immediate_child_in_function_rejected(self):
+        for bad_child in (None, "x", 7):
+            parent = fn_node("f", 2, kids=[bad_child])
+            self.assert_bad(
+                unit_report([parent], 1), needle="not an object"
+            )
+
     def test_impl_and_trait_children_accepted(self):
         impl = fn_node(
             "impl S", 0, kind="impl",
@@ -212,6 +226,15 @@ class MetricValidation(unittest.TestCase, AssertBad):
         self.assert_bad(report)
         report["metrics"]["nom"] = {"total": "1"}
         self.assert_bad(report)
+
+    def test_oversized_json_integer_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "big.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write('{"nom": ' + "9" * 5000 + "}")
+            with self.assertRaises(REPORTS.CheckError) as ctx:
+                REPORTS.load_report(path)
+            self.assertIn("invalid JSON", str(ctx.exception))
 
 
 class ValidMeasurement(unittest.TestCase):
@@ -312,50 +335,143 @@ fi
 exit 0
 """
 
+HARNESS_PY = '''\
+"""Disposable boundary harness: loads the real checker and substitutes only
+its _run analyzer boundary. Git calls delegate to the real runner."""
+import importlib.util
+import json
+import os
+import subprocess
+import sys
 
-@unittest.skipUnless(os.name == "posix", "needs an executable shell stub")
+scripts_dir, mode, analyzer, report_dir = sys.argv[1:5]
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(scripts_dir, name + ".py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_load("complexity_reports")
+checker = _load("check_complexity")
+real_run = subprocess.run
+
+UNIT = {
+    "kind": "unit", "name": "src/a.rs", "start_line": 1, "end_line": 1,
+    "spaces": [], "metrics": {"nom": {"total": 1.0}},
+}
+FN = {
+    "kind": "function", "name": "f", "start_line": 1, "end_line": 1,
+    "spaces": [], "metrics": {"cyclomatic": {"sum": 1.0}},
+}
+
+
+def crafted(mode, out_dir):
+    if mode == "malformed":
+        return "{bad json"
+    if mode == "bigint":
+        return '{"nom": ' + "9" * 5000 + "}"
+    report = dict(UNIT)
+    child = dict(FN)
+    if mode == "badkind":
+        child["kind"] = []
+    elif mode == "nullchild":
+        child["spaces"] = [None]
+    report["spaces"] = [child]
+    return json.dumps(report)
+
+
+def boundary(argv):
+    if argv[0] != analyzer:
+        return real_run(argv, capture_output=True)
+    if "--version" in argv:
+        return subprocess.CompletedProcess(
+            argv, 0, b"rust-code-analysis-cli 0.0.25\\n", b""
+        )
+    if mode == "fail":
+        return subprocess.CompletedProcess(argv, 3, b"", b"fake boom")
+    out_dir = argv[argv.index("-o") + 1]
+    os.makedirs(os.path.join(out_dir, "src"), exist_ok=True)
+    if mode != "missing":
+        with open(os.path.join(out_dir, "src", "a.rs.json"), "w") as fh:
+            fh.write(crafted(mode, out_dir))
+    return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+
+checker._run = boundary
+sys.exit(checker.main(["--analyzer", analyzer, "--report-dir", report_dir]))
+'''
+
+
 class AnalyzerBoundary(unittest.TestCase):
-    """CLI exit-2 controls through a controlled analyzer stub.
+    """CLI exit-2 controls through a controlled analyzer boundary.
 
-    The same production code paths are covered platform-independently by the
-    import-level controls above; the stub additionally proves the CLI maps
-    them to exit 2 where a POSIX stub can run.
+    POSIX exercises a real executable shell stub; all platforms run a
+    disposable Python child harness substituting only the checker's ``_run``
+    analyzer boundary (git delegates to the real runner). The harness proves
+    the CLI's exit mapping, not a fake Windows native binary.
     """
 
-    def run_with_stub(self, mode):
+    def run_boundary(self, mode, force_harness=False):
         td = tempfile.mkdtemp()
-        self.addCleanup(
-            __import__("shutil").rmtree, td, ignore_errors=True
-        )
+        self.addCleanup(shutil.rmtree, td, ignore_errors=True)
         make_repo(td, {"src/a.rs": "pub fn a() {}\n"})
         stub = os.path.join(td, "fake-analyzer")
-        with open(stub, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(FAKE_ANALYZER_SH)
-        os.chmod(stub, 0o755)
-        env = dict(os.environ, FAKE_MODE=mode)
-        return subprocess.run(
-            [
+        if os.name == "posix" and not force_harness:
+            with open(stub, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(FAKE_ANALYZER_SH)
+            os.chmod(stub, 0o755)
+            env = dict(os.environ, FAKE_MODE=mode)
+            cmd = [
                 sys.executable, str(CHECKER), "--analyzer", stub,
                 "--report-dir", os.path.join(td, "out"),
+            ]
+            return subprocess.run(
+                cmd, cwd=td, capture_output=True, text=True, env=env
+            )
+        with open(stub, "w", encoding="utf-8") as fh:
+            fh.write("stub")
+        harness = os.path.join(td, "harness.py")
+        with open(harness, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(HARNESS_PY)
+        return subprocess.run(
+            [
+                sys.executable, harness, str(SCRIPTS), mode, stub,
+                os.path.join(td, "out"),
             ],
-            cwd=td, capture_output=True, text=True, env=env,
+            cwd=td, capture_output=True, text=True,
         )
 
-    def test_malformed_report_exits_2(self):
-        res = self.run_with_stub("malformed")
+    def assert_exit_2(self, mode, needle, force_harness=False):
+        res = self.run_boundary(mode, force_harness)
         self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
         self.assertIn("complexity check failed", res.stderr)
-        self.assertIn("invalid JSON", res.stderr)
+        self.assertIn(needle, res.stderr)
+
+    def test_malformed_report_exits_2(self):
+        self.assert_exit_2("malformed", "invalid JSON")
 
     def test_missing_report_exits_2(self):
-        res = self.run_with_stub("missing")
-        self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
-        self.assertIn("inventory mismatch", res.stderr)
+        self.assert_exit_2("missing", "inventory mismatch")
 
     def test_nonzero_analyzer_exits_2(self):
-        res = self.run_with_stub("fail")
-        self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
-        self.assertIn("exited 3", res.stderr)
+        self.assert_exit_2("fail", "exited 3")
+
+    def test_non_string_kind_report_exits_2(self):
+        self.assert_exit_2("badkind", "kind", force_harness=True)
+
+    def test_null_child_report_exits_2(self):
+        self.assert_exit_2(
+            "nullchild", "not an object", force_harness=True
+        )
+
+    def test_oversized_int_report_exits_2(self):
+        self.assert_exit_2("bigint", "invalid JSON", force_harness=True)
 
 
 if __name__ == "__main__":
