@@ -45,18 +45,10 @@ pub(super) struct JournalRecord {
     pub(super) contract: Value,
 }
 
-/// Decodes one accepted row's contract through the owning codec and verifies
-/// that the validated record's provenance matches its scoped catalog exactly
-/// before comparing canonical contract content.
-fn matches(
-    row: &Row,
-    incoming: &JournalRecord,
-    decode: fn(Value) -> Res<JournalRecord>,
-) -> Res<bool> {
-    let raw: Value = row
-        .try_get("contract")
-        .map_err(|_| Fail::Store("contract_decode"))?;
-    let stored = decode(raw)?;
+/// Catalog columns must carry the validated record's provenance exactly:
+/// the stored scope binds to the incoming scope while every stored identity
+/// axis binds to its row column, never to the incoming identity.
+fn catalog_matches(row: &Row, stored: &JournalRecord, incoming: &JournalRecord) -> Res<bool> {
     let event: Uuid = row
         .try_get("event_id")
         .map_err(|_| Fail::Store("contract_decode"))?;
@@ -75,7 +67,6 @@ fn matches(
     let obligation: String = row
         .try_get("obligation")
         .map_err(|_| Fail::Store("contract_decode"))?;
-    // Catalog columns must carry the validated record's provenance exactly.
     let catalog = (
         stored.engagement_id,
         stored.campaign_id,
@@ -86,8 +77,8 @@ fn matches(
         i64::from(stored.version),
         stored.obligation.as_str(),
     );
-    if catalog
-        != (
+    Ok(catalog
+        == (
             incoming.engagement_id,
             incoming.campaign_id,
             event,
@@ -96,11 +87,43 @@ fn matches(
             kind.as_str(),
             i64::from(version),
             obligation.as_str(),
-        )
-    {
+        ))
+}
+
+/// Decodes one accepted row's contract through the owning codec and verifies
+/// that the validated record's provenance matches its scoped catalog exactly
+/// before comparing canonical contract content.
+fn matches(
+    row: &Row,
+    incoming: &JournalRecord,
+    decode: fn(Value) -> Res<JournalRecord>,
+) -> Res<bool> {
+    let raw: Value = row
+        .try_get("contract")
+        .map_err(|_| Fail::Store("contract_decode"))?;
+    let stored = decode(raw)?;
+    if !catalog_matches(row, &stored, incoming)? {
         return Err(Fail::Store("contract_decode"));
     }
     Ok(stored.contract == incoming.contract)
+}
+
+/// One scanned row's disposition: an anomaly marker or an accepted row that
+/// fails the catalog/contract comparison is not the same history row; only
+/// an exactly matching accepted row is. Unknown status is bounded corruption.
+fn same_history_row(
+    row: &Row,
+    incoming: &JournalRecord,
+    decode: fn(Value) -> Res<JournalRecord>,
+) -> Res<bool> {
+    let status: &str = row
+        .try_get("status")
+        .map_err(|_| Fail::Store("contract_decode"))?;
+    match status {
+        "anomaly" => Ok(false),
+        "accepted" => matches(row, incoming, decode),
+        _ => Err(Fail::Store("contract_decode")),
+    }
 }
 
 /// Scoped identity lookup over both accepted axes plus anomaly markers: an
@@ -129,15 +152,11 @@ pub(super) fn existing(
         )
         .map_err(|e| store_err(&e))?;
     let mut result = None;
-    for row in rows {
-        let status: &str = row
-            .try_get("status")
-            .map_err(|_| Fail::Store("contract_decode"))?;
-        match status {
-            "anomaly" => return Ok(Some(Delivered::Anomaly)),
-            "accepted" if matches(&row, incoming, decode)? => result = Some(Delivered::Completed),
-            "accepted" => return Ok(Some(Delivered::Anomaly)),
-            _ => return Err(Fail::Store("contract_decode")),
+    for row in &rows {
+        if same_history_row(row, incoming, decode)? {
+            result = Some(Delivered::Completed);
+        } else {
+            return Ok(Some(Delivered::Anomaly));
         }
     }
     Ok(result)
