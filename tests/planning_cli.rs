@@ -105,6 +105,27 @@ fn durable(output: Output) -> Value {
     serde_json::from_slice(&output.stdout).expect("durable JSON receipt")
 }
 
+fn admin() -> postgres::Client {
+    let mut config = dsn("DW_TEST_ADMIN_DATABASE_URL");
+    config.dbname(dsn("DW_TEST_DATABASE_URL").get_dbname().unwrap());
+    config.connect(postgres::NoTls).unwrap()
+}
+
+fn planning_row(engagement: EngagementId, campaign: CampaignId, operation: &str) -> Value {
+    runtime_client()
+        .query_one(
+            "SELECT to_jsonb(a) FROM mission.planning_assessments a \
+             WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3",
+            &[
+                &engagement.0,
+                &campaign.0,
+                &Uuid::parse_str(operation).unwrap(),
+            ],
+        )
+        .expect("one scoped planning row")
+        .get(0)
+}
+
 fn effects(engagement: EngagementId, campaign: CampaignId, planning: i64) {
     for (table, expected) in [
         ("mission.missions", 1),
@@ -229,6 +250,72 @@ fn cli_fresh_duplicate_conflicts_and_recovery_keep_one_original() {
         .expect("one scoped planning row");
     assert_eq!(row.get::<_, Value>(0), original["contract"]);
     assert_eq!(row.get::<_, String>(1), "trajectory.planning_history.v1");
+    effects(engagement, campaign, 1);
+}
+
+#[test]
+fn cli_recovery_of_corrupt_record_fails_without_challenge_or_mutation() {
+    let _guard = db();
+    let (engagement, campaign) = scope(0xb1c8);
+    let (mut allocator, mut store, mut trajectory) = ports();
+    accepted(
+        &mut allocator,
+        &mut store,
+        &mut trajectory,
+        engagement,
+        campaign,
+    );
+    let dsn = std::env::var("DW_TEST_DATABASE_URL").expect("DW_TEST_DATABASE_URL required");
+    let operation = prepare(&engagement.to_string(), &campaign.to_string(), &dsn);
+    let input_file = InputFile::new(&operation);
+    input_file.write(&json!({
+        "engagement_id": engagement.0,
+        "campaign_id": campaign.0,
+        "purpose_ref": Uuid::from_u128(0x13),
+        "asset_ref": Uuid::from_u128(0x21),
+        "expected_mission_revision": 1,
+        "current_authority_confirmed": false,
+    }));
+    let original = durable(assess(&operation, input_file.path(), false, &dsn));
+    let original_row = planning_row(engagement, campaign, &operation);
+    admin()
+        .execute(
+            "UPDATE mission.planning_assessments SET contract='{}'::jsonb \
+         WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3",
+            &[
+                &engagement.0,
+                &campaign.0,
+                &Uuid::parse_str(&operation).unwrap(),
+            ],
+        )
+        .unwrap();
+    let corrupted = planning_row(engagement, campaign, &operation);
+    // The read-only recovery path hits the bounded decode failure before any
+    // challenge interaction: failed exit, exact category on stdout, empty
+    // stderr, and the stored row left exactly as the corruption setup made it.
+    let output = assess(&operation, input_file.path(), true, &dsn);
+    assert!(!output.status.success(), "corrupt recovery accepted");
+    assert_eq!(output.stdout, b"error=contract_decode\n");
+    assert!(output.stderr.is_empty(), "unexpected CLI stderr");
+    assert_eq!(planning_row(engagement, campaign, &operation), corrupted);
+    effects(engagement, campaign, 1);
+    admin()
+        .execute(
+            "UPDATE mission.planning_assessments SET contract=$4 \
+         WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3",
+            &[
+                &engagement.0,
+                &campaign.0,
+                &Uuid::parse_str(&operation).unwrap(),
+                &original_row["contract"],
+            ],
+        )
+        .unwrap();
+    assert_eq!(planning_row(engagement, campaign, &operation), original_row);
+    assert_eq!(
+        durable(assess(&operation, input_file.path(), true, &dsn)),
+        original
+    );
     effects(engagement, campaign, 1);
 }
 

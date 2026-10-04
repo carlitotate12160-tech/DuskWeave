@@ -163,8 +163,7 @@ fn prior_assessment(
             row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
         let event: PlanningAssessed =
             serde_json::from_value(contract).map_err(|_| Fail::Store("contract_decode"))?;
-        let event_id: uuid::Uuid = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
-        let obligation: String = row.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
+        let (event_id, obligation) = decode_assessment_catalog(&row)?;
         event.validate().map_err(|error| match error {
             Fail::Store("unsupported_basis") => error,
             _ => Fail::Store("contract_decode"),
@@ -178,6 +177,12 @@ fn prior_assessment(
         Ok(event)
     })
     .transpose()
+}
+
+fn decode_assessment_catalog(row: &postgres::Row) -> Res<(uuid::Uuid, String)> {
+    let event_id: uuid::Uuid = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
+    let obligation: String = row.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
+    Ok((event_id, obligation))
 }
 
 fn stored_row_identity(

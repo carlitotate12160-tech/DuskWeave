@@ -52,7 +52,22 @@ fn accepted_effect_completion_dedup_and_conflicting_identity_are_visible() {
     );
     assert_eq!(count("trajectory.withdrawal_history", e, c), 0);
     assert_eq!(consumer.publish(&event).unwrap(), Delivered::Completed);
+    // Full accepted-row snapshot across duplicate publication and later
+    // anomaly/recovery: each read is a fresh connection, so post-anomaly
+    // equality also proves what fresh recovery sees is byte-identical.
+    let accepted_row = || {
+        runtime_client()
+            .query_one(
+                "SELECT to_jsonb(h) FROM trajectory.withdrawal_history h \
+                 WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
+                &[&e.0, &c.0],
+            )
+            .unwrap()
+            .get::<_, Value>(0)
+    };
+    let before = accepted_row();
     assert_eq!(consumer.publish(&event).unwrap(), Delivered::Duplicate);
+    assert_eq!(accepted_row(), before);
     let row = runtime_client().query_one(
         "SELECT contract,completed_at IS NOT NULL,obligation FROM trajectory.withdrawal_history \
          WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'", &[&e.0, &c.0]).unwrap();
@@ -102,6 +117,7 @@ fn accepted_effect_completion_dedup_and_conflicting_identity_are_visible() {
         ),
         3
     );
+    assert_eq!(accepted_row(), before);
 }
 
 #[test]

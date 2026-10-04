@@ -145,7 +145,10 @@ fn v2_semantic_identity_tolerates_reordered_nested_keys() {
         serde_json::from_str(&rekey(&serde_json::to_value(&event).unwrap())).unwrap();
     assert_eq!(reordered, event);
     assert_eq!(consumer.inspect(&reordered).unwrap(), Delivered::Completed);
+    // The full accepted row stays byte-identical across duplicate delivery.
+    let before = accepted_row(event.engagement_id, event.campaign_id);
     assert_eq!(consumer.publish(&reordered).unwrap(), Delivered::Duplicate);
+    assert_eq!(accepted_row(event.engagement_id, event.campaign_id), before);
     effects(&event, 1, 0);
 }
 
@@ -161,6 +164,18 @@ fn patch_contract(e: EngagementId, c: CampaignId, path: &str, value: &str) {
             &[&e.0, &c.0, &patch],
         )
         .unwrap();
+}
+
+/// Full accepted history row as one JSON value for exact snapshot equality.
+fn accepted_row(e: EngagementId, c: CampaignId) -> Value {
+    runtime_client()
+        .query_one(
+            "SELECT to_jsonb(h) FROM trajectory.planning_history h \
+             WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
+            &[&e.0, &c.0],
+        )
+        .unwrap()
+        .get(0)
 }
 
 #[test]
@@ -181,6 +196,7 @@ fn stored_corruption_is_bounded_failure_never_absence_or_conflict() {
         )
         .unwrap()
         .get(0);
+    let original_full = accepted_row(e, c);
 
     // Malformed typed-contract variants keep their bounded categories.
     for (path, value, expected) in [
@@ -236,14 +252,17 @@ fn stored_corruption_is_bounded_failure_never_absence_or_conflict() {
             &[&e.0, &c.0],
         )
         .unwrap();
+    let corrupted_full = accepted_row(e, c);
     assert_eq!(
         consumer.inspect(&event),
         Err(Fail::Store("contract_decode"))
     );
+    assert_eq!(accepted_row(e, c), corrupted_full);
     assert_eq!(
         consumer.publish(&event),
         Err(Fail::Store("contract_decode"))
     );
+    assert_eq!(accepted_row(e, c), corrupted_full);
     admin()
         .execute(
             "UPDATE trajectory.planning_history SET version=$3 \
@@ -251,8 +270,96 @@ fn stored_corruption_is_bounded_failure_never_absence_or_conflict() {
             &[&e.0, &c.0, &(event.version as i32)],
         )
         .unwrap();
+    assert_eq!(accepted_row(e, c), original_full);
+
+    // Catalog corruption on either identity axis is still a bounded failure:
+    // the surviving OR axis finds the row and the provenance comparison
+    // rejects the disagreement without new effects.
+    for (column, corrupt, original_col) in [
+        ("event_id", Uuid::from_u128(0xb3cc), event.event_id.0),
+        (
+            "operation_id",
+            Uuid::from_u128(0xb3cd),
+            event.operation_id.0,
+        ),
+    ] {
+        admin()
+            .execute(
+                &format!(
+                    "UPDATE trajectory.planning_history SET {column}=$3 \
+                     WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'"
+                ),
+                &[&e.0, &c.0, &corrupt],
+            )
+            .unwrap();
+        let corrupted_full = accepted_row(e, c);
+        assert_eq!(
+            consumer.inspect(&event),
+            Err(Fail::Store("contract_decode")),
+            "{column}"
+        );
+        assert_eq!(accepted_row(e, c), corrupted_full, "{column}");
+        assert_eq!(
+            consumer.publish(&event),
+            Err(Fail::Store("contract_decode")),
+            "{column}"
+        );
+        assert_eq!(accepted_row(e, c), corrupted_full, "{column}");
+        effects(&event, 1, 0);
+        admin()
+            .execute(
+                &format!(
+                    "UPDATE trajectory.planning_history SET {column}=$3 \
+                     WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'"
+                ),
+                &[&e.0, &c.0, &original_col],
+            )
+            .unwrap();
+        assert_eq!(accepted_row(e, c), original_full, "{column}");
+    }
+
+    // A standalone-valid stored contract disagreeing with the validated
+    // record's scope on either axis is rejected by the same catalog binding.
+    for (top, nested) in [
+        ("{engagement_id}", "{request,engagement_id}"),
+        ("{campaign_id}", "{request,campaign_id}"),
+    ] {
+        let stray = format!("\"{}\"", Uuid::from_u128(0xb3ce));
+        patch_contract(e, c, top, &stray);
+        patch_contract(e, c, nested, &stray);
+        let corrupted_full = accepted_row(e, c);
+        // The stored contract is standalone-valid: the bounded failure comes
+        // from its scope disagreeing with the catalog columns, not from an
+        // earlier malformed-contract rejection.
+        let stored: PlanningAssessed =
+            serde_json::from_value(corrupted_full["contract"].clone()).unwrap();
+        stored.validate().unwrap();
+        assert_eq!(
+            consumer.inspect(&event),
+            Err(Fail::Store("contract_decode")),
+            "{top}"
+        );
+        assert_eq!(accepted_row(e, c), corrupted_full, "{top}");
+        assert_eq!(
+            consumer.publish(&event),
+            Err(Fail::Store("contract_decode")),
+            "{top}"
+        );
+        assert_eq!(accepted_row(e, c), corrupted_full, "{top}");
+        effects(&event, 1, 0);
+        admin()
+            .execute(
+                "UPDATE trajectory.planning_history SET contract=$3 \
+                 WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
+                &[&e.0, &c.0, &original],
+            )
+            .unwrap();
+        assert_eq!(accepted_row(e, c), original_full, "{top}");
+    }
+
     let mut fresh = PgTrajectory::new(runtime_client());
     assert_eq!(fresh.inspect(&event).unwrap(), Delivered::Completed);
     assert_eq!(fresh.publish(&event).unwrap(), Delivered::Duplicate);
+    assert_eq!(accepted_row(e, c), original_full);
     effects(&event, 1, 0);
 }

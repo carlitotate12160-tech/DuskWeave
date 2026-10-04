@@ -87,7 +87,17 @@ fn predecessor(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'stat
     if rows.len() != 1 {
         return Ok(Some("unsupported_predecessor"));
     }
-    let row = &rows[0];
+    interpret_registration_predecessor(&rows[0], ev)
+}
+
+/// A single registration row is a valid predecessor only when its catalog
+/// header is the accepted mission record, its payload decodes as the typed
+/// MissionRegistered contract, and the catalog event identity equals the
+/// payload's. The header check precedes payload decoding.
+fn interpret_registration_predecessor(
+    row: &postgres::Row,
+    ev: &PlanningAssessed,
+) -> Res<Option<&'static str>> {
     let status: &str = row
         .try_get("status")
         .map_err(|_| Fail::Store("contract_decode"))?;
@@ -102,6 +112,16 @@ fn predecessor(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'stat
     {
         return Ok(Some("unsupported_predecessor"));
     }
+    let (registered, event) = decode_registration_predecessor(row)?;
+    if registered.event_id.0 != event {
+        return Ok(Some("unsupported_predecessor"));
+    }
+    Ok(check_planning_predecessor(&registered, ev).err())
+}
+
+/// Strict decode order: raw contract value, typed MissionRegistered
+/// payload, then the catalog event identity column.
+fn decode_registration_predecessor(row: &postgres::Row) -> Res<(MissionRegistered, Uuid)> {
     let raw: Value = row
         .try_get("contract")
         .map_err(|_| Fail::Store("contract_decode"))?;
@@ -110,10 +130,7 @@ fn predecessor(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'stat
     let event: Uuid = row
         .try_get("event_id")
         .map_err(|_| Fail::Store("contract_decode"))?;
-    if registered.event_id.0 != event {
-        return Ok(Some("unsupported_predecessor"));
-    }
-    Ok(check_planning_predecessor(&registered, ev).err())
+    Ok((registered, event))
 }
 
 pub(super) fn existing(
@@ -123,15 +140,23 @@ pub(super) fn existing(
     postgres_trajectory_journal::existing(client, JournalTable::Planning, &record(ev)?, decode)
 }
 
+/// An existing anomaly dominates and records its anomaly marker; any other
+/// existing outcome is a duplicate; absence returns None.
+fn existing_result(tx: &mut Transaction, record: &JournalRecord) -> Res<Option<Delivered>> {
+    match postgres_trajectory_journal::existing(tx, JournalTable::Planning, record, decode)? {
+        Some(Delivered::Anomaly) => {
+            postgres_trajectory_journal::append_anomaly(tx, JournalTable::Planning, record)?;
+            Ok(Some(Delivered::Anomaly))
+        }
+        Some(_) => Ok(Some(Delivered::Duplicate)),
+        None => Ok(None),
+    }
+}
+
 pub(super) fn append(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Delivered> {
     let record = record(ev)?;
-    match postgres_trajectory_journal::existing(tx, JournalTable::Planning, &record, decode)? {
-        Some(Delivered::Anomaly) => {
-            postgres_trajectory_journal::append_anomaly(tx, JournalTable::Planning, &record)?;
-            return Ok(Delivered::Anomaly);
-        }
-        Some(_) => return Ok(Delivered::Duplicate),
-        None => (),
+    if let Some(result) = existing_result(tx, &record)? {
+        return Ok(result);
     }
     if let Some(reason) = predecessor(tx, ev)? {
         return Ok(Delivered::Unresolved(reason));
