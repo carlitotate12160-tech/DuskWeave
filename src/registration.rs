@@ -74,6 +74,22 @@ fn unix_now() -> Res<i64> {
         .map_err(|_| Fail::State("clock_unavailable"))
 }
 
+fn registration_history(res: Res<Delivered>) -> HistoryStatus {
+    match res {
+        Ok(Delivered::Completed | Delivered::Duplicate) => HistoryStatus::Completed,
+        Ok(Delivered::Anomaly) => HistoryStatus::Anomaly,
+        Ok(Delivered::Unresolved(_)) | Err(_) => HistoryStatus::Pending,
+    }
+}
+
+fn reconcile_delivery(d: Delivered) -> Res<ReconcileOutcome> {
+    match d {
+        Delivered::Completed | Delivered::Duplicate => Ok(ReconcileOutcome::Committed),
+        Delivered::Anomaly => Ok(ReconcileOutcome::Conflicted),
+        Delivered::Unresolved(cat) => Err(Fail::Unresolved(cat)),
+    }
+}
+
 pub fn prepare_operation(a: &mut impl OperationAllocator) -> Res<OperationId> {
     Ok(OperationId(a.allocate()?))
 }
@@ -91,11 +107,7 @@ pub fn register(
         CommitEffect::Fresh => event,
         CommitEffect::Existing(stored) => *stored,
     };
-    let history = match traj.deliver(&committed) {
-        Ok(Delivered::Completed | Delivered::Duplicate) => HistoryStatus::Completed,
-        Ok(Delivered::Anomaly) => HistoryStatus::Anomaly,
-        Ok(Delivered::Unresolved(_)) | Err(_) => HistoryStatus::Pending,
-    };
+    let history = registration_history(traj.deliver(&committed));
     Ok(Receipt {
         engagement_id: input.engagement_id,
         campaign_id: input.campaign_id,
@@ -138,10 +150,6 @@ pub fn reconcile(
     match traj.status(e, c, ev.event_id)? {
         HistoryStatus::Completed => Ok(ReconcileOutcome::Committed),
         HistoryStatus::Anomaly => Ok(ReconcileOutcome::Conflicted),
-        HistoryStatus::Pending => match traj.deliver(&ev)? {
-            Delivered::Completed | Delivered::Duplicate => Ok(ReconcileOutcome::Committed),
-            Delivered::Anomaly => Ok(ReconcileOutcome::Conflicted),
-            Delivered::Unresolved(cat) => Err(Fail::Unresolved(cat)),
-        },
+        HistoryStatus::Pending => reconcile_delivery(traj.deliver(&ev)?),
     }
 }
