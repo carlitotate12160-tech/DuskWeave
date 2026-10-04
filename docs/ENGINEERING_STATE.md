@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a withdrawal/history MERGED through PR #22; baseline-complexity convergence FIX (`DW-FIX-M0-BASELINE-CONVERGENCE`) in delivery on PR #29 pending Work review, with pinned content from still-open sibling candidates #24–28 incorporated; C1b versioned durable refusal (open PR #25) and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
+- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a withdrawal/history MERGED through PR #22; baseline-complexity convergence FIX (`DW-FIX-M0-BASELINE-CONVERGENCE`) in delivery on PR #29 pending Work review, with pinned content from still-open sibling candidates #26–28 incorporated; C1b versioned durable refusal (open PR #25) and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
 - **Active Seal**: `DW-FOUNDATION-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -86,7 +86,7 @@ Latest verified delivery base: `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` on rem
 
 | Date | Delivery | Evidence |
 | --- | --- | --- |
-| 2026-10-04 | PR #22 merged the rebased M0C-C1a withdrawal/history correction at `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` (superseded published head `0be98a78a8f141d50cb2c9b745eb49fd24ae3726`) | [CI run 37134662240](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37134662240); local repair metrics `D:/DuskWeave-build/rust-1.94.1/reports/DW-M0C-C1A-LOC-REPAIR` |
+| 2026-10-03 | PR #22 merged the rebased M0C-C1a withdrawal/history correction at `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` (superseded published head `0be98a78a8f141d50cb2c9b745eb49fd24ae3726`) | [CI run 37134662240](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37134662240); local repair metrics `D:/DuskWeave-build/rust-1.94.1/reports/DW-M0C-C1A-LOC-REPAIR` |
 | 2026-10-03 | PR #23 merged `DW-FIX-M0-PLANNING-CLI-COMPLEXITY` at `22230eb7458e9ca708db9ffa9df0f339c9bfc038` (cmd_assess 18→2, cmd_planning_history 16→4; `run`=9 qualified pure dispatch at 222 runtime lines) | [CI run 37126501314](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37126501314) |
 | 2026-10-03 | PR #21 merged `DW-IMPLEMENT-M0C-C0-FRESH-AUTHORITY`: fresh bounded challenge/response for new affirmative assess; durable duplicates and recover=true stay read-only | [CI run 37092184903](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37092184903) |
 | 2026-10-02 | PR #18 merged the R3 planning-history journal extraction; PR #19 merged workflow corrections; PR #20 merged the QUALITY_BAR section 7 review-policy documentation | [CI run 36992649673](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36992649673); [CI run 37022757041](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37022757041) |
