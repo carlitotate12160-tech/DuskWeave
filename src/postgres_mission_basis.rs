@@ -66,7 +66,9 @@ fn read_basis(
 ) -> Res<Option<MissionBasis>> {
     let row = tx
         .query_opt(
-            "SELECT operation_id, revision, exercise_mode, starts_at, ends_at,              goal_ref, included_assets, excluded_assets FROM mission.missions              WHERE engagement_id=$1 AND campaign_id=$2",
+            "SELECT operation_id, revision, exercise_mode, starts_at, ends_at, \
+             goal_ref, included_assets, excluded_assets FROM mission.missions \
+             WHERE engagement_id=$1 AND campaign_id=$2",
             &[&request.engagement_id.0, &request.campaign_id.0],
         )
         .map_err(|error| store_err(&error))?;

@@ -13,7 +13,12 @@ use postgres::{GenericClient, IsolationLevel, Transaction};
 
 /// Fixed header, obligation and identity projection shared by the duplicate/
 /// recovery read and the scoped current-marker read.
-const MARKER_PROJECTION: &str = "SELECT contract, owner_revision=2 AND producer='mission' AND version=1      AND kind='mission_authority_withdrawn' AND publication_obligation='trajectory.withdrawal_history.v1',      jsonb_build_object('event_id',event_id,'registration_operation_id',registration_operation_id,      'operation_id',operation_id,      'engagement_id',engagement_id,'campaign_id',campaign_id)      FROM mission.withdrawals";
+const MARKER_PROJECTION: &str = "SELECT contract, \
+     owner_revision=2 AND producer='mission' AND version=1 \
+     AND kind='mission_authority_withdrawn' AND publication_obligation='trajectory.withdrawal_history.v1', \
+     jsonb_build_object('event_id',event_id,'registration_operation_id',registration_operation_id, \
+     'operation_id',operation_id,'engagement_id',engagement_id,'campaign_id',campaign_id) \
+     FROM mission.withdrawals";
 
 /// Decode one validated withdrawal contract from a projected marker row and
 /// bind it to the explicitly projected owner catalog.
@@ -88,7 +93,11 @@ fn fresh_event(
     allocator: &mut dyn OperationAllocator,
 ) -> Res<MissionAuthorityWithdrawn> {
     let registration = tx.query_one(
-        "SELECT m.operation_id,m.revision,floor(extract(epoch FROM transaction_timestamp()))::bigint,          EXISTS(SELECT 1 FROM mission.registration_outbox WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3          UNION ALL SELECT 1 FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3          UNION ALL SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2)          FROM (SELECT 1) anchor LEFT JOIN mission.missions m ON m.engagement_id=$1 AND m.campaign_id=$2",
+        "SELECT m.operation_id,m.revision,floor(extract(epoch FROM transaction_timestamp()))::bigint, \
+         EXISTS(SELECT 1 FROM mission.registration_outbox WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 \
+         UNION ALL SELECT 1 FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 \
+         UNION ALL SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2) \
+         FROM (SELECT 1) anchor LEFT JOIN mission.missions m ON m.engagement_id=$1 AND m.campaign_id=$2",
         &[&request.engagement_id.0, &request.campaign_id.0, &operation.0],
     ).map_err(|e| store_err(&e))?;
     if registration.get::<_, bool>(3) {
@@ -142,7 +151,8 @@ impl WithdrawalStore for PgMissionStore {
                 let event = fresh_event(&mut tx, request, operation, allocator)?;
                 let contract = serde_json::to_value(&event).map_err(|_| Fail::Store("encode"))?;
                 tx.execute(
-                    "INSERT INTO mission.withdrawals (engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract)                      VALUES ($1,$2,$3,$4,$5,$6)",
+                    "INSERT INTO mission.withdrawals (engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract) \
+                     VALUES ($1,$2,$3,$4,$5,$6)",
                     &[&request.engagement_id.0, &request.campaign_id.0, &operation.0,
                       &event.event_id.0, &event.registration_operation_id.0, &contract],
                 ).map_err(|e| store_err(&e))?;

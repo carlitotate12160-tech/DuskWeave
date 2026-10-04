@@ -164,53 +164,45 @@ fn upgrade_0006_preserves_v1_v2_and_admits_v3_refusal() {
     );
     drop((alloc, store, traj));
 
-    // Snapshot identity/content before 0006.
-    let before_v1: Value = admin
-        .query_one(
-            "SELECT contract FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2",
-            &[&e_a.0, &c_a.0],
-        )
-        .unwrap()
-        .get(0);
-    let before_hist_v1: Value = admin
-        .query_one(
-            "SELECT contract FROM trajectory.planning_history WHERE engagement_id=$1 AND campaign_id=$2 AND version=1",
-            &[&e_a.0, &c_a.0],
-        )
-        .unwrap()
-        .get(0);
-    assert_eq!(before_v1, assessed_a);
-    assert_eq!(before_hist_v1, assessed_a);
+    // Full producer+history row snapshots: catalog identities, exact payload,
+    // versions, fixed headers/obligations, recorded and completion timestamps.
+    let snapshot = |a: &mut postgres::Client, e: EngagementId, c: CampaignId| -> (Value, Value) {
+        let produced: Value = a
+            .query_one(
+                "SELECT to_jsonb(t) FROM (SELECT engagement_id,campaign_id,operation_id,event_id,contract,publication_obligation,recorded_at \
+                 FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2) t",
+                &[&e.0, &c.0],
+            )
+            .unwrap()
+            .get(0);
+        let history: Value = a
+            .query_one(
+                "SELECT to_jsonb(t) FROM (SELECT engagement_id,campaign_id,operation_id,event_id,producer,kind,version,obligation,status,contract,anomaly_category,recorded_at,completed_at \
+                 FROM trajectory.planning_history WHERE engagement_id=$1 AND campaign_id=$2) t",
+                &[&e.0, &c.0],
+            )
+            .unwrap()
+            .get(0);
+        (produced, history)
+    };
+    let before_v1 = snapshot(&mut admin, e_a, c_a);
+    let before_v2 = snapshot(&mut admin, e_b, c_b);
+    assert_eq!(before_v1.0["contract"], assessed_a);
+    assert_eq!(before_v1.1["contract"], assessed_a);
+    assert_eq!(before_v1.1["version"], 1);
+    assert_eq!(before_v2.1["version"], 2);
+    assert_eq!(before_v1.1["status"], "accepted");
+    assert!(before_v1.1["completed_at"].is_string());
+    assert!(before_v1.0["recorded_at"].is_string());
 
-    // Apply 0006 twice; reapplying is safe and preserves all rows.
+    // Apply 0006 twice; reapplying is safe and preserves every seeded row
+    // byte-for-byte after the first application and again after the second.
     admin.batch_execute(REFUSAL_MIGRATION).unwrap();
+    assert_eq!(snapshot(&mut admin, e_a, c_a), before_v1);
+    assert_eq!(snapshot(&mut admin, e_b, c_b), before_v2);
     admin.batch_execute(REFUSAL_MIGRATION).unwrap();
-    let after_v1: Value = admin
-        .query_one(
-            "SELECT contract FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2",
-            &[&e_a.0, &c_a.0],
-        )
-        .unwrap()
-        .get(0);
-    assert_eq!(after_v1, before_v1);
-    let versions: Vec<i32> = admin
-        .query(
-            "SELECT version FROM trajectory.planning_history              WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
-            &[&e_a.0, &c_a.0],
-        )
-        .unwrap()
-        .iter()
-        .map(|r| r.get(0))
-        .collect();
-    assert_eq!(versions, vec![1]);
-    let v2_version: i32 = admin
-        .query_one(
-            "SELECT version FROM trajectory.planning_history WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
-            &[&e_b.0, &c_b.0],
-        )
-        .unwrap()
-        .get(0);
-    assert_eq!(v2_version, 2);
+    assert_eq!(snapshot(&mut admin, e_a, c_a), before_v1);
+    assert_eq!(snapshot(&mut admin, e_b, c_b), before_v2);
 
     // Record, publish and recover a v3 refusal using the restricted login.
     let (mut alloc, mut store, mut traj) = upgrade_ports(&owned);

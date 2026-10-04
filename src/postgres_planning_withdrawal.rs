@@ -21,7 +21,14 @@ pub(super) fn withdrawal_predecessor(
     };
     let rows = tx
         .query(
-            "SELECT status='accepted' AND producer='mission' AND version=1          AND kind='mission_authority_withdrawn' AND completed_at IS NOT NULL          AND obligation='trajectory.withdrawal_history.v1',          contract, jsonb_build_object('engagement_id',engagement_id,'campaign_id',campaign_id,          'event_id',event_id,'operation_id',operation_id)          FROM trajectory.withdrawal_history WHERE engagement_id=$1 AND campaign_id=$2 AND          (event_id=$3 OR operation_id=$4) LIMIT 2",
+            "SELECT status='accepted' AND producer='mission' AND version=1 \
+             AND kind='mission_authority_withdrawn' AND completed_at IS NOT NULL \
+             AND obligation='trajectory.withdrawal_history.v1', contract, \
+             jsonb_build_object('engagement_id',engagement_id,'campaign_id',campaign_id, \
+             'event_id',event_id,'operation_id',operation_id) \
+             FROM trajectory.withdrawal_history \
+             WHERE engagement_id=$1 AND campaign_id=$2 \
+             AND (event_id=$3 OR operation_id=$4) LIMIT 2",
             &[
                 &ev.engagement_id.0,
                 &ev.campaign_id.0,
