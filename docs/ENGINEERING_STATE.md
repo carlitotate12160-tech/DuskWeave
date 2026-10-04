@@ -72,7 +72,7 @@ Latest verified delivery base: `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` on rem
 
 | Slice | State | Pinned evidence | Blocker / next action |
 | --- | --- | --- | --- |
-| `DW-FIX-M0-BASELINE-CONVERGENCE` (PR #29) | OPEN draft; integrates the reviewed #26/#27/#28 refactors with the #29 producer phases and closes the remaining baseline functions; behavior-preserving | head-bound evidence belongs to the external delivery report under `D:/DuskWeave-build/rust-1.94.1/reports/DW-FIX-M0-BASELINE-CONVERGENCE/` | distinct Work review of the integrated delta and combined boundaries, then separate owner merge |
+| `DW-FIX-M0-BASELINE-CONVERGENCE` (PR #29) | OPEN draft; integrates the reviewed #26/#27/#28 refactors with the #29 producer phases and closes the remaining baseline functions; behavior-preserving; characterization extended with complete scoped-state comparisons and evidence corrections, production byte-identical | head-bound evidence belongs to the external delivery report under `D:/DuskWeave-build/rust-1.94.1/reports/DW-FIX-M0-BASELINE-CONVERGENCE/` | distinct Work review of the integrated delta and combined boundaries, then separate owner merge |
 | PR #24 CI complexity gate | OPEN draft at `97dcca806e6036ed00f364ad7a0fd987e77e6101` | unchanged sibling; used only as the external analyzer/checker diagnostic | separate candidate; not imported |
 | PR #25 C1b durable refusal | OPEN draft at `19e664def5960dea27171c75d215c85e9ef9a59c`, authored from the verified merged #22 base | exists independently; C1b issuance does not depend on a complexity-fix merge | separate review/merge |
 | PR #26 registration complexity | OPEN draft at `de10ab9c3afa615d62b1f9ffdcd40e7cf3255a0a` | pinned content incorporated into #29 only | stays open independently |

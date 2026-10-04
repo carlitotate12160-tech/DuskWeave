@@ -211,6 +211,8 @@ fn combined_path_preserves_identity_labels_history_and_rows() {
     assert_eq!(receipt["current_permission"], false);
     assert_eq!(receipt["scope"], "matched");
     assert_eq!(receipt["window"], "expired");
+    // Fresh-process recovery is read-only: every scoped row is unchanged.
+    assert_eq!(scoped_state(e, c), recorded);
     // One durable effect per owner and per history.
     assert_eq!(count("mission.missions", e, c), 1);
     assert_eq!(count("mission.registration_outbox", e, c), 1);
@@ -227,7 +229,10 @@ fn combined_path_preserves_identity_labels_history_and_rows() {
 fn contract_header_failure_dominates_invalid_typed_basis() {
     let _guard = db();
     let ev = decision(0xc010, true);
+    let (e, c) = (ev.engagement_id, ev.campaign_id);
     let mut trajectory = PgTrajectory::new(runtime_client());
+    // Fixture state after setup and before any rejected attempt.
+    let setup = scoped_state(e, c);
     let mut bad = ev.clone();
     bad.producer = "other".into();
     bad.basis.as_mut().unwrap().revision = 0;
@@ -235,11 +240,13 @@ fn contract_header_failure_dominates_invalid_typed_basis() {
         trajectory.publish(&bad),
         Err(Fail::Unresolved("unsupported_contract"))
     );
+    assert_eq!(scoped_state(e, c), setup);
     bad.producer = "mission".into();
     assert_eq!(
         trajectory.publish(&bad),
         Err(Fail::Store("unsupported_basis"))
     );
+    assert_eq!(scoped_state(e, c), setup);
     effects(&ev, 0, 0);
     // Control: the intact event still publishes to one accepted row.
     assert_eq!(
@@ -281,10 +288,13 @@ fn predecessor_header_dominates_payload_decode_then_restores() {
         .unwrap();
     let corrupted = registration_row(&mut administrator, e, c);
     assert_ne!(corrupted, intact);
+    // Fixture state after setup and before the rejected publish.
+    let corrupted_state = scoped_state(e, c);
     assert_eq!(
         trajectory.publish(&ev).unwrap(),
         Delivered::Unresolved("unsupported_predecessor")
     );
+    assert_eq!(scoped_state(e, c), corrupted_state);
     effects(&ev, 0, 0);
     assert_eq!(registration_row(&mut administrator, e, c), corrupted);
     // Restoring only the header exposes the payload decode failure.
@@ -295,7 +305,9 @@ fn predecessor_header_dominates_payload_decode_then_restores() {
             &[&e.0, &c.0],
         )
         .unwrap();
+    let header_restored_state = scoped_state(e, c);
     assert_eq!(trajectory.publish(&ev), Err(Fail::Store("contract_decode")));
+    assert_eq!(scoped_state(e, c), header_restored_state);
     effects(&ev, 0, 0);
     // Restoring the original payload exactly leaves the row byte-stable
     // and publication usable.
