@@ -34,10 +34,14 @@ fn dto_json() -> serde_json::Value {
     })
 }
 
-struct FakeAlloc;
+struct FakeAlloc {
+    allocated: Vec<Uuid>,
+}
 impl OperationAllocator for FakeAlloc {
     fn allocate(&mut self) -> Res<Uuid> {
-        Ok(uuid(77))
+        let id = uuid(77 + self.allocated.len() as u128);
+        self.allocated.push(id);
+        Ok(id)
     }
 }
 
@@ -115,7 +119,7 @@ impl TrajectoryPort for FakeTraj {
 
 fn fixture() -> (FakeAlloc, FakeStore, FakeTraj) {
     (
-        FakeAlloc,
+        FakeAlloc { allocated: vec![] },
         FakeStore { missions: vec![] },
         FakeTraj {
             deliveries: 0,
@@ -222,6 +226,11 @@ fn register_usecase_accepted_and_idempotent() {
     );
     assert_eq!(store.missions.len(), 1);
     assert_eq!(traj.deliveries, 2);
+    // The second call allocated a fresh event id, yet the stored original
+    // is what was committed and delivered.
+    assert_eq!(alloc.allocated.len(), 3);
+    assert_ne!(alloc.allocated[2], r1.event_id.0);
+    assert_eq!(traj.last_delivered, Some(r1.event_id));
 }
 
 #[test]
@@ -361,19 +370,24 @@ fn register_producer_error_prevents_delivery() {
     let (mut alloc, mut store, mut traj) = fixture();
     let op = prepare_operation(&mut alloc).unwrap();
 
-    register(&mut alloc, &mut store, &mut traj, op, &input()).unwrap();
+    let ev = register(&mut alloc, &mut store, &mut traj, op, &input())
+        .unwrap()
+        .event_id;
 
     // Now if we try to register with same op but alt input, store errors:
     let r = register(&mut alloc, &mut store, &mut traj, op, &alt_input());
     assert!(r.is_err());
     assert_eq!(traj.deliveries, 1, "producer error must prevent delivery");
+    assert_eq!(traj.last_delivered, Some(ev));
 }
 
 #[test]
 fn reconcile_various_pending_outcomes() {
     let (mut alloc, mut store, mut traj) = fixture();
     let op = prepare_operation(&mut alloc).unwrap();
-    register(&mut alloc, &mut store, &mut traj, op, &input()).unwrap();
+    let ev = register(&mut alloc, &mut store, &mut traj, op, &input())
+        .unwrap()
+        .event_id;
 
     let (e, c) = (EngagementId(uuid(1)), CampaignId(uuid(2)));
 
@@ -386,6 +400,7 @@ fn reconcile_various_pending_outcomes() {
         Ok(ReconcileOutcome::Committed)
     );
     assert_eq!(traj.deliveries, 2);
+    assert_eq!(traj.last_delivered, Some(ev));
 
     // Pending -> Anomaly -> Conflicted
     traj.outcome = Delivered::Anomaly;
@@ -394,6 +409,7 @@ fn reconcile_various_pending_outcomes() {
         Ok(ReconcileOutcome::Conflicted)
     );
     assert_eq!(traj.deliveries, 3);
+    assert_eq!(traj.last_delivered, Some(ev));
 
     // Pending -> Unresolved -> Err
     traj.outcome = Delivered::Unresolved("timeout");
@@ -402,6 +418,7 @@ fn reconcile_various_pending_outcomes() {
         Err(Fail::Unresolved("timeout"))
     );
     assert_eq!(traj.deliveries, 4);
+    assert_eq!(traj.last_delivered, Some(ev));
 
     // Pending -> Delivery error -> Err
     traj.deliver_error = Some(Fail::State("network_error"));
@@ -410,6 +427,7 @@ fn reconcile_various_pending_outcomes() {
         Err(Fail::State("network_error"))
     );
     assert_eq!(traj.deliveries, 5);
+    assert_eq!(traj.last_delivered, Some(ev));
 }
 
 #[test]
@@ -425,6 +443,7 @@ fn reconcile_status_read_error_propagation() {
         reconcile(&mut store, &mut traj, e, c, op),
         Err(Fail::State("db_offline"))
     );
+    assert_eq!(traj.deliveries, 1, "status read error must not deliver");
 }
 
 #[test]
@@ -464,4 +483,5 @@ fn reconcile_absent_outbox_performs_no_delivery() {
         Ok(ReconcileOutcome::NotCommitted)
     );
     assert_eq!(traj.deliveries, pre, "absent outbox must not deliver");
+    assert!(traj.last_delivered.is_none());
 }
