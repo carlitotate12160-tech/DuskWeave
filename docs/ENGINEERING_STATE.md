@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a correction rebased onto the merged base and locally verified within 594/600; distinct review/publication pending; C1b versioned durable refusal and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
+- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a withdrawal/history MERGED through PR #22; baseline-complexity convergence FIX (`DW-FIX-M0-BASELINE-CONVERGENCE`) in delivery on PR #29 pending Work review, with pinned content from still-open sibling candidates #26–28 incorporated; C1b versioned durable refusal (open PR #25) and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
 - **Active Seal**: `DW-FOUNDATION-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -64,70 +64,44 @@ All interactions and plans are subject to:
 
 ---
 
-## 6. Next Immediate Action
+## 6. Current slices and next action
 
-Latest verified delivery base: `22230eb7458e9ca708db9ffa9df0f339c9bfc038` on remote `master`, verified live on 2026-10-03 as the squash-merge of [PR #23](https://github.com/carlitotate12160-tech/DuskWeave/pull/23), which merged the baseline-only FIX `DW-FIX-M0-PLANNING-CLI-COMPLEXITY` at reviewed head `9edce0c586bfedc4930479d8d537770ecf05e4f8` (tree-identical to the merge result). Exact-master [CI run 37126501314](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37126501314) succeeded on that merge: 103 passed, zero failed/ignored, production line coverage 95.92% (1624/1693), `planning_cli` 96.63% (86/89), all fixed coverage floors pass. The two planning CLI entrypoints moved into binary-private `src/planning_cli.rs`, closing the recorded baseline findings `cmd_assess=18` and `cmd_planning_history=16` as superseded measurements (`18 -> 2` and `16 -> 4` own McCabe, `run`=9 qualified pure dispatch at 222 runtime lines); the historical measurements and their report provenance remain recorded below as historical. Earlier history: PR #21 merged `DW-IMPLEMENT-M0C-C0-FRESH-AUTHORITY` on 2026-10-03 at base `cc6e157393c4c6961e32af27a69f60a16e6bab42` (exact-master [CI run 37092184903](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37092184903)); `assess` on a brand-new `current_authority_confirmed=true` request passes one bounded live challenge/response on stderr/stdin scoped to that invocation's transient challenge before the unchanged Mission assessment runs, while durable duplicates and `recover=true` keep the existing read-only path with no interaction. PR #18 merged R3's behavior-preserving extraction of planning-history identity/dedup/conflict persistence into a narrow Trajectory-owned journal on 2026-10-02 ([CI run 36992649673](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36992649673)); PR #19 merged the zero-runtime-change `DW-FIX-DELIVERY-CONTEXT-AND-BUILD-REUSE` workflow corrections, and exact-master [CI run 37022757041](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37022757041) succeeded on that base; PR #20 merged the document-only review-policy update covering the QUALITY_BAR.md section 7 evidence-based review checklist, the 50-line function review trigger and the qualified pure-dispatch McCabe allowance. B1a, B1b, B2 and R3 are merged partial M0B; see [RUN_B1A](RUN_B1A.md), [RUN_B1B](RUN_B1B.md) and [RUN_B2](RUN_B2.md).
+Latest verified delivery base: `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` on remote `master`, verified live on 2026-10-04 as the squash-merge of [PR #22](https://github.com/carlitotate12160-tech/DuskWeave/pull/22), the rebased M0C-C1a withdrawal/history correction. Exact-master [CI run 37134662240](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37134662240): 122 passed / 0 failed / 0 ignored, production coverage 96.26% (2010/2088), all jobs green.
 
-C0 requires a fresh bounded dialogue for new affirmative assessments; historical duplicate/recovery paths stay read-only. The M0C-C1a candidate in `D:/DuskWeave-m0c-c0`, branch `feat/m0c-c1a-withdrawal`, contains authored local withdrawal acceptance with an immutable Mission marker/publication obligation, immediate denial of new affected assessments, separate Trajectory history/completion and fresh read-only recovery. Focused C1a local tests passed on the staged candidate. The previous full instrumented run failed at the private upgrade fixture, whose missing 0005 bootstrap was a schema prerequisite failure. Revision 1 authorizes the two fixture corrections: a per-process upgrade database with collision denial, explicit confirmed ownership and success-only cleanup, plus independent registration CLI setup through 0005. The corrected upgrade target passed all four cases on Windows x64/MSVC Rust 1.94.1 and PostgreSQL 17.11, including collision denial, repeated 0005 preservation and ownership-checked success cleanup. The earlier registration CLI target failed its legacy universal error-prefix assertion. Revision 2 authorizes the withdrawal-specific amendment: exact bounded JSON rejection plus category error, empty stderr, failed exit and unchanged counts across seven tables using the restricted login. That amendment passed the focused assertion and the full 5-case CLI target. The replacement all-targets instrumented run passed all 120 tests with zero ignored/skipped on Windows x64/MSVC Rust 1.94.1 and PostgreSQL 17.11, using the restricted candidate login. Production line coverage is 96.13% (1989/2069); every executable production file exceeds 80%. Fmt, Clippy, links, structure, checker selftests, audit, whitespace and cumulative runtime budget passed. Runtime remains 573 additions + 3 deletions = 576/600; author and distinct adversarial review resolved the >400 cohesion/ownership trigger, including the fixture and receipt correction deltas. McCabe measurement is UNVERIFIED without an analyzer. The prior failed full run and stale assertion failure remain historical evidence. Final committed-head PR/CI outcomes belong to the external delivery report; this entry establishes local verification and review. This authored local candidate is not merged, accepted, demonstrated or sealed; check/review provenance belongs to the external delivery report.
+### Current work
 
-### Current C1a correction (2026-10-03)
+| Slice | State | Pinned evidence | Blocker / next action |
+| --- | --- | --- | --- |
+| `DW-FIX-M0-BASELINE-CONVERGENCE` (PR #29) | OPEN draft; integrates the reviewed #26/#27/#28 refactors with the #29 producer phases and closes the remaining baseline functions; behavior-preserving; characterization extended with complete scoped-state comparisons and evidence corrections, production byte-identical | head-bound evidence belongs to the external delivery report under `D:/DuskWeave-build/rust-1.94.1/reports/DW-FIX-M0-BASELINE-CONVERGENCE/` | distinct Work review of the integrated delta and combined boundaries, then separate owner merge |
+| PR #24 CI complexity gate | OPEN draft at `97dcca806e6036ed00f364ad7a0fd987e77e6101` | unchanged sibling; used only as the external analyzer/checker diagnostic | separate candidate; not imported |
+| PR #25 C1b durable refusal | OPEN draft at `19e664def5960dea27171c75d215c85e9ef9a59c`, authored from the verified merged #22 base | exists independently; C1b issuance does not depend on a complexity-fix merge | separate review/merge |
+| PR #26 registration complexity | OPEN draft at `de10ab9c3afa615d62b1f9ffdcd40e7cf3255a0a` | pinned content incorporated into #29 only | stays open independently |
+| PR #27 trajectory complexity | OPEN draft at `52aa72da3107a92ebe45bb3a7ce3c0c4373f662b`; finding F1 CLOSED at that head | pinned content incorporated into #29 only | stays open independently |
+| PR #28 mission decoding | OPEN draft at `aeceaece3777bba107e9254d7632477e12543e67`; Work scoped READY / globally NOT READY | exact-head diagnostic under `D:/DuskWeave-build/rust-1.94.1/reports/DW-REVIEW-PR28-AECEAECE/complexity` (analyzer 0.0.25, exit 1 baseline) | pinned content incorporated into #29 only |
+| Work review of original #29 head | `73b0b6f..0e8d277` scoped READY / globally NOT READY | recorded in the convergence packet's review appendix | superseded by the integration head; new combined review pending |
+| C1b versioned durable refusal | pending; covered by open #25 | — | proceeds independently; positive admission remains separate |
+| Positive admission, real-client-metadata demo, M0 seal | pending | — | M0 stays DEMO_PENDING and unsealed |
 
-The owner rejected a runtime-ceiling increase and authorized direct inspection/refactoring.
-That instruction supersedes the earlier FIX packet's mandatory binary CLI-child partition;
-it does not relax owner, behavior, file, complexity or cumulative-budget rules.
-PR #23 has since merged at `22230eb7458e9ca708db9ffa9df0f339c9bfc038`; the preserved
-local C1a correction is rebased onto that merged base and republished on the still-OPEN
-PR #22 as the reconciled candidate head (the final SHA belongs to the external delivery
-report, not this file). The superseded published head was `0be98a78a8f141d50cb2c9b745eb49fd24ae3726`.
-The uncommitted revised worktree superseded the historical ready/UNVERIFIED claims above.
-The prior 696-line correction STOP was valid; its claimed absolute 675-680 minimum was
-an estimate, disproved by a formatted candidate of 594/600 under the default checker,
-re-measured at the same 594 cumulative runtime lines on the rebased candidate.
-No exception, policy, counting rule, schema or public contract was changed.
+### Historical deliveries
 
-Binary-private withdrawal functions remain in main.rs (390 lines); Mission acceptance
-and Trajectory history stay in separate owner modules (125/142 lines). The revised
-producer removes the fresh flag and redundant eligibility/timestamp round trips;
-explicit catalog projections preserve payload binding and fixed-header checks.
-One owner-local SERIALIZABLE transaction retains duplicate/no-allocation behavior,
-fresh insertion/commit and conservative unknown ACK. Recovery remains read-only.
-The current CLI path still publishes or inspects history and emits the bounded receipt.
+| Date | Delivery | Evidence |
+| --- | --- | --- |
+| 2026-10-03 | PR #22 merged the rebased M0C-C1a withdrawal/history correction at `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` (superseded published head `0be98a78a8f141d50cb2c9b745eb49fd24ae3726`) | [CI run 37134662240](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37134662240); local repair metrics `D:/DuskWeave-build/rust-1.94.1/reports/DW-M0C-C1A-LOC-REPAIR` |
+| 2026-10-03 | PR #23 merged `DW-FIX-M0-PLANNING-CLI-COMPLEXITY` at `22230eb7458e9ca708db9ffa9df0f339c9bfc038` (cmd_assess 18→2, cmd_planning_history 16→4; `run`=9 qualified pure dispatch at 222 runtime lines) | [CI run 37126501314](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37126501314) |
+| 2026-10-03 | PR #21 merged `DW-IMPLEMENT-M0C-C0-FRESH-AUTHORITY`: fresh bounded challenge/response for new affirmative assess; durable duplicates and recover=true stay read-only | [CI run 37092184903](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37092184903) |
+| 2026-10-02 | PR #18 merged the R3 planning-history journal extraction; PR #19 merged workflow corrections; PR #20 merged the QUALITY_BAR section 7 review-policy documentation | [CI run 36992649673](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36992649673); [CI run 37022757041](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37022757041) |
+| 2026-10-01 | PR #5 merged M0A registration/history; PR #9 coverage gate and PR #10 CodeQL maintenance merged; verified master `387910c06e7d26c6b81da9fd2a0001e974bf9aa7` | [CI run 36806405110](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36806405110): 29 tests, coverage 94.43% (695/736) |
 
-rust-code-analysis-cli 0.0.25 measures every C1a function and closure at <=7;
-cmd_withdraw own=3, its attempt closure=5, parse=7, fresh_event=7,
-withdraw own=4/transaction closure=7, publish=6, publish_outcome=7,
-check_predecessor=7, event validation=5/binding=4. Raw JSON and method evidence:
-`D:/DuskWeave-build/rust-1.94.1/reports/DW-M0C-C1A-LOC-REPAIR`.
-Own complexity subtracts immediate child sums; aggregate cyclomatic.sum is not McCabe
-for one function. SQL/catalog semantic checks remain review obligations, not analyzer coverage.
-The previously recorded baseline cmd_assess=18 and cmd_planning_history=16 findings are
-closed as superseded by merged PR #23 (2 and 4 on master); run remains <=10 as qualified
-pure dispatch on this candidate. This does not claim repository-wide compliance or grant
-a baseline exception.
+Preserved owner decisions and C1a verification evidence (historical, superseded by the PR #22 merge):
 
-Baseline and repaired focused C1a suites each passed 18 tests, zero ignored/skipped,
-with real CLI, restricted PostgreSQL role, race and post-commit ACK-loss assertions.
-Producer negative controls now also bind operation/registration IDs and coherent
-wrong scope, and preserve collision-before-stale rejection. Fmt and all-targets
-Clippy passed. Final all-targets instrumented suite passed 120 tests, zero ignored;
-production coverage is 96.24% (1996/2074), every executable file >=80%.
-The expanded producer corruption/precedence controls are included in this full run.
-Author Q1-Q8 evidence is recorded with the local reports; it is not an independent
-review. Links, structure, 10 structure selftests, 15 budget selftests, 7 coverage-gate
-selftests, cargo audit and whitespace passed. Distinct delta review remains pending.
-Current-candidate CI is not available before
-publication; earlier CI/coverage is historical. Container `dwpg-r3`, the restricted
-C1a test database/login and ordinary build cache were reused. Original candidate,
-profiles and unrelated worktrees were preserved; the removed CLI child has a backup
-outside source. No commit, push, PR promotion, merge, acceptance or seal is recorded.
+- The owner rejected a runtime-ceiling increase and authorized direct inspection/refactoring; that instruction superseded the earlier FIX packet's mandatory binary CLI-child partition without relaxing owner, behavior, file, complexity or cumulative-budget rules.
+- C1a local evidence: the corrected all-targets instrumented run passed 120 tests with zero ignored on Windows x64/MSVC Rust 1.94.1 + PostgreSQL 17.11 under the restricted candidate login; production coverage 96.24% (1996/2074), every executable file >=80%; measured C1a functions/closures all <=7 with `run` <=10 as qualified pure dispatch; runtime 594/600 cumulative; fmt, Clippy, links, structure, checker selftests, audit and whitespace passed.
+- C0 requires a fresh bounded dialogue for new affirmative assessments; historical duplicate/recovery paths stay read-only. C1a returns bounded `authority_withdrawn` before allocation/insertion and does not implement the C1b durable refusal event.
+- Merged partial M0B: B1a, B1b, B2 and R3; see [RUN_B1A](RUN_B1A.md), [RUN_B1B](RUN_B1B.md) and [RUN_B2](RUN_B2.md).
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
-Historical repository verification on 2026-10-01: local and remote `master` were `387910c06e7d26c6b81da9fd2a0001e974bf9aa7`; PR #5 merged M0A registration/history at `913d6f2`, PR #10 merged CodeQL maintenance at `ac40ca9`, and PR #9 merged the line-coverage gate at `387910c`. No open PR was returned by repository search. M0A runtime exists: local CLI registration, required publication, Trajectory history, inspection and reconciliation. Do not rebuild it.
-
-Exact-master CI [run 36806405110](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36806405110) succeeded on that SHA: links, structure/runtime budget, Rust, CodeQL and `ci-ok`. The Rust job reports 29 passing tests, 0 failures/ignored, PostgreSQL 17 integration, and production line coverage 94.43% (695/736); the fixed 90% total / 80% per-source-file gate passed. This is GitHub-hosted CI evidence, not a new local test run, proof of every supported platform, or a client campaign demonstration.
-
-Next: Work's distinct delta review of the updated PR #22 candidate covering preservation, integration/fixtures/tracking and the affected failure claims, then a separate owner merge if authorized. Only after that merge lands and the new base is verified may a separately issued packet deliver C1b versioned durable planning refusal and the remaining minimum-M0 work. C1a returns bounded `authority_withdrawn` before allocation/insertion and does not implement that durable refusal event. Full positive admission remains unfinished. M0 is DEMO_PENDING and unsealed; the accepted register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this status correction. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
+Next: distinct Work review of the integrated `DW-FIX-M0-BASELINE-CONVERGENCE` candidate on PR #29, then a separate owner merge if authorized; #24/#25 and positive admission proceed independently. M0 is DEMO_PENDING and unsealed; the accepted register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this reconciliation. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 

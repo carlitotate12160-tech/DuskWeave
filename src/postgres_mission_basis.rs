@@ -34,6 +34,23 @@ pub(super) fn current_basis(
 }
 
 fn decode_basis(row: postgres::Row) -> Res<MissionBasis> {
+    let (revision, exercise_mode) = decode_basis_header(&row)?;
+    let scope = decode_scope(&row)?;
+    let basis = MissionBasis {
+        registration_operation_id: OperationId(
+            row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?,
+        ),
+        revision,
+        exercise_mode,
+        starts_at: row.try_get(3).map_err(|_| Fail::Store("contract_decode"))?,
+        ends_at: row.try_get(4).map_err(|_| Fail::Store("contract_decode"))?,
+        scope: Some(scope),
+    };
+    basis.validate()?;
+    Ok(basis)
+}
+
+fn decode_basis_header(row: &postgres::Row) -> Res<(u64, ExerciseMode)> {
     let revision: i64 = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
     if revision <= 0 {
         return Err(Fail::Store("unsupported_basis"));
@@ -44,23 +61,15 @@ fn decode_basis(row: postgres::Row) -> Res<MissionBasis> {
         "defender_informed" => ExerciseMode::DefenderInformed,
         _ => return Err(Fail::Store("unsupported_basis")),
     };
-    let scope = MissionScope {
+    Ok((revision as u64, exercise_mode))
+}
+
+fn decode_scope(row: &postgres::Row) -> Res<MissionScope> {
+    Ok(MissionScope {
         goal_ref: GoalRef(row.try_get(5).map_err(|_| Fail::Store("contract_decode"))?),
-        included_assets: decode_assets(&row, 6)?,
-        excluded_assets: decode_assets(&row, 7)?,
-    };
-    let basis = MissionBasis {
-        registration_operation_id: OperationId(
-            row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?,
-        ),
-        revision: revision as u64,
-        exercise_mode,
-        starts_at: row.try_get(3).map_err(|_| Fail::Store("contract_decode"))?,
-        ends_at: row.try_get(4).map_err(|_| Fail::Store("contract_decode"))?,
-        scope: Some(scope),
-    };
-    basis.validate()?;
-    Ok(basis)
+        included_assets: decode_assets(row, 6)?,
+        excluded_assets: decode_assets(row, 7)?,
+    })
 }
 
 fn decode_assets(row: &postgres::Row, column: usize) -> Res<Vec<AssetRef>> {

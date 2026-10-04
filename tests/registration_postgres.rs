@@ -131,7 +131,22 @@ fn history_rows_preserve_admitted_contract_and_effects() {
         .unwrap()
         .unwrap();
     let original_contract = serde_json::to_value(&original).unwrap();
+    // Full accepted-row snapshot before duplicate/conflicting delivery; every
+    // later read uses a fresh connection, so equality also proves what fresh
+    // recovery sees is byte-identical.
+    let accepted_row = || {
+        runtime_client()
+            .query_one(
+                "SELECT to_jsonb(h) FROM trajectory.registration_history h \
+                 WHERE engagement_id=$1 AND campaign_id=$2 AND status='accepted'",
+                &[&engagement.0, &campaign.0],
+            )
+            .unwrap()
+            .get::<_, serde_json::Value>(0)
+    };
+    let before = accepted_row();
     assert_eq!(trajectory.deliver(&original).unwrap(), Delivered::Duplicate);
+    assert_eq!(accepted_row(), before);
     assert_eq!(
         count("trajectory.registration_history", engagement, campaign),
         1
@@ -148,6 +163,7 @@ fn history_rows_preserve_admitted_contract_and_effects() {
             .unwrap(),
         HistoryStatus::Anomaly
     );
+    assert_eq!(accepted_row(), before);
 
     let rows = runtime_client()
         .query(
@@ -186,6 +202,7 @@ fn history_rows_preserve_admitted_contract_and_effects() {
         ),
         1
     );
+    assert_eq!(accepted_row(), before);
 }
 
 #[test]

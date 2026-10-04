@@ -30,6 +30,25 @@ fn admin() -> postgres::Client {
     config.connect(NoTls).unwrap()
 }
 
+fn owner_row(e: EngagementId, c: CampaignId) -> Value {
+    client()
+        .query_one(
+            "SELECT to_jsonb(m) FROM mission.missions m \
+             WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&e.0, &c.0],
+        )
+        .unwrap()
+        .get(0)
+}
+
+struct NeverAllocate;
+
+impl registration::OperationAllocator for NeverAllocate {
+    fn allocate(&mut self) -> Res<Uuid> {
+        panic!("decode failure must not allocate an event")
+    }
+}
+
 fn request_json(e: EngagementId, c: CampaignId, revision: u64, confirmed: bool) -> Value {
     json!({
         "engagement_id": e.0,
@@ -269,6 +288,58 @@ fn recovery_returns_original_after_owner_removed_or_changed() {
 }
 
 #[test]
+fn malformed_owner_asset_payload_is_contract_error_without_effect() {
+    let _guard = db();
+    let (e, c) = scope(0xb2f0);
+    let mut allocator = PgAllocator::new(client());
+    let mut store = PgMissionStore::new(client());
+    let mut traj = PgTrajectory::new(client());
+    let now = db_epoch();
+    register_scope(
+        &mut allocator,
+        &mut store,
+        &mut traj,
+        &reg_with_window(e, c, now - 7_200, now + 7_200),
+    );
+    let original_row = owner_row(e, c);
+    let input = parse_planning(&serde_json::to_vec(&request_json(e, c, 1, true)).unwrap()).unwrap();
+    for payload in ["'[1,2]'::jsonb", "'\"x\"'::jsonb", "'{}'::jsonb"] {
+        admin()
+            .execute(
+                &format!(
+                    "UPDATE mission.missions SET included_assets={payload} \
+             WHERE engagement_id=$1 AND campaign_id=$2"
+                ),
+                &[&e.0, &c.0],
+            )
+            .unwrap();
+        let corrupted = owner_row(e, c);
+        let op = registration::prepare_operation(&mut allocator).unwrap();
+        assert_eq!(
+            assess(&mut NeverAllocate, &mut store, &input, op, false),
+            Err(Fail::Store("contract_decode")),
+            "{payload}"
+        );
+        assert_eq!(owner_row(e, c), corrupted, "{payload}");
+        assert_eq!(count("mission.planning_assessments", e, c), 0, "{payload}");
+        admin()
+            .execute(
+                "UPDATE mission.missions SET included_assets=$3 \
+             WHERE engagement_id=$1 AND campaign_id=$2",
+                &[&e.0, &c.0, &original_row["included_assets"]],
+            )
+            .unwrap();
+        assert_eq!(owner_row(e, c), original_row, "{payload}");
+    }
+    let op = registration::prepare_operation(&mut allocator).unwrap();
+    assert!(
+        assess(&mut allocator, &mut store, &input, op, false)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
 fn malformed_owner_scope_fails_without_any_effect() {
     let _guard = db();
     let (e, c) = scope(0xb2e8);
@@ -282,6 +353,7 @@ fn malformed_owner_scope_fails_without_any_effect() {
         &mut traj,
         &reg_with_window(e, c, now - 7_200, now + 7_200),
     );
+    let original_row = owner_row(e, c);
     admin()
         .execute(
             "UPDATE mission.missions SET included_assets='[]'::jsonb \
@@ -289,12 +361,14 @@ fn malformed_owner_scope_fails_without_any_effect() {
             &[&e.0, &c.0],
         )
         .unwrap();
+    let corrupted = owner_row(e, c);
     let input = parse_planning(&serde_json::to_vec(&request_json(e, c, 1, true)).unwrap()).unwrap();
     let op = registration::prepare_operation(&mut allocator).unwrap();
     assert_eq!(
-        assess(&mut allocator, &mut store, &input, op, false),
+        assess(&mut NeverAllocate, &mut store, &input, op, false),
         Err(Fail::Store("unsupported_basis"))
     );
+    assert_eq!(owner_row(e, c), corrupted);
     let counts: i64 = client()
         .query_one(
             "SELECT count(*) FROM mission.planning_assessments \
@@ -304,6 +378,19 @@ fn malformed_owner_scope_fails_without_any_effect() {
         .unwrap()
         .get(0);
     assert_eq!(counts, 0);
+    admin()
+        .execute(
+            "UPDATE mission.missions SET included_assets=$3 \
+             WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&e.0, &c.0, &original_row["included_assets"]],
+        )
+        .unwrap();
+    assert_eq!(owner_row(e, c), original_row);
+    assert!(
+        assess(&mut allocator, &mut store, &input, op, false)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
