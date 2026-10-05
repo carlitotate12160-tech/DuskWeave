@@ -41,7 +41,7 @@ Only read the packet required by the active engineering state, plus packet 00 an
 
 Current seal:
 
-`DW-FOUNDATION-001`
+`DW-FOUNDATION-001; DW-M0-001 (M0 sealed 2026-10-05 at 669f2f3 — scope/limits in ENGINEERING_STATE.md section 5a)`
 
 Current engineering state:
 
