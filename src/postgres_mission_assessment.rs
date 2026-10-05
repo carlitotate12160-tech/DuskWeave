@@ -78,14 +78,17 @@ fn create_assessment(
         .get(0);
     let event_id = EventId(allocator.allocate()?);
     match authority.withdrawal {
-        Some(withdrawal) => Ok(PlanningAssessed::new_withdrawn(
-            request.clone(),
-            authority.basis.unwrap(),
-            withdrawal,
-            operation_id,
-            event_id,
-            timestamp,
-        )?),
+        Some(withdrawal) => {
+            let basis = authority.basis.ok_or(Fail::Store("unsupported_basis"))?;
+            Ok(PlanningAssessed::new_withdrawn(
+                request.clone(),
+                basis,
+                withdrawal,
+                operation_id,
+                event_id,
+                timestamp,
+            )?)
+        }
         None => Ok(PlanningAssessed::new(
             request.clone(),
             authority.basis,

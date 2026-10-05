@@ -176,7 +176,6 @@ fn predecessor_gap(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'
     postgres_planning_withdrawal::withdrawal_predecessor(tx, ev)
 }
 
-
 pub(super) fn commit_error(e: &postgres::Error) -> Fail {
     match store_err(e) {
         Fail::Store("serialization_retry") => Fail::Store("serialization_retry"),
