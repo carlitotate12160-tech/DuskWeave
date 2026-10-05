@@ -1,0 +1,46 @@
+name: security-audit
+
+# Standalone daily advisory audit of the committed Cargo.lock through the
+# same verified helper the PR dependency gate uses. No Rust tests, no
+# PostgreSQL, no cargo-deny/Geiger on this path; not a required PR context.
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # 03:17 UTC / 10:17 Asia/Jakarta daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch advisory-db snapshot
+        shell: bash
+        run: |
+          set -e
+          git clone --depth 1 https://github.com/RustSec/advisory-db "$RUNNER_TEMP/advisory-db"
+          mkdir -p "$RUNNER_TEMP/daily-audit"
+          git -C "$RUNNER_TEMP/advisory-db" rev-parse HEAD | tee "$RUNNER_TEMP/daily-audit/advisory-db-rev.txt"
+
+      - name: cargo audit via shared verified helper
+        shell: bash
+        run: |
+          set -e
+          echo "checkout=$(git rev-parse HEAD) tree=$(git rev-parse 'HEAD^{tree}')" \
+            | tee "$RUNNER_TEMP/daily-audit/checkout-binding.txt"
+          bash scripts/run_cargo_audit.sh audit \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/advisory-db" "$RUNNER_TEMP/daily-audit"
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-audit-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/daily-audit/
+          if-no-files-found: warn
+          retention-days: 14

@@ -190,13 +190,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: cargo audit
-        run: |
-          curl -fsSL -o /tmp/cargo-audit.tgz \
-            "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.2/cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz"
-          tar -xzf /tmp/cargo-audit.tgz -C /tmp
-          /tmp/cargo-audit-x86_64-unknown-linux-musl-v0.22.2/cargo-audit audit
-
       - name: Always clean up PostgreSQL container
         if: always()
         run: docker rm -f dwpg || true
@@ -216,9 +209,99 @@ jobs:
 
       - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
 
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: "1.94.1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Tools and inputs (pinned cargo-deny, audit asset, advisory-db)
+        shell: bash
+        run: |
+          set -e
+          rustup toolchain install 1.94.1 --profile minimal
+          cargo install --locked --version 0.20.2 cargo-deny --root "$RUNNER_TEMP/dw-tools"
+          "$RUNNER_TEMP/dw-tools/bin/cargo-deny" --version
+          curl --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 -fsSL \
+            -o "$RUNNER_TEMP/cargo-audit.tgz" \
+            "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.2/cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz"
+          sha256sum "$RUNNER_TEMP/cargo-audit.tgz"
+          mkdir -p "$RUNNER_TEMP/depsec-evidence"
+          git clone --depth 1 https://github.com/RustSec/advisory-db "$RUNNER_TEMP/advisory-db"
+          git -C "$RUNNER_TEMP/advisory-db" rev-parse HEAD | tee "$RUNNER_TEMP/depsec-evidence/advisory-db-rev.txt"
+          echo "event=${{ github.event_name }} checkout=$(git rev-parse HEAD) tree=$(git rev-parse 'HEAD^{tree}') pr_head=${{ github.event.pull_request.head.sha || '' }}" \
+            | tee "$RUNNER_TEMP/depsec-evidence/checkout-binding.txt"
+
+      - name: Dependency gate (deny policy, verified audit, negative controls)
+        env:
+          DW_AUDIT_HELPER: ${{ github.workspace }}/scripts/run_cargo_audit.sh
+          DW_AUDIT_ARCHIVE: ${{ runner.temp }}/cargo-audit.tgz
+          DW_DENY_BIN: ${{ runner.temp }}/dw-tools/bin/cargo-deny
+          DW_DENY_CONFIG: ${{ github.workspace }}/deny.toml
+          DW_PROJECT_ROOT: ${{ github.workspace }}
+          DW_ADVISORY_DB: ${{ runner.temp }}/advisory-db
+          DW_EVIDENCE_DIR: ${{ runner.temp }}/depsec-evidence
+        run: python -m unittest discover -s tests -p test_dependency_security.py -v
+
+      - name: Upload dependency-gate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: depsec-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/depsec-evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
+  geiger:
+    # Diagnostic only: unsafe-usage baseline, excluded from ci-ok.needs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: "1.94.1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Toolchain and pinned cargo-geiger 0.13.0
+        run: |
+          set -e
+          rustup toolchain install 1.94.1 --profile minimal
+          cargo install --locked --version 0.13.0 cargo-geiger --root "$RUNNER_TEMP/dw-tools"
+          "$RUNNER_TEMP/dw-tools/bin/cargo-geiger" --version
+
+      - name: Geiger unsafe-usage baseline (retained, native status)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/geiger"
+          rustc --version && cargo --version
+          set +e
+          "$RUNNER_TEMP/dw-tools/bin/cargo-geiger" geiger --locked --all-targets \
+            --output-format Json > "$RUNNER_TEMP/geiger/geiger.json" \
+            2> "$RUNNER_TEMP/geiger/geiger.log"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/geiger/geiger.log"
+          echo "cargo-geiger exit status: $status"
+          exit "$status"
+
+      - name: Upload Geiger baseline
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: geiger-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/geiger/
+          if-no-files-found: warn
+          retention-days: 14
+
   ci-ok:
     name: ci-ok
-    needs: [links, structure, rust, codeql]
+    needs: [links, structure, rust, codeql, dependencies]
     if: always()
     runs-on: ubuntu-latest
     steps:
