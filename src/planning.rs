@@ -268,10 +268,14 @@ impl PlanningAssessed {
         {
             return Err(Fail::Unresolved("unsupported_contract"));
         }
+        self.validate_basis_contract()
+    }
+
+    /// A present basis carries a scope snapshot exactly on version 2;
+    /// v1 records keep the old wire shape and v2 never downscopes.
+    fn validate_basis_contract(&self) -> Res<()> {
         if let Some(basis) = &self.basis {
             basis.validate()?;
-            // A present basis carries a scope snapshot exactly on version 2;
-            // v1 records keep the old wire shape and v2 never downscopes.
             let coherent = matches!(
                 (self.version, basis.scope.is_some()),
                 (1, false) | (2, true)
@@ -320,10 +324,21 @@ impl PlanningAssessed {
             D::RefusedPurposeMismatch => ("purpose_mismatch", "not_evaluated"),
             D::RefusedAssetExcluded => ("excluded", "not_evaluated"),
             D::RefusedAssetUnknown => ("unknown", "not_evaluated"),
-            D::RefusedNotYetValid => ("matched", "not_yet_valid"),
-            D::RefusedExpired => ("matched", "expired"),
-            D::UnresolvedEvaluationIncomplete => ("matched", "within_window"),
+            D::RefusedNotYetValid | D::RefusedExpired | D::UnresolvedEvaluationIncomplete => {
+                ("matched", self.assessment_window_label())
+            }
             _ => ("not_evaluated", "not_evaluated"),
+        }
+    }
+
+    /// Historical window result for a scope-matched decision; every other
+    /// decision keeps the not-evaluated label.
+    fn assessment_window_label(&self) -> &'static str {
+        match self.decision {
+            NonpositiveDecision::RefusedNotYetValid => "not_yet_valid",
+            NonpositiveDecision::RefusedExpired => "expired",
+            NonpositiveDecision::UnresolvedEvaluationIncomplete => "within_window",
+            _ => "not_evaluated",
         }
     }
 

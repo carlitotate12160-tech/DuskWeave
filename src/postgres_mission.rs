@@ -1,6 +1,8 @@
 //! Mission owner's PostgreSQL adapter. Queries only mission.* tables;
 //! the registration and its outbox contract commit in one transaction.
 
+#[path = "postgres_mission_assessment.rs"]
+mod postgres_mission_assessment;
 #[path = "postgres_mission_basis.rs"]
 mod postgres_mission_basis;
 #[path = "postgres_withdrawal.rs"]
@@ -121,6 +123,12 @@ fn commit_tx(
             Err(Fail::Conflict("integrity_conflict"))
         };
     }
+    ensure_registration_available(tx, m)?;
+    insert_pair(tx, m, ev)?;
+    Ok(CommitEffect::Fresh)
+}
+
+fn ensure_registration_available(tx: &mut postgres::Transaction, m: &Mission) -> Res<()> {
     if tx.query_opt(
         "SELECT 1 FROM mission.planning_assessments WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 \
          UNION ALL SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 LIMIT 1",
@@ -131,8 +139,7 @@ fn commit_tx(
     if scope_occupied(tx, m)? {
         return Err(Fail::Conflict("already_registered"));
     }
-    insert_pair(tx, m, ev)?;
-    Ok(CommitEffect::Fresh)
+    Ok(())
 }
 
 fn prior_assessment(
@@ -156,8 +163,7 @@ fn prior_assessment(
             row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
         let event: PlanningAssessed =
             serde_json::from_value(contract).map_err(|_| Fail::Store("contract_decode"))?;
-        let event_id: uuid::Uuid = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
-        let obligation: String = row.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
+        let (event_id, obligation) = decode_assessment_catalog(&row)?;
         event.validate().map_err(|error| match error {
             Fail::Store("unsupported_basis") => error,
             _ => Fail::Store("contract_decode"),
@@ -171,6 +177,12 @@ fn prior_assessment(
         Ok(event)
     })
     .transpose()
+}
+
+fn decode_assessment_catalog(row: &postgres::Row) -> Res<(uuid::Uuid, String)> {
+    let event_id: uuid::Uuid = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
+    let obligation: String = row.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
+    Ok((event_id, obligation))
 }
 
 fn stored_row_identity(
@@ -202,53 +214,7 @@ impl PlanningStore for PgMissionStore {
         if recover {
             return prior_assessment(&mut self.client, request, operation_id);
         }
-        let mut tx = self
-            .client
-            .build_transaction()
-            .isolation_level(IsolationLevel::Serializable)
-            .start()
-            .map_err(|error| store_err(&error))?;
-        if let Some(event) = prior_assessment(&mut tx, request, operation_id)? {
-            return Ok(Some(event));
-        }
-        if tx.query_opt(
-            "SELECT 1 FROM mission.registration_outbox WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 \
-             UNION ALL SELECT 1 FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 LIMIT 1",
-            &[&request.engagement_id.0, &request.campaign_id.0, &operation_id.0],
-        ).map_err(|error| store_err(&error))?.is_some() {
-            return Err(Fail::Conflict("integrity_conflict"));
-        }
-        let basis = postgres_mission_basis::current_basis(&mut tx, request)?;
-        let timestamp: i64 = tx
-            .query_one(
-                "SELECT floor(extract(epoch FROM transaction_timestamp()))::bigint",
-                &[],
-            )
-            .map_err(|error| store_err(&error))?
-            .get(0);
-        let event = PlanningAssessed::new(
-            request.clone(),
-            basis,
-            operation_id,
-            EventId(allocator.allocate()?),
-            timestamp,
-        )?;
-        let contract = serde_json::to_value(&event).map_err(|_| Fail::Store("encode"))?;
-        tx.execute(
-            "INSERT INTO mission.planning_assessments \
-             (engagement_id,campaign_id,operation_id,event_id,contract,publication_obligation) \
-             VALUES ($1,$2,$3,$4,$5,'trajectory.planning_history.v1')",
-            &[
-                &request.engagement_id.0,
-                &request.campaign_id.0,
-                &operation_id.0,
-                &event.event_id.0,
-                &contract,
-            ],
-        )
-        .map_err(|error| store_err(&error))?;
-        tx.commit().map_err(|_| Fail::Store("commit_unknown"))?;
-        Ok(Some(event))
+        postgres_mission_assessment::assess_new(&mut self.client, request, operation_id, allocator)
     }
 }
 

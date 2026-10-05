@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave`
-- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a durable local mission withdrawal MERGED through PR #22; CI McCabe gate DRAFT DELIVERED with expected baseline rejection; C1b versioned durable refusal and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
+- **Current Phase**: Accepted bounded M0 implementation lane — M0A registration/history MERGED; M0B partial (B1a, B1b, B2 and R3 MERGED); M0C-C0 fresh-authority confirmation MERGED through PR #21; baseline planning-CLI complexity FIX MERGED through PR #23; M0C-C1a withdrawal/history MERGED through PR #22; baseline-complexity convergence FIX (`DW-FIX-M0-BASELINE-CONVERGENCE`) MERGED through PR #29 at `90f2ebd` with the pinned content of sibling candidates #26–28 incorporated (they remain externally OPEN and are superseded); CI McCabe gate refreshed on PR #24 as the current candidate awaiting distinct review; C1b versioned durable refusal (open PR #25) and positive admission pending; M0 DEMO_PENDING and unsealed. Stage 4 design dependencies outside this lane remain deferred.
 - **Active Seal**: `DW-FOUNDATION-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -64,87 +64,41 @@ All interactions and plans are subject to:
 
 ---
 
-## 6. Next Immediate Action
+## 6. Current slices and next action
 
-Latest verified delivery base: `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` on remote `master`, verified live on 2026-10-04 as the squash-merge of [PR #22](https://github.com/carlitotate12160-tech/DuskWeave/pull/22), which merged `DW-M0C-C1A-PR22-RECONCILE`. Exact-master CI run 37134662240 succeeded on that merge. Earlier history: PR #23 merged the baseline-only FIX `DW-FIX-M0-PLANNING-CLI-COMPLEXITY` at `22230eb7458e9ca708db9ffa9df0f339c9bfc038`. PR #21 merged `DW-IMPLEMENT-M0C-C0-FRESH-AUTHORITY` on 2026-10-03. PR #18 merged R3's behavior-preserving extraction of planning-history identity/dedup/conflict persistence. PR #19 merged the zero-runtime-change `DW-FIX-DELIVERY-CONTEXT-AND-BUILD-REUSE`. PR #20 merged the document-only review-policy update.
+Latest verified delivery base: `90f2ebdc3851d19aba1786b55a66284fc2de8466` on remote `master`, verified live on 2026-10-05 as the merge of [PR #29](https://github.com/carlitotate12160-tech/DuskWeave/pull/29), `DW-FIX-M0-BASELINE-CONVERGENCE`, converging the tracked M0 baseline to zero complexity violations. The merged tree is byte-identical to the reviewed #29 head `b600c47293612be949f6d79c9c66817df3ab9daf`; that delivery's 136 passing tests and 96.95% production coverage are reusable predecessor evidence, not a new local run, and test counts are not attributed to master CI logs without inspection. Exact-master push [CI run 37218404785](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37218404785) completed SUCCESS. Earlier base: PR #22 merged at `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` with exact-master [CI run 37134662240](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37134662240) green (122 passed, coverage 96.26%).
 
-The M0C-C1b candidate in `D:/DuskWeave-m0c-c0`, branch `feat/m0c-c1b-durable-refusal`, contains in-progress versioned durable planning refusal; positive admission remains a separate pending delivery. M0 remains DEMO_PENDING and unsealed.
+### Current work
 
-### CI McCabe Gate Draft (2026-10-04)
+| Slice | State | Pinned evidence | Blocker / next action |
+| --- | :--- | :--- | :--- |
+| `DW-FIX-M0-BASELINE-CONVERGENCE` (PR #29) | MERGED through PR #29 at `90f2ebd` on 2026-10-04; merged tree byte-identical to the reviewed integration head `b600c47293612be949f6d79c9c66817df3ab9daf`; baseline converged to zero violations | predecessor local evidence from the reviewed #29 delivery (136 tests passing, 96.95% production coverage — reusable, not a new local run); head-bound report under `D:/DuskWeave-build/rust-1.94.1/reports/DW-FIX-M0-BASELINE-CONVERGENCE/` | none for master; incorporated #26–28 content needs no further runtime merge |
+| PR #24 CI McCabe gate | refreshed OPEN draft: history-preserving merge of `90f2ebd` into the reviewed `97dcca806e6036ed00f364ad7a0fd987e77e6101` gate candidate; six gate files byte-identical to the reviewed content; zero runtime diff vs master | fresh gate scan of the exact new head belongs to this candidate's external delivery report | distinct Work review of the integration/conflict delta and tracking claims, then separate owner merge if authorized; its own merge is not recorded here |
+| PR #25 C1b durable refusal | OPEN draft at `19e664def5960dea27171c75d215c85e9ef9a59c`, authored from the verified merged #22 base; separate, unmerged candidate | exists independently; C1b issuance does not depend on the gate merge | separately issued integration/review packet after the #24 disposition; positive admission remains a separate pending delivery |
+| PRs #26/#27/#28 complexity candidates | externally OPEN as observed live on 2026-10-05; superseded — their pinned content is incorporated into master through #29 | incorporation pinned by the #29 delivery | no further runtime merge; any administrative closure is an owner action |
+| Positive admission, real-client-metadata demo, M0 seal | pending | — | M0 stays DEMO_PENDING and unsealed |
 
-An observed enforcement gap in `doc-check.yml` allowed master CI to succeed without measured McCabe complexity enforcement. The `DW-FIX-CI-MCCABE-GATE` draft packet delivers a pinned `rust-code-analysis-cli 0.0.25` analyzer, a strict JSON metric evaluator, negative-control fixtures, and a mandatory workflow gate.
+### Historical deliveries
 
-On unchanged protected-base Rust (`73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc`), the drafted gate intentionally fails on 13 inherited violations measured with the pinned analyzer on Windows and reproduced on Linux CI (22 files, 278 function nodes):
-- `src/planning.rs`: `validate_contract` (own=8), `assessment_labels` (own=9)
-- `src/postgres_mission.rs`: `commit_tx` (own=9), `prior_assessment` anonymous closure (own=8), `assess` (own=16)
-- `src/postgres_mission_basis.rs`: `decode_basis` (own=14)
-- `src/postgres_planning_history.rs`: `predecessor` (own=12), `append` (own=10)
-- `src/postgres_trajectory_history.rs`: `append` (own=9)
-- `src/postgres_trajectory_journal.rs`: `matches` (own=10), `existing` (own=10)
-- `src/registration.rs`: `register` (own=10), `reconcile` (own=10)
+| Date | Delivery | Evidence |
+| :--- | :--- | :--- |
+| 2026-10-04 | PR #29 merged `DW-FIX-M0-BASELINE-CONVERGENCE` at `90f2ebdc3851d19aba1786b55a66284fc2de8466` (tree identical to reviewed head `b600c47`; incorporated the pinned #26–28 refactors and closed the remaining baseline violations) | [CI run 37218404785](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37218404785) |
+| 2026-10-03 | PR #22 merged the rebased M0C-C1a withdrawal/history correction at `73b0b6ff49a2d5ec08f8a71c5ace5d2144e015cc` (superseded published head `0be98a78a8f141d50cb2c9b745eb49fd24ae3726`) | [CI run 37134662240](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37134662240); local repair metrics `D:/DuskWeave-build/rust-1.94.1/reports/DW-M0C-C1A-LOC-REPAIR` |
+| 2026-10-03 | PR #23 merged `DW-FIX-M0-PLANNING-CLI-COMPLEXITY` at `22230eb7458e9ca708db9ffa9df0f339c9bfc038` (cmd_assess 18→2, cmd_planning_history 16→4; `run`=9 qualified pure dispatch at 222 runtime lines) | [CI run 37126501314](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37126501314) |
+| 2026-10-03 | PR #21 merged `DW-IMPLEMENT-M0C-C0-FRESH-AUTHORITY`: fresh bounded challenge/response for new affirmative assess; durable duplicates and recover=true stay read-only | [CI run 37092184903](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37092184903) |
+| 2026-10-02 | PR #18 merged the R3 planning-history journal extraction; PR #19 merged workflow corrections; PR #20 merged the QUALITY_BAR section 7 review-policy documentation | [CI run 36992649673](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36992649673); [CI run 37022757041](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/37022757041) |
+| 2026-10-01 | PR #5 merged M0A registration/history; PR #9 coverage gate and PR #10 CodeQL maintenance merged; verified master `387910c06e7d26c6b81da9fd2a0001e974bf9aa7` | [CI run 36806405110](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36806405110): 29 tests, coverage 94.43% (695/736) |
 
-This is a working detector, not a green merge. Expected rejection of the baseline is evidence that enforcement works. The next action is owner-bounded remediation and gate qualification before a green gate merge. This draft candidate records the gate implementation and its test evidence; it does not record its own merge.
+Preserved owner decisions and C1a verification evidence (historical, superseded by the PR #22 merge):
 
-A distinct review of the gate candidate found that the Python checker itself exceeded the enforced own-complexity cap, that report schema/source binding accepted malformed input, and that the C1b tracking claim above was stale. This delta delivery corrects all three: report codec/validation/projection moved to `scripts/complexity_reports.py`, all corrected functions measure own complexity <= 7 (Radon 6.0.1), malformed report input fails closed with exit 2, and the C1b sentence now separates durable refusal (in progress) from positive admission (pending). A follow-up failure-boundary review closed three residual exit-2 holes (non-string node kinds, non-object children inside a function node, oversized JSON integers) and made the analyzer-boundary CLI controls run on both supported test platforms without skips. The candidate remains a draft and is not merge-ready.
-
-### Historical C1a correction (2026-10-03)
-
-The owner rejected a runtime-ceiling increase and authorized direct inspection/refactoring.
-That instruction supersedes the earlier FIX packet's mandatory binary CLI-child partition;
-it does not relax owner, behavior, file, complexity or cumulative-budget rules.
-PR #23 has since merged at `22230eb7458e9ca708db9ffa9df0f339c9bfc038`; the preserved
-local C1a correction is rebased onto that merged base and republished on the still-OPEN
-PR #22 as the reconciled candidate head (the final SHA belongs to the external delivery
-report, not this file). The superseded published head was `0be98a78a8f141d50cb2c9b745eb49fd24ae3726`.
-The uncommitted revised worktree superseded the historical ready/UNVERIFIED claims above.
-The prior 696-line correction STOP was valid; its claimed absolute 675-680 minimum was
-an estimate, disproved by a formatted candidate of 594/600 under the default checker,
-re-measured at the same 594 cumulative runtime lines on the rebased candidate.
-No exception, policy, counting rule, schema or public contract was changed.
-
-Binary-private withdrawal functions remain in main.rs (390 lines); Mission acceptance
-and Trajectory history stay in separate owner modules (125/142 lines). The revised
-producer removes the fresh flag and redundant eligibility/timestamp round trips;
-explicit catalog projections preserve payload binding and fixed-header checks.
-One owner-local SERIALIZABLE transaction retains duplicate/no-allocation behavior,
-fresh insertion/commit and conservative unknown ACK. Recovery remains read-only.
-The current CLI path still publishes or inspects history and emits the bounded receipt.
-
-rust-code-analysis-cli 0.0.25 measures every C1a function and closure at <=7;
-cmd_withdraw own=3, its attempt closure=5, parse=7, fresh_event=7,
-withdraw own=4/transaction closure=7, publish=6, publish_outcome=7,
-check_predecessor=7, event validation=5/binding=4. Raw JSON and method evidence:
-`D:/DuskWeave-build/rust-1.94.1/reports/DW-M0C-C1A-LOC-REPAIR`.
-Own complexity subtracts immediate child sums; aggregate cyclomatic.sum is not McCabe
-for one function. SQL/catalog semantic checks remain review obligations, not analyzer coverage.
-The previously recorded baseline cmd_assess=18 and cmd_planning_history=16 findings are
-closed as superseded by merged PR #23 (2 and 4 on master); run remains <=10 as qualified
-pure dispatch on this candidate. This does not claim repository-wide compliance or grant
-a baseline exception.
-
-Baseline and repaired focused C1a suites each passed 18 tests, zero ignored/skipped,
-with real CLI, restricted PostgreSQL role, race and post-commit ACK-loss assertions.
-Producer negative controls now also bind operation/registration IDs and coherent
-wrong scope, and preserve collision-before-stale rejection. Fmt and all-targets
-Clippy passed. Final all-targets instrumented suite passed 120 tests, zero ignored;
-production coverage is 96.24% (1996/2074), every executable file >=80%.
-The expanded producer corruption/precedence controls are included in this full run.
-Author Q1-Q8 evidence is recorded with the local reports; it is not an independent
-review. Links, structure, 10 structure selftests, 15 budget selftests, 7 coverage-gate
-selftests, cargo audit and whitespace passed. Distinct delta review remains pending.
-Current-candidate CI is not available before
-publication; earlier CI/coverage is historical. Container `dwpg-r3`, the restricted
-C1a test database/login and ordinary build cache were reused. Original candidate,
-profiles and unrelated worktrees were preserved; the removed CLI child has a backup
-outside source. No commit, push, PR promotion, merge, acceptance or seal is recorded.
+- The owner rejected a runtime-ceiling increase and authorized direct inspection/refactoring; that instruction superseded the earlier FIX packet's mandatory binary CLI-child partition without relaxing owner, behavior, file, complexity or cumulative-budget rules.
+- C1a local evidence: the corrected all-targets instrumented run passed 120 tests with zero ignored on Windows x64/MSVC Rust 1.94.1 + PostgreSQL 17.11 under the restricted candidate login; production coverage 96.24% (1996/2074), every executable file >=80%; measured C1a functions/closures all <=7 with `run` <=10 as qualified pure dispatch; runtime 594/600 cumulative; fmt, Clippy, links, structure, checker selftests, audit and whitespace passed.
+- C0 requires a fresh bounded dialogue for new affirmative assessments; historical duplicate/recovery paths stay read-only. C1a returns bounded `authority_withdrawn` before allocation/insertion and does not implement the C1b durable refusal event.
+- Merged partial M0B: B1a, B1b, B2 and R3; see [RUN_B1A](RUN_B1A.md), [RUN_B1B](RUN_B1B.md) and [RUN_B2](RUN_B2.md).
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
-Historical repository verification on 2026-10-01: local and remote `master` were `387910c06e7d26c6b81da9fd2a0001e974bf9aa7`; PR #5 merged M0A registration/history at `913d6f2`, PR #10 merged CodeQL maintenance at `ac40ca9`, and PR #9 merged the line-coverage gate at `387910c`. No open PR was returned by repository search. M0A runtime exists: local CLI registration, required publication, Trajectory history, inspection and reconciliation. Do not rebuild it.
-
-Exact-master CI [run 36806405110](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/36806405110) succeeded on that SHA: links, structure/runtime budget, Rust, CodeQL and `ci-ok`. The Rust job reports 29 passing tests, 0 failures/ignored, PostgreSQL 17 integration, and production line coverage 94.43% (695/736); the fixed 90% total / 80% per-source-file gate passed. This is GitHub-hosted CI evidence, not a new local test run, proof of every supported platform, or a client campaign demonstration.
-
-C1a returns bounded `authority_withdrawn` before allocation/insertion and does not implement that durable refusal event. Full positive admission remains unfinished. M0 is DEMO_PENDING and unsealed; the accepted register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this status correction. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
+Next, in scheduling order only (no new semantic dependency; C1b does not wait for producer behavior): distinct Work review of the refreshed CI McCabe gate candidate on PR #24, then a separate owner merge of #24 if authorized; a separately issued #25 C1b integration/review packet; the remaining positive admission; and the bounded M0 demo. M0 is DEMO_PENDING and unsealed; the accepted register -> assess -> withdraw -> refuse -> restart -> inspect demonstration remains outstanding. No acceptance or seal is granted by this reconciliation. ADR-009..012 remain deferred until their named evidence/proof/sensitive/key behavior requires them; target execution, LLM integration and five-model scaffolding remain outside M0.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 

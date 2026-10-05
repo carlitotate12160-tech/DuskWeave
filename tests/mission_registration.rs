@@ -34,10 +34,14 @@ fn dto_json() -> serde_json::Value {
     })
 }
 
-struct FakeAlloc;
+struct FakeAlloc {
+    allocated: Vec<Uuid>,
+}
 impl OperationAllocator for FakeAlloc {
     fn allocate(&mut self) -> Res<Uuid> {
-        Ok(uuid(77))
+        let id = uuid(77 + self.allocated.len() as u128);
+        self.allocated.push(id);
+        Ok(id)
     }
 }
 
@@ -92,25 +96,38 @@ struct FakeTraj {
     deliveries: usize,
     outcome: Delivered,
     status: HistoryStatus,
+    last_delivered: Option<EventId>,
+    deliver_error: Option<Fail>,
+    status_error: Option<Fail>,
 }
 impl TrajectoryPort for FakeTraj {
-    fn deliver(&mut self, _: &MissionRegistered) -> Res<Delivered> {
+    fn deliver(&mut self, ev: &MissionRegistered) -> Res<Delivered> {
         self.deliveries += 1;
+        self.last_delivered = Some(ev.event_id);
+        if let Some(e) = &self.deliver_error {
+            return Err(*e);
+        }
         Ok(self.outcome)
     }
     fn status(&mut self, _: EngagementId, _: CampaignId, _: EventId) -> Res<HistoryStatus> {
+        if let Some(e) = &self.status_error {
+            return Err(*e);
+        }
         Ok(self.status)
     }
 }
 
 fn fixture() -> (FakeAlloc, FakeStore, FakeTraj) {
     (
-        FakeAlloc,
+        FakeAlloc { allocated: vec![] },
         FakeStore { missions: vec![] },
         FakeTraj {
             deliveries: 0,
             outcome: Delivered::Completed,
             status: HistoryStatus::Completed,
+            last_delivered: None,
+            deliver_error: None,
+            status_error: None,
         },
     )
 }
@@ -209,6 +226,11 @@ fn register_usecase_accepted_and_idempotent() {
     );
     assert_eq!(store.missions.len(), 1);
     assert_eq!(traj.deliveries, 2);
+    // The second call allocated a fresh event id, yet the stored original
+    // is what was committed and delivered.
+    assert_eq!(alloc.allocated.len(), 3);
+    assert_ne!(alloc.allocated[2], r1.event_id.0);
+    assert_eq!(traj.last_delivered, Some(r1.event_id));
 }
 
 #[test]
@@ -320,4 +342,146 @@ fn register_rejects_nil_identities() {
         Mission::register(&input(), op, EventId(Uuid::nil()), 9),
         Err(Fail::Input(_))
     ));
+}
+
+#[test]
+fn register_various_delivery_outcomes() {
+    let (mut alloc, mut store, mut traj) = fixture();
+    let op = prepare_operation(&mut alloc).unwrap();
+
+    // Duplicate -> Completed
+    traj.outcome = Delivered::Duplicate;
+    let r = register(&mut alloc, &mut store, &mut traj, op, &input()).unwrap();
+    assert_eq!(r.history, HistoryStatus::Completed);
+
+    // Anomaly -> Anomaly
+    traj.outcome = Delivered::Anomaly;
+    let r = register(&mut alloc, &mut store, &mut traj, op, &input()).unwrap();
+    assert_eq!(r.history, HistoryStatus::Anomaly);
+
+    // Err -> Pending
+    traj.deliver_error = Some(Fail::State("network_down"));
+    let r = register(&mut alloc, &mut store, &mut traj, op, &input()).unwrap();
+    assert_eq!(r.history, HistoryStatus::Pending);
+}
+
+#[test]
+fn register_producer_error_prevents_delivery() {
+    let (mut alloc, mut store, mut traj) = fixture();
+    let op = prepare_operation(&mut alloc).unwrap();
+
+    let ev = register(&mut alloc, &mut store, &mut traj, op, &input())
+        .unwrap()
+        .event_id;
+
+    // Now if we try to register with same op but alt input, store errors:
+    let r = register(&mut alloc, &mut store, &mut traj, op, &alt_input());
+    assert!(r.is_err());
+    assert_eq!(traj.deliveries, 1, "producer error must prevent delivery");
+    assert_eq!(traj.last_delivered, Some(ev));
+}
+
+#[test]
+fn reconcile_various_pending_outcomes() {
+    let (mut alloc, mut store, mut traj) = fixture();
+    let op = prepare_operation(&mut alloc).unwrap();
+    let ev = register(&mut alloc, &mut store, &mut traj, op, &input())
+        .unwrap()
+        .event_id;
+
+    let (e, c) = (EngagementId(uuid(1)), CampaignId(uuid(2)));
+
+    traj.status = HistoryStatus::Pending;
+
+    // Pending -> Duplicate -> Committed
+    traj.outcome = Delivered::Duplicate;
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Ok(ReconcileOutcome::Committed)
+    );
+    assert_eq!(traj.deliveries, 2);
+    assert_eq!(traj.last_delivered, Some(ev));
+
+    // Pending -> Anomaly -> Conflicted
+    traj.outcome = Delivered::Anomaly;
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Ok(ReconcileOutcome::Conflicted)
+    );
+    assert_eq!(traj.deliveries, 3);
+    assert_eq!(traj.last_delivered, Some(ev));
+
+    // Pending -> Unresolved -> Err
+    traj.outcome = Delivered::Unresolved("timeout");
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Err(Fail::Unresolved("timeout"))
+    );
+    assert_eq!(traj.deliveries, 4);
+    assert_eq!(traj.last_delivered, Some(ev));
+
+    // Pending -> Delivery error -> Err
+    traj.deliver_error = Some(Fail::State("network_error"));
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Err(Fail::State("network_error"))
+    );
+    assert_eq!(traj.deliveries, 5);
+    assert_eq!(traj.last_delivered, Some(ev));
+}
+
+#[test]
+fn reconcile_status_read_error_propagation() {
+    let (mut alloc, mut store, mut traj) = fixture();
+    let op = prepare_operation(&mut alloc).unwrap();
+    register(&mut alloc, &mut store, &mut traj, op, &input()).unwrap();
+
+    let (e, c) = (EngagementId(uuid(1)), CampaignId(uuid(2)));
+
+    traj.status_error = Some(Fail::State("db_offline"));
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Err(Fail::State("db_offline"))
+    );
+    assert_eq!(traj.deliveries, 1, "status read error must not deliver");
+}
+
+#[test]
+fn reconcile_completed_performs_no_delivery() {
+    let (mut alloc, mut store, mut traj) = fixture();
+    let op = prepare_operation(&mut alloc).unwrap();
+    register(&mut alloc, &mut store, &mut traj, op, &input()).unwrap();
+
+    let (e, c) = (EngagementId(uuid(1)), CampaignId(uuid(2)));
+
+    let pre = traj.deliveries;
+    traj.status = HistoryStatus::Completed;
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Ok(ReconcileOutcome::Committed)
+    );
+    assert_eq!(traj.deliveries, pre, "Completed must not deliver");
+
+    traj.status = HistoryStatus::Anomaly;
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Ok(ReconcileOutcome::Conflicted)
+    );
+    assert_eq!(traj.deliveries, pre, "Anomaly must not deliver");
+}
+
+#[test]
+fn reconcile_absent_outbox_performs_no_delivery() {
+    let (mut alloc, mut store, mut traj) = fixture();
+    let op = prepare_operation(&mut alloc).unwrap();
+
+    let (e, c) = (EngagementId(uuid(1)), CampaignId(uuid(2)));
+
+    let pre = traj.deliveries;
+    assert_eq!(
+        reconcile(&mut store, &mut traj, e, c, op),
+        Ok(ReconcileOutcome::NotCommitted)
+    );
+    assert_eq!(traj.deliveries, pre, "absent outbox must not deliver");
+    assert!(traj.last_delivered.is_none());
 }
