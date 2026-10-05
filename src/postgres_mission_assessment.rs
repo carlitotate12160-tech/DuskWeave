@@ -99,7 +99,7 @@ fn assessment_from_authority(
                 timestamp,
             )
         }
-        None => PlanningAssessed::new(
+        None => PlanningAssessed::new_current(
             request.clone(),
             authority.basis,
             operation_id,

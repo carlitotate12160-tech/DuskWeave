@@ -1,4 +1,4 @@
-//! Mission-owned nonpositive assessment contract; never grants permission.
+//! Mission-owned planning assessment contract; never grants current permission.
 
 use crate::mission::{
     AssetRef, CampaignId, EngagementId, EventId, ExerciseMode, GoalRef, OperationId,
@@ -6,9 +6,15 @@ use crate::mission::{
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
 
+#[path = "planning_decision.rs"]
+mod planning_decision;
 #[path = "planning_withdrawal.rs"]
 mod planning_withdrawal;
+pub use planning_decision::PlanningDecision;
 pub use planning_withdrawal::WithdrawalBasis;
+
+/// Source-compatible name for decisions recorded before positive admission.
+pub type NonpositiveDecision = PlanningDecision;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -97,93 +103,6 @@ impl MissionBasis {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum NonpositiveDecision {
-    UnresolvedMissionBasis,
-    RefusedRevisionMismatch,
-    UnresolvedAuthorityUnconfirmed,
-    UnresolvedEvaluationIncomplete,
-    RefusedPurposeMismatch,
-    RefusedAssetExcluded,
-    RefusedAssetUnknown,
-    RefusedNotYetValid,
-    RefusedExpired,
-    RefusedAuthorityWithdrawn,
-}
-
-impl NonpositiveDecision {
-    /// Expected decision for a given contract version. Version 1 retains its
-    /// original semantics (no scope/window evaluation); version 2 orders the
-    /// scoped guards. Every outcome is nonpositive; nothing here grants
-    /// eligibility or permission.
-    pub fn for_request(
-        version: u32,
-        request: &PlanningRequest,
-        basis: Option<&MissionBasis>,
-        evaluated_at: i64,
-    ) -> Res<Self> {
-        match version {
-            1 => Ok(Self::v1(request, basis)),
-            2 => Ok(Self::v2(request, basis, evaluated_at)),
-            _ => Err(Fail::Unresolved("unsupported_contract")),
-        }
-    }
-
-    fn v1(request: &PlanningRequest, basis: Option<&MissionBasis>) -> Self {
-        match basis {
-            None => Self::UnresolvedMissionBasis,
-            Some(basis) if request.expected_mission_revision != basis.revision => {
-                Self::RefusedRevisionMismatch
-            }
-            Some(_) if !request.current_authority_confirmed => Self::UnresolvedAuthorityUnconfirmed,
-            Some(_) => Self::UnresolvedEvaluationIncomplete,
-        }
-    }
-
-    fn v2(request: &PlanningRequest, basis: Option<&MissionBasis>, evaluated_at: i64) -> Self {
-        let Some(basis) = basis else {
-            return Self::UnresolvedMissionBasis;
-        };
-        if request.expected_mission_revision != basis.revision {
-            return Self::RefusedRevisionMismatch;
-        }
-        if !request.current_authority_confirmed {
-            return Self::UnresolvedAuthorityUnconfirmed;
-        }
-        let Some(scope) = &basis.scope else {
-            // Unreachable for a validated v2 contract; fail nonpositive.
-            return Self::UnresolvedMissionBasis;
-        };
-        Self::scope_window(request, scope, basis, evaluated_at)
-    }
-
-    fn scope_window(
-        request: &PlanningRequest,
-        scope: &MissionScope,
-        basis: &MissionBasis,
-        evaluated_at: i64,
-    ) -> Self {
-        if request.purpose_ref != scope.goal_ref {
-            return Self::RefusedPurposeMismatch;
-        }
-        // Exclusion wins even when an asset is also included.
-        if scope.excluded_assets.contains(&request.asset_ref) {
-            return Self::RefusedAssetExcluded;
-        }
-        if !scope.included_assets.contains(&request.asset_ref) {
-            return Self::RefusedAssetUnknown;
-        }
-        if evaluated_at < basis.starts_at {
-            return Self::RefusedNotYetValid;
-        }
-        if evaluated_at >= basis.ends_at {
-            return Self::RefusedExpired;
-        }
-        Self::UnresolvedEvaluationIncomplete
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum AssessmentTimeBasis {
     ProducerTransactionStart,
 }
@@ -247,6 +166,22 @@ impl PlanningAssessed {
         Ok(event)
     }
 
+    pub fn new_current(
+        request: PlanningRequest,
+        basis: Option<MissionBasis>,
+        operation_id: OperationId,
+        event_id: EventId,
+        timestamp: i64,
+    ) -> Res<Self> {
+        let mut event = Self::new(request, basis, operation_id, event_id, timestamp)?;
+        if event.decision == PlanningDecision::UnresolvedEvaluationIncomplete {
+            event.version = 4;
+            event.decision = PlanningDecision::Eligible;
+            event.validate()?;
+        }
+        Ok(event)
+    }
+
     fn validate_scope(&self) -> Res<()> {
         if self.event_id.0.is_nil()
             || self.operation_id.0.is_nil()
@@ -273,8 +208,8 @@ impl PlanningAssessed {
             return Err(Fail::Unresolved("unsupported_contract"));
         }
         match self.version {
-            1 | 2 => self.validate_legacy_contract()?,
-            _ => self.validate_withdrawal_source()?,
+            3 => self.validate_withdrawal_source()?,
+            _ => self.validate_legacy_contract()?,
         }
         Ok(())
     }
@@ -282,7 +217,7 @@ impl PlanningAssessed {
     fn contract_header_invalid(&self) -> bool {
         self.producer != "mission"
             || self.kind != "planning_assessed"
-            || !matches!(self.version, 1..=3)
+            || !matches!(self.version, 1..=4)
     }
 
     fn validate_legacy_contract(&self) -> Res<()> {
@@ -292,14 +227,17 @@ impl PlanningAssessed {
         self.validate_basis_contract()
     }
 
-    /// A present basis carries a scope snapshot exactly on version 2;
+    /// A present basis carries a scope snapshot exactly on version 2 or 4;
     /// v1 records keep the old wire shape and v2 never downscopes.
     fn validate_basis_contract(&self) -> Res<()> {
+        if self.version == 4 && self.basis.is_none() {
+            return Err(Fail::Unresolved("unsupported_contract"));
+        }
         if let Some(basis) = &self.basis {
             basis.validate()?;
             let coherent = matches!(
                 (self.version, basis.scope.is_some()),
-                (1, false) | (2, true)
+                (1, false) | (2 | 4, true)
             );
             if !coherent {
                 return Err(Fail::Unresolved("unsupported_contract"));
@@ -315,16 +253,24 @@ impl PlanningAssessed {
         Ok(())
     }
 
-    fn expected_decision(&self) -> Res<NonpositiveDecision> {
-        match self.version {
-            3 => Ok(NonpositiveDecision::RefusedAuthorityWithdrawn),
-            _ => NonpositiveDecision::for_request(
-                self.version,
-                &self.request,
-                self.basis.as_ref(),
-                self.evaluated_at,
-            ),
+    fn expected_decision(&self) -> Res<PlanningDecision> {
+        if self.version == 3 {
+            return Ok(PlanningDecision::RefusedAuthorityWithdrawn);
         }
+        let version = if self.version == 4 { 2 } else { self.version };
+        let decision = PlanningDecision::for_request(
+            version,
+            &self.request,
+            self.basis.as_ref(),
+            self.evaluated_at,
+        )?;
+        if self.version == 4 {
+            if decision != PlanningDecision::UnresolvedEvaluationIncomplete {
+                return Err(Fail::Unresolved("invalid_assessment"));
+            }
+            return Ok(PlanningDecision::Eligible);
+        }
+        Ok(decision)
     }
 
     fn timestamps_incoherent(&self) -> bool {
@@ -341,34 +287,12 @@ impl PlanningAssessed {
         self.validate_decision()
     }
 
-    /// Historical (scope, window) result labels describing the original
-    /// assessment time. Version 1 never evaluated scope or window; for v2 the
-    /// labels follow which guards the stored decision reached.
-    pub fn assessment_labels(&self) -> (&'static str, &'static str) {
-        use NonpositiveDecision as D;
-        if self.version != 2 {
-            return ("not_evaluated", "not_evaluated");
-        }
-        match self.decision {
-            D::RefusedPurposeMismatch => ("purpose_mismatch", "not_evaluated"),
-            D::RefusedAssetExcluded => ("excluded", "not_evaluated"),
-            D::RefusedAssetUnknown => ("unknown", "not_evaluated"),
-            D::RefusedNotYetValid | D::RefusedExpired | D::UnresolvedEvaluationIncomplete => {
-                ("matched", self.assessment_window_label())
-            }
-            _ => ("not_evaluated", "not_evaluated"),
-        }
+    pub fn recorded_eligible(&self) -> bool {
+        self.version == 4 && self.decision == PlanningDecision::Eligible && self.validate().is_ok()
     }
 
-    /// Historical window result for a scope-matched decision; every other
-    /// decision keeps the not-evaluated label.
-    fn assessment_window_label(&self) -> &'static str {
-        match self.decision {
-            NonpositiveDecision::RefusedNotYetValid => "not_yet_valid",
-            NonpositiveDecision::RefusedExpired => "expired",
-            NonpositiveDecision::UnresolvedEvaluationIncomplete => "within_window",
-            _ => "not_evaluated",
-        }
+    pub fn assessment_labels(&self) -> (&'static str, &'static str) {
+        self.decision.labels(self.version)
     }
 
     pub fn corresponds_to(&self, request: &PlanningRequest, operation_id: OperationId) -> Res<()> {

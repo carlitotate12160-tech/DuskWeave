@@ -101,7 +101,8 @@ fn history_receipt(event: PlanningAssessed, view: HistoryView) -> serde_json::Va
         "complete_history": view.complete,
         "action": if view.state == "unknown" { "recover_history_before_retry" } else { "none" },
         "scope": scope, "window": window,
-        "complete_assessment": false, "current_permission": false,
+        "complete_assessment": event.recorded_eligible() && view.complete,
+        "current_permission": false,
     })
 }
 

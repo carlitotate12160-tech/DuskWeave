@@ -116,11 +116,8 @@ fn scoped_current_basis_decisions_persist_and_match_owner_row() {
     let event = assessed(&mut allocator, &mut store, &input)
         .unwrap()
         .unwrap();
-    assert_eq!(event.version, 2);
-    assert_eq!(
-        event.decision,
-        NonpositiveDecision::UnresolvedEvaluationIncomplete
-    );
+    assert_eq!(event.version, 4);
+    assert_eq!(event.decision, NonpositiveDecision::Eligible);
     let scope = event.basis.as_ref().unwrap().scope.as_ref().unwrap();
     let row = client()
         .query_one(
@@ -244,10 +241,8 @@ fn recovery_returns_original_after_owner_removed_or_changed() {
     let first = assess(&mut allocator, &mut store, &input, op, false)
         .unwrap()
         .unwrap();
-    assert_eq!(
-        first.decision,
-        NonpositiveDecision::UnresolvedEvaluationIncomplete
-    );
+    assert_eq!(first.version, 4);
+    assert_eq!(first.decision, NonpositiveDecision::Eligible);
     // Changing owner bounds later does not rewrite the durable record.
     admin()
         .execute(
@@ -424,10 +419,8 @@ fn identical_references_under_another_campaign_get_no_basis_or_history() {
     let original = assess(&mut allocator, &mut store, &input, op, false)
         .unwrap()
         .unwrap();
-    assert_eq!(
-        original.decision,
-        NonpositiveDecision::UnresolvedEvaluationIncomplete
-    );
+    assert_eq!(original.version, 4);
+    assert_eq!(original.decision, NonpositiveDecision::Eligible);
     assert!(original.basis.is_some());
     assert_ne!(original.campaign_id, event.campaign_id);
 }
