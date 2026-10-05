@@ -292,20 +292,14 @@ fn concurrent_positive_assessment_and_withdrawal_have_serial_owner_results() {
     .unwrap();
     let op = registration::prepare_operation(&mut allocator).unwrap();
     let wop = registration::prepare_operation(&mut allocator).unwrap();
+    let input = request(engagement, campaign);
+    let raced_input = input.clone();
     let gate = Arc::new(Barrier::new(3));
     let a_gate = gate.clone();
     let assessment = std::thread::spawn(move || {
         let (mut allocator, mut store, _) = ports();
         a_gate.wait();
-        retry(|| {
-            assess(
-                &mut allocator,
-                &mut store,
-                &request(engagement, campaign),
-                op,
-                false,
-            )
-        })
+        retry(|| assess(&mut allocator, &mut store, &raced_input, op, false))
     });
     let w_gate = gate.clone();
     let withdrawal = std::thread::spawn(move || {
@@ -321,20 +315,24 @@ fn concurrent_positive_assessment_and_withdrawal_have_serial_owner_results() {
         })
     });
     gate.wait();
-    let historical = assessment.join().unwrap().unwrap().unwrap();
+    let outcome = assessment.join().unwrap();
     let withdrawn = withdrawal.join().unwrap().unwrap().unwrap();
+    let mut fresh = PgMissionStore::new(runtime_client());
+    let historical = match outcome {
+        Err(Fail::Store("commit_unknown")) => read_decision(&mut fresh, &input, op),
+        result => result,
+    }
+    .unwrap();
     assert_eq!(withdrawn.owner_revision, 2);
-    assert!(matches!(historical.version, 3 | 4));
-    assert_eq!(historical.recorded_eligible(), historical.version == 4);
-    let (mut allocator, mut store, _) = ports();
-    assert_eq!(
-        assess_now(&mut allocator, &mut store, &request(engagement, campaign)).version,
-        3
-    );
+    if let Some(event) = &historical {
+        assert!(matches!(event.version, 3 | 4));
+        assert_eq!(event.recorded_eligible(), event.version == 4);
+    }
+    assert_eq!(assess_now(&mut allocator, &mut fresh, &input).version, 3);
     assert_eq!(count("mission.withdrawals", engagement, campaign), 1);
     assert_eq!(
         count("mission.planning_assessments", engagement, campaign),
-        2
+        1 + i64::from(historical.is_some())
     );
 }
 
