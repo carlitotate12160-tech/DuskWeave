@@ -422,13 +422,21 @@ class SubprocessTimeout(unittest.TestCase):
             self.checker._subprocess_timeout(),
             self.checker.SUBPROCESS_TIMEOUT_SECONDS,
         )
+        self.with_env("300")
+        self.assertEqual(self.checker._subprocess_timeout(), 300.0)
 
     def test_invalid_timeout_values_fail_closed(self):
-        for bad in ("garbage", "0", "-3", "nan", "inf"):
+        for bad in ("garbage", "0", "-3", "nan", "inf", "301", "1e308"):
             with self.subTest(value=bad):
                 self.with_env(bad)
                 with self.assertRaises(self.checker.reports.CheckError):
                     self.checker._subprocess_timeout()
+        self.with_env("301")
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/a.rs": OK_RS})
+            res = run_checker(td)
+            self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+            self.assertIn("DW_COMPLEXITY_TIMEOUT", res.stderr)
 
 
 if __name__ == "__main__":

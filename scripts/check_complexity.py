@@ -46,9 +46,10 @@ def _subprocess_timeout():
         raise reports.CheckError(
             f"DW_COMPLEXITY_TIMEOUT must be a number of seconds, got {raw!r}"
         ) from None
-    if not 0 < value < float("inf"):
+    if not 0 < value <= SUBPROCESS_TIMEOUT_SECONDS:
         raise reports.CheckError(
-            f"DW_COMPLEXITY_TIMEOUT must be positive and finite, got {value!r}"
+            f"DW_COMPLEXITY_TIMEOUT must be within "
+            f"(0, {SUBPROCESS_TIMEOUT_SECONDS:g}] seconds, got {value!r}"
         )
     return value
 
