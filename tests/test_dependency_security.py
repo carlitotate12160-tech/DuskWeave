@@ -20,7 +20,8 @@ ENV = (
 )
 BASH = os.environ.get("DW_BASH") or "bash"
 HELPER, ARCHIVE, DENY_BIN, DENY_CONFIG, PROJECT, ADVISORY_DB, EVIDENCE = (
-    os.environ.get(k) for k in ENV)
+    str(Path(os.environ[k]).resolve()) if os.environ.get(k) else None
+    for k in ENV)
 
 
 def shp(p):
@@ -93,7 +94,8 @@ class DependencyGateControls(unittest.TestCase):
 
     def test_pinned_archive_passes_verifier(self):
         p = self.keep("verify-archive.log",
-                      run([BASH, HELPER, "verify-archive", ARCHIVE]))
+                      run([BASH, shp(HELPER), "verify-archive",
+                           shp(ARCHIVE)]))
         self.assertEqual(p.returncode, 0, p.stderr)
 
     def test_corrupted_archive_fails_before_extraction(self):
@@ -105,7 +107,8 @@ class DependencyGateControls(unittest.TestCase):
                 bad = Path(self.tmp, f"bad-{name}.tgz")
                 bad.write_bytes(mutate(Path(ARCHIVE).read_bytes()))
                 p = self.keep(f"verify-{name}.log",
-                              run([BASH, HELPER, "verify-archive", str(bad)]))
+                              run([BASH, shp(HELPER), "verify-archive",
+                                   shp(bad)]))
                 self.assertNotEqual(p.returncode, 0)
                 self.assertIn("SHA256 mismatch", p.stderr)
                 self.assertFalse(
@@ -144,7 +147,7 @@ class DependencyGateControls(unittest.TestCase):
         self.assertEqual(gen.returncode, 0, gen.stderr)
         p = self.keep("deny-git-reject.log", self.deny("sources", fix))
         self.assertNotEqual(p.returncode, 0)
-        self.assertIn("git", p.stderr)
+        self.assertIn("source-not-allowed", p.stderr)
 
     def test_vulnerable_lockfile_fails_through_helper(self):
         fix = Path(self.tmp, "vuln")
@@ -152,7 +155,8 @@ class DependencyGateControls(unittest.TestCase):
         fix.mkdir()
         (fix / "Cargo.lock").write_text(VULN_LOCK)
         p = self.keep("audit-vuln.log", run(
-            [BASH, HELPER, "audit", shp(fix), shp(ADVISORY_DB), shp(ev)]))
+            [BASH, shp(HELPER), "audit", shp(fix), shp(ADVISORY_DB),
+             shp(ev)]))
         self.assertNotEqual(p.returncode, 0, "vulnerable lockfile audited clean")
         report = json.loads((ev / "audit.json").read_text())
         hits = {(v["advisory"]["id"], v["package"]["name"])
@@ -163,7 +167,8 @@ class DependencyGateControls(unittest.TestCase):
     def test_project_audits_clean_through_helper(self):
         ev = Path(EVIDENCE, "project-audit")
         p = self.keep("audit-project.log", run(
-            [BASH, HELPER, "audit", shp(PROJECT), shp(ADVISORY_DB), shp(ev)]))
+            [BASH, shp(HELPER), "audit", shp(PROJECT), shp(ADVISORY_DB),
+             shp(ev)]))
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         report = json.loads((ev / "audit.json").read_text())
         self.assertEqual(report["vulnerabilities"]["found"], False)
