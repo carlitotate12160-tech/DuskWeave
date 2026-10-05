@@ -12,6 +12,9 @@ use postgres::{Client, GenericClient, Transaction};
 use serde_json::Value;
 use uuid::Uuid;
 
+#[path = "postgres_planning_withdrawal.rs"]
+mod postgres_planning_withdrawal;
+
 const OBLIGATION: &str = "trajectory.planning_history.v1";
 
 pub(super) fn qualify(client: &mut Client, publish: bool) -> Res<()> {
@@ -158,11 +161,19 @@ pub(super) fn append(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Deliver
     if let Some(result) = existing_result(tx, &record)? {
         return Ok(result);
     }
-    if let Some(reason) = predecessor(tx, ev)? {
+    if let Some(reason) = predecessor_gap(tx, ev)? {
         return Ok(Delivered::Unresolved(reason));
     }
     postgres_trajectory_journal::append_accepted(tx, JournalTable::Planning, &record)?;
     Ok(Delivered::Completed)
+}
+
+/// Registration and (for v3) withdrawal predecessor gap, if any.
+fn predecessor_gap(tx: &mut Transaction, ev: &PlanningAssessed) -> Res<Option<&'static str>> {
+    if let Some(reason) = predecessor(tx, ev)? {
+        return Ok(Some(reason));
+    }
+    postgres_planning_withdrawal::withdrawal_predecessor(tx, ev)
 }
 
 pub(super) fn commit_error(e: &postgres::Error) -> Fail {

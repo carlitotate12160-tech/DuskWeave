@@ -1,5 +1,5 @@
 use duskweave::mission::*;
-use duskweave::planning::PlanningRequest;
+use duskweave::planning::{NonpositiveDecision, PlanningRequest};
 use duskweave::planning_assessment::PlanningStore;
 use duskweave::postgres_mission::PgMissionStore;
 use duskweave::registration::{self, OperationAllocator};
@@ -98,9 +98,15 @@ fn withdrawal_acknowledged_while_assessment_paused_prevents_late_assessment_comm
             .unwrap(),
         None
     );
+    // A fresh retry now records the durable v3 refusal, not a bare error.
+    let refused = fresh
+        .assess(&planning(e, c), assessment_op, false, &mut alloc)
+        .unwrap()
+        .unwrap();
+    assert_eq!(refused.version, 3);
     assert_eq!(
-        fresh.assess(&planning(e, c), assessment_op, false, &mut Never),
-        Err(Fail::State("authority_withdrawn"))
+        refused.decision,
+        NonpositiveDecision::RefusedAuthorityWithdrawn
     );
     assert_eq!(
         fresh
@@ -108,7 +114,7 @@ fn withdrawal_acknowledged_while_assessment_paused_prevents_late_assessment_comm
             .unwrap(),
         Some(withdrawn)
     );
-    assert_eq!(count("mission.planning_assessments", e, c), 0);
+    assert_eq!(count("mission.planning_assessments", e, c), 1);
 }
 
 #[test]

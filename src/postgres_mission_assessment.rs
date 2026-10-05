@@ -65,7 +65,10 @@ fn create_assessment(
     operation_id: OperationId,
     allocator: &mut dyn OperationAllocator,
 ) -> Res<PlanningAssessed> {
-    let basis = super::postgres_mission_basis::current_basis(tx, request)?;
+    let authority = super::postgres_mission_basis::current_authority(tx, request)?;
+    if authority.withdrawal.is_some() && authority.basis.is_none() {
+        return Err(Fail::Store("unsupported_basis"));
+    }
     let timestamp: i64 = tx
         .query_one(
             "SELECT floor(extract(epoch FROM transaction_timestamp()))::bigint",
@@ -74,5 +77,34 @@ fn create_assessment(
         .map_err(|error| store_err(&error))?
         .get(0);
     let event_id = EventId(allocator.allocate()?);
-    PlanningAssessed::new(request.clone(), basis, operation_id, event_id, timestamp)
+    assessment_from_authority(request, authority, operation_id, event_id, timestamp)
+}
+
+fn assessment_from_authority(
+    request: &PlanningRequest,
+    authority: super::postgres_mission_basis::CurrentAuthority,
+    operation_id: OperationId,
+    event_id: EventId,
+    timestamp: i64,
+) -> Res<PlanningAssessed> {
+    match authority.withdrawal {
+        Some(withdrawal) => {
+            let basis = authority.basis.ok_or(Fail::Store("unsupported_basis"))?;
+            PlanningAssessed::new_withdrawn(
+                request.clone(),
+                basis,
+                withdrawal,
+                operation_id,
+                event_id,
+                timestamp,
+            )
+        }
+        None => PlanningAssessed::new(
+            request.clone(),
+            authority.basis,
+            operation_id,
+            event_id,
+            timestamp,
+        ),
+    }
 }

@@ -216,6 +216,11 @@ impl PlanningStore for PgMissionStore {
         }
         postgres_mission_assessment::assess_new(&mut self.client, request, operation_id, allocator)
     }
+
+    fn authority_withdrawn(&mut self, request: &PlanningRequest) -> Res<bool> {
+        request.validate()?;
+        Ok(postgres_withdrawal::current_marker(&mut self.client, request)?.is_some())
+    }
 }
 
 impl MissionStore for PgMissionStore {

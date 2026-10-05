@@ -1,10 +1,44 @@
-//! Mission-local acceptance: marker, immutable event and obligation commit together.
+//! Mission-local acceptance and the scoped current-marker reader over the
+//! immutable withdrawal contract. Both producer reads share one strict codec:
+//! the decoded payload is bound to the explicitly projected owner catalog, so
+//! corruption is a bounded decode failure and never absence or a conflict.
+
 use super::{PgMissionStore, store_err};
 use crate::mission::{EventId, OperationId};
+use crate::planning::PlanningRequest;
 use crate::registration::OperationAllocator;
 use crate::withdrawal::{MissionAuthorityWithdrawn, WithdrawalRequest, WithdrawalStore};
 use crate::{Fail, Res};
 use postgres::{GenericClient, IsolationLevel, Transaction};
+
+/// Fixed header, obligation and identity projection shared by the duplicate/
+/// recovery read and the scoped current-marker read.
+const MARKER_PROJECTION: &str = "SELECT contract, \
+     owner_revision=2 AND producer='mission' AND version=1 \
+     AND kind='mission_authority_withdrawn' AND publication_obligation='trajectory.withdrawal_history.v1', \
+     jsonb_build_object('event_id',event_id,'registration_operation_id',registration_operation_id, \
+     'operation_id',operation_id,'engagement_id',engagement_id,'campaign_id',campaign_id) \
+     FROM mission.withdrawals";
+
+/// Decode one validated withdrawal contract from a projected marker row and
+/// bind it to the explicitly projected owner catalog.
+fn decode_marker(row: &postgres::Row) -> Res<MissionAuthorityWithdrawn> {
+    let event: MissionAuthorityWithdrawn =
+        serde_json::from_value(row.get(0)).map_err(|_| Fail::Store("contract_decode"))?;
+    event
+        .validate()
+        .map_err(|_| Fail::Store("contract_decode"))?;
+    // Bind the decoded contract to the explicitly projected owner catalog.
+    let catalog = serde_json::json!({
+        "event_id": event.event_id, "registration_operation_id": event.registration_operation_id,
+        "operation_id": event.operation_id,
+        "engagement_id": event.request.engagement_id, "campaign_id": event.request.campaign_id,
+    });
+    if !row.get::<_, bool>(1) || row.get::<_, serde_json::Value>(2) != catalog {
+        return Err(Fail::Store("contract_decode"));
+    }
+    Ok(event)
+}
 
 fn original(
     client: &mut impl GenericClient,
@@ -13,12 +47,9 @@ fn original(
 ) -> Res<Option<MissionAuthorityWithdrawn>> {
     let row = client
         .query_opt(
-            "SELECT contract, owner_revision=2 AND producer='mission' AND version=1 \
-         AND kind='mission_authority_withdrawn' AND publication_obligation='trajectory.withdrawal_history.v1', \
-         jsonb_build_object('event_id',event_id,'registration_operation_id',registration_operation_id, \
-         'operation_id',operation_id, \
-         'engagement_id',engagement_id,'campaign_id',campaign_id) \
-         FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3",
+            &format!(
+                "{MARKER_PROJECTION} WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3"
+            ),
             &[
                 &request.engagement_id.0,
                 &request.campaign_id.0,
@@ -27,23 +58,30 @@ fn original(
         )
         .map_err(|e| store_err(&e))?;
     row.map(|row| {
-        let event: MissionAuthorityWithdrawn =
-            serde_json::from_value(row.get(0)).map_err(|_| Fail::Store("contract_decode"))?;
-        event.validate().map_err(|_| Fail::Store("contract_decode"))?;
-        // Bind the decoded contract to the explicitly projected owner catalog.
-        let catalog = serde_json::json!({
-            "event_id": event.event_id, "registration_operation_id": event.registration_operation_id,
-            "operation_id": event.operation_id,
-            "engagement_id": event.request.engagement_id, "campaign_id": event.request.campaign_id,
-        });
-        if !row.get::<_, bool>(1) || row.get::<_, serde_json::Value>(2) != catalog {
-            return Err(Fail::Store("contract_decode"));
-        }
+        let event = decode_marker(&row)?;
         if event.request != *request {
             return Err(Fail::Conflict("integrity_conflict"));
         }
         Ok(event)
-    }).transpose()
+    })
+    .transpose()
+}
+
+/// Scoped current-marker read for the planning producer: the one validated
+/// withdrawal for this engagement/campaign, or None. A different withdrawal
+/// operation is never conflated with this scope; malformed rows fail safely,
+/// never becoming absence.
+pub(super) fn current_marker(
+    client: &mut impl GenericClient,
+    request: &PlanningRequest,
+) -> Res<Option<MissionAuthorityWithdrawn>> {
+    let row = client
+        .query_opt(
+            &format!("{MARKER_PROJECTION} WHERE engagement_id=$1 AND campaign_id=$2"),
+            &[&request.engagement_id.0, &request.campaign_id.0],
+        )
+        .map_err(|e| store_err(&e))?;
+    row.map(|row| decode_marker(&row)).transpose()
 }
 
 /// One scoped eligibility read: collisions dominate missing/stale registration.

@@ -324,17 +324,22 @@ fn fresh_dialogue_cannot_override_marker_and_unrecorded_uncertainty_requires_rec
         let mut changed = planning.clone();
         changed["current_authority_confirmed"] = confirmed.into();
         let file = InputFile::new(&changed, op);
-        if confirmed {
-            let mut session = confirm_support::assess_session(
+        let view = if confirmed {
+            // Known withdrawal skips the fresh challenge and exits with open
+            // stdin: no challenge line, a durable v3 refusal, exit success.
+            let session = confirm_support::assess_session(
                 &op.to_string(),
                 file.path(),
                 false,
                 &std::env::var("DW_TEST_DATABASE_URL").unwrap(),
             );
-            session.affirm(&e.to_string(), &c.to_string(), &op.to_string(), 1);
-            let finished = session.finish();
-            assert!(!finished.status.success());
-            assert!(String::from_utf8_lossy(&finished.stdout).contains("authority_withdrawn"));
+            let finished = session.finish_with_open_input();
+            assert!(finished.status.success());
+            assert!(
+                finished.challenge_line.is_empty(),
+                "known withdrawal must not prompt"
+            );
+            serde_json::from_slice::<Value>(&finished.stdout).unwrap()
         } else {
             let output = cli(&[
                 "assess",
@@ -345,11 +350,19 @@ fn fresh_dialogue_cannot_override_marker_and_unrecorded_uncertainty_requires_rec
                 "--recover",
                 "false",
             ]);
-            assert!(!output.status.success());
-            assert!(String::from_utf8_lossy(&output.stdout).contains("authority_withdrawn"));
-        }
-        assert_eq!(count("mission.planning_assessments", e, c), 0);
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            serde_json::from_slice::<Value>(&output.stdout).unwrap()
+        };
+        assert_eq!(view["result"], "durable");
+        assert_eq!(view["contract"]["decision"], "refused_authority_withdrawn");
+        assert_eq!(view["current_permission"], false);
+        assert_eq!(view["complete_assessment"], false);
     }
+    assert_eq!(count("mission.planning_assessments", e, c), 2);
     assert_eq!(count("mission.withdrawals", e, c), 1);
     let inspected = cli(&[
         "inspect",

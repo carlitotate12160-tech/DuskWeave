@@ -1,5 +1,5 @@
 use duskweave::mission::*;
-use duskweave::planning::PlanningRequest;
+use duskweave::planning::{NonpositiveDecision, PlanningRequest, WithdrawalBasis};
 use duskweave::planning_assessment::PlanningStore;
 use duskweave::registration::{self, MissionStore, OperationAllocator};
 use duskweave::withdrawal::*;
@@ -125,14 +125,35 @@ fn transition_is_immutable_scoped_and_denies_before_allocation_without_history()
     }
     for confirmed in [true, false] {
         let fresh_op = registration::prepare_operation(&mut alloc).unwrap();
+        // A fresh assessment after a committed withdrawal now records one
+        // durable v3 refusal (allocates + inserts), never a bare error.
+        let refused = store
+            .assess(&planning(e, c, confirmed), fresh_op, false, &mut alloc)
+            .unwrap()
+            .unwrap();
+        assert_eq!(refused.version, 3);
         assert_eq!(
-            store.assess(
-                &planning(e, c, confirmed),
-                fresh_op,
-                false,
-                &mut NoAllocation
-            ),
-            Err(Fail::State("authority_withdrawn"))
+            refused.decision,
+            NonpositiveDecision::RefusedAuthorityWithdrawn
+        );
+        assert_eq!(
+            refused.withdrawal,
+            Some(WithdrawalBasis {
+                operation_id: op,
+                event_id: withdrawn.event_id,
+            })
+        );
+        // Duplicate/recovery rereads the recorded refusal without allocation.
+        assert_eq!(
+            store
+                .assess(
+                    &planning(e, c, confirmed),
+                    fresh_op,
+                    true,
+                    &mut NoAllocation
+                )
+                .unwrap(),
+            Some(refused)
         );
         assert_eq!(
             store.assess(&planning(e, c, confirmed), op, false, &mut NoAllocation),
@@ -176,7 +197,7 @@ fn transition_is_immutable_scoped_and_denies_before_allocation_without_history()
             .revision,
         1
     );
-    assert_eq!(count("mission.planning_assessments", e, c), 1);
+    assert_eq!(count("mission.planning_assessments", e, c), 3);
 }
 
 #[test]
