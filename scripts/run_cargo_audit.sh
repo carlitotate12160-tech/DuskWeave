@@ -79,8 +79,8 @@ cmd_audit() {
 
     local status
     set +e
-    "$audit_bin" audit --file "$lockfile" --db "$advisory_db" --json \
-        > "${evidence_dir}/audit.json" 2> "${evidence_dir}/audit.log"
+    "$audit_bin" audit --file "$lockfile" --db "$advisory_db" --no-fetch \
+        --json > "${evidence_dir}/audit.json" 2> "${evidence_dir}/audit.log"
     status=$?
     set -e
     cat "${evidence_dir}/audit.log"
