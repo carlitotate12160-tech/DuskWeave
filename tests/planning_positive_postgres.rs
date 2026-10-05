@@ -151,10 +151,7 @@ fn eligibility_requires_predecessor_and_history_then_preserves_identity_on_recov
         .unwrap()
         .unwrap();
     assert_eq!(recovered, original);
-    assert_eq!(
-        history_view(&mut PgTrajectory::new(runtime_client()), &recovered, true).complete,
-        true
-    );
+    assert!(history_view(&mut PgTrajectory::new(runtime_client()), &recovered, true).complete);
     assert_eq!(
         count("mission.planning_assessments", engagement, campaign),
         1
