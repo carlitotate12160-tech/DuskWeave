@@ -115,10 +115,10 @@ fn request_json(e: &str, c: &str, revision: u64, confirmed: bool) -> Value {
     })
 }
 
-fn assert_labels(receipt: &Value, scope: &str, window: &str) {
+fn assert_labels(receipt: &Value, scope: &str, window: &str, complete: bool) {
     assert_eq!(receipt["scope"], scope);
     assert_eq!(receipt["window"], window);
-    assert_eq!(receipt["complete_assessment"], false);
+    assert_eq!(receipt["complete_assessment"], complete);
     assert_eq!(receipt["current_permission"], false);
 }
 
@@ -167,7 +167,7 @@ fn cli_scope_and_window_refusals_publish_and_recover_identically() {
         case(
             Some((now - 7_200, now + 7_200)),
             json!({}),
-            "unresolved_evaluation_incomplete",
+            "eligible",
             "matched",
             "within_window",
         ),
@@ -237,16 +237,20 @@ fn cli_scope_and_window_refusals_publish_and_recover_identically() {
         } else {
             json_output(planning("assess", &op, &file, "false"))
         };
-        assert_eq!(assessed["contract"]["version"], 2);
+        let eligible = case.decision == "eligible";
+        assert_eq!(
+            assessed["contract"]["version"],
+            if eligible { 4 } else { 2 }
+        );
         assert_eq!(assessed["contract"]["decision"], case.decision);
-        assert_labels(&assessed, case.scope, case.window_label);
+        assert_labels(&assessed, case.scope, case.window_label, false);
         let pending = json_output(planning("planning-history", &op, &file, "true"));
         assert_eq!(pending["history"], "pending");
-        assert_labels(&pending, case.scope, case.window_label);
+        assert_labels(&pending, case.scope, case.window_label, false);
         let completed = json_output(planning("planning-history", &op, &file, "false"));
         assert_eq!(completed["history"], "completed");
         assert_eq!(completed["contract"], assessed["contract"]);
-        assert_labels(&completed, case.scope, case.window_label);
+        assert_labels(&completed, case.scope, case.window_label, eligible);
         // A fresh process recovers the exact original durable record.
         let restarted = json_output(planning("planning-history", &op, &file, "true"));
         assert_eq!(restarted, completed);
