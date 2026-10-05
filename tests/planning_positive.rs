@@ -1,5 +1,6 @@
 use duskweave::Fail;
 use duskweave::mission::*;
+use duskweave::planning::NonpositiveDecision::RefusedExpired;
 use duskweave::planning::{
     MissionBasis, MissionScope, NonpositiveDecision, PlanningAssessed, PlanningDecision,
     PlanningRequest,
@@ -259,4 +260,11 @@ fn v4_cannot_be_forged_from_stale_or_malformed_source() {
         serde_json::from_value(serde_json::to_value(&valid).unwrap()).unwrap();
     assert_eq!(round, valid);
     assert!(round.recorded_eligible());
+}
+
+#[test]
+fn legacy_variant_import_assigns_to_canonical_decision() {
+    let imported: PlanningDecision = RefusedExpired;
+    assert_eq!(imported, NonpositiveDecision::RefusedExpired);
+    assert_eq!(serde_json::to_value(imported).unwrap(), "refused_expired");
 }

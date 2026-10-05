@@ -14,7 +14,7 @@ pub use planning_decision::PlanningDecision;
 pub use planning_withdrawal::WithdrawalBasis;
 
 /// Source-compatible name for decisions recorded before positive admission.
-pub type NonpositiveDecision = PlanningDecision;
+pub use planning_decision::PlanningDecision as NonpositiveDecision;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
