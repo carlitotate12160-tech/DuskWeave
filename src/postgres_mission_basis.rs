@@ -6,8 +6,8 @@
 //! state, never a fabricated durable refusal here.
 
 use super::store_err;
-use crate::mission::{AssetRef, EventId, ExerciseMode, GoalRef, OperationId};
-use crate::planning::{MissionBasis, MissionScope, PlanningAssessed, PlanningRequest};
+use crate::mission::{AssetRef, ExerciseMode, GoalRef, OperationId};
+use crate::planning::{MissionBasis, MissionScope, PlanningRequest};
 use crate::withdrawal::MissionAuthorityWithdrawn;
 use crate::{Fail, Res};
 
@@ -30,36 +30,6 @@ pub(super) fn current_authority(
     Ok(CurrentAuthority { basis, withdrawal })
 }
 
-/// Build the v2 or v3 assessment event from the current authority pair inside
-/// the caller's transaction. A marker with a missing registration basis is
-/// unsupported state, never a fabricated durable refusal.
-pub(super) fn assess_event(
-    tx: &mut postgres::Transaction,
-    request: &PlanningRequest,
-    operation_id: OperationId,
-    event_id: EventId,
-    timestamp: i64,
-) -> Res<PlanningAssessed> {
-    let authority = current_authority(tx, request)?;
-    match authority.withdrawal {
-        Some(withdrawal) => PlanningAssessed::new_withdrawn(
-            request.clone(),
-            authority.basis.ok_or(Fail::Store("unsupported_basis"))?,
-            withdrawal,
-            operation_id,
-            event_id,
-            timestamp,
-        ),
-        None => PlanningAssessed::new(
-            request.clone(),
-            authority.basis,
-            operation_id,
-            event_id,
-            timestamp,
-        ),
-    }
-}
-
 fn read_basis(
     tx: &mut postgres::Transaction,
     request: &PlanningRequest,
@@ -76,6 +46,23 @@ fn read_basis(
 }
 
 fn decode_basis(row: postgres::Row) -> Res<MissionBasis> {
+    let (revision, exercise_mode) = decode_basis_header(&row)?;
+    let scope = decode_scope(&row)?;
+    let basis = MissionBasis {
+        registration_operation_id: OperationId(
+            row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?,
+        ),
+        revision,
+        exercise_mode,
+        starts_at: row.try_get(3).map_err(|_| Fail::Store("contract_decode"))?,
+        ends_at: row.try_get(4).map_err(|_| Fail::Store("contract_decode"))?,
+        scope: Some(scope),
+    };
+    basis.validate()?;
+    Ok(basis)
+}
+
+fn decode_basis_header(row: &postgres::Row) -> Res<(u64, ExerciseMode)> {
     let revision: i64 = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
     if revision <= 0 {
         return Err(Fail::Store("unsupported_basis"));
@@ -86,23 +73,15 @@ fn decode_basis(row: postgres::Row) -> Res<MissionBasis> {
         "defender_informed" => ExerciseMode::DefenderInformed,
         _ => return Err(Fail::Store("unsupported_basis")),
     };
-    let scope = MissionScope {
+    Ok((revision as u64, exercise_mode))
+}
+
+fn decode_scope(row: &postgres::Row) -> Res<MissionScope> {
+    Ok(MissionScope {
         goal_ref: GoalRef(row.try_get(5).map_err(|_| Fail::Store("contract_decode"))?),
-        included_assets: decode_assets(&row, 6)?,
-        excluded_assets: decode_assets(&row, 7)?,
-    };
-    let basis = MissionBasis {
-        registration_operation_id: OperationId(
-            row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?,
-        ),
-        revision: revision as u64,
-        exercise_mode,
-        starts_at: row.try_get(3).map_err(|_| Fail::Store("contract_decode"))?,
-        ends_at: row.try_get(4).map_err(|_| Fail::Store("contract_decode"))?,
-        scope: Some(scope),
-    };
-    basis.validate()?;
-    Ok(basis)
+        included_assets: decode_assets(row, 6)?,
+        excluded_assets: decode_assets(row, 7)?,
+    })
 }
 
 fn decode_assets(row: &postgres::Row, column: usize) -> Res<Vec<AssetRef>> {

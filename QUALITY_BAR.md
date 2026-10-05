@@ -59,7 +59,11 @@ Do not equate match-arm count with McCabe or substitute cognitive complexity.
 Report the measurement method/tool/version, source span and exact candidate;
 unavailable measurement is UNVERIFIED, not a numerical PASS. Existing fmt/Clippy
 success is not proof that these metrics are measured. Analyzer selection and CI
-wiring require their own bounded implementation; this policy installs neither.
+wiring require their own bounded implementation. Enforcement wiring:
+`scripts/check_complexity.py` measures the tracked `src/**/*.rs` inventory with
+the pinned rust-code-analysis-cli 0.0.25 binary inside the `structure` job of
+`.github/workflows/doc-check.yml`; the thresholds above are its enforced
+constants and the tool grants no new exception.
 
 ### Code splitting rules:
 - Strictly forbidden to create dumping-ground files such as `utils.rs`, `helpers.rs`, `common.rs`, or `misc.rs`.

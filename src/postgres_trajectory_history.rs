@@ -95,10 +95,10 @@ fn insert_accepted(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res
     Ok(())
 }
 
-pub(super) fn append(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<Delivered> {
-    if has_anomaly(tx, record)? {
-        return Ok(Delivered::Anomaly);
-    }
+/// Appends to a scope with no anomaly marker: an equal accepted row dedups,
+/// a conflicting accepted row records an append-only anomaly, and an absent
+/// row accepts with its completion timestamp.
+fn append_unmarked(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<Delivered> {
     match accepted_match(tx, record)? {
         Some(true) => Ok(Delivered::Duplicate),
         Some(false) => {
@@ -110,6 +110,13 @@ pub(super) fn append(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> R
             Ok(Delivered::Completed)
         }
     }
+}
+
+pub(super) fn append(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<Delivered> {
+    if has_anomaly(tx, record)? {
+        return Ok(Delivered::Anomaly);
+    }
+    append_unmarked(tx, record)
 }
 
 pub(super) fn status(
