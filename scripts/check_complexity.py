@@ -25,6 +25,7 @@ import complexity_reports as reports
 CAP_DEFAULT = 7
 CAP_REVIEWED_DISPATCH = 10
 REVIEW_TRIGGER_SPAN = 50
+SUBPROCESS_TIMEOUT_SECONDS = 300.0
 TOOL_NAME = "rust-code-analysis-cli"
 REQUIRED_VERSION = "rust-code-analysis-cli 0.0.25"
 DISPATCH_FILE = "src/main.rs"
@@ -34,11 +35,35 @@ REVIEWED_RUN_SHA256 = (
 )
 
 
+def _subprocess_timeout():
+    """Bounded wait for analyzer/git children; overridable for tests."""
+    raw = os.environ.get("DW_COMPLEXITY_TIMEOUT")
+    if raw is None:
+        return SUBPROCESS_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        raise reports.CheckError(
+            f"DW_COMPLEXITY_TIMEOUT must be a number of seconds, got {raw!r}"
+        ) from None
+    if not 0 < value < float("inf"):
+        raise reports.CheckError(
+            f"DW_COMPLEXITY_TIMEOUT must be positive and finite, got {value!r}"
+        )
+    return value
+
+
 def _run(argv):
     try:
-        return subprocess.run(argv, capture_output=True)
+        return subprocess.run(
+            argv, capture_output=True, timeout=_subprocess_timeout()
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise reports.CheckError(
+            f"{argv[0]!r} timed out after {exc.timeout}s"
+        ) from exc
     except OSError as exc:
-        raise reports.CheckError(f"cannot execute {argv[0]!r}: {exc}")
+        raise reports.CheckError(f"cannot execute {argv[0]!r}: {exc}") from exc
 
 
 def _git(*args):

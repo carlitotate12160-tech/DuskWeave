@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -379,6 +380,55 @@ class PolicyEvaluator(unittest.TestCase):
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(REVIEWED_RUN_SRC.replace("\n", "\r\n"))
             self.assertEqual(c.body_digest(path, 1, 16), REVIEWED_RUN_SHA)
+
+
+class SubprocessTimeout(unittest.TestCase):
+    """The analyzer/git subprocess boundary is time-bounded and fail-closed.
+
+    Exercises the real ``subprocess.run`` path (not a substituted boundary)
+    with a disposable sleeping child, so the timeout and its CheckError
+    mapping are proven on every supported platform.
+    """
+
+    HUNG_CHILD = "import time; time.sleep(20)"
+
+    def setUp(self):
+        self.checker = load_checker()
+
+    def with_env(self, value):
+        old = os.environ.pop("DW_COMPLEXITY_TIMEOUT", None)
+        if value is not None:
+            os.environ["DW_COMPLEXITY_TIMEOUT"] = value
+        self.addCleanup(self.restore_env, old)
+
+    @staticmethod
+    def restore_env(old):
+        if old is None:
+            os.environ.pop("DW_COMPLEXITY_TIMEOUT", None)
+        else:
+            os.environ["DW_COMPLEXITY_TIMEOUT"] = old
+
+    def test_hung_subprocess_times_out_fail_closed(self):
+        self.with_env("1")
+        start = time.monotonic()
+        with self.assertRaises(self.checker.reports.CheckError) as ctx:
+            self.checker._run([sys.executable, "-c", self.HUNG_CHILD])
+        self.assertIn("timed out", str(ctx.exception))
+        self.assertLess(time.monotonic() - start, 15)
+
+    def test_default_timeout_applies_without_env(self):
+        self.with_env(None)
+        self.assertEqual(
+            self.checker._subprocess_timeout(),
+            self.checker.SUBPROCESS_TIMEOUT_SECONDS,
+        )
+
+    def test_invalid_timeout_values_fail_closed(self):
+        for bad in ("garbage", "0", "-3", "nan", "inf"):
+            with self.subTest(value=bad):
+                self.with_env(bad)
+                with self.assertRaises(self.checker.reports.CheckError):
+                    self.checker._subprocess_timeout()
 
 
 if __name__ == "__main__":
