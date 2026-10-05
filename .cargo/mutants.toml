@@ -1,0 +1,20 @@
+# cargo-mutants scope for DW-IMPLEMENT-M0-PARSER-MUTATION.
+# Qualifies pure byte parsing at the three public ingress boundaries. The
+# read_*_file adapters are the sole initial exclusion: this slice covers
+# byte parsing, not filesystem I/O. Candidate test selection is pinned here
+# so local and CI runs examine the same scope; timeouts, jobs, snapshot and
+# output paths stay on the invoking command.
+examine_globs = [
+  "src/input.rs",
+  "src/planning_input.rs",
+  "src/withdrawal_input.rs",
+]
+exclude_re = ["read_(register|planning|withdrawal)_file"]
+test_tool = "cargo"
+additional_cargo_test_args = [
+  "--locked",
+  "--test=mission_registration",
+  "--test=planning",
+  "--test=withdrawal",
+  "--test=parser_mutation",
+]

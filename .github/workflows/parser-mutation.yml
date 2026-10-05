@@ -1,0 +1,90 @@
+name: parser-mutation
+
+# Bounded recurring diagnostic from DW-IMPLEMENT-M0-PARSER-MUTATION: mutation-
+# qualifies the three public byte-parser boundaries. Path filters apply only
+# to pull_request; the weekly schedule qualifies current master. This job is
+# diagnostic-only and is not part of ci-ok or the branch required checks.
+
+on:
+  pull_request:
+    paths:
+      - "src/input.rs"
+      - "src/planning_input.rs"
+      - "src/withdrawal_input.rs"
+      - "tests/mission_registration.rs"
+      - "tests/planning.rs"
+      - "tests/withdrawal.rs"
+      - "tests/parser_mutation.rs"
+      - ".cargo/mutants.toml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/parser-mutation.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "41 3 * * 1" # Monday 10:41 Asia/Jakarta
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RUN_TAG: ${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_BUILD_JOBS: "2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Rust toolchain 1.94.1
+        run: rustup toolchain install 1.94.1 --profile minimal
+
+      - name: Install pinned cargo-mutants 27.1.0
+        run: |
+          set -e
+          ROOT="$RUNNER_TEMP/cargo-mutants-$RUN_TAG"
+          cargo install --locked --version 27.1.0 cargo-mutants --root "$ROOT"
+          "$ROOT/bin/cargo-mutants" mutants --version | tee "$RUNNER_TEMP/tool-version-$RUN_TAG.txt"
+          echo "MUTANTS=$ROOT/bin/cargo-mutants" >> "$GITHUB_ENV"
+
+      - name: Export committed source snapshot
+        run: |
+          set -e
+          SNAP="$RUNNER_TEMP/source-$RUN_TAG"
+          mkdir -p "$SNAP"
+          git archive HEAD | tar -x -C "$SNAP"
+          test ! -e "$SNAP/.cargo/config.toml"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/source-sha-$RUN_TAG.txt"
+          echo "SNAP=$SNAP" >> "$GITHUB_ENV"
+
+      - name: Enumerate declared mutants
+        working-directory: ${{ env.SNAP }}
+        run: |
+          set -e
+          "$MUTANTS" mutants --list --line-col true | tee "$RUNNER_TEMP/mutant-inventory-$RUN_TAG.txt"
+          count=$(grep -c . "$RUNNER_TEMP/mutant-inventory-$RUN_TAG.txt")
+          echo "selected mutants: $count"
+          [ "$count" -le 80 ] || { echo "declared selection exceeds 80 mutants; report cost and re-scope"; exit 1; }
+
+      - name: Run bounded mutation scan
+        working-directory: ${{ env.SNAP }}
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/mutants-target-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -e
+          "$MUTANTS" mutants --baseline run -j 1 --timeout 30 --build-timeout 180 \
+            --no-times -v -V -o "$RUNNER_TEMP/mutants-out-$RUN_TAG"
+
+      - name: Upload mutation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: parser-mutation-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/tool-version-${{ github.run_id }}-${{ github.run_attempt }}.txt
+            ${{ runner.temp }}/source-sha-${{ github.run_id }}-${{ github.run_attempt }}.txt
+            ${{ runner.temp }}/mutant-inventory-${{ github.run_id }}-${{ github.run_attempt }}.txt
+            ${{ runner.temp }}/mutants-out-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          retention-days: 14
