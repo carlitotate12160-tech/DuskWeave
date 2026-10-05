@@ -1,0 +1,24 @@
+# DuskWeave dependency policy — derived from the locked M0 graph
+# (88 crates.io packages + unpublished workspace root).
+# Consumed by `cargo deny check licenses bans sources` in the
+# doc-check `dependencies` job; advisories stay owned by cargo-audit.
+
+[licenses]
+# SPDX expressions in the resolved graph select MIT/Apache-2.0
+# alternatives; unicode-ident additionally requires Unicode-3.0.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+# The workspace root is `publish = false` with no declared license.
+# Only unpublished crates are skipped for license checks — not every
+# private/path dependency, and no license is synthesized for the root.
+private = { ignore = true }
+
+[bans]
+# Diagnostics only: wasi 0.11.1+wasi-snapshot-preview1 and
+# 0.14.7+wasi-0.2.4 enter via different parents; not a defect.
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
