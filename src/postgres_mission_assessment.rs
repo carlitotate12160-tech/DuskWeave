@@ -77,24 +77,34 @@ fn create_assessment(
         .map_err(|error| store_err(&error))?
         .get(0);
     let event_id = EventId(allocator.allocate()?);
+    assessment_from_authority(request, authority, operation_id, event_id, timestamp)
+}
+
+fn assessment_from_authority(
+    request: &PlanningRequest,
+    authority: super::postgres_mission_basis::CurrentAuthority,
+    operation_id: OperationId,
+    event_id: EventId,
+    timestamp: i64,
+) -> Res<PlanningAssessed> {
     match authority.withdrawal {
         Some(withdrawal) => {
             let basis = authority.basis.ok_or(Fail::Store("unsupported_basis"))?;
-            Ok(PlanningAssessed::new_withdrawn(
+            PlanningAssessed::new_withdrawn(
                 request.clone(),
                 basis,
                 withdrawal,
                 operation_id,
                 event_id,
                 timestamp,
-            )?)
+            )
         }
-        None => Ok(PlanningAssessed::new(
+        None => PlanningAssessed::new(
             request.clone(),
             authority.basis,
             operation_id,
             event_id,
             timestamp,
-        )?),
+        ),
     }
 }

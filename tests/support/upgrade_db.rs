@@ -1,7 +1,7 @@
 //! Extracted owned-upgrade-database fixture: bounded identifier validation,
-//! collision denial, OID/owner confirmation and success-only non-FORCE
-//! cleanup. No Drop cleanup; a failed invocation retains its database for
-//! reconciliation. Callers close their clients before finish().
+//! collision denial, OID/owner confirmation and qualified retention. No Drop
+//! cleanup; finish() never deletes and every invocation retains its database
+//! for reconciliation. Callers close their clients before finish().
 #![allow(dead_code)]
 
 use crate::db_support::dsn;
@@ -38,7 +38,7 @@ pub fn runtime_in(dbname: &str) -> Client {
         .unwrap_or_else(|_| panic!("upgrade runtime connection failed"))
 }
 
-// No Drop cleanup: a failed invocation retains its database for reconciliation.
+// No Drop cleanup: every invocation retains its database for reconciliation.
 pub struct OwnedUpgradeDatabase {
     cluster: Client,
     pub name: String,
@@ -99,24 +99,12 @@ impl OwnedUpgradeDatabase {
                 "SELECT oid,datdba FROM pg_database WHERE datname=$1",
                 &[&self.name],
             )
-            .map_err(|_| "upgrade_cleanup_catalog_failed")?;
+            .map_err(|_| "upgrade_retention_catalog_failed")?;
         if !self.created || row.get::<_, u32>(0) != self.oid || row.get::<_, u32>(1) != self.owner {
-            return Err("upgrade_cleanup_identity_mismatch");
+            return Err("upgrade_retention_identity_mismatch");
         }
-        self.cluster
-            .batch_execute("SET statement_timeout='10s'")
-            .map_err(|_| "upgrade_cleanup_timeout_failed")?;
-        self.cluster
-            .batch_execute(&format!("DROP DATABASE \"{}\"", self.name))
-            .map_err(|_| "upgrade_cleanup_failed")?;
-        assert!(
-            self.cluster
-                .query_opt("SELECT 1 FROM pg_database WHERE datname=$1", &[&self.name])
-                .map_err(|_| "upgrade_cleanup_check_failed")?
-                .is_none()
-        );
         eprintln!(
-            "upgrade_database={} stage=dropped oid={} owner={}",
+            "upgrade_database={} stage=retained oid={} owner={}",
             self.name, self.oid, self.owner
         );
         Ok(())

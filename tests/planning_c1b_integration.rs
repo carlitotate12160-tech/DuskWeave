@@ -12,6 +12,10 @@ use uuid::Uuid;
 mod db_support;
 use db_support::*;
 
+#[path = "support/upgrade_db.rs"]
+mod upgrade_support;
+use upgrade_support::{OwnedUpgradeDatabase, admin_in};
+
 fn withdrawal(e: EngagementId, c: CampaignId) -> WithdrawalRequest {
     WithdrawalRequest {
         engagement_id: e,
@@ -123,4 +127,70 @@ fn focused_c1b_corruption_and_collision_deny() {
     );
     assert_eq!(refused.withdrawal.unwrap().operation_id, w_op);
     assert_eq!(refused.withdrawal.unwrap().event_id, withdrawn.event_id);
+}
+
+#[test]
+fn upgrade_fixture_retains_owned_database() {
+    let _guard = db();
+    let owned = OwnedUpgradeDatabase::create().unwrap();
+
+    // Non-sensitive sentinel inside the isolated upgrade database.
+    let mut isolated = admin_in(&owned.name);
+    isolated
+        .batch_execute("CREATE TABLE c1b_retention_sentinel(v int)")
+        .unwrap();
+    isolated
+        .execute("INSERT INTO c1b_retention_sentinel(v) VALUES (7)", &[])
+        .unwrap();
+
+    // Record catalog OID/owner, then close setup clients before finish().
+    let mut cluster = admin_in("postgres");
+    let catalog = cluster
+        .query_one(
+            "SELECT oid,datdba FROM pg_database WHERE datname=$1",
+            &[&owned.name],
+        )
+        .unwrap();
+    let (oid, owner): (u32, u32) = (catalog.get(0), catalog.get(1));
+    drop(isolated);
+    drop(cluster);
+
+    let name = owned.name.clone();
+    owned.finish().unwrap();
+
+    // Reconnect: same OID/owner and unchanged sentinel prove retention.
+    let mut cluster = admin_in("postgres");
+    let catalog = cluster
+        .query_one(
+            "SELECT oid,datdba FROM pg_database WHERE datname=$1",
+            &[&name],
+        )
+        .unwrap();
+    assert_eq!(
+        (catalog.get::<_, u32>(0), catalog.get::<_, u32>(1)),
+        (oid, owner)
+    );
+    let mut isolated = admin_in(&name);
+    let sentinel: i32 = isolated
+        .query_one("SELECT v FROM c1b_retention_sentinel", &[])
+        .unwrap()
+        .get(0);
+    assert_eq!(sentinel, 7);
+    drop(isolated);
+
+    // A second create in this process must collide without touching the retained DB.
+    assert_eq!(
+        OwnedUpgradeDatabase::create().err(),
+        Some("upgrade_identity_collision")
+    );
+    let catalog = cluster
+        .query_one(
+            "SELECT oid,datdba FROM pg_database WHERE datname=$1",
+            &[&name],
+        )
+        .unwrap();
+    assert_eq!(
+        (catalog.get::<_, u32>(0), catalog.get::<_, u32>(1)),
+        (oid, owner)
+    );
 }
