@@ -45,13 +45,13 @@ Current seal:
 
 Current engineering state:
 
-`M1 product/behavior contract and linear delivery cadence ACCEPTED by the owner on 2026-10-06; enabling architecture/sequencing remain pending before IMPLEMENT. DW-M0-001 remains SEALED at 669f2f3; DW-FOUNDATION-001 remains SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0. Live publication base d421c776 is the PR #34 documentation merge; per-delivery evidence and blockers live in ENGINEERING_STATE.md section 6.`
+`M1 product/behavior contract and linear delivery cadence ACCEPTED by the owner on 2026-10-06; enabling architecture/owner/sequencing R1 and six scoped ADRs ACCEPTED on 2026-10-06; publication and measured runtime packet remain required before IMPLEMENT. DW-M0-001 remains SEALED at 669f2f3; DW-FOUNDATION-001 remains SEALED at f93087b52c480822544bad0fb5d99d17eedf8ac0. Live publication base 086936d is the PR #35 M1-contract documentation merge; per-delivery evidence and blockers live in ENGINEERING_STATE.md section 6.`
 
 Current design document:
 
 The [M1 external orientation and bounded decision-loop contract](contracts/M1-external-orientation-decision-loop.md) is ACCEPTED by the product owner on 2026-10-06 for product/behavior scope and linear delivery. It selects one passive CT source, bounded DNS/HTTPS acquisition, owner-qualified Terrain/Pathing reasoning and evidence-led feedback. It does not accept missing ADRs, grant target permission, or seal M1.
 
-Next is a bounded documentation-only enabling DESIGN outcome covering the common decisions in contract section 11. M0's non-acquisition exception cannot be reused for M1; full-stage dependencies remain until an explicit accepted sequencing amendment resolves the selected lane. No IMPLEMENT packet is ready from this recording alone.
+The [enabling architecture/owner/sequencing contract](contracts/M1-enabling-architecture.md) resolves contract section 11 as one documentation-only DESIGN outcome. The owner ACCEPTED its R1 owner contracts, explicit sequencing amendment and six scoped ADRs on 2026-10-06. Publish the accepted artifacts, then Work measures one complete runtime slice before issuing IMPLEMENT. The accepted M1 substitutions apply only to their named lane; M0's non-acquisition exception and all full-stage prerequisites outside that scope remain unchanged. No IMPLEMENT packet is ready from this recording alone.
 
 [ADR-008](adr/ADR-008-observation-fact-separation.md) and the [M0 contract](contracts/M0-mission-authority-history.md) remain ACCEPTED. M0 is SEALED at `669f2f3`; [ENGINEERING_STATE.md](ENGINEERING_STATE.md) sections 5a and 6 hold its merged deliveries, owner demo acceptance and evidence limits. Eligible v4 remains historical eligibility, not current dispatch permission.
 
