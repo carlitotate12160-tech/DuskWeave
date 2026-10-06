@@ -7,7 +7,9 @@
 
 use duskweave::Fail;
 use duskweave::input::parse_register;
+use duskweave::mission::{EventId, Mission, OperationId};
 use duskweave::planning_input::parse_planning;
+use duskweave::trajectory::check_event;
 use duskweave::withdrawal_input::parse_withdrawal;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -28,6 +30,24 @@ fn register_json() -> Value {
         "included_assets": [id(20)], "excluded_assets": [id(30)],
         "exercise_mode": "blind", "starts_at": 100, "ends_at": 200
     })
+}
+
+fn m1_register_json() -> Value {
+    let mut value = register_json();
+    value["m1_permission"] = json!({
+        "policy_version": 1, "ct_base_domain": "example.com",
+        "provider_disclosure": "crt_sh", "vantage_ref": id(40),
+        "resolver_ipv4": "192.0.2.53",
+        "discovery_rules": [{"label_suffix": "example.com"}],
+        "contact_rules": [{"asset_ref": id(20),
+            "rule": {"exact": "api.example.net"}, "priority": 1}],
+        "excluded_names": [{"exact": "excluded.example.com"}], "approved_path": "/",
+        "starts_at": 110, "ends_at": 190,
+        "campaign_limits": {"episodes": 2, "provider_calls": 3, "dns_questions": 10,
+            "dns_followups": 2, "tcp_connections": 5, "head_requests": 2},
+        "concurrency": 1
+    });
+    value
 }
 
 fn planning_json() -> Value {
@@ -147,4 +167,64 @@ fn truncated_bytes_are_malformed_not_schema_violations() {
         Err(Fail::Input("schema_violation")),
         "well-formed but wrong-shape JSON must remain a schema violation"
     );
+}
+
+#[test]
+fn m1_present_attachment_survives_parser_and_registration() {
+    let raw = m1_register_json();
+    let input = parse_register(&serde_json::to_vec(&raw).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&input.fields).unwrap()["m1_permission"],
+        raw["m1_permission"],
+        "present attachment was silently lost by the byte parser"
+    );
+    let (_, event) = Mission::register(&input, OperationId(id(41)), EventId(id(42)), 150).unwrap();
+    assert_eq!(
+        event.version, 2,
+        "present attachment must not become legacy v1"
+    );
+    assert_eq!(event.occurred_at, 150);
+    assert_eq!(
+        serde_json::to_value(&event).unwrap()["fields"]["m1_permission"],
+        raw["m1_permission"]
+    );
+    assert_eq!(check_event(&event), Ok(()));
+}
+
+#[test]
+fn invalid_present_m1_attachments_cannot_downgrade_to_legacy() {
+    for attachment in [Value::Null, json!("not_an_attachment")] {
+        let mut raw = m1_register_json();
+        raw["m1_permission"] = attachment;
+        assert_eq!(
+            parse_register(&serde_json::to_vec(&raw).unwrap()),
+            Err(Fail::Input("schema_violation")),
+            "invalid present attachment must reject, not disappear"
+        );
+    }
+    let mut unsupported = m1_register_json();
+    unsupported["m1_permission"]["policy_version"] = json!(2);
+    assert_eq!(
+        parse_register(&serde_json::to_vec(&unsupported).unwrap()),
+        Err(Fail::Input("m1_unsupported_configuration"))
+    );
+}
+
+#[test]
+fn missing_m1_attachment_preserves_legacy_v1_serialization() {
+    let input = parse_register(&serde_json::to_vec(&register_json()).unwrap()).unwrap();
+    assert!(
+        serde_json::to_value(&input.fields)
+            .unwrap()
+            .get("m1_permission")
+            .is_none()
+    );
+    let (_, event) = Mission::register(&input, OperationId(id(41)), EventId(id(42)), 150).unwrap();
+    assert_eq!(event.version, 1);
+    assert!(
+        serde_json::to_value(&event).unwrap()["fields"]
+            .get("m1_permission")
+            .is_none()
+    );
+    assert_eq!(check_event(&event), Ok(()));
 }

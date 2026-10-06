@@ -24,6 +24,14 @@ struct RegisterDto {
     exercise_mode: ExerciseMode,
     starts_at: i64,
     ends_at: i64,
+    #[serde(default, deserialize_with = "present_permission")]
+    m1_permission: Option<crate::m1_permission::M1Permission>,
+}
+
+fn present_permission<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<crate::m1_permission::M1Permission>, D::Error> {
+    crate::m1_permission::M1Permission::deserialize(deserializer).map(Some)
 }
 
 pub fn read_register_file(path: &Path) -> Res<RegistrationInput> {
@@ -74,6 +82,7 @@ fn build(dto: RegisterDto) -> Res<RegistrationInput> {
         dto.exercise_mode,
         dto.starts_at,
         dto.ends_at,
+        dto.m1_permission,
     )?;
     Ok(RegistrationInput {
         engagement_id: EngagementId(dto.engagement_id),

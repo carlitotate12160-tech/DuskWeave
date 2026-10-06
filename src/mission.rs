@@ -53,6 +53,8 @@ pub struct RegistrationFields {
     pub(crate) exercise_mode: ExerciseMode,
     pub(crate) starts_at: i64,
     pub(crate) ends_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) m1_permission: Option<crate::m1_permission::M1Permission>,
 }
 
 impl RegistrationFields {
@@ -67,6 +69,7 @@ impl RegistrationFields {
         exercise_mode: ExerciseMode,
         starts_at: i64,
         ends_at: i64,
+        m1_permission: Option<crate::m1_permission::M1Permission>,
     ) -> Res<Self> {
         let mut f = Self {
             operator_ref,
@@ -78,6 +81,7 @@ impl RegistrationFields {
             exercise_mode,
             starts_at,
             ends_at,
+            m1_permission,
         };
         f.validate()?;
         f.included_assets.sort();
@@ -120,7 +124,15 @@ impl RegistrationFields {
 
     pub(crate) fn validate(&self) -> Res<()> {
         self.check_refs()?;
-        self.check_bounds()
+        self.check_bounds()?;
+        if let Some(permission) = &self.m1_permission {
+            permission.validate(self)?;
+        }
+        Ok(())
+    }
+
+    pub fn m1_permission(&self) -> Option<&crate::m1_permission::M1Permission> {
+        self.m1_permission.as_ref()
     }
 
     pub fn included_assets(&self) -> &[AssetRef] {
@@ -204,7 +216,11 @@ impl Mission {
             affected_entity: input.campaign_id,
             owner_revision: 1,
             kind: CONTRACT_KIND.to_string(),
-            version: CONTRACT_VERSION,
+            version: if input.fields.m1_permission.is_some() {
+                2
+            } else {
+                CONTRACT_VERSION
+            },
             causation_id: operation_id,
             correlation_id: operation_id,
             occurred_at: now_unix,

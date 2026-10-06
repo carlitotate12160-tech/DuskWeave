@@ -2,6 +2,7 @@
 //! DuskWeave M0A: durable mission registration and sourced history.
 
 pub mod input;
+pub mod m1_permission;
 pub mod mission;
 pub mod planning;
 pub mod planning_assessment;

@@ -9,6 +9,8 @@ use postgres::NoTls;
 #[path = "support/registration_db.rs"]
 mod db_support;
 use db_support::*;
+#[path = "support/m1_permission.rs"]
+mod policy;
 
 #[test]
 fn runtime_role_denied_mutation_and_ddl() {
@@ -111,4 +113,45 @@ fn qualify_runtime_rejects_ddl_capable_role() {
              DROP ROLE {role};"
         ))
         .unwrap();
+}
+
+#[test]
+fn restricted_role_cannot_mutate_or_replace_canonical_m1_contracts() {
+    use duskweave::registration::{self, MissionStore};
+    let _g = db();
+    let (e, c) = scope(0x8200);
+    let (mut a, mut s, mut t) = ports();
+    let op = registration::prepare_operation(&mut a).unwrap();
+    registration::register(&mut a, &mut s, &mut t, op, &policy::input(e, c)).unwrap();
+    let original = s.outbox_event(e, c, op).unwrap().unwrap();
+    let canonical = serde_json::to_value(&original).unwrap();
+    let mut rt = runtime_client();
+    qualify_runtime(&mut rt).unwrap();
+    for table in [
+        "mission.registration_outbox",
+        "trajectory.registration_history",
+    ] {
+        for sql in [
+            format!("UPDATE {table} SET contract='{{}}' WHERE engagement_id=$1 AND campaign_id=$2"),
+            format!("DELETE FROM {table} WHERE engagement_id=$1 AND campaign_id=$2"),
+        ] {
+            assert!(rt.execute(&sql, &[&e.0, &c.0]).is_err());
+        }
+        assert!(rt.batch_execute(&format!("TRUNCATE {table}")).is_err());
+        let stored: serde_json::Value = rt
+            .query_one(
+                &format!("SELECT contract FROM {table} WHERE engagement_id=$1 AND campaign_id=$2"),
+                &[&e.0, &c.0],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(stored, canonical);
+        assert_eq!(count(table, e, c), 1);
+    }
+    assert!(rt.execute(
+        "INSERT INTO mission.registration_outbox (engagement_id,campaign_id,operation_id,event_id,contract) \
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (engagement_id,campaign_id,operation_id) DO UPDATE SET contract=EXCLUDED.contract",
+        &[&e.0, &c.0, &op.0, &original.event_id.0, &serde_json::json!({})],
+    ).is_err());
+    assert_eq!(s.outbox_event(e, c, op).unwrap().unwrap(), original);
 }

@@ -156,7 +156,7 @@ fn cmd_register(args: &[String]) -> Res<()> {
 }
 
 fn emit_inspect(v: Option<registration::InspectView>) {
-    match v {
+    match &v {
         Some(v) => println!(
             "inspect mission.revision={} mission.operation={} mission.mode={:?} history.event={} history.status={}",
             v.mission.revision,
@@ -169,6 +169,34 @@ fn emit_inspect(v: Option<registration::InspectView>) {
         ),
         None => println!("inspect result=empty"),
     }
+    if let Some((summary, history)) = v.and_then(|v| v.m1_permission.map(|p| (p, v.history))) {
+        emit_permission(&summary, history);
+    }
+}
+
+fn emit_permission(p: &duskweave::m1_permission::PermissionSummary, history: HistoryStatus) {
+    let limits = &p.campaign_limits;
+    println!(
+        "m1 historical_configuration policy_version={} operator={} authority={} authority_revision={} goal={} vantage={} discovery_rules={} contact_rules={} excluded_names={} starts_at={} ends_at={} episodes={} provider_calls={} dns_questions={} dns_followups={} tcp_connections={} head_requests={} history={} current_permission=false acquisition_qualified=false",
+        p.policy_version,
+        p.operator_ref,
+        p.authority_ref,
+        p.authority_revision,
+        p.goal_ref,
+        p.vantage_ref,
+        p.discovery_rules,
+        p.contact_rules,
+        p.excluded_names,
+        p.starts_at,
+        p.ends_at,
+        limits.episodes,
+        limits.provider_calls,
+        limits.dns_questions,
+        limits.dns_followups,
+        limits.tcp_connections,
+        limits.head_requests,
+        status_str(history)
+    );
 }
 
 fn cmd_inspect(args: &[String]) -> Res<()> {

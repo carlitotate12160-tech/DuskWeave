@@ -11,6 +11,8 @@ use duskweave::{Fail, Res};
 #[path = "support/registration_db.rs"]
 mod db_support;
 use db_support::*;
+#[path = "support/m1_permission.rs"]
+mod policy;
 
 /// Producer-boundary fault: calls the real commit first; only after it
 /// succeeds does it discard the result once and report an unknown ack.
@@ -132,4 +134,98 @@ fn consumer_ack_lost_after_real_commit_stays_pending_until_recovered() {
     assert_eq!(count("mission.missions", e, c), 1);
     assert_eq!(count("mission.registration_outbox", e, c), 1);
     assert_eq!(count("trajectory.registration_history", e, c), 1);
+}
+
+#[test]
+fn m1_producer_ack_loss_recovers_same_durable_policy_and_identity() {
+    let _g = db();
+    let (e, c) = scope(0x6300);
+    let (mut a, s, mut t) = ports();
+    let mut s = FaultAfterCommitStore {
+        inner: s,
+        armed: true,
+    };
+    let op = registration::prepare_operation(&mut a).unwrap();
+    let input = policy::input(e, c);
+    assert_eq!(
+        registration::register(&mut a, &mut s, &mut t, op, &input),
+        Err(Fail::Store("commit_unknown"))
+    );
+    assert_eq!(count("mission.missions", e, c), 1);
+    assert_eq!(count("mission.registration_outbox", e, c), 1);
+    assert_eq!(count("trajectory.registration_history", e, c), 0);
+    let original = s.outbox_event(e, c, op).unwrap().unwrap();
+    assert_eq!(original.version, 2);
+    assert_eq!(
+        serde_json::to_value(&original).unwrap()["fields"]["m1_permission"],
+        policy::permission()
+    );
+    drop(s);
+    drop(t);
+    let (mut a, mut s, mut t) = ports();
+    assert_eq!(
+        registration::reconcile(&mut s, &mut t, e, c, op),
+        Ok(ReconcileOutcome::Committed)
+    );
+    let retry = registration::register(&mut a, &mut s, &mut t, op, &input).unwrap();
+    assert_eq!(retry.event_id, original.event_id);
+    assert_eq!(s.outbox_event(e, c, op).unwrap().unwrap(), original);
+    let history: serde_json::Value = runtime_client().query_one(
+        "SELECT contract FROM trajectory.registration_history WHERE engagement_id=$1 AND campaign_id=$2",
+        &[&e.0, &c.0],
+    ).unwrap().get(0);
+    assert_eq!(history, serde_json::to_value(original).unwrap());
+    for table in [
+        "mission.missions",
+        "mission.registration_outbox",
+        "trajectory.registration_history",
+    ] {
+        assert_eq!(count(table, e, c), 1);
+    }
+}
+
+#[test]
+fn m1_consumer_ack_loss_keeps_committed_history_before_fresh_recovery() {
+    let _g = db();
+    let (e, c) = scope(0x6400);
+    let (mut a, mut s, t) = ports();
+    let mut t = FaultAfterCommitTrajectory {
+        inner: t,
+        armed: true,
+    };
+    let op = registration::prepare_operation(&mut a).unwrap();
+    let input = policy::input(e, c);
+    let receipt = registration::register(&mut a, &mut s, &mut t, op, &input).unwrap();
+    assert_eq!(receipt.history, HistoryStatus::Pending);
+    for table in [
+        "mission.missions",
+        "mission.registration_outbox",
+        "trajectory.registration_history",
+    ] {
+        assert_eq!(count(table, e, c), 1);
+    }
+    let original = s.outbox_event(e, c, op).unwrap().unwrap();
+    let durable: serde_json::Value = runtime_client().query_one(
+        "SELECT contract FROM trajectory.registration_history WHERE engagement_id=$1 AND campaign_id=$2",
+        &[&e.0, &c.0],
+    ).unwrap().get(0);
+    assert_eq!(durable, serde_json::to_value(&original).unwrap());
+    assert_eq!(durable["fields"]["m1_permission"], policy::permission());
+    drop(s);
+    drop(t);
+    let (_, mut s, mut t) = ports();
+    assert_eq!(
+        registration::reconcile(&mut s, &mut t, e, c, op),
+        Ok(ReconcileOutcome::Committed)
+    );
+    assert_eq!(s.outbox_event(e, c, op).unwrap().unwrap(), original);
+    assert_eq!(t.deliver(&original).unwrap(), Delivered::Duplicate);
+    assert_eq!(receipt.event_id, original.event_id);
+    for table in [
+        "mission.missions",
+        "mission.registration_outbox",
+        "trajectory.registration_history",
+    ] {
+        assert_eq!(count(table, e, c), 1);
+    }
 }
