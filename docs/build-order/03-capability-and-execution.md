@@ -106,3 +106,18 @@ Observation
 Tool output never becomes truth directly.
 
 ---
+
+# M1 fixed lane — accepted dependency rebind
+
+The [accepted enabling amendment](../contracts/M1-enabling-architecture.md) selects only
+CT-existing-v2, parent-selected UDP/TCP DNS-v2 and fixed HTTPS HEAD profiles,
+Linux capture/egress isolation requiring qualification, current authority/effect fencing, stop-only
+fallback, private Rust–Go IPC and durable budget/unknown-effect recovery.
+ADR-013/015/016/017 R1 were ACCEPTED by the owner on 2026-10-06 for that lane. The amendment explicitly
+binds accepted PRD/M1 product inputs and static profiles instead of claiming that
+PRD-011..013 or a dynamic ADR-014 registry already exist or are accepted.
+Full Stage 11/12 prerequisites above remain outside this accepted M1 amendment.
+No native helper, extra language, credential/proof handling or first-tool breadth
+is authorized. IMPLEMENT remains unissued until accepted-authority publication
+and a measured complete runtime packet. Native Windows acquisition
+is not qualified by the existing M0 tests or the source worktree location.

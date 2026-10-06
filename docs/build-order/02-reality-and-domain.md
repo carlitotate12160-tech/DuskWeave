@@ -53,6 +53,21 @@ below remain in force outside an accepted bounded M0 lane.
 
 ---
 
+# M1 lane — accepted enabling amendment
+
+The [M1 enabling architecture/owner contracts](../contracts/M1-enabling-architecture.md)
+resolve the accepted product contract section 11. The owner ACCEPTED R1 and scoped
+ADR-009/011/013/015/016/017 together on 2026-10-06. Publish this accepted authority
+before Work measures and issues a bounded M1 runtime packet; acceptance alone
+is not a ready implementation packet or current target permission.
+The linked dependency table preserves full-stage prerequisites, rebinds the
+ADR-011 proof prerequisite only for non-proof acquisition, and limits Terrain/
+Pathing/Trajectory to the selected external-orientation lane.
+M0 seal/evidence and its non-acquisition exception remain unchanged.
+No full DW-DOMAIN-001 seal, Access/Objective scaffolding or target permission.
+
+---
+
 # 7. Stage 5 — Domain contracts
 
 Only now implement the domain contracts in Rust.
