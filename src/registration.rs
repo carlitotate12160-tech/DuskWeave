@@ -58,6 +58,7 @@ pub struct InspectView {
     pub mission: MissionView,
     pub event_id: Option<EventId>,
     pub history: HistoryStatus,
+    pub m1_permission: Option<crate::m1_permission::PermissionSummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,15 +127,53 @@ pub fn inspect(
     let Some(mission) = store.mission_view(e, c)? else {
         return Ok(None);
     };
-    let (event_id, history) = match store.outbox_event(e, c, mission.operation_id)? {
-        Some(ev) => (Some(ev.event_id), traj.status(e, c, ev.event_id)?),
-        None => (None, HistoryStatus::Pending),
+    let (event_id, history, m1_permission) = match store.outbox_event(e, c, mission.operation_id)? {
+        Some(ev) => {
+            let summary = historical_permission(&ev, &mission, e, c)?;
+            (Some(ev.event_id), traj.status(e, c, ev.event_id)?, summary)
+        }
+        None => (None, HistoryStatus::Pending, None),
     };
     Ok(Some(InspectView {
         mission,
         event_id,
         history,
+        m1_permission,
     }))
+}
+
+fn historical_permission(
+    ev: &MissionRegistered,
+    mission: &MissionView,
+    e: EngagementId,
+    c: CampaignId,
+) -> Res<Option<crate::m1_permission::PermissionSummary>> {
+    crate::trajectory::check_event(ev).map_err(|_| Fail::Store("contract_decode"))?;
+    let Some(permission) = ev.fields.m1_permission() else {
+        return Ok(None);
+    };
+    let bound = (
+        ev.engagement_id,
+        ev.campaign_id,
+        ev.operation_id,
+        ev.fields.exercise_mode(),
+        ev.fields.starts_at(),
+        ev.fields.ends_at(),
+    );
+    if bound
+        != (
+            e,
+            c,
+            mission.operation_id,
+            mission.exercise_mode,
+            mission.starts_at,
+            mission.ends_at,
+        )
+        || ev.event_id.0.is_nil()
+    {
+        return Err(Fail::Store("contract_decode"));
+    }
+    Ok(Some(permission.summary(&ev.fields)))
 }
 
 pub fn reconcile(

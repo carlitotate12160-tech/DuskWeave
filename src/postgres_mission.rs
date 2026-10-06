@@ -43,17 +43,53 @@ impl PgMissionStore {
     }
 }
 
+const REGISTRATION_READ: &str = "SELECT o.contract, o.event_id, o.engagement_id, o.campaign_id, \
+    o.operation_id, to_jsonb(m) - ARRAY['engagement_id','campaign_id','operation_id','revision','accepted_at'], \
+    m.revision FROM mission.registration_outbox o LEFT JOIN mission.missions m \
+    ON (m.engagement_id,m.campaign_id,m.operation_id)=(o.engagement_id,o.campaign_id,o.operation_id) \
+    WHERE o.engagement_id=$1 AND o.campaign_id=$2 AND o.operation_id=$3";
+
+fn decode_registration(row: postgres::Row) -> Res<MissionRegistered> {
+    let ev: MissionRegistered =
+        serde_json::from_value(row.get(0)).map_err(|_| Fail::Store("contract_decode"))?;
+    if ev.version == CONTRACT_VERSION && ev.fields.m1_permission.is_none() {
+        return Ok(ev);
+    }
+    crate::trajectory::check_event(&ev).map_err(|_| Fail::Store("contract_decode"))?;
+    bind_registration(&row, &ev)?;
+    Ok(ev)
+}
+
+fn bind_registration(row: &postgres::Row, ev: &MissionRegistered) -> Res<()> {
+    let identity = (
+        ev.event_id.0,
+        ev.engagement_id.0,
+        ev.campaign_id.0,
+        ev.operation_id.0,
+    );
+    if identity != (row.get(1), row.get(2), row.get(3), row.get(4)) {
+        return Err(Fail::Store("contract_decode"));
+    }
+    let original: Option<serde_json::Value> = row.get(5);
+    let original: RegistrationFields =
+        serde_json::from_value(original.ok_or(Fail::Store("contract_decode"))?)
+            .map_err(|_| Fail::Store("contract_decode"))?;
+    let mut base = ev.fields.clone();
+    base.m1_permission = None;
+    if base != original || Some(ev.owner_revision as i64) != row.get::<_, Option<i64>>(6) {
+        return Err(Fail::Store("contract_decode"));
+    }
+    Ok(())
+}
+
 fn prior_event(tx: &mut postgres::Transaction, m: &Mission) -> Res<Option<MissionRegistered>> {
-    let row = tx
-        .query_opt(
-            "SELECT contract FROM mission.registration_outbox \
-             WHERE engagement_id = $1 AND campaign_id = $2 AND operation_id = $3",
-            &[&m.engagement_id.0, &m.campaign_id.0, &m.operation_id().0],
-        )
-        .map_err(|e| store_err(&e))?;
-    row.map(|r| serde_json::from_value::<MissionRegistered>(r.get(0)))
-        .transpose()
-        .map_err(|_| Fail::Store("contract_decode"))
+    tx.query_opt(
+        REGISTRATION_READ,
+        &[&m.engagement_id.0, &m.campaign_id.0, &m.operation_id().0],
+    )
+    .map_err(|e| store_err(&e))?
+    .map(decode_registration)
+    .transpose()
 }
 
 fn scope_occupied(tx: &mut postgres::Transaction, m: &Mission) -> Res<bool> {
@@ -269,15 +305,9 @@ impl MissionStore for PgMissionStore {
     ) -> Res<Option<MissionRegistered>> {
         let row = self
             .client
-            .query_opt(
-                "SELECT contract FROM mission.registration_outbox \
-                 WHERE engagement_id = $1 AND campaign_id = $2 AND operation_id = $3",
-                &[&e.0, &c.0, &op.0],
-            )
+            .query_opt(REGISTRATION_READ, &[&e.0, &c.0, &op.0])
             .map_err(|e| store_err(&e))?;
-        row.map(|r| serde_json::from_value::<MissionRegistered>(r.get(0)))
-            .transpose()
-            .map_err(|_| Fail::Store("contract_decode"))
+        row.map(decode_registration).transpose()
     }
 }
 

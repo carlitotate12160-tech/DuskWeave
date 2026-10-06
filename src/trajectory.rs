@@ -23,7 +23,10 @@ pub enum HistoryStatus {
 fn declared(ev: &MissionRegistered) -> bool {
     ev.producer == PRODUCER
         && ev.kind == CONTRACT_KIND
-        && ev.version == CONTRACT_VERSION
+        && matches!(
+            (ev.version, ev.fields.m1_permission().is_some()),
+            (CONTRACT_VERSION, false) | (2, true)
+        )
         && ev.owner_revision == 1
 }
 
@@ -38,6 +41,18 @@ pub fn check_event(ev: &MissionRegistered) -> Result<(), &'static str> {
         return Err("unsupported_contract");
     }
     if !scoped(ev) {
+        return Err("scope_violation");
+    }
+    if ev.version == 2
+        && [
+            ev.event_id.0,
+            ev.operation_id.0,
+            ev.engagement_id.0,
+            ev.campaign_id.0,
+        ]
+        .iter()
+        .any(uuid::Uuid::is_nil)
+    {
         return Err("scope_violation");
     }
     ev.fields.validate().map_err(|_| "invalid_fields")
