@@ -1,6 +1,8 @@
 //! Mission owner's PostgreSQL adapter. Queries only mission.* tables;
 //! the registration and its outbox contract commit in one transaction.
 
+#[path = "postgres_m1_policy.rs"]
+mod postgres_m1_policy;
 #[path = "postgres_mission_assessment.rs"]
 mod postgres_mission_assessment;
 #[path = "postgres_mission_basis.rs"]
@@ -49,14 +51,14 @@ const REGISTRATION_READ: &str = "SELECT o.contract, o.event_id, o.engagement_id,
     ON (m.engagement_id,m.campaign_id,m.operation_id)=(o.engagement_id,o.campaign_id,o.operation_id) \
     WHERE o.engagement_id=$1 AND o.campaign_id=$2 AND o.operation_id=$3";
 
-fn decode_registration(row: postgres::Row) -> Res<MissionRegistered> {
+fn decode_registration(row: &postgres::Row) -> Res<MissionRegistered> {
     let ev: MissionRegistered =
         serde_json::from_value(row.get(0)).map_err(|_| Fail::Store("contract_decode"))?;
     if ev.version == CONTRACT_VERSION && ev.fields.m1_permission.is_none() {
         return Ok(ev);
     }
     crate::trajectory::check_event(&ev).map_err(|_| Fail::Store("contract_decode"))?;
-    bind_registration(&row, &ev)?;
+    bind_registration(row, &ev)?;
     Ok(ev)
 }
 
@@ -88,7 +90,7 @@ fn prior_event(tx: &mut postgres::Transaction, m: &Mission) -> Res<Option<Missio
         &[&m.engagement_id.0, &m.campaign_id.0, &m.operation_id().0],
     )
     .map_err(|e| store_err(&e))?
-    .map(decode_registration)
+    .map(|row| decode_registration(&row))
     .transpose()
 }
 
@@ -307,7 +309,7 @@ impl MissionStore for PgMissionStore {
             .client
             .query_opt(REGISTRATION_READ, &[&e.0, &c.0, &op.0])
             .map_err(|e| store_err(&e))?;
-        row.map(decode_registration).transpose()
+        row.map(|row| decode_registration(&row)).transpose()
     }
 }
 

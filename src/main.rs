@@ -21,6 +21,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 mod authority_confirmation;
+mod m1_policy_cli;
 mod planning_cli;
 
 fn category(f: Fail) -> &'static str {
@@ -292,12 +293,8 @@ fn cmd_reconcile(args: &[String]) -> Res<()> {
     Ok(())
 }
 
-fn run(args: &[String]) -> Res<()> {
-    match args
-        .get(1)
-        .map(String::as_str)
-        .ok_or(Fail::Input("missing_command"))?
-    {
+fn run(command: &str, args: &[String]) -> Res<()> {
+    match command {
         "prepare-operation" => cmd_prepare(args),
         "register" => cmd_register(args),
         "assess" => planning_cli::cmd_assess(args),
@@ -305,13 +302,18 @@ fn run(args: &[String]) -> Res<()> {
         "planning-history" => planning_cli::cmd_planning_history(args),
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),
+        "m1-policy-check" => m1_policy_cli::cmd_policy_check(args),
         _ => Err(Fail::Input("unknown_command")),
     }
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
-    match run(&args) {
+    let outcome = args
+        .get(1)
+        .ok_or(Fail::Input("missing_command"))
+        .and_then(|command| run(command, &args));
+    match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(f) => {
             println!("error={}", category(f));

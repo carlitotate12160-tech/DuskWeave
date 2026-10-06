@@ -4,7 +4,7 @@
 //! corruption is a bounded decode failure and never absence or a conflict.
 
 use super::{PgMissionStore, store_err};
-use crate::mission::{EventId, OperationId};
+use crate::mission::{CampaignId, EngagementId, EventId, OperationId};
 use crate::planning::PlanningRequest;
 use crate::registration::OperationAllocator;
 use crate::withdrawal::{MissionAuthorityWithdrawn, WithdrawalRequest, WithdrawalStore};
@@ -75,10 +75,18 @@ pub(super) fn current_marker(
     client: &mut impl GenericClient,
     request: &PlanningRequest,
 ) -> Res<Option<MissionAuthorityWithdrawn>> {
+    current_marker_for_scope(client, request.engagement_id, request.campaign_id)
+}
+
+pub(super) fn current_marker_for_scope(
+    client: &mut impl GenericClient,
+    engagement: EngagementId,
+    campaign: CampaignId,
+) -> Res<Option<MissionAuthorityWithdrawn>> {
     let row = client
         .query_opt(
             &format!("{MARKER_PROJECTION} WHERE engagement_id=$1 AND campaign_id=$2"),
-            &[&request.engagement_id.0, &request.campaign_id.0],
+            &[&engagement.0, &campaign.0],
         )
         .map_err(|e| store_err(&e))?;
     row.map(|row| decode_marker(&row)).transpose()

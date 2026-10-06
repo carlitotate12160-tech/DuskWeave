@@ -15,14 +15,10 @@ CHECKER = SCRIPTS / "check_complexity.py"
 ANALYZER = os.environ.get("DW_COMPLEXITY_ANALYZER")
 
 REVIEWED_RUN_SHA = (
-    "558499af2367afeb051d01e4c31e82e20087d491fee936c1fa83549bd1bd6d7a"
+    "64881a442ba29203316643f66e86a1981eb1bfc66d299d17065fb314fdd00740"
 )
-REVIEWED_RUN_SRC = """fn run(args: &[String]) -> Res<()> {
-    match args
-        .get(1)
-        .map(String::as_str)
-        .ok_or(Fail::Input("missing_command"))?
-    {
+REVIEWED_RUN_SRC = """fn run(command: &str, args: &[String]) -> Res<()> {
+    match command {
         "prepare-operation" => cmd_prepare(args),
         "register" => cmd_register(args),
         "assess" => planning_cli::cmd_assess(args),
@@ -30,6 +26,7 @@ REVIEWED_RUN_SRC = """fn run(args: &[String]) -> Res<()> {
         "planning-history" => planning_cli::cmd_planning_history(args),
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),
+        "m1-policy-check" => m1_policy_cli::cmd_policy_check(args),
         _ => Err(Fail::Input("unknown_command")),
     }
 }
@@ -379,7 +376,7 @@ class PolicyEvaluator(unittest.TestCase):
             path = os.path.join(td, "main.rs")
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(REVIEWED_RUN_SRC.replace("\n", "\r\n"))
-            self.assertEqual(c.body_digest(path, 1, 16), REVIEWED_RUN_SHA)
+            self.assertEqual(c.body_digest(path, 1, 13), REVIEWED_RUN_SHA)
 
 
 class SubprocessTimeout(unittest.TestCase):

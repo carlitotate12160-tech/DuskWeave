@@ -45,6 +45,17 @@ fn canonical_name(name: &str) -> bool {
     name.len() <= 253 && name.split('.').all(canonical_label)
 }
 
+pub(crate) fn validate_query_name(name: &str) -> Res<()> {
+    let ipv4_like = name.split('.').count() == 4
+        && name
+            .split('.')
+            .all(|label| label.bytes().all(|b| b.is_ascii_digit()));
+    if !canonical_name(name) || ipv4_like {
+        return Err(Fail::Input("invalid_name"));
+    }
+    Ok(())
+}
+
 fn check_rules(rules: &[&NameRule], minimum: usize) -> Res<()> {
     if rules.len() < minimum || rules.len() > 8 {
         return Err(Fail::Input("m1_rule_limit"));
@@ -136,6 +147,34 @@ pub struct PermissionSummary {
 }
 
 impl M1Permission {
+    pub(crate) fn query_reason(
+        &self,
+        purpose: &crate::m1_policy::NamePurpose,
+        now: i64,
+    ) -> crate::m1_policy::PolicyReason {
+        use crate::m1_policy::{NamePurpose, PolicyReason};
+        if !(self.starts_at <= now && now < self.ends_at) {
+            return PolicyReason::OutsideOperatingWindow;
+        }
+        let (name, matched) = match purpose {
+            NamePurpose::DiscoveryDisclosure { name } => (
+                name,
+                self.discovery_rules.iter().any(|rule| rule.matches(name)),
+            ),
+            NamePurpose::Contact { name, asset_ref } => (
+                name,
+                self.contact_rules
+                    .iter()
+                    .any(|entry| entry.asset_ref == *asset_ref && entry.rule.matches(name)),
+            ),
+        };
+        if matched && !self.excluded_names.iter().any(|rule| rule.matches(name)) {
+            PolicyReason::MatchesNamePolicy
+        } else {
+            PolicyReason::NameNotPermitted
+        }
+    }
+
     fn check_envelope(&self, parent: &RegistrationFields) -> Res<()> {
         if (
             self.policy_version,
