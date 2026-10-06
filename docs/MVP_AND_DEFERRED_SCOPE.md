@@ -4,7 +4,7 @@
 | :--- | :--- |
 | Recorded | Initial direction 2026-09-30; offensive-direction guardrails 2026-10-03 |
 | Review base | `d7297dad0f5269b3d95e2bd9dc1d28919c2ecd97` |
-| Status | Owner-approved direction; downstream architecture and implementation remain subject to accepted authority |
+| Status | Owner-approved direction; M1 product/behavior contract and linear delivery ACCEPTED 2026-10-06; enabling architecture and implementation remain subject to accepted authority |
 | Authority | PRD-000..010 and ADR-001..008; DW-FOUNDATION-001 unchanged |
 | Purpose | Preserve MVP boundaries and future candidates without designing future subsystems now |
 
@@ -47,7 +47,9 @@ Before moving a candidate into implementation: identify the real mission need an
 
 The owner approved the selected ADR-008 review refinements and the limited relationship-aware MVP direction on 2026-09-30. The roadmap direction and selected refinements are accepted; [full ADR-008](adr/ADR-008-observation-fact-separation.md) was explicitly accepted by the owner on 2026-09-30. Engineering/adversarial skills and current status now reflect targeted research, source eligibility and stage-appropriate evidence. The [minimum M0 contract and sequencing proposal](contracts/M0-mission-authority-history.md) and its bounded sequencing exception were accepted by the owner on 2026-09-30. It defers ADR-009..012 for the limited local behavior while retaining required history. M0 needs no language amendment; future integration responsibilities still require component-specific assessment.
 
-M0A registration/history is merged through PR #5; PR #10 CodeQL maintenance and PR #9 coverage enforcement are also merged. Exact-master CI at `387910c06e7d26c6b81da9fd2a0001e974bf9aa7` is green with 29 Rust tests and 94.43% production line coverage against fixed 90% total / 80% per-file floors; see [current engineering state](ENGINEERING_STATE.md) for the run and evidence limits. Current M0B deliveries and M0C-C0 are merged; the baseline planning-CLI complexity FIX is merged through PR #23; the C1a withdrawal/history delivery is merged through PR #22; the baseline-complexity convergence is merged through PR #29, and current per-slice status — the refreshed CI gate candidate, C1b and positive eligibility — is tracked in [engineering state](ENGINEERING_STATE.md) section 6. The bounded demonstration remains outstanding: M0 is DEMO_PENDING and unsealed. The bounded route is: minimum M0 completion -> authorized real-client metadata demo/review -> explicit owner M0 seal -> minimum M1 contract -> owner acceptance -> bounded A/B/C outcomes proving a campaign decision loop. Complete them, review the exact result and obtain an explicit bounded M0 seal before expanding M1 design beyond its recorded roadmap. Acceptance permits local M0 coding via issued packets, not target acquisition/execution. Future candidates do not authorize runtime, tool acquisition, exploit execution, third-party testing, automatic acceptance or a change to DW-FOUNDATION-001.
+M0 is **SEALED (`DW-M0-001`)** at `669f2f36bf2909f3c28f4018a6ae69e76364b286` by explicit product-owner action on 2026-10-05 after owner acceptance of the Work-reviewed bounded demo. [PR #34](https://github.com/carlitotate12160-tech/DuskWeave/pull/34) merged the recording at `d421c776da2d030d344338181628d5852b3bbe81`. [Engineering state](ENGINEERING_STATE.md) sections 5a and 6 preserve the sealed scope, predecessor evidence and limits; older DEMO_PENDING wording is superseded.
+
+The owner accepted the [M1 external orientation contract](contracts/M1-external-orientation-decision-loop.md) and sequential delivery flow on 2026-10-06: DuskWeave acquires sourced external observations, reconciles one decision-relevant DNS relationship, performs an admitted bounded HTTPS validation and revises the next campaign decision. Reuse one verified source worktree, qualified local resources and unchanged M0 evidence; preserve per-candidate verification. The next preparation resolves the common enabling design and explicit sequencing under contract section 11 before IMPLEMENT. Scope acceptance grants no target/pilot execution, automatic acceptance, M1 seal or change to DW-FOUNDATION-001.
 
 
 ## 4. Permanent offensive-direction tripwires
@@ -70,19 +72,12 @@ evidence, stop conditions and sensitive-data hygiene remain a non-negotiable flo
 from the first applicable action. Controls are pulled by concrete demo requirements;
 this direction does not authorize a general control or recovery framework.
 
-M1 contract preparation must resolve hypothesis-state ownership and Terrain's separate
-observation owner before implementation. The proposed A/B/C roadmap is sourced
-observations plus one decision-relevant relationship; one admitted bounded validation
-with attempt/outcome/unknown and reconciliation; and a connected demo. It is not
-an accepted M1 contract or a guarantee of exactly three PRs. Deterministic hypothesis
-transitions may prove the campaign reasoning structure before an LLM port is filled;
-test fixtures cannot masquerade as an authorized real-client pilot. M1 does not by
-itself establish access, a validated foothold, all four loops or objective completion.
+The accepted [M1 contract](contracts/M1-external-orientation-decision-loop.md) section 6 assigns environmental Observation/claim reconciliation to Terrain, derived candidate hypotheses to Pathing, and alternative comparison to a bounded reasoning episode. The A/B/C roadmap describes sourced observations plus one decision-relevant relationship; admitted validation with attempt/outcome/unknown; and a connected demo. It is not a guarantee of exactly three PRs. Deterministic hypothesis comparison can prove the reasoning structure before an LLM is selected. Isolated qualification/failure tests do not replace an explicitly authorized real-client milestone demonstration. M1 does not itself establish access, a validated foothold, all four loops or objective completion.
 
 | Post-M1 pull | Required admission |
 | --- | --- |
 | One bounded access or authorized credential validation capable of informing the next campaign position | Accepted owning contracts; specific operator scope; current deterministic admission; one capability/adapter; bounded effects and stop; attempt/outcome/unknown reconciliation; applicable PRD-010 isolated custody using opaque references; no brute-force or breadth commitment. |
 
-A future M1 contract binds these tripwires to its particular decisions, observations,
+The accepted M1 contract binds these tripwires to its particular decisions, observations,
 attempts and demo assertions. Defensive consumers assess campaign results; they do
 not become the campaign's operational direction.
