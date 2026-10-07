@@ -78,7 +78,10 @@ conflicts before implementing a weaker substitute; do not invent missing authori
 For supporting infrastructure, retain its concrete operational contribution
 without adding target actions or expanding the file map. Deterministic authority
 authorizes execution; LLM proposals grant no permission. Verify this through the
-existing outcome, consumer-path tests and review, without adding a new gate.
+existing outcome and review. Use consumer-path tests for runtime IMPLEMENT/FIX
+slices where a runtime consumer path exists; a missing required path remains
+SPLIT_REQUIRED. For DESIGN-only work, check document authority and consistency;
+runtime reachability is N/A. Do not add a new gate.
 
 ## Preflight
 
