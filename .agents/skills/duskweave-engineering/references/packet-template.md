@@ -55,6 +55,12 @@ deltas, then reread changed/newly affected boundaries. Rebuild lost context.
 ## Outcome and bounded context
 State one reviewable outcome, ownership, and behavior.
 Define necessary assumptions and failure semantics.
+Check requirement-to-prompt intent preservation: for operational slices, connect
+the objective and hypothesis to the authorized action, success/failure/UNKNOWN
+evidence, next decision/adaptation and stop conditions. For supporting slices,
+state their operational contribution without inventing target actions. Preserve
+accepted active behavior; surface conflicts rather than silently substituting
+passive/scanner-only behavior. No scope expansion or extra review gate follows.
 Give exact acceptance criteria; define what evidence proves completion.
 Keep the packet cohesive across its necessary files; avoid prompts per module.
 Preserve the authorized offensive outcome, meaningful failure behavior and

@@ -115,6 +115,25 @@ Distinguish documented behavior from operational inference and design decisions.
 Keep threat-actor-specific scenarios outside generic core domains.
 ATT&CK mappings are optional metadata, not the campaign lifecycle.
 
+## Offensive intent preservation
+
+Before emitting an implementation prompt, compare it with the governing
+requirement and the accepted behavior of the current slice. Preserve its
+operational objective, attack hypothesis, authorized scope, active validation,
+success/failure/UNKNOWN criteria, adaptation, evidence and stop conditions where
+applicable. Trace objective -> hypothesis -> authorized action -> observable
+evidence -> resulting decision or adaptation in the existing outcome and tests.
+Correct any silent substitution of passive assessment, scanner-only behavior,
+defensive monitoring, remediation-only work or a stub for required active behavior.
+For supporting infrastructure slices, state their concrete contribution to the
+operational objective; do not invent attack hypotheses or target actions merely
+to fill a checklist. Do not expand scope, bypass dependencies or treat product
+intent as execution permission. Report unresolved authority conflicts explicitly.
+Deterministic authority authorizes execution; LLM reasoning may propose actions
+but grants no authority. Do not turn execution constraints into an unrequested
+restriction on accepted reasoning or adaptation. Use existing acceptance/review
+criteria; add no separate artifact, approval tier or gate.
+
 ## Packet authoring
 
 Use references/packet-template.md when asked for an execution packet.
