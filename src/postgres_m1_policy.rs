@@ -19,7 +19,7 @@ fn registration(
         .map_err(|error| store_err(&error))?
         .ok_or(Fail::Store("contract_decode"))?;
     let event = decode_registration(&row)?;
-    if event.version == crate::mission::CONTRACT_VERSION {
+    if event.version == crate::mission::CONTRACT_VERSION && event.fields.m1_permission.is_none() {
         bind_registration(&row, &event)?;
     }
     Ok(Some(event))
