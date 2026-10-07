@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | ACCEPTED — product owner, 2026-10-06; M1 selected lane only |
 | Date | 2026-10-06 |
-| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06 |
+| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds the bounded generated-implementation lane under the unchanged fixed vocabulary, published under the owner-approved 2026-10-07 direction with exact-text acceptance recorded separately |
 | Authoring base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted PRD-000/001/006/007/010, M1 product contract and ADR-009/011; selected-lane rebind in accepted M1 enabling section 2 |
@@ -111,6 +111,51 @@ The ceilings are selected assumptions, not benchmark results. The future affecte
 qualification records provider availability, intake limits, latency and safe partial outcomes
 on the supported deployment; failure cannot be hidden by raising limits or adding providers.
 
+### Generated implementations within the fixed vocabulary
+
+The profile vocabulary above remains the entire externally visible effect surface of this
+lane. A generated implementation may apply novel internal analysis, branching,
+transformation and composition over admitted inputs and declared effect interfaces, but it
+cannot create a new externally visible effect semantic: a new protocol/method, credential
+operation, raw-data parser lane or privileged execution mechanism requires its owning
+design decision. The manifest selects only already admitted boundary schemas; a
+candidate-declared schema cannot authorize a new egress field. Generated conclusions
+remain proposals referencing source evidence.
+
+A candidate is an immutable source bundle plus manifest: content digest, lineage, purpose,
+input/output schemas, declared effect interfaces, applicability assumptions, resource
+bounds, toolchain/dependency identities and test references. Artifact identity includes
+the executable digest; a source digest alone does not identify execution.
+
+Candidate lifecycle: proposed -> built -> qualified -> campaign-admitted -> eligible for
+dispatch. Build/qualification failure returns bounded feedback for revision; every
+revision creates a new digest and never replaces in-flight executable bytes.
+Qualification binds implementation, manifest, environment and test-set revisions; changed
+dependencies, effects or relevant assumptions invalidate affected qualification. It
+establishes bounded interface behavior and containment, not universal semantic
+correctness or mission success. Candidate-authored tests are supplemental; the candidate
+cannot edit protected assertions, evaluator fixtures, acceptance policy, admission
+receipts or its own qualification decision. LLM critique is advisory. Actual observations
+still require their domain owner's reconciliation and burden.
+
+Campaign-local admission may be automated under an accepted qualification policy; there is
+no mandatory human approval for every generated revision. Reusable promotion is a separate
+disposition by the deployment's designated capability owner, supported by applicable
+qualification and a client-data exclusion review; it grants availability, not authority to
+run in another campaign. Reusable artifacts contain no client identifiers, captured
+content or credentials; campaign-specific parameters are supplied separately under current
+campaign authority.
+
+Retain useful versions with applicability and known limitations. Deduplicate identical
+artifacts; link improvements through supersession; retire misleading or obsolete versions.
+Do not delete history required to interpret old attempts. A quarantined artifact cannot be
+selected again merely because the reasoner proposes it under another display name.
+
+A generated worker submits only typed effect requests within the vocabulary above; each
+returns through authority, Gateway and Broker under ADR-016 with its own attempt identity
+and current effect-start admission. The generated worker never becomes the raw-facing
+capture process or trusted exporter under ADR-015/017.
+
 DNS expiry is min(perception time + lowest relevant returned TTL, perception time + 60s).
 Returned TTL may be remaining resolver-cache lifetime; it proves no authoritative freshness.
 TTL zero is a valid observation but cannot support a later separately issued HEAD in R1;
@@ -130,6 +175,10 @@ Small fixed profiles avoid shell and registry authority. IPv4, 443 and one decla
 are v1 coverage limits, not claims of complete discovery. Another method/port/family/provider
 requires a declared profile change under the owning accepted boundaries. Product breadth
 changes require the applicable product/architecture decision.
+Generated implementations extend internal computation within this lane without widening
+the externally visible vocabulary. The bounded candidate manifest, lifecycle, qualification
+and catalog responsibilities above are not the deferred ADR-014 registry model, which
+remains reserved.
 
 ## 6. Invariant compliance matrix
 

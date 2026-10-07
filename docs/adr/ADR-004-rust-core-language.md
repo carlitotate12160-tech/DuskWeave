@@ -47,11 +47,12 @@ Select **Rust for first-party campaign core domain and application logic**. Keep
 | Mission/lifecycle, bounded loop use cases, evidence admission and action authority | Rust; compose narrow ports and immutable views, without absorbing sibling aggregates. |
 | Capability Gateway and execution broker | Rust core-side eligibility and dispatch responsibilities remain separate; neither absorbs adapter execution. |
 | Tool adapters, collectors, network/integration workers and telemetry adapters | Go baseline; translate admitted requests and bounded outcomes, without owning campaign truth or redefining policy. No generic arbitrary-execution escape hatch. |
+| Generated campaign-worker candidates | Go source bundles admitted through the isolated build/qualification lane of the capability and execution decisions. A generated worker is untrusted candidate code, not a trusted adapter, raw-facing capture process or exporter; Rust retains trusted application validation, admission and execution coordination. No additional production language is introduced. |
 | Core infrastructure implementations | May use Rust to implement persistence, messaging or external-client ports. Their implementation dependencies remain outside domain logic; this does not select a library or transport. |
 | Native helpers and external SDKs | Zig only for a demonstrated native-helper requirement; C/C++ only for necessary FFI or unavoidable SDK integration. Placement and admission require the later native-boundary design. |
 | Research | Python/Nim remain research-only unless an accepted ADR promotes a specific component. Research code cannot enter an execution path by being wrapped in an adapter. |
 
-Rust owns bounded campaign use cases that assemble sourced context, govern reasoning-episode budgets and lifecycle, and admit reasoner proposals as untrusted input. Selecting Rust for the core does not require inference in Rust. Inference language, runtime and provider remain unselected. Inference behind an external interface is the starting direction, not a permanent deployment constraint or a choice of HTTP, vLLM or Candle.
+Rust owns bounded campaign use cases that assemble sourced context, govern reasoning-episode budgets and lifecycle, and admit reasoner proposals as untrusted input. Selecting Rust for the core does not require inference in Rust. Inference is a replaceable adapter, not a model-specific core architecture; deployment selects the exact model/configuration and approved placement and records model, provider/runtime revision where available, prompt/template and sampling configuration with each decision. Hidden provider updates remain an explicit reproducibility limit; identical reasoning on replay is not claimed, and preserved decisions stay auditable. Inference behind an external interface is the starting direction, not a permanent deployment constraint or a choice of HTTP, vLLM or Candle.
 
 A separately supplied inference backend does not determine the language of DuskWeave's use cases. DuskWeave-owned Python reasoning code may enter production only through an accepted ADR admitting that specific component; placing it behind a service interface does not bypass this requirement. Whatever its implementation, a reasoner has no model-mutation or execution authority. Using a Rust SDK or a Go transport client grants neither.
 
@@ -145,3 +146,9 @@ ADR-004 is **ACCEPTED** by the product owner on 2026-09-28, including the revise
 Engineering-policy clarification authorized by the product owner on 2026-10-03:
 function-length review and narrowly qualified dispatch budgets follow QUALITY_BAR.md.
 Model/language ownership, product acceptance and historical seal baselines remain unchanged.
+
+The product owner approved the M1 cognitive direction on 2026-10-07. The R2 amendment
+clarifies Go candidate workers under the isolated build/qualification lane, Rust trusted
+ownership and the replaceable inference adapter; it introduces no additional production
+language. Publication as a candidate amendment does not by itself grant exact-text
+acceptance, runtime readiness or deployment qualification.
