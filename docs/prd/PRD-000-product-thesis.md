@@ -8,6 +8,7 @@
 | **Stage** | Stage 1 — Product Thesis |
 | **Direct Dependencies** | None |
 | **Target Seal** | DW-PRD-000 |
+| **Amendment** | R2 — cognitive direction approved by the product owner on 2026-10-07 (bounded generated-implementation lane); published as a candidate amendment, exact-text acceptance recorded separately |
 
 ---
 

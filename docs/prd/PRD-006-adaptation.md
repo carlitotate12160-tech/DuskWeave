@@ -8,6 +8,7 @@
 | **Stage** | Stage 2 — Campaign Semantics |
 | **Direct Dependencies** | [PRD-005 Objective Loop](PRD-005-objective-loop.md) |
 | **Target Seal** | DW-PRD-006 |
+| **Amendment** | R2 — cognitive direction approved by the product owner on 2026-10-07 (evidence-led reasoning, capability feedback/evolution); published as a candidate amendment, exact-text acceptance recorded separately |
 
 ## 1. Purpose and actors
 
