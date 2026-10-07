@@ -34,6 +34,13 @@ Every ADR is written using the following fixed structure:
 ADR-001..008 are authored and ACCEPTED. ADR-009/011/013/015/016/017 R1 and the
 M1 enabling owner/sequencing contract were ACCEPTED by the product owner on
 2026-10-06 for the selected M1 lane only; no full-stage acceptance or seal is claimed.
+The R2 cognitive amendment — direction approved by the product owner on 2026-10-07,
+published as a candidate with exact-text acceptance recorded separately — revises the
+scoped ADR-004/013/015/016/017 lane: Go generated-candidate workers under Rust trusted
+ownership, a replaceable inference adapter, the bounded candidate manifest/lifecycle/
+qualification/catalog responsibility, the isolated build/generated-worker lane,
+nested-effect admission with independent cognition budgets, and the untrusted candidate
+request channel. The bounded candidate catalog is not the ADR-014 registry model.
 ADR-010/012/014/018..024 remain reserved/unwritten slots. Legacy PROPOSED labels
 for those slots do not satisfy dependencies. Full-stage prerequisites remain;
 the [accepted M1 sequencing amendment](../contracts/M1-enabling-architecture.md)

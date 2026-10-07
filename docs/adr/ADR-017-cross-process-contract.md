@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | ACCEPTED — product owner, 2026-10-06; M1 selected lane only |
 | Date | 2026-10-06 |
-| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06 |
+| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 distinguishes the untrusted candidate request channel from the trusted safe-result channel, published under the owner-approved 2026-10-07 direction with exact-text acceptance recorded separately |
 | Authoring base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-009/011/013/015/016 |
@@ -84,6 +84,19 @@ Compatibility validation in core is defense in depth, not the first safe-egress 
 Transport loss after possible start leaves UNKNOWN. Only safe durable core records may be
 redelivered. IPC retry/worker restart cannot repeat the acquisition or retain raw input.
 EOF, cancellation, oversize, parser error and process failure remain explicit safe dispositions.
+
+### Generated-worker channels
+
+A generated worker's typed effect-request channel is untrusted candidate input:
+self-reported producer, digest, identity or authority strings never establish trust. Each
+request binds engagement/campaign, session, its own attempt identity, candidate executable
+digest, declared effect interface and admitted boundary schema, and is admitted only
+through the owning authority/Gateway/Broker path — never through this worker channel
+itself. The worker's output returns on the trusted safe-result path: only qualified
+exporter/trusted release code produces ordinary results, and a generated worker holds no
+ordinary result descriptor. A forged digest, result identity or unexpected frame rejects
+as a bounded safe failure; malformed candidate output stays inside the isolation boundary
+with category-only failure, following the same discard-and-disposition rules above.
 
 ## 5. Consequences
 

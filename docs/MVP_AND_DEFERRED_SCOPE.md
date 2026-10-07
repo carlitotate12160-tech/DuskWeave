@@ -4,7 +4,7 @@
 | :--- | :--- |
 | Recorded | Initial direction 2026-09-30; offensive-direction guardrails 2026-10-03 |
 | Review base | `d7297dad0f5269b3d95e2bd9dc1d28919c2ecd97` |
-| Status | Owner-approved direction; M1 product/behavior contract and linear delivery ACCEPTED 2026-10-06; enabling architecture and implementation remain subject to accepted authority |
+| Status | Owner-approved direction; M1 product/behavior contract and linear delivery ACCEPTED 2026-10-06; M1 cognitive direction approved 2026-10-07 (R2); enabling architecture and implementation remain subject to accepted authority |
 | Authority | PRD-000..010 and ADR-001..008; DW-FOUNDATION-001 unchanged |
 | Purpose | Preserve MVP boundaries and future candidates without designing future subsystems now |
 
@@ -51,6 +51,8 @@ M0 is **SEALED (`DW-M0-001`)** at `669f2f36bf2909f3c28f4018a6ae69e76364b286` by 
 
 The owner accepted the [M1 external orientation contract](contracts/M1-external-orientation-decision-loop.md) and sequential delivery flow on 2026-10-06: DuskWeave acquires sourced external observations, reconciles one decision-relevant DNS relationship, performs an admitted bounded HTTPS validation and revises the next campaign decision. Reuse one verified source worktree, qualified local resources and unchanged M0 evidence; preserve per-candidate verification. The next preparation resolves the common enabling design and explicit sequencing under contract section 11 before IMPLEMENT. Scope acceptance grants no target/pilot execution, automatic acceptance, M1 seal or change to DW-FOUNDATION-001.
 
+On 2026-10-07 the owner approved the R2 cognitive direction for M1: evidence-led reasoning, bounded runtime capability synthesis/evolution, campaign-local feedback learning and the minimum report are inside the M1 outcome, replacing the deterministic-only selection. Retained for later selection — not hidden M1 criteria, mandatory providers or a fixed sequence — are additional passive sources (Wayback, OTX, VT, Shodan/Censys and further CT), scheduled episodes with change-diff, bounded GET/fingerprinting/takeover heuristics, and throughput optimizations such as parallel episodes or warm workers; each activates only for a concrete mission need under its owning contract. Online model-weight training and actor-persona playbooks remain unselected; self-granted permission, mutable audit history and self-certified success stay rejected. The accepted post-M1 access/credential pull is unchanged, and no new milestone promises or provider checklist are created.
+
 
 ## 4. Permanent offensive-direction tripwires
 
@@ -72,7 +74,7 @@ evidence, stop conditions and sensitive-data hygiene remain a non-negotiable flo
 from the first applicable action. Controls are pulled by concrete demo requirements;
 this direction does not authorize a general control or recovery framework.
 
-The accepted [M1 contract](contracts/M1-external-orientation-decision-loop.md) section 6 assigns environmental Observation/claim reconciliation to Terrain, derived candidate hypotheses to Pathing, and alternative comparison to a bounded reasoning episode. The A/B/C roadmap describes sourced observations plus one decision-relevant relationship; admitted validation with attempt/outcome/unknown; and a connected demo. It is not a guarantee of exactly three PRs. Deterministic hypothesis comparison can prove the reasoning structure before an LLM is selected. Isolated qualification/failure tests do not replace an explicitly authorized real-client milestone demonstration. M1 does not itself establish access, a validated foothold, all four loops or objective completion.
+The accepted [M1 contract](contracts/M1-external-orientation-decision-loop.md) section 6 assigns environmental Observation/claim reconciliation to Terrain, derived candidate hypotheses to Pathing, and alternative comparison to a bounded reasoning episode. The A/B/C roadmap describes sourced observations plus one decision-relevant relationship; admitted validation with attempt/outcome/unknown; and a connected demo. It is not a guarantee of exactly three PRs. Under the approved R2 direction the M1 reasoning structure is cognitive and evidence-led; the deterministic hypothesis comparator remains a test control or explicitly labeled non-cognitive mode rather than the accepted reasoning mechanism. Isolated qualification/failure tests do not replace an explicitly authorized real-client milestone demonstration. M1 does not itself establish access, a validated foothold, all four loops or objective completion.
 
 | Post-M1 pull | Required admission |
 | --- | --- |

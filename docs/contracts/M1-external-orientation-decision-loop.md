@@ -4,6 +4,7 @@
 | --- | --- |
 | Document | DW-M1-EXTERNAL-ORIENTATION-CONTRACT-20261006 |
 | Status | ACCEPTED — product owner, 2026-10-06; product/behavior scope and linear delivery cadence |
+| Amendment | R2 — cognitive direction approved by the product owner on 2026-10-07 (evidence-led reasoning, bounded capability synthesis/evolution, feedback learning, minimum report); published as a candidate amendment, exact-text acceptance recorded separately |
 | Date | 2026-10-06 |
 | Repository path | `docs/contracts/M1-external-orientation-decision-loop.md` |
 | Verified authoring base | `d421c776da2d030d344338181628d5852b3bbe81` |
@@ -16,6 +17,8 @@
 ## 1. Product outcome
 
 M1 proves that DuskWeave can acquire eligible external information itself, reconcile a narrow environmental relationship, select and execute a permitted validation, and use its actual outcome to revise the next campaign decision.
+
+R2 sharpens this outcome: M1 must contain an evidence-led cognitive loop in which the reasoner itself proposes hypotheses, compares alternatives, identifies missing information, chooses the next proposed action and adapts after results — deterministic authority validates but never secretly substitutes strategy. The M1 outcome also includes bounded runtime capability synthesis and evolution, campaign-local feedback learning, and the minimum report defined below. The deterministic reasoner may remain a test control or an explicitly labeled non-cognitive operating mode; it cannot satisfy the cognitive acceptance criterion.
 
 The concrete capability is **selecting the next authorized external web entry candidate for later access work**. Its mission question is:
 
@@ -37,12 +40,14 @@ M1 is a development milestone implementing part of external orientation. Reconna
 | DNS acquisition | Current bounded name resolution from a declared resolver/vantage; one routing relationship family |
 | HTTPS validation | One fixed TLS/HTTP metadata profile for an admitted host, port and path; no exploit or authentication |
 | Terrain reconciliation | Narrow sourced claims, applicable epistemic status/tier, contradictions, freshness and linked corrections |
-| Candidate reasoning | Compare eligible alternatives and no-action choices; state a question, expected/disconfirming evidence and next proposal |
-| Feedback | Reconsider candidates and the next step from the validation outcome; preserve unresolved premises |
+| Candidate reasoning | Evidence-led cognitive comparison of eligible alternatives and no-action choices; state a question, expected/disconfirming evidence and next proposal |
+| Capability synthesis | A recognized capability gap may be met by a candidate implementation: immutable source bundle plus manifest, trusted isolated build, bounded qualification and campaign admission before dispatch; more than template selection or parameter filling |
+| Feedback | Reconsider candidates and the next step from the validation outcome; preserve unresolved premises; reflections stay revisable source-qualified hypotheses; capability revisions create new artifact digests |
+| Minimum report | One machine-readable report and one human-readable engagement summary from the same pinned snapshot, with claim tiers, UNKNOWN/failed/deferred outcomes, omissions, contradictions and limitations |
 | Durable accountability | Link mission, decisions, authorization disposition, attempts, admitted observations, evidence evaluation and outcomes |
 | Operator inspection | A non-sensitive account of what changed, why, what remains unknown, and the permitted next step |
 
-M1 excludes credential use, raw leak ingestion, authentication attempts, exploitation, origin hunting to bypass protection, foothold creation, pivoting, expansion, objective execution, arbitrary shell, dynamic plugin loading, universal graph search, an LLM provider, Observer/Grader integration, and client-proof release.
+M1 excludes credential use, raw leak ingestion, authentication attempts, exploitation, origin hunting to bypass protection, foothold creation, pivoting, expansion, objective execution, arbitrary shell, dynamic plugin loading, universal graph search, Observer/Grader integration, and client-proof release. Inference is a replaceable adapter under deployment-selected model/placement; external inference requires permission for the specific safe fields and recipient, and generated workers are qualified artifacts under the bounded lane — not dynamic plugin loading.
 
 These exclusions bound M1; they do not redefine DuskWeave as a passive scanner. The registered next product pull after M1 is a bounded access or authorized credential-validation capability under PRD-003/010 and its own accepted authority. It is not another indefinite series of inventory connectors.
 
@@ -88,7 +93,7 @@ M0 eligibility/planning history remains historical. It is not a reusable executi
 1. **Begin an episode.** Load the current mission and execution envelope. Bind the source profile and explicit finite limits. Compare available eligible premises with the mission question.
 2. **Acquire candidate hints.** DuskWeave queries the permitted CT source when useful, or uses an admitted seed. Deduplicate identities while preserving lineage, time and truncation. Scope qualification decides which hints may proceed.
 3. **Orient with DNS.** Acquire a bounded current resolution and admit its safe semantics. Terrain reconciles the host-to-routing-destination relationship against its accepted history and contrary material.
-4. **Form alternatives.** Pathing supplies derived candidate views. A bounded reasoner compares candidates and the choices to observe more, validate, retain, defer or stop. It names the question the selected validation can answer and evidence that could disconfirm the premise.
+4. **Form alternatives.** Pathing supplies derived candidate views. A bounded cognitive reasoning episode compares candidates and the choices to observe more, validate, retain, defer or stop. It names the question the selected validation can answer and evidence that could disconfirm the premise.
 5. **Admit one proposal.** Deterministic Action Authority checks current permission and required inputs. Gateway/Broker dispatches only the fixed profile. The reasoner cannot bypass this path or mutate Terrain.
 6. **Perform bounded HTTPS validation.** The worker makes the admitted request and returns a bounded result through the sensitive-data/admission boundary. Attempt identity and outcome remain explicit even if the result is incomplete.
 7. **Reconcile and reconsider.** Terrain evaluates the new evidence; Pathing invalidates or updates dependent candidates; the next reasoning episode compares the remaining alternatives. Trajectory records what was known and decided at each step.
@@ -111,7 +116,7 @@ This is not a mandatory fixed sequence for every input. Current eligible premise
 | Dispatch and worker lifecycle | Rust Gateway/Broker; Go adapter/collector | Fixed admitted request only; no arbitrary execution escape hatch |
 | Decisions, attempts and outcomes | CampaignTrajectory | Accountable history; not a mutable shared campaign context |
 
-The reasoner may be deterministic in M1. It must compare alternatives, expected/disconfirming evidence and no-action outcomes before selection. A hard-coded tool chain followed by generated rationale does not satisfy this contract. An LLM runtime is neither required nor implicitly admitted.
+Under R2 the reasoner is cognitive and evidence-led: it proposes hypotheses, compares alternatives, expected/disconfirming evidence and no-action outcomes, identifies missing information, chooses the next proposed action and revises after results. Deterministic authority validates proposals but must not secretly choose all actions through a fixed ranking with rationale written afterward; a hard-coded tool chain followed by generated narration does not satisfy this contract. The earlier deterministic selector may remain a test control or an explicitly labeled non-cognitive operating mode; it cannot satisfy the cognitive acceptance criterion. Inference runs through a replaceable adapter under deployment-selected exact model/configuration and approved placement; external inference requires permission for the specific safe fields and recipient, with retention/use terms compatible with the engagement. Otherwise an eligible local deployment or deferral applies, and model switching is not an undeclared disclosure fallback.
 
 The single relationship family is a **DNS routing binding**: the queried host, its reported resolution lineage and bounded destination binding, from a declared resolver/vantage at a stated time. It is decision-relevant because a stale, contradictory or prohibited binding changes whether and where the proposed host contact is eligible. Shared routing does not establish identical applications, shared backends or target ownership.
 
@@ -179,8 +184,11 @@ M1 must show a connected production entrypoint-to-consumer path, not just parser
 | False certainty | CT age, copied lineage, banner/status, timeout and tool exit cannot create unsupported ownership, access or global absence |
 | Sensitive/mode boundary | Synthetic sensitive sentinels and privileged defender input cannot reach ordinary IPC, database, logs, retries, summaries or blind reasoning |
 | Failure integrity | Post-effect missing ack, commit/ack loss, duplicate/conflicting identity, restart, correction and consumer failure preserve state/history without blind replay |
+| Capability gap synthesis | A non-sensitive held-out scenario contains a gap not solved by an installed implementation; the loop generates new executable logic, passes protected evaluation and bounded repair, is campaign-admitted, and the real reasoning loop consumes its result; renaming a tool, emitting unused code or logging a preselected answer fails this claim |
+| Changed evidence | The chosen next step or an explicit uncertainty disposition responds appropriately to changed evidence rather than a preselected answer |
+| Minimum report | One machine-readable report and one human-readable summary derive from the same pinned owner/history snapshot; unsupported narration is omitted or labeled as hypothesis, and a non-atomic snapshot is labeled partial |
 
-The reference deterministic qualification scenario uses two explicitly authorized, equal-priority, mission-relevant synthetic HTTPS candidates. Candidate A has a current admitted routing binding but its bounded request reports a redirect outside the current contact envelope. DuskWeave preserves the narrow claim that A responded, does not follow the redirect, and leaves the destination-route premise unresolved. It compares a permitted check of B with repeating A and deferring for additional permission. Where B can answer a remaining mission question, DuskWeave selects and performs that admitted validation, then evaluates its outcome. Neither status nor redirect proves vulnerability or a named defense.
+The reference qualification scenario uses two explicitly authorized, equal-priority, mission-relevant synthetic HTTPS candidates. Candidate A has a current admitted routing binding but its bounded request reports a redirect outside the current contact envelope. DuskWeave preserves the narrow claim that A responded, does not follow the redirect, and leaves the destination-route premise unresolved. It compares a permitted check of B with repeating A and deferring for additional permission. Where B can answer a remaining mission question, DuskWeave selects and performs that admitted validation, then evaluates its outcome. Neither status nor redirect proves vulnerability or a named defense.
 
 Changing the first result to a sufficient in-envelope response must yield a different disposition, including a legitimate retain choice. A timeout variant remains inconclusive and respects the finite budget. This demonstrates branching from evidence rather than a fixed A-then-B scanner script.
 
@@ -207,7 +215,9 @@ The remaining preparation is **one bounded DESIGN outcome, runtime diff = 0**, r
 | Sensitive boundary | Minimum accepted ADR-011 behavior for this non-proof acquisition lane; the registry's dependency on ADR-010 must be explicitly resolved through an accepted sequencing amendment |
 | Capability and execution | Fixed requests/results, profile/version binding, current-authority fence, Rust/Go IPC trust, worker isolation, budgets, revocation and unknown-effect reconciliation; satisfy or explicitly rebind applicable Stage 11/12 prerequisites |
 | Owner/public contracts | Terrain Observation/evidence/relationship family, Pathing candidate ownership, bounded reasoner input/output, Trajectory history and narrow consumption rights |
-| Deferred triggers | Client proof/fingerprint/key architecture before proof; secret custody before credential use; registry/native helpers/LLM/Observer only when their actual capability is selected |
+| Deferred triggers | Client proof/fingerprint/key architecture before proof; secret custody before credential use; registry/native helpers/Observer only when their actual capability is selected. Under R2 the replaceable inference adapter is selected for bounded cognition; a different provider class, privileged feed or unbounded use still requires its owning decision |
+
+Under the R2 amendment, the enabling architecture additionally resolves this contract's cognitive outcome: evidence-led reasoning, the bounded generated-implementation lane, feedback/reflection and the minimum report. The §11 substitution explicitly authorizes only the bounded candidate catalog responsibilities specified there — manifest, immutable artifact identity, proposed-to-admitted lifecycle, qualification, promotion and invalidation — instead of asserting full ADR-014 or PRD-011..013 completion. Full registry, polyglot admission and campaign-chain stages retain their real prerequisites.
 
 The future bounded sequencing lane defers breadth and unwritten decisions only through owner-accepted authority changes. Acceptance of this product contract does not itself accept that sequencing amendment. It cannot weaken PRD-000..010 or accepted ADR-001..008, declare all reserved ADRs accepted, or imply a full stage/domain seal. Proof and key features remain unimplemented, rather than being fabricated to satisfy an irrelevant dependency.
 

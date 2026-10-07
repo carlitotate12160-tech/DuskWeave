@@ -57,8 +57,12 @@ below remain in force outside an accepted bounded M0 lane.
 
 The [M1 enabling architecture/owner contracts](../contracts/M1-enabling-architecture.md)
 resolve the accepted product contract section 11. The owner ACCEPTED R1 and scoped
-ADR-009/011/013/015/016/017 together on 2026-10-06. Publish this accepted authority
-before Work measures and issues a bounded M1 runtime packet; acceptance alone
+ADR-009/011/013/015/016/017 together on 2026-10-06. The R2 cognitive amendment —
+approved as direction by the owner on 2026-10-07 — rebinds only the selected
+owner/context contracts to the evidence-led ContextPack/proposal lane and adds the
+minimum-report read-only projection; Terrain/Pathing/Trajectory owners and claim/fact
+boundaries are unchanged. Publication of this authority
+precedes Work measuring and issuing a bounded M1 runtime packet; acceptance alone
 is not a ready implementation packet or current target permission.
 The linked dependency table preserves full-stage prerequisites, rebinds the
 ADR-011 proof prerequisite only for non-proof acquisition, and limits Terrain/

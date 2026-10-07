@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | ACCEPTED — product owner, 2026-10-06; M1 selected lane only |
 | Date | 2026-10-06 |
-| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06 |
+| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds generated-worker nested-effect admission and independent cognition/build budgets, published under the owner-approved 2026-10-07 direction with exact-text acceptance recorded separately |
 | Authoring base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-003/005/013/015; Stage 12 product-input rebind in accepted M1 enabling section 2 |
@@ -154,6 +154,33 @@ before ack loss; forged result; recovery after restore; UNKNOWN budget across ne
 no repeated DNS/HEAD via recovery; new explicitly admitted follow-up counts separately.
 Assert actual fixture effect counts and durable original identity across fresh recovery.
 A pre-commit fault is not evidence for post-effect acknowledgement loss.
+
+### Generated-worker nested effects and cognition/build budgets
+
+A generated worker submits only typed effect requests; each returns through authority,
+Gateway and Broker, and trusted R1 capture/exporter code performs actual I/O. Every
+nested request has its own attempt identity and passes the same current effect-start
+admission; no admitted parent capability grants a batch of future contacts or bypasses
+withdrawal. The reservation, may-start, UNKNOWN and no-refund semantics above apply
+unchanged to each nested effect.
+
+Cognitive and build sessions are decoupled from the 60-second acquisition episode. Model
+latency or compilation must not consume a stale admission and then release a late effect.
+Cognitive work may span episodes, but each effect still requires a fresh eligible episode
+and current premises; all existing campaign effect totals survive restart.
+
+Mission/deployment configuration must supply finite cognition/build limits: inference
+calls and input/output size, wall time, candidate revisions, build/test CPU and memory,
+artifact/output bytes and concurrent workers. Effective limits are the minimum of
+campaign remainder and deployment ceilings; missing limits disable that operation. These
+budgets do not increase any R1 network ceiling or authorize parallel effect episodes.
+Provider timeout, malformed output and schema-repair attempts consume inference budget;
+repair cannot dispatch actions. Provider loss produces a visible deferred/failed state;
+there is no silent fallback to another provider or a non-cognitive success claim. Budget
+reservation and uncertain consumption survive restart; uncertain effects are not refunded
+or replayed. Recovery first reconciles durable state, then replans. Withdrawal stops new
+inference/build/dispatch work and cancels owned workers; already-sent provider data and
+network effects cannot be retroactively recalled.
 
 ## 5. Consequences
 

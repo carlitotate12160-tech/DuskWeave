@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | ACCEPTED — product owner, 2026-10-06; M1 selected lane only |
 | Date | 2026-10-06 |
-| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06 |
+| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds the isolated build/generated-worker lane, published under the owner-approved 2026-10-07 direction with exact-text acceptance recorded separately |
 | Authoring base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-002/004/011/013; ADR-014 prerequisite rebound only by accepted M1 enabling section 2 |
@@ -108,6 +108,24 @@ Preparation of the pinned pair before READY is allowed with network closed. Warm
 across attempts, batch dispatch, remote launcher and parallel campaign episodes are deferred.
 Already-sent external work cannot be rolled back by local stop. Raw disposal applies to
 the entire pair and raw-facing transport on success/failure/cancel/parent loss.
+
+### Isolated build and generated-worker lane
+
+A trusted build adapter compiles each generated candidate outside the core and the
+sensitive capture boundary, using a pinned offline Go toolchain and a reviewed dependency
+set. No campaign-time package downloads, generated compiler plugins, CGO, target implants
+or arbitrary host commands are permitted. Build/test workers have no target network,
+secrets, database credentials, writable host mounts or access to trusted policy/evaluator
+files. Compiler diagnostics are bounded and sanitized; candidate source, comments and
+generated outputs are themselves untrusted data.
+
+The qualified worker executes in a separate disposable Linux isolation boundary with no
+ambient network and no direct model/database access. It uses this deployment family but is
+qualified separately from the trusted capture/exporter pairs; a container label, import
+filter or digest is not evidence of adequate containment. The worker receives safe inputs
+and a narrow framed request/result channel, not a shell. It never becomes the raw-facing
+capture process or trusted exporter; trusted R1 capture/exporter code performs actual
+I/O. Deployment of this lane remains explicitly unqualified until demonstrated.
 
 ## 5. Consequences
 
