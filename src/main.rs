@@ -21,6 +21,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 mod authority_confirmation;
+mod database_config;
 mod m1_policy_cli;
 mod planning_cli;
 
@@ -62,32 +63,8 @@ fn flag<'a>(args: &[(&'a str, &'a str)], name: &str) -> Res<&'a str> {
         .ok_or(Fail::Input("invalid_args"))
 }
 
-fn runtime_config() -> Res<postgres::Config> {
-    let raw = env::var("DW_DATABASE_URL")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .ok_or(Fail::Config("missing_env"))?;
-    let cfg: postgres::Config = raw.parse().map_err(|_| Fail::Config("invalid_dsn"))?;
-    check_config(&cfg)?;
-    Ok(cfg)
-}
-
-fn check_config(cfg: &postgres::Config) -> Res<()> {
-    let loopback = matches!(
-        cfg.get_hosts(),
-        [postgres::config::Host::Tcp(h)] if h == "127.0.0.1" || h == "::1"
-    );
-    if !loopback {
-        return Err(Fail::Config("non_loopback_host"));
-    }
-    if cfg.get_user().is_none_or(str::is_empty) || cfg.get_password().is_none_or(|p| p.is_empty()) {
-        return Err(Fail::Config("missing_credentials"));
-    }
-    Ok(())
-}
-
 fn connect() -> Res<postgres::Client> {
-    let mut client = runtime_config()?
+    let mut client = database_config::runtime_config()?
         .connect(NoTls)
         .map_err(|_| Fail::Config("connect_failed"))?;
     qualify_runtime(&mut client)?;

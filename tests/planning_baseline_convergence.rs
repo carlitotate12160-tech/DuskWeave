@@ -101,7 +101,7 @@ impl Drop for InputFile {
 
 fn planning_history_cli(op: &str, file: &InputFile, recover: &str) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_duskweave"));
-    cmd.env_clear();
+    cmd.env_clear().env("DW_DATABASE_CONFIG_MODE", "env-local");
     cmd.env(
         "DW_DATABASE_URL",
         std::env::var("DW_TEST_DATABASE_URL").unwrap(),

@@ -36,7 +36,7 @@ impl Drop for InputFile {
 
 fn cli(args: &[&str], dsn: &str) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_duskweave"));
-    cmd.env_clear();
+    cmd.env_clear().env("DW_DATABASE_CONFIG_MODE", "env-local");
     cmd.env("DW_DATABASE_URL", dsn);
     if let Some(profile) = std::env::var_os("LLVM_PROFILE_FILE") {
         cmd.env("LLVM_PROFILE_FILE", profile);

@@ -27,6 +27,8 @@ fn real_cli_withdraws_expired_registration_and_records_history() {
     let path = std::env::temp_dir().join(format!("dw-c1a-{operation}.json"));
     std::fs::write(&path, input.to_string()).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_duskweave"))
+        .env_remove("DW_DATABASE_URL_FILE")
+        .env("DW_DATABASE_CONFIG_MODE", "env-local")
         .env(
             "DW_DATABASE_URL",
             std::env::var("DW_TEST_DATABASE_URL").unwrap(),
@@ -54,6 +56,8 @@ fn real_cli_withdraws_expired_registration_and_records_history() {
 
 fn cli(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_duskweave"))
+        .env_remove("DW_DATABASE_URL_FILE")
+        .env("DW_DATABASE_CONFIG_MODE", "env-local")
         .env(
             "DW_DATABASE_URL",
             std::env::var("DW_TEST_DATABASE_URL").unwrap(),

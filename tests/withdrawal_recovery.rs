@@ -107,6 +107,8 @@ fn real_postcommit_producer_and_consumer_ack_loss_recover_identity_and_one_effec
     let path = std::env::temp_dir().join(format!("dw-c1a-recover-{operation}.json"));
     std::fs::write(&path, json!(request).to_string()).unwrap();
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_duskweave"))
+        .env_remove("DW_DATABASE_URL_FILE")
+        .env("DW_DATABASE_CONFIG_MODE", "env-local")
         .env(
             "DW_DATABASE_URL",
             std::env::var("DW_TEST_DATABASE_URL").unwrap(),

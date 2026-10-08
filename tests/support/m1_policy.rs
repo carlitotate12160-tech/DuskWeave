@@ -154,7 +154,7 @@ pub fn assert_reason(result: &M1PolicyResult, reason: &str, disposition: &str) {
 
 pub fn cli(args: &[&str], dsn: Option<&str>) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_duskweave"));
-    cmd.env_clear();
+    cmd.env_clear().env("DW_DATABASE_CONFIG_MODE", "env-local");
     #[cfg(windows)]
     if let Some(root) = std::env::var_os("SystemRoot") {
         cmd.env("SystemRoot", root);

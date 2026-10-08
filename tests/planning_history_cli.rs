@@ -37,7 +37,7 @@ impl Drop for InputFile {
 
 fn cli(args: &[&str], configured: bool) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_duskweave"));
-    cmd.env_clear();
+    cmd.env_clear().env("DW_DATABASE_CONFIG_MODE", "env-local");
     if configured {
         cmd.env(
             "DW_DATABASE_URL",

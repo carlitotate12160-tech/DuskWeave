@@ -252,6 +252,16 @@ honest disposal/contamination. They are concrete accepted decisions, not choices
 to the IDE. Platform/deployment qualification is UNVERIFIED until actually demonstrated.
 Existing Windows M0 qualification is reused only for unchanged behavior.
 
+The owner-approved 2026-10-08 [infrastructure configuration contract](../RUN_DATABASE_CONFIG.md)
+requires `DW_DATABASE_CONFIG_MODE=file` for Linux effect-enabled M1 launch.
+The core's protected DSN file and private provisioning directory are outside
+capture/exporter/build/generated-worker access. Workers receive neither its value,
+selection/path environment, descriptor nor mount; the launcher must enforce and
+qualify that separation under ADR-015. `env-local` is only Windows/Linux M0
+compatibility, not an M1 deployment profile. This configuration FIX implements no
+launcher or worker isolation, accepts no unrelated R2 text and qualifies no target
+effect. Existing `m1-policy-check` remains an informational name-policy snapshot.
+
 The selected threat model covers hostile network input and capture attempts at arbitrary
 output through a distinct isolated egress process. The trusted exporter/launcher and kernel
 remain TCB; digest does not prove absence of runtime compromise. Host administrator/kernel/

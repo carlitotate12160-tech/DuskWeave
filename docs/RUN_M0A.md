@@ -14,14 +14,23 @@ Requirements: Rust 1.94.1 (edition 2024) and an owned, disposable PostgreSQL
 Environment variables (names only; see `.env.example`):
 
 ```text
-DW_DATABASE_URL              runtime DSN (required by the CLI)
+DW_DATABASE_CONFIG_MODE      file (default, Linux) or explicit env-local (M0)
+DW_DATABASE_URL_FILE         absolute protected-file path (file mode only)
+DW_DATABASE_URL              runtime DSN (env-local mode only)
 DW_TEST_DATABASE_URL         restricted LOGIN test role DSN (tests)
 DW_TEST_ADMIN_DATABASE_URL   admin DSN used only for isolated test setup
 ```
 
-Refused before any connection: missing/blank env, malformed DSN,
-missing/blank credentials, non-loopback host. No fallback DSN, no pgpass,
-no password CLI flags, no dotenv loader.
+The [database configuration contract](RUN_DATABASE_CONFIG.md) requires explicit
+source selection. Windows M0 uses `DW_DATABASE_CONFIG_MODE=env-local` with
+`DW_DATABASE_URL_FILE` absent; implicit env-only credentials now reject.
+Linux file mode requires `DW_DATABASE_URL` absent, even when empty, and a safe
+opened regular file. File mode elsewhere rejects without reading/fallback.
+Refused before any connection: invalid/conflicting profile, missing/blank env,
+unsafe file, malformed DSN, missing/blank credentials, non-loopback host or any
+hostaddr override. Exactly one literal TCP host is permitted, `127.0.0.1` or
+`::1`; no hostname, socket or multi-host alternatives. No fallback DSN, no
+pgpass, no password CLI flags, no dotenv loader or TLS downgrade.
 
 Apply the migration with the admin role; grant the runtime login role
 membership in the migration-created NOLOGIN role `dw_runtime`:

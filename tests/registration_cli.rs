@@ -99,7 +99,7 @@ fn ensure_setup() {
 /// allowlist, not the ambient environment.
 fn cli(args: &[&str], dsn: Option<&str>) -> Output {
     let mut cmd = Command::new(BIN);
-    cmd.env_clear();
+    cmd.env_clear().env("DW_DATABASE_CONFIG_MODE", "env-local");
     #[cfg(windows)]
     if let Some(root) = std::env::var_os("SystemRoot") {
         cmd.env("SystemRoot", root);
