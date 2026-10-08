@@ -110,6 +110,44 @@ fn admin() -> postgres::Client {
     config.connect(NoTls).unwrap()
 }
 
+/// Test-owned COMMIT-boundary fault: a deferrable constraint trigger raising a
+/// sentinel with a chosen ERRCODE, so the server confirms the abort at COMMIT.
+/// Dropping removes only this fixture; the database and service are retained.
+struct CommitFault {
+    admin: postgres::Client,
+    function: String,
+    trigger: String,
+}
+impl CommitFault {
+    fn install(e: EngagementId, errcode: &str) -> Self {
+        let function = format!("c1fix_commit_fault_{errcode}");
+        let trigger = format!("c1fix_commit_fault_{errcode}");
+        let mut admin = admin();
+        admin
+            .batch_execute(&format!(
+                "CREATE FUNCTION mission.{function}() RETURNS trigger LANGUAGE plpgsql AS \
+             $$ BEGIN RAISE EXCEPTION 'SYNTHETIC_SECRET_SENTINEL' USING ERRCODE='{errcode}'; END $$; \
+             CREATE CONSTRAINT TRIGGER {trigger} AFTER INSERT ON mission.withdrawals \
+             DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.engagement_id='{e}'::uuid) \
+             EXECUTE FUNCTION mission.{function}();"
+            ))
+            .unwrap();
+        Self {
+            admin,
+            function,
+            trigger,
+        }
+    }
+}
+impl Drop for CommitFault {
+    fn drop(&mut self) {
+        let _ = self.admin.batch_execute(&format!(
+            "DROP TRIGGER {} ON mission.withdrawals; DROP FUNCTION mission.{}();",
+            self.trigger, self.function
+        ));
+    }
+}
+
 #[test]
 fn failed_unknown_and_unavailable_history_views_remain_honest_and_blocked() {
     let _guard = db();
@@ -179,6 +217,50 @@ fn failed_unknown_and_unavailable_history_views_remain_honest_and_blocked() {
     assert_eq!(completed["contract"], view["contract"]);
     assert_eq!(completed["complete_history"], true);
     assert_eq!(count("trajectory.withdrawal_history", e, c), 1);
+}
+
+#[test]
+fn commit_serialization_and_deadlock_aborts_are_retryable_rejections() {
+    let _guard = db();
+    // Confirmed COMMIT aborts: serialization failure and deadlock detection.
+    for (n, errcode) in [(10u128, "40001"), (11, "40P01")] {
+        let (e, c) = scope(n);
+        let (mut alloc, mut store, mut trajectory) = ports();
+        accepted(&mut alloc, &mut store, &mut trajectory, e, c);
+        let op = registration::prepare_operation(&mut alloc).unwrap();
+        let file = InputFile::new(&input(e, c), op);
+        let aborted = {
+            let _fault = CommitFault::install(e, errcode);
+            withdraw(op, file.path(), false)
+        };
+        assert!(!aborted.status.success());
+        let view = receipt(&aborted);
+        assert_eq!(view["result"], "rejected");
+        assert_eq!(view["reason"], "serialization_retry");
+        assert_eq!(view["action"], "reconcile_authority");
+        assert_eq!(view["operation"], op.to_string());
+        let text = String::from_utf8_lossy(&aborted.stdout);
+        assert!(!text.contains("SYNTHETIC_SECRET_SENTINEL"));
+        assert!(!text.contains(file.path()));
+        assert_eq!(count("mission.withdrawals", e, c), 0);
+        assert_eq!(count("trajectory.withdrawal_history", e, c), 0);
+        // Recovery is read-only: nothing possibly committed stays unreconciled.
+        let recovered = receipt(&withdraw(op, file.path(), true));
+        assert_eq!(recovered["result"], "not_committed");
+        assert_eq!(count("mission.withdrawals", e, c), 0);
+        assert_eq!(count("trajectory.withdrawal_history", e, c), 0);
+        // Explicit resubmission of the same stable operation commits once.
+        let durable = receipt(&withdraw(op, file.path(), false));
+        assert_eq!(durable["result"], "durable");
+        assert_eq!(durable["owner_revision"], 2);
+        assert_eq!(durable["complete_history"], true);
+        assert_eq!(count("mission.withdrawals", e, c), 1);
+        assert_eq!(count("trajectory.withdrawal_history", e, c), 1);
+        let duplicate = receipt(&withdraw(op, file.path(), false));
+        assert_eq!(duplicate["contract"], durable["contract"]);
+        assert_eq!(count("mission.withdrawals", e, c), 1);
+        assert_eq!(count("trajectory.withdrawal_history", e, c), 1);
+    }
 }
 
 #[test]
