@@ -129,6 +129,10 @@ fn withheld_commit_ack_exits_124_and_recovers_identical_contract() {
         relay.observed(Duration::from_secs(10)),
         "producer COMMIT never reached the server; fault never engaged"
     );
+    assert!(
+        relay.consumed(Duration::from_secs(10)),
+        "the withheld COMMIT response never arrived; commit not server-confirmed"
+    );
     // Before caller timeout and before recovery, the durable effect exists:
     // exactly one producer row with the identical contract and operation
     // identity, and zero history effects.

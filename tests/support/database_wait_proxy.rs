@@ -64,6 +64,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 pub struct Relay {
     port: u16,
     observed: Receiver<()>,
+    consumed: Receiver<()>,
     stop: Arc<AtomicBool>,
     sessions: Arc<Mutex<Vec<JoinHandle<()>>>>,
     accept: Option<JoinHandle<()>>,
@@ -75,6 +76,7 @@ impl Relay {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let (observed_tx, observed_rx) = channel();
+        let (consumed_tx, consumed_rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
         let sessions: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
         let accept = {
@@ -87,7 +89,8 @@ impl Relay {
                             let handle = std::thread::spawn({
                                 let stop = stop.clone();
                                 let observed = observed_tx.clone();
-                                move || session(client, target, needle, observed, stop)
+                                let consumed = consumed_tx.clone();
+                                move || session(client, target, needle, observed, consumed, stop)
                             });
                             sessions.lock().unwrap().push(handle);
                         }
@@ -99,6 +102,7 @@ impl Relay {
         Self {
             port,
             observed: observed_rx,
+            consumed: consumed_rx,
             stop,
             sessions,
             accept: Some(accept),
@@ -112,6 +116,14 @@ impl Relay {
     /// Barrier: true once a session observed and forwarded the needle frame.
     pub fn observed(&self, within: Duration) -> bool {
         self.observed.recv_timeout(within).is_ok()
+    }
+
+    /// Barrier: true once a session received a backend reply it withheld.
+    /// Because the relay arms before forwarding the needle frame, this is
+    /// server confirmation that the needle query (for example COMMIT)
+    /// completed — the honest durable-state point, not merely client send.
+    pub fn consumed(&self, within: Duration) -> bool {
+        self.consumed.recv_timeout(within).is_ok()
     }
 }
 
@@ -136,6 +148,7 @@ fn session(
     target: std::net::SocketAddr,
     needle: &'static [u8],
     observed: Sender<()>,
+    consumed: Sender<()>,
     stop: Arc<AtomicBool>,
 ) {
     let server = match TcpStream::connect(target) {
@@ -180,7 +193,7 @@ fn session(
     });
     threads.push({
         let stop = stop.clone();
-        std::thread::spawn(move || s2c(server, client, withheld, stop))
+        std::thread::spawn(move || s2c(server, client, withheld, consumed, stop))
     });
     for thread in threads {
         let _ = thread.join();
@@ -222,8 +235,15 @@ fn c2s(
 }
 
 /// Server to client: forward backend frames until the session's needle
-/// fired, then discard replies while the sockets stay open.
-fn s2c(server: TcpStream, client: TcpStream, withheld: Arc<AtomicBool>, stop: Arc<AtomicBool>) {
+/// fired, then discard replies while the sockets stay open. The first
+/// discarded frame is also the fixture's server-completion signal.
+fn s2c(
+    server: TcpStream,
+    client: TcpStream,
+    withheld: Arc<AtomicBool>,
+    consumed: Sender<()>,
+    stop: Arc<AtomicBool>,
+) {
     loop {
         let mut head = [0u8; 5];
         if fill(&server, &mut head, &stop).is_none() {
@@ -238,6 +258,7 @@ fn s2c(server: TcpStream, client: TcpStream, withheld: Arc<AtomicBool>, stop: Ar
             break;
         }
         if withheld.load(Ordering::Relaxed) {
+            let _ = consumed.send(());
             continue;
         }
         if forward(&client, &head, &payload).is_none() {
