@@ -101,9 +101,9 @@ are not implemented here; qualification remains a separate required outcome.
 - `invalid_dsn`, `missing_credentials`, `non_loopback_host`: shared DSN policy.
 - `connect_failed`, `unqualified_runtime`: existing connection/qualification refusals.
 
-Categories do not establish a global timeout bound. DB connect/startup/query/lock
-wait bounds and UNKNOWN/stop behavior remain the next separately issued runtime
-outcome; this packet does not change timeout policy.
+Categories do not themselves establish a timeout bound. Connect/startup,
+server statement/lock and active-invocation wait bounds plus the exit-124
+stop contract live in [RUN_DATABASE_WAIT_BOUNDS](RUN_DATABASE_WAIT_BOUNDS.md).
 
 ## Verification and limits
 

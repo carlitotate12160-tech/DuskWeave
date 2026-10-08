@@ -5,7 +5,7 @@
 
 use duskweave::input::read_register_file;
 use duskweave::mission::{CampaignId, EngagementId, OperationId, RegistrationInput};
-use duskweave::postgres_mission::{PgAllocator, PgMissionStore, qualify_runtime};
+use duskweave::postgres_mission::{PgAllocator, PgMissionStore};
 use duskweave::postgres_trajectory::PgTrajectory;
 use duskweave::registration;
 use duskweave::trajectory::HistoryStatus;
@@ -15,13 +15,13 @@ use duskweave::withdrawal::{
 };
 use duskweave::withdrawal_input::read_withdrawal_file;
 use duskweave::{Fail, Res};
-use postgres::NoTls;
 use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
 mod authority_confirmation;
 mod database_config;
+mod database_wait;
 mod m1_policy_cli;
 mod planning_cli;
 
@@ -64,11 +64,7 @@ fn flag<'a>(args: &[(&'a str, &'a str)], name: &str) -> Res<&'a str> {
 }
 
 fn connect() -> Res<postgres::Client> {
-    let mut client = database_config::runtime_config()?
-        .connect(NoTls)
-        .map_err(|_| Fail::Config("connect_failed"))?;
-    qualify_runtime(&mut client)?;
-    Ok(client)
+    database_wait::connect_qualified(database_config::runtime_config()?)
 }
 
 fn status_str(s: HistoryStatus) -> &'static str {
@@ -286,10 +282,14 @@ fn run(command: &str, args: &[String]) -> Res<()> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
-    let outcome = args
-        .get(1)
-        .ok_or(Fail::Input("missing_command"))
-        .and_then(|command| run(command, &args));
+    let outcome = database_wait::CommandGuard::start().and_then(|guard| {
+        let outcome = args
+            .get(1)
+            .ok_or(Fail::Input("missing_command"))
+            .and_then(|command| run(command, &args));
+        drop(guard);
+        outcome
+    });
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(f) => {

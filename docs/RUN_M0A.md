@@ -85,6 +85,14 @@ A commit whose acknowledgment is lost is UNKNOWN, not a proven rollback.
 Reconcile the stable operation identity before any retry; verified absence
 permits an explicit unchanged-intent retry with the same operation.
 
+CLI invocations are bounded by the fixed database wait policy in
+[RUN_DATABASE_WAIT_BOUNDS](RUN_DATABASE_WAIT_BOUNDS.md): socket 2 s,
+startup/qualification 5 s per connection, server statement 3000 ms and
+lock 750 ms, and a cumulative 30 s active envelope. A watchdog stop exits
+with status **124** — an incomplete invocation with an unresolved outcome;
+inspect the exit status before interpreting output and reconcile the
+original operation on a fresh connection before any retry.
+
 ## Scenario matrix (all covered by tests)
 
 | Scenario | Where |
