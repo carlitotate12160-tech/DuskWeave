@@ -49,16 +49,25 @@ impl Budget {
         }
     }
 
+    /// One pre-wait sample: charge running time since the last sample and
+    /// report whether the budget is already exhausted. The monitor runs
+    /// this before every channel wait — a delayed first entry included —
+    /// so a wait only ever receives the charged remainder, and an expired
+    /// budget exits without waiting again. Paused time is not charged.
+    fn charge(&mut self, now: Instant) -> bool {
+        if !self.paused {
+            self.remaining = self.remaining.saturating_sub(now - self.last);
+        }
+        self.last = now;
+        self.remaining.is_zero()
+    }
+
     /// One wake with a single sample: charge running time, refuse an expired
     /// budget before applying a queued control, then apply the control. A
     /// late pause can never suspend an expired budget and a resume never
     /// refills time. Returns true when the budget is exhausted.
     fn wake(&mut self, now: Instant, control: Option<Control>) -> bool {
-        if !self.paused {
-            self.remaining = self.remaining.saturating_sub(now - self.last);
-        }
-        self.last = now;
-        if self.remaining.is_zero() {
+        if self.charge(now) {
             return true;
         }
         match control {
@@ -89,16 +98,24 @@ fn next_control(
     }
 }
 
-/// Watchdog loop: waits for a control or budget exhaustion. Std waiting only;
-/// expiry terminates the process without taking stdout/stderr locks and
-/// without waiting for driver or transaction destructors.
+/// Watchdog loop: charges running time before every channel wait — the
+/// delayed first entry included — so a wait receives only the charged
+/// remainder and an already-exhausted budget exits immediately. Std
+/// waiting only; expiry terminates the process without taking
+/// stdout/stderr locks and without waiting for driver or transaction
+/// destructors.
 fn monitor(mut budget: Budget, controls: Receiver<Control>) {
-    while let Ok(control) = next_control(budget.paused, budget.remaining, &controls) {
-        if budget.wake(Instant::now(), control) {
-            break;
-        }
-        if matches!(control, None | Some(Control::Done)) {
-            return;
+    while !budget.charge(Instant::now()) {
+        match next_control(budget.paused, budget.remaining, &controls) {
+            Err(()) => break,
+            Ok(control) => {
+                if budget.wake(Instant::now(), control) {
+                    break;
+                }
+                if matches!(control, None | Some(Control::Done)) {
+                    return;
+                }
+            }
         }
     }
     std::process::exit(WATCHDOG_EXIT);

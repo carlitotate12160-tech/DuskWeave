@@ -92,6 +92,60 @@ fn expiry_precedes_a_queued_done_control() {
     );
 }
 
+/// The monitor's pre-wait sample: a delayed first entry (thread spawn,
+/// scheduler) that already consumed the budget expires immediately
+/// instead of waiting a full remaining interval.
+#[test]
+fn pre_wait_charge_expires_on_delayed_monitor_entry() {
+    let (mut budget, t0) = budget(30);
+    assert!(
+        budget.charge(t0 + secs(31)),
+        "entry after the bound must expire without another wait"
+    );
+    assert_eq!(budget.remaining, secs(0));
+}
+
+/// The pre-wait sample bounds the following channel wait: elapsed time
+/// since the last wake is charged so the wait receives only the charged
+/// remainder, never the stale full budget.
+#[test]
+fn pre_wait_charge_supplies_only_the_remaining_duration() {
+    let (mut budget, t0) = budget(30);
+    assert!(!budget.wake(t0 + secs(5), None));
+    assert!(
+        !budget.charge(t0 + secs(15)),
+        "ten seconds elapsed since the wake; budget not exhausted"
+    );
+    assert_eq!(budget.remaining, secs(15), "inter-wake gap is charged");
+    assert!(budget.charge(t0 + secs(45)), "the second wait expired");
+}
+
+/// A paused budget is not charged by pre-wait samples; resume restarts
+/// charging from that sample and never refills spent time.
+#[test]
+fn pre_wait_charge_stays_frozen_while_paused() {
+    let (mut budget, t0) = budget(30);
+    assert!(!budget.wake(t0 + secs(10), Some(Control::Pause)));
+    assert!(budget.paused);
+    assert!(!budget.charge(t0 + secs(60)), "paused time is not charged");
+    assert_eq!(budget.remaining, secs(20));
+    assert!(!budget.wake(t0 + secs(60), Some(Control::Resume)));
+    assert!(
+        !budget.charge(t0 + secs(70)),
+        "ten post-resume seconds leave ten seconds"
+    );
+    assert_eq!(budget.remaining, secs(10));
+    assert!(budget.charge(t0 + secs(80)), "budget expires on schedule");
+}
+
+/// Exactly at the bound the budget is exhausted: the pre-wait sample
+/// expires rather than granting one more zero-length wait.
+#[test]
+fn pre_wait_charge_expires_exactly_at_the_bound() {
+    let (mut budget, t0) = budget(30);
+    assert!(budget.charge(t0 + secs(30)), "exactly spent is expired");
+}
+
 #[test]
 fn socket_policy_overrides_missing_zero_and_excessive_connect_timeouts() {
     for dsn in [

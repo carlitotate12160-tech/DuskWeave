@@ -139,6 +139,6 @@ fn withheld_business_reply_is_bounded_by_command_watchdog() {
         &output,
         started.elapsed(),
         wait_db::COMMAND_FLOOR,
-        wait_db::COMMAND_ENVELOPE + Duration::from_secs(5),
+        wait_db::COMMAND_ENVELOPE,
     );
 }

@@ -131,7 +131,7 @@ fn withheld_commit_ack_exits_124_and_recovers_identical_contract() {
     );
     assert!(
         relay.consumed(Duration::from_secs(10)),
-        "the withheld COMMIT response never arrived; commit not server-confirmed"
+        "the server never reported CommandComplete COMMIT; commit not server-confirmed"
     );
     // Before caller timeout and before recovery, the durable effect exists:
     // exactly one producer row with the identical contract and operation
@@ -150,7 +150,7 @@ fn withheld_commit_ack_exits_124_and_recovers_identical_contract() {
         &output,
         started.elapsed(),
         wait_db::COMMAND_FLOOR,
-        wait_db::COMMAND_ENVELOPE + Duration::from_secs(5),
+        wait_db::COMMAND_ENVELOPE,
     );
     drop(relay);
     // A fresh direct connection recovers the identical contract; no

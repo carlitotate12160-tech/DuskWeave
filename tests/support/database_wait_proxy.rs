@@ -118,10 +118,12 @@ impl Relay {
         self.observed.recv_timeout(within).is_ok()
     }
 
-    /// Barrier: true once a session received a backend reply it withheld.
-    /// Because the relay arms before forwarding the needle frame, this is
-    /// server confirmation that the needle query (for example COMMIT)
-    /// completed — the honest durable-state point, not merely client send.
+    /// Barrier: true once a withheld backend `CommandComplete` carried the
+    /// needle as its exact completion tag — the server's report that the
+    /// needle command itself succeeded (for COMMIT, a durable commit under
+    /// `synchronous_commit=on`). Merely receiving any frame is not proof:
+    /// an `ErrorResponse` or another tag such as `ROLLBACK` (an aborted
+    /// transaction's COMMIT result) never signals.
     pub fn consumed(&self, within: Duration) -> bool {
         self.consumed.recv_timeout(within).is_ok()
     }
@@ -193,7 +195,7 @@ fn session(
     });
     threads.push({
         let stop = stop.clone();
-        std::thread::spawn(move || s2c(server, client, withheld, consumed, stop))
+        std::thread::spawn(move || s2c(server, client, withheld, needle, consumed, stop))
     });
     for thread in threads {
         let _ = thread.join();
@@ -235,12 +237,15 @@ fn c2s(
 }
 
 /// Server to client: forward backend frames until the session's needle
-/// fired, then discard replies while the sockets stay open. The first
-/// discarded frame is also the fixture's server-completion signal.
+/// fired, then discard replies while the sockets stay open. A discarded
+/// `CommandComplete` whose NUL-terminated tag equals the needle is the
+/// fixture's server-completion signal; every other frame is only
+/// discarded, never reported as completion.
 fn s2c(
     server: TcpStream,
     client: TcpStream,
     withheld: Arc<AtomicBool>,
+    needle: &'static [u8],
     consumed: Sender<()>,
     stop: Arc<AtomicBool>,
 ) {
@@ -258,7 +263,13 @@ fn s2c(
             break;
         }
         if withheld.load(Ordering::Relaxed) {
-            let _ = consumed.send(());
+            if head[0] == b'C'
+                && payload.len() == needle.len() + 1
+                && payload[..needle.len()] == *needle
+                && payload[needle.len()] == 0
+            {
+                let _ = consumed.send(());
+            }
             continue;
         }
         if forward(&client, &head, &payload).is_none() {
