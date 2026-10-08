@@ -38,7 +38,7 @@ fn db_addr() -> SocketAddr {
         _ => panic!("test runtime DSN must be one TCP host"),
     };
     let port = *cfg.get_ports().first().unwrap_or(&5432);
-    format!("{host}:{port}").parse().unwrap()
+    SocketAddr::new(host.parse().expect("literal loopback IP"), port)
 }
 
 fn inspect_args(e: &EngagementId, c: &CampaignId) -> Vec<String> {
