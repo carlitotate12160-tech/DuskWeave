@@ -20,6 +20,8 @@ use db_support::*;
 
 fn cli(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_duskweave"))
+        .env_remove("DW_DATABASE_URL_FILE")
+        .env("DW_DATABASE_CONFIG_MODE", "env-local")
         .env(
             "DW_DATABASE_URL",
             std::env::var("DW_TEST_DATABASE_URL").unwrap(),

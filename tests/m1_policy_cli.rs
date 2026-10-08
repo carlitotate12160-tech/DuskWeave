@@ -193,6 +193,8 @@ fn missing_policy_input_returns_a_non_authoritative_json_receipt() {
     let output = Command::new(env!("CARGO_BIN_EXE_duskweave"))
         .arg("m1-policy-check")
         .env_remove("DW_DATABASE_URL")
+        .env_remove("DW_DATABASE_URL_FILE")
+        .env("DW_DATABASE_CONFIG_MODE", "env-local")
         .output()
         .unwrap();
     assert!(!output.status.success());
@@ -217,6 +219,9 @@ fn existing_command_discriminator_errors_are_preserved() {
         (vec!["not-a-command"], "error=unknown_command\n"),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_duskweave"))
+            .env_remove("DW_DATABASE_URL")
+            .env_remove("DW_DATABASE_URL_FILE")
+            .env("DW_DATABASE_CONFIG_MODE", "env-local")
             .args(args)
             .output()
             .unwrap();

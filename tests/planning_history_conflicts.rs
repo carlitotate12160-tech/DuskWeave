@@ -93,6 +93,8 @@ fn cli_recover(e: EngagementId, event: &PlanningAssessed) -> Value {
     let path = std::env::temp_dir().join(format!("dw-b1b-conflict-{e}.json"));
     std::fs::write(&path, serde_json::to_string(&event.request).unwrap()).unwrap();
     let output: Output = Command::new(env!("CARGO_BIN_EXE_duskweave"))
+        .env_remove("DW_DATABASE_URL_FILE")
+        .env("DW_DATABASE_CONFIG_MODE", "env-local")
         .env(
             "DW_DATABASE_URL",
             std::env::var("DW_TEST_DATABASE_URL").unwrap(),

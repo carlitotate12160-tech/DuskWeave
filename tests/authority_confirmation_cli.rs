@@ -41,7 +41,7 @@ impl Drop for InputFile {
 /// Non-interactive CLI invocation: stdin is at EOF from spawn.
 fn cli(args: &[&str], dsn: Option<&str>) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_duskweave"));
-    cmd.env_clear();
+    cmd.env_clear().env("DW_DATABASE_CONFIG_MODE", "env-local");
     if let Some(dsn) = dsn {
         cmd.env("DW_DATABASE_URL", dsn);
     }
