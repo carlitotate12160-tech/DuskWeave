@@ -66,6 +66,23 @@ Use ADR-004's component-specific language ownership. Rust core infrastructure
 ports are not automatically Go integrations. Do not add a production language
 or speculative adapter merely because a skill mentions one.
 
+## Offensive intent preservation
+
+Compare the governing requirement, assigned prompt and implemented outcome.
+Preserve the current slice's accepted operational objective, hypothesis,
+authorized scope, active validation, success/failure/UNKNOWN criteria,
+adaptation, evidence and stop conditions where applicable. Do not silently
+substitute passive assessment, scanner-only behavior, defensive monitoring,
+remediation-only work or a stub for required active behavior. Surface prompt
+conflicts before implementing a weaker substitute; do not invent missing authority.
+For supporting infrastructure, retain its concrete operational contribution
+without adding target actions or expanding the file map. Deterministic authority
+authorizes execution; LLM proposals grant no permission. Verify this through the
+existing outcome and review. Use consumer-path tests for runtime IMPLEMENT/FIX
+slices where a runtime consumer path exists; a missing required path remains
+SPLIT_REQUIRED. For DESIGN-only work, check document authority and consistency;
+runtime reachability is N/A. Do not add a new gate.
+
 ## Preflight
 
 Before editing:

@@ -28,6 +28,21 @@ outranks this portable skill; never borrow BlackBread rules.
 Apply AGENTS.md authority-loading rules: reuse unchanged verified context,
 recheck identity/HEAD/status, and reread affected authority and boundaries.
 
+## Offensive intent preservation
+
+Trace governing requirement -> assigned prompt -> observable implementation.
+For an operational slice, check that its objective, hypothesis, authorized
+scope, active validation, success/failure/UNKNOWN evidence, adaptation and stop
+conditions survive translation. Challenge silent passive/scanner-only,
+defensive-monitoring, remediation-only or stub substitutions, as well as
+unauthorized scope expansion. Show the concrete lost behavior and smallest fix.
+For infrastructure slices, assess their operational contribution without
+requiring invented target actions or an attack hypothesis. LLM reasoning may
+propose actions; deterministic authority alone grants execution permission.
+Keep authority constraints distinct from restrictions on accepted intelligence.
+Record this within existing requirement-fit and trust/claims review; do not add
+an approval tier, separate artifact or gate. Unsupported attribution is UNVERIFIED.
+
 ## Review method
 
 Apply the verified repository QUALITY_BAR.md section 7 eight-question review.
