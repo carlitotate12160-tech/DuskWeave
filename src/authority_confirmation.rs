@@ -53,6 +53,7 @@ fn emit_challenge(
 /// including the line ending (LF or CRLF). Never waits for EOF after a
 /// complete line; EOF before one completes denies the exchange.
 fn read_response(input: &mut impl BufRead) -> Res<Vec<u8>> {
+    let _pause = crate::database_wait::response_pause();
     let mut line = Vec::new();
     input
         .by_ref()
