@@ -131,6 +131,20 @@ fn fresh_event(
     })
 }
 
+/// COMMIT-boundary classification: a PostgreSQL-confirmed serialization or
+/// deadlock abort is a known rejection that bounded re-submission may retry
+/// after premise re-evaluation; any other commit error, including a lost
+/// acknowledgment, keeps the possibly committed outcome unclassified.
+fn commit_err(e: &postgres::Error) -> Fail {
+    use postgres::error::SqlState;
+    match e.code() {
+        Some(&SqlState::T_R_SERIALIZATION_FAILURE) | Some(&SqlState::T_R_DEADLOCK_DETECTED) => {
+            Fail::Store("serialization_retry")
+        }
+        _ => Fail::Store("commit_unknown"),
+    }
+}
+
 impl WithdrawalStore for PgMissionStore {
     fn withdraw(
         &mut self,
@@ -164,7 +178,7 @@ impl WithdrawalStore for PgMissionStore {
                     &[&request.engagement_id.0, &request.campaign_id.0, &operation.0,
                       &event.event_id.0, &event.registration_operation_id.0, &contract],
                 ).map_err(|e| store_err(&e))?;
-                tx.commit().map_err(|_| Fail::Store("commit_unknown"))?;
+                tx.commit().map_err(|e| commit_err(&e))?;
                 Ok(Some(event))
             })
     }
