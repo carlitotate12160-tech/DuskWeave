@@ -1,0 +1,19 @@
+# DustTrap — kerangka (scaffold) modul berdiri sendiri.
+# Sengaja TIDAK digabung ke workspace `duskweave` agar tidak menyentuh
+# kontrak arsitektur proyek utama.
+[workspace]
+
+[package]
+name = "dusttrap"
+version = "0.1.0"
+edition = "2021"
+description = "Perangkap debu: deteksi, klasifikasi, dan karantina artefak sementara (debu build/cache). Kemampuan menghapus file sengaja DINONAKTIFKAN."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Tanpa dependensi eksternal — hanya std, sesuai gaya repo induk.
+
+[features]
+default = []
+# Fitur eksperimental; TIDAK pernah mengaktifkan penghapusan.
+parallel-scan = []
