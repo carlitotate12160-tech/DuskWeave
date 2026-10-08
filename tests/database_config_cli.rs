@@ -297,7 +297,7 @@ mod linux {
             command().env("DW_DATABASE_URL_FILE", &source.0),
             "database_file_unsafe",
         );
-        std::fs::set_permissions(source.path(), std::fs::Permissions::from_mode(0)).unwrap();
+        std::fs::set_permissions(source.path(), std::fs::Permissions::from_mode(0o000)).unwrap();
         refused(&mut source.command(), "database_file_open_failed");
     }
 
