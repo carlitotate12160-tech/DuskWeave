@@ -227,7 +227,7 @@ fn prepare_composes_validated_source_and_binds_returned_record() {
     };
     let got = session(
         &mut store,
-        &mut reader,
+        Some(&mut reader),
         SessionAction::Prepare,
         &request(),
         op(),
@@ -255,7 +255,13 @@ fn prepare_refuses_missing_permission_or_operator_mismatch() {
             event: Some(event),
         };
         assert_eq!(
-            session(&mut store, &mut reader, SessionAction::Prepare, &r, op()),
+            session(
+                &mut store,
+                Some(&mut reader),
+                SessionAction::Prepare,
+                &r,
+                op()
+            ),
             Err(Fail::State("session_prepare_refused"))
         );
         assert!(store.source.is_none());
@@ -282,7 +288,7 @@ fn forged_source_identity_and_contract_fail_closed() {
         assert_eq!(
             session(
                 &mut store,
-                &mut reader,
+                Some(&mut reader),
                 SessionAction::Prepare,
                 &request(),
                 op()
@@ -301,7 +307,7 @@ fn forged_source_identity_and_contract_fail_closed() {
                 reply: Ok(None),
                 source: None
             },
-            &mut missing,
+            Some(&mut missing),
             SessionAction::Prepare,
             &request(),
             op()
@@ -332,7 +338,7 @@ fn forged_or_mismatched_records_fail_decode_without_grant() {
         };
         for action in [SessionAction::Recover, SessionAction::Release] {
             assert_eq!(
-                session(&mut store, &mut Never, action, &request(), op()),
+                session(&mut store, None::<&mut Never>, action, &request(), op()),
                 Err(Fail::Unresolved("session_contract_decode"))
             );
         }
@@ -348,7 +354,7 @@ fn recover_returns_missing_and_release_never_touches_mission_port() {
     assert_eq!(
         session(
             &mut store,
-            &mut Never,
+            None::<&mut Never>,
             SessionAction::Recover,
             &request(),
             op()
@@ -364,7 +370,7 @@ fn recover_returns_missing_and_release_never_touches_mission_port() {
     assert_eq!(
         session(
             &mut store,
-            &mut Never,
+            None::<&mut Never>,
             SessionAction::Release,
             &request(),
             op()
@@ -372,4 +378,16 @@ fn recover_returns_missing_and_release_never_touches_mission_port() {
         Ok(Some(released))
     );
     assert!(store.source.is_none());
+    // Prepare without a Mission reader fails closed rather than
+    // fabricating a source contract.
+    assert_eq!(
+        session(
+            &mut store,
+            None::<&mut Reader>,
+            SessionAction::Prepare,
+            &request(),
+            op()
+        ),
+        Err(Fail::Config("session_reader_required"))
+    );
 }

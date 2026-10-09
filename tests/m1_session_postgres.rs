@@ -53,7 +53,7 @@ fn prepare(e: EngagementId, c: CampaignId, op: OperationId) -> Res<Option<Value>
     let mut reader = PgMissionStore::new(runtime_client());
     session(
         &mut store,
-        &mut reader,
+        Some(&mut reader),
         SessionAction::Prepare,
         &req(e, c),
         op,
@@ -191,7 +191,7 @@ fn prepare_refusals_leave_no_durable_claim() {
     assert_eq!(
         session(
             &mut PgSessionStore::new(broker_client()),
-            &mut PgMissionStore::new(runtime_client()),
+            Some(&mut PgMissionStore::new(runtime_client())),
             SessionAction::Prepare,
             &wrong,
             session_op(),
@@ -204,7 +204,7 @@ fn prepare_refusals_leave_no_durable_claim() {
         r.expected_mission_revision = revision;
         match session(
             &mut PgSessionStore::new(broker_client()),
-            &mut PgMissionStore::new(runtime_client()),
+            Some(&mut PgMissionStore::new(runtime_client())),
             SessionAction::Prepare,
             &r,
             op,
@@ -339,7 +339,7 @@ fn ordinary_writers_and_impersonators_are_fenced() {
     assert_eq!(
         session(
             &mut PgSessionStore::new(rt),
-            &mut PgMissionStore::new(runtime_client()),
+            Some(&mut PgMissionStore::new(runtime_client())),
             SessionAction::Prepare,
             &req(e, c),
             session_op(),
@@ -351,7 +351,7 @@ fn ordinary_writers_and_impersonators_are_fenced() {
     assert_eq!(
         session(
             &mut PgSessionStore::new(other_broker_client()),
-            &mut PgMissionStore::new(runtime_client()),
+            None::<&mut PgMissionStore>,
             SessionAction::Release,
             &req(e, c),
             op,
@@ -387,10 +387,9 @@ fn release_preserves_history_and_generations_are_exact() {
     let first = session_op();
     assert!(prepare(e, c, first).unwrap().is_some());
     let mut store = PgSessionStore::new(broker_client());
-    let mut reader = PgMissionStore::new(runtime_client());
     let released = session(
         &mut store,
-        &mut reader,
+        None::<&mut PgMissionStore>,
         SessionAction::Release,
         &req(e, c),
         first,
@@ -415,7 +414,7 @@ fn release_preserves_history_and_generations_are_exact() {
     assert_eq!(
         session(
             &mut PgSessionStore::new(broker_client()),
-            &mut PgMissionStore::new(runtime_client()),
+            None::<&mut PgMissionStore>,
             SessionAction::Recover,
             &req(e, c),
             first,
@@ -438,7 +437,7 @@ fn release_preserves_history_and_generations_are_exact() {
     assert!(
         session(
             &mut PgSessionStore::new(broker_client()),
-            &mut PgMissionStore::new(runtime_client()),
+            None::<&mut PgMissionStore>,
             SessionAction::Release,
             &req(ge, gc),
             g1,
@@ -451,7 +450,7 @@ fn release_preserves_history_and_generations_are_exact() {
     // Old operation release replay returns its record without clearing gen 2.
     let replay = session(
         &mut PgSessionStore::new(broker_client()),
-        &mut PgMissionStore::new(runtime_client()),
+        None::<&mut PgMissionStore>,
         SessionAction::Release,
         &req(ge, gc),
         g1,
@@ -471,7 +470,7 @@ fn release_preserves_history_and_generations_are_exact() {
     assert_eq!(
         session(
             &mut PgSessionStore::new(broker_client()),
-            &mut PgMissionStore::new(runtime_client()),
+            None::<&mut PgMissionStore>,
             SessionAction::Recover,
             &req(ge, gc),
             session_op(),

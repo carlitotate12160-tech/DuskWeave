@@ -152,14 +152,17 @@ fn original_source(reader: &mut impl MissionStore, r: &SessionRequest) -> Res<Mi
 
 pub fn session(
     store: &mut impl SessionStore,
-    reader: &mut impl MissionStore,
+    reader: Option<&mut impl MissionStore>,
     action: SessionAction,
     request: &SessionRequest,
     op: OperationId,
 ) -> Res<Option<SessionRecord>> {
     request.validate(op)?;
     let source = match action {
-        SessionAction::Prepare => Some(original_source(reader, request)?),
+        SessionAction::Prepare => Some(original_source(
+            reader.ok_or(Fail::Config("session_reader_required"))?,
+            request,
+        )?),
         _ => None,
     };
     let record = store.execute(action, request, op, source.as_ref())?;

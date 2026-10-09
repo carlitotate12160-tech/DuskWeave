@@ -75,8 +75,19 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
     let (action, op, request) = parse(args)?;
     let outcome = (|| {
         let mut store = PgSessionStore::new(super::connect()?);
-        let mut reader = PgMissionStore::new(super::connect()?);
-        m1_session::session(&mut store, &mut reader, action, &request, op)
+        match action {
+            SessionAction::Prepare => {
+                let mut reader = PgMissionStore::new(super::connect()?);
+                m1_session::session(&mut store, Some(&mut reader), action, &request, op)
+            }
+            _ => m1_session::session(
+                &mut store,
+                None::<&mut PgMissionStore>,
+                action,
+                &request,
+                op,
+            ),
+        }
     })();
     print_receipt(&request, op, &outcome)?;
     outcome?;

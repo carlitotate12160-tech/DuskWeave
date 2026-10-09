@@ -58,7 +58,7 @@ fn prepare(
     let mut reader = PgMissionStore::new(runtime_client());
     session(
         &mut store,
-        &mut reader,
+        Some(&mut reader),
         SessionAction::Prepare,
         &req(e, c),
         op,
