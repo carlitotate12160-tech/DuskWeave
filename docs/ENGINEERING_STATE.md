@@ -221,3 +221,12 @@ The local C0 implementation worktree was observed in progress at that baseline;
 no C0 PR or merge is claimed. Complete its issued packet and review before the
 subsequent withdrawal slice. Full positive admission, M0 demo and seal remain pending.
 No product acceptance, capability authorization or historical seal changes.
+
+## 10. M1 Trigger Qualification Correction
+
+On 2026-10-10, `DW-FIX-M1-TRIGGER-QUALIFICATION` on PR #48 corrected the authorization logic and test assertions:
+- **F1 FIXED**: Replaced the dangerous `EXISTS` block that granted implicit `TRIGGER` permissions to anyone with `SET` on a trigger-capable role. The broker now explicitly requires direct runtime qualification without over-privilege.
+- **F2 FIXED**: Modified `m1_session_privilege.rs` to correctly assert against `Fail::Config("unqualified_runtime")` when expected, expanded negative tests for transitive `SET TRUE` chains and ownership edges, and integrated `expect_qualified` for valid paths.
+- **F3 FIXED**: Complete runtime evidence was collected locally confirming that all negative tests panic under pre-F1 logic (RED evidence) and pass smoothly after the fix (GREEN evidence).
+
+This is recorded before final verification for R1 delivery.
