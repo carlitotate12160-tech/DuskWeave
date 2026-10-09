@@ -104,7 +104,11 @@ fn expect_unqualified(
             baseline_history,
             "refusal happened after a session mutation: {grant}"
         );
-        assert_eq!(pre_fence, fence(e, c), "fence changed during refused operation: {grant}");
+        assert_eq!(
+            pre_fence,
+            fence(e, c),
+            "fence changed during refused operation: {grant}"
+        );
     }));
     admin.batch_execute(revoke).unwrap();
     assert!(
@@ -257,25 +261,41 @@ fn overprivileged_logins_fail_shared_qualification_before_mutation() {
         ),
         // INHERIT FALSE, SET TRUE TRIGGER role
         (
-            format!("GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"),
+            format!(
+                "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
             format!("REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"),
         ),
         (
-            format!("GRANT TRIGGER ON trajectory.withdrawal_history TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"),
-            format!("REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PROBE}"),
+            format!(
+                "GRANT TRIGGER ON trajectory.withdrawal_history TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!(
+                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PROBE}"
+            ),
         ),
         (
-            format!("GRANT TRIGGER ON execution.session_fences TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"),
-            format!("REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON execution.session_fences FROM {PROBE}"),
+            format!(
+                "GRANT TRIGGER ON execution.session_fences TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!(
+                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON execution.session_fences FROM {PROBE}"
+            ),
         ),
         // A transitive SET TRUE chain to the TRIGGER role: refused.
         (
-            format!("GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {MID} WITH SET TRUE; GRANT {MID} TO {p} WITH SET TRUE"),
-            format!("REVOKE {MID} FROM {p}; REVOKE {PROBE} FROM {MID}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"),
+            format!(
+                "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {MID} WITH SET TRUE; GRANT {MID} TO {p} WITH SET TRUE"
+            ),
+            format!(
+                "REVOKE {MID} FROM {p}; REVOKE {PROBE} FROM {MID}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"
+            ),
         ),
         // A SET-reachable owner of mission.withdrawals: refused; restore original owner.
         (
-            format!("ALTER TABLE mission.withdrawals OWNER TO {PROBE}; GRANT {PROBE} TO {p} WITH SET TRUE"),
+            format!(
+                "ALTER TABLE mission.withdrawals OWNER TO {PROBE}; GRANT {PROBE} TO {p} WITH SET TRUE"
+            ),
             format!("REVOKE {PROBE} FROM {p}; ALTER TABLE mission.withdrawals OWNER TO {owner}"),
         ),
     ] {
@@ -283,11 +303,13 @@ fn overprivileged_logins_fail_shared_qualification_before_mutation() {
     }
     // Clean qualification afterward: the restored probe Broker replays its
     // own durable record through the real CLI.
-    admin.batch_execute(&format!(
-        "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; \
+    admin
+        .batch_execute(&format!(
+            "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; \
          GRANT {PROBE} TO {MID} WITH INHERIT FALSE, SET FALSE; \
          GRANT {MID} TO {p} WITH INHERIT FALSE, SET TRUE"
-    )).unwrap();
+        ))
+        .unwrap();
     let out = run_cli(&args, &priv_dsn(db_port()));
     assert!(
         out.status.success(),
