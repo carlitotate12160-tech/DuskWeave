@@ -10,7 +10,7 @@ pub struct PostgresSessionFence<'a, 'b> {
 impl<'a, 'b> SessionFence for PostgresSessionFence<'a, 'b> {
     fn prepare(&mut self, claim: &SessionClaim) -> Res<FenceOutcome> {
         let raw_claim = serde_json::to_value(claim).map_err(|_| Fail::Store("encode_claim"))?;
-        
+
         let query = "SELECT execution.prepare_m1_session($1)";
         let row = match self.tx.query_opt(query, &[&raw_claim]) {
             Ok(Some(row)) => row,
@@ -22,7 +22,9 @@ impl<'a, 'b> SessionFence for PostgresSessionFence<'a, 'b> {
         if let Some(obj) = result.as_object() {
             if let Some(refusal) = obj.get("refused") {
                 if let Some(reason) = refusal.as_str() {
-                    return Ok(FenceOutcome::Refused(crate::m1_session::decode_refusal(reason)));
+                    return Ok(FenceOutcome::Refused(crate::m1_session::decode_refusal(
+                        reason,
+                    )));
                 }
             }
         }
@@ -55,7 +57,9 @@ impl<'a, 'b> SessionFence for PostgresSessionFence<'a, 'b> {
         if let Some(obj) = result.as_object() {
             if let Some(refusal) = obj.get("refused") {
                 if let Some(reason) = refusal.as_str() {
-                    return Ok(FenceOutcome::Refused(crate::m1_session::decode_refusal(reason)));
+                    return Ok(FenceOutcome::Refused(crate::m1_session::decode_refusal(
+                        reason,
+                    )));
                 }
             }
         }
@@ -75,7 +79,14 @@ impl<'a, 'b> SessionFence for PostgresSessionFence<'a, 'b> {
             ORDER BY recorded_at DESC
             LIMIT 1
         "#;
-        let row = match self.tx.query_opt(query, &[&request.engagement_id.0, &request.campaign_id.0, &operation.0]) {
+        let row = match self.tx.query_opt(
+            query,
+            &[
+                &request.engagement_id.0,
+                &request.campaign_id.0,
+                &operation.0,
+            ],
+        ) {
             Ok(Some(row)) => row,
             Ok(None) => return Ok(FenceOutcome::Missing),
             Err(e) => return classify_error(e),

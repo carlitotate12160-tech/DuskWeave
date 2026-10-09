@@ -232,7 +232,11 @@ pub fn prepare(
         .mission_view(request.engagement_id, request.campaign_id)?
         .ok_or(Fail::State("mission_missing"))?;
     let event = store
-        .outbox_event(request.engagement_id, request.campaign_id, mission.operation_id)?
+        .outbox_event(
+            request.engagement_id,
+            request.campaign_id,
+            mission.operation_id,
+        )?
         .ok_or(Fail::State("mission_missing"))?;
     if let Some(reason) = check_source(&event, request, &mission, now) {
         return Ok(FenceOutcome::Refused(reason));

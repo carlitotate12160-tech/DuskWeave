@@ -75,12 +75,7 @@ pub fn dispatch(command: &str, args: &[String]) -> Res<()> {
     run_cli(&mut crate::connect()?, action, operation_str, input_path)
 }
 
-fn run_cli(
-    client: &mut Client,
-    action: &str,
-    operation_str: &str,
-    input_path: &Path,
-) -> Res<()> {
+fn run_cli(client: &mut Client, action: &str, operation_str: &str, input_path: &Path) -> Res<()> {
     let operation = OperationId(
         Uuid::parse_str(operation_str).map_err(|_| Fail::Input("invalid_operation_uuid"))?,
     );
@@ -113,7 +108,7 @@ fn run_cli(
     };
 
     let receipt = SessionReceipt::from_outcome(&outcome);
-    let json = serde_json::to_string(&receipt).unwrap();
+    let json = serde_json::to_string(&receipt).map_err(|_| Fail::Input("serialization failed"))?;
     println!("{}", json);
     Ok(())
 }
