@@ -3,6 +3,9 @@
 
 pub mod input;
 pub mod m1_permission;
+pub mod m1_session;
+pub mod m1_session_input;
+pub mod postgres_m1_session;
 pub mod m1_policy;
 pub mod m1_policy_input;
 pub mod mission;
