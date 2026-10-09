@@ -133,9 +133,12 @@ BEGIN
        OR original.operation_id IS NULL
        OR original.contract IS DISTINCT FROM expected_event
        OR fence.operation_id IS NOT NULL
-       OR EXISTS (SELECT 1 FROM mission.registration_outbox WHERE operation_id=op)
-       OR EXISTS (SELECT 1 FROM mission.withdrawals WHERE operation_id=op)
-       OR EXISTS (SELECT 1 FROM execution.session_history WHERE operation_id=op)
+       OR EXISTS (SELECT 1 FROM mission.registration_outbox
+                  WHERE engagement_id=e AND campaign_id=c AND operation_id=op)
+       OR EXISTS (SELECT 1 FROM mission.withdrawals
+                  WHERE engagement_id=e AND campaign_id=c AND operation_id=op)
+       OR EXISTS (SELECT 1 FROM execution.session_history
+                  WHERE engagement_id=e AND campaign_id=c AND operation_id=op)
        OR policy IS NULL OR policy='null'::jsonb
        OR (mission_row.starts_at <= now_s AND now_s < mission_row.ends_at) IS NOT TRUE
        OR ((policy->>'starts_at')::bigint <= now_s

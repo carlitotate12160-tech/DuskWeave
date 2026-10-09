@@ -169,6 +169,13 @@ fn broker_prepare_claims_once_and_replays_original_identity() {
     assert_eq!(prepare(e, c, op).unwrap().unwrap(), record);
     assert_eq!(history_count(e, c), 1);
     assert_eq!(fence(e, c).unwrap().1, 1);
+    // Operation identity is scope-qualified: the same op under another
+    // campaign claims its own generation and never collides cross-scope.
+    let (e2, c2) = scope(0x7201);
+    register_m1(e2, c2, 0);
+    let other = prepare(e2, c2, op).unwrap().unwrap();
+    assert_eq!(other["generation"], 1);
+    assert_eq!(fence(e, c).unwrap().1, 1);
 }
 
 #[test]

@@ -106,10 +106,14 @@ exists, and `outcome`:
 | --- | --- |
 | `durable` | A lifecycle record exists and bound to the request identity |
 | `missing` | No record exists for the exact scope/operation |
-| `refused` | A categorical denial (invalid input, guard refusal, unqualified writer) |
+| `refused` | A confirmed denial (invalid input, guard refusal, unqualified writer, or a known serialization abort) |
 | `unknown` | Outcome unresolved — transport, commit or acknowledgment ambiguity |
 
-After `unknown` or exit 124, run `recover` on a fresh connection before
+`refused` covers both categorical denials and retryable aborts: the
+stderr reason distinguishes them — `serialization_retry` (SQLSTATE
+40001/40P01) rolled back cleanly and the identical request may be
+retried, while `session_*`/input refusals are categorical. After
+`unknown` or exit 124, run `recover` on a fresh connection before
 any explicit retry: exit 124 means caller stop, not SQL rollback. Never
 infer absence, success or rollback from missing output. The retry is the
 same identity — the fenced operation replays its original record.
