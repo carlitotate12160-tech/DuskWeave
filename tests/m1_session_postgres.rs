@@ -218,31 +218,36 @@ fn ordinary_writers_and_impersonators_are_fenced() {
     let op = session_op();
     assert!(prepare(e, c, op).unwrap().is_some());
     let mut rt = runtime_client();
-    // Direct ordinary INSERTs into every guarded authority table fail.
-    for sql in [
-        "INSERT INTO mission.missions (engagement_id,campaign_id,operator_ref,authority_ref,\
-         authority_revision,goal_ref,included_assets,excluded_assets,exercise_mode,starts_at,ends_at,revision,operation_id) \
-         VALUES ($1,$2,$3,$4,1,$5,'[]','[]','blind',1,2,1,$6)",
-        "INSERT INTO mission.registration_outbox (engagement_id,campaign_id,operation_id,event_id,contract) \
-         VALUES ($1,$2,$3,$4,'{}')",
-        "INSERT INTO mission.withdrawals (engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract) \
-         VALUES ($1,$2,$3,$4,$5,'{}')",
+    // Direct ordinary INSERTs into every guarded authority table fail with
+    // the exact SQL guard refusal (P0001 m1_session_fenced) — a transport,
+    // binding or constraint error is not fencing evidence.
+    let params: [&(dyn postgres::types::ToSql + Sync); 6] = [
+        &e.0,
+        &c.0,
+        &Uuid::from_u128(0x66),
+        &Uuid::from_u128(0x67),
+        &Uuid::from_u128(0x68),
+        &Uuid::from_u128(0x69),
+    ];
+    for (sql, n) in [
+        (
+            "INSERT INTO mission.missions (engagement_id,campaign_id,operator_ref,authority_ref,\
+             authority_revision,goal_ref,included_assets,excluded_assets,exercise_mode,starts_at,ends_at,revision,operation_id) \
+             VALUES ($1,$2,$3,$4,1,$5,'[]','[]','blind',1,2,1,$6)",
+            6usize,
+        ),
+        (
+            "INSERT INTO mission.registration_outbox (engagement_id,campaign_id,operation_id,event_id,contract) \
+             VALUES ($1,$2,$3,$4,'{}')",
+            4,
+        ),
+        (
+            "INSERT INTO mission.withdrawals (engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract) \
+             VALUES ($1,$2,$3,$4,$5,'{}')",
+            5,
+        ),
     ] {
-        assert!(
-            rt.execute(
-                sql,
-                &[
-                    &e.0,
-                    &c.0,
-                    &Uuid::from_u128(0x66),
-                    &Uuid::from_u128(0x67),
-                    &Uuid::from_u128(0x68),
-                    &Uuid::from_u128(0x69),
-                ],
-            )
-            .is_err(),
-            "guarded insert must fail: {sql}"
-        );
+        assert_fenced(rt.execute(sql, &params[..n]));
     }
     // The ordinary withdrawal path and the Broker login's own INSERT fail.
     let mut store = PgMissionStore::new(runtime_client());
@@ -253,15 +258,11 @@ fn ordinary_writers_and_impersonators_are_fenced() {
             .is_err()
     );
     let mut broker = broker_client();
-    assert!(
-        broker
-            .execute(
-                "INSERT INTO mission.withdrawals (engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract) \
-                 VALUES ($1,$2,$3,$4,$5,'{}')",
-                &[&e.0, &c.0, &Uuid::from_u128(0x6A), &Uuid::from_u128(0x6B), &Uuid::from_u128(0x6C)],
-            )
-            .is_err()
-    );
+    assert_fenced(broker.execute(
+        "INSERT INTO mission.withdrawals (engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract) \
+         VALUES ($1,$2,$3,$4,$5,'{}')",
+        &[&e.0, &c.0, &Uuid::from_u128(0x6A), &Uuid::from_u128(0x6B), &Uuid::from_u128(0x6C)],
+    ));
     // Baseline first: clear any leftover mutation grant so this test is
     // self-healing even if a prior run stopped between GRANT and REVOKE.
     admin_db_client()
@@ -351,6 +352,7 @@ fn ordinary_writers_and_impersonators_are_fenced() {
     assert_eq!(history_count(oe, oc), 0);
     assert_eq!(fence(oe, oc).unwrap().0, "idle");
     assert_eq!(count("mission.missions", e, c), 1);
+    assert_eq!(count("mission.registration_outbox", e, c), 1);
     assert_eq!(count("mission.withdrawals", e, c), 0);
     assert_eq!(history_count(e, c), 1);
 }

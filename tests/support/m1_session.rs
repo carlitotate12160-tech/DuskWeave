@@ -276,6 +276,36 @@ pub fn withdraw_req(e: EngagementId, c: CampaignId) -> WithdrawalRequest {
     }
 }
 
+/// Assert a direct INSERT was refused by the SQL guard itself: SQLSTATE
+/// P0001 with the exact m1_session_fenced message. Transport, binding,
+/// constraint or permission errors do not qualify as fencing evidence.
+pub fn assert_fenced(result: Result<u64, postgres::Error>) {
+    match result {
+        Err(e) => {
+            let db = e
+                .as_db_error()
+                .expect("guard refusal must be a database error");
+            assert_eq!(db.code().code(), "P0001", "wrong error: {db:?}");
+            assert_eq!(db.message(), "m1_session_fenced");
+        }
+        Ok(n) => panic!("guarded insert must fail, affected {n} rows"),
+    }
+}
+
+/// The scope's original registration identity read from the source outbox —
+/// registration_operation_id, registration_event_id. Captured from setup,
+/// never from a recovery result.
+pub fn registration_identity(e: EngagementId, c: CampaignId) -> (Uuid, Uuid) {
+    let row = db_support::runtime_client()
+        .query_one(
+            "SELECT operation_id, event_id FROM mission.registration_outbox \
+             WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&e.0, &c.0],
+        )
+        .unwrap();
+    (row.get(0), row.get(1))
+}
+
 /// Bounded poll until the expected durable history row is visible through a
 /// fresh restricted connection; never a commit assumption from the writer.
 pub fn await_history(e: EngagementId, c: CampaignId, op: OperationId, kind: &str) -> Value {

@@ -2,12 +2,13 @@
 //! receipts with all four qualification flags false, role denial end to end,
 //! lost-ACK proof with fresh-process recovery, and exit-124 uncertainty.
 
+use duskweave::m1_session::SessionRecord;
 use duskweave::mission::{CampaignId, EngagementId, OperationId};
 use duskweave::registration;
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 use std::process::Output;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use uuid::Uuid;
 
 #[path = "support/registration_db.rs"]
@@ -252,6 +253,9 @@ fn lost_ack_after_durable_prepare_recovers_without_new_claim() {
     let runtime = std::env::var("DW_TEST_DATABASE_URL").unwrap();
     let (e, c) = scope(0x7703);
     register_scope(e, c, &runtime);
+    // Registration identity is captured from the original outbox, never
+    // from a recovery result.
+    let (reg_op, reg_ev) = registration_identity(e, c);
     let op = registration::prepare_operation(&mut db_support::ports().0).unwrap();
     let file = wait_db::InputFile::new(&input(e, c), &op.to_string());
     let relay = proxy::Relay::start(db_addr(), b"COMMIT");
@@ -269,14 +273,28 @@ fn lost_ack_after_durable_prepare_recovers_without_new_claim() {
         "the server never reported CommandComplete COMMIT; commit not server-confirmed"
     );
     // The server committed the prepared claim while its reply was withheld.
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if history_count(e, c) == 1 {
-            break;
-        }
-        assert!(Instant::now() < deadline, "prepared record never committed");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    // Assert the exact durable record through an independent restricted
+    // reader before any recovery runs.
+    let prepared = await_history(e, c, op, "prepared_no_effects");
+    let prepared: SessionRecord = serde_json::from_value(prepared).unwrap();
+    assert_eq!(prepared.kind, "prepared_no_effects");
+    assert_eq!(prepared.generation, 1);
+    assert_eq!(prepared.operation_id, op);
+    assert_eq!(prepared.operator_ref.0, Uuid::from_u128(OPERATOR));
+    assert_eq!(prepared.expected_mission_revision, 1);
+    assert_eq!(prepared.writer_oid, broker_oid());
+    assert_eq!(prepared.registration_operation_id.0, reg_op);
+    assert_eq!(prepared.registration_event_id.0, reg_ev);
+    assert_eq!(
+        fence(e, c).unwrap(),
+        (
+            "prepared_no_effects".to_string(),
+            1,
+            Some(op.0),
+            Some(broker_oid())
+        )
+    );
+    assert_eq!(history_count(e, c), 1);
     let (output, _) = wait_db::wait_bounded(
         child,
         wait_db::COMMAND_ENVELOPE + Duration::from_secs(5),
@@ -289,8 +307,13 @@ fn lost_ack_after_durable_prepare_recovers_without_new_claim() {
         wait_db::COMMAND_ENVELOPE,
     );
     drop(relay);
-    // Fresh-process recovery sees the durable claim; no new generation or
-    // duplicate record exists, and no retry is needed to see the truth.
+    // Snapshot durable state before fresh-process recovery; recovery is
+    // read-only and must not mutate any of it.
+    let before = (
+        fence(e, c).unwrap(),
+        history(e, c, op).unwrap(),
+        history_count(e, c),
+    );
     let out = run_cli(&session_args("recover", op, file.path()), &runtime);
     assert!(out.status.success());
     let r = receipt(&out);
@@ -298,9 +321,15 @@ fn lost_ack_after_durable_prepare_recovers_without_new_claim() {
     assert_eq!(r["record"]["generation"], 1);
     assert_eq!(r["record"]["kind"], "prepared_no_effects");
     assert_flags_off(&r);
-    let (_, generation, claimed, _) = fence(e, c).unwrap();
-    assert_eq!((generation, claimed), (1, Some(op.0)));
-    assert_eq!(history_count(e, c), 1);
+    assert_no_leaks(&out);
+    assert_eq!(
+        (
+            fence(e, c).unwrap(),
+            history(e, c, op).unwrap(),
+            history_count(e, c)
+        ),
+        before
+    );
 }
 
 #[test]
@@ -311,6 +340,7 @@ fn lost_ack_after_durable_release_cannot_clear_newer_generation() {
     let broker = broker_dsn(db_port());
     let (e, c) = scope(0x7704);
     register_scope(e, c, &runtime);
+    let (reg_op, reg_ev) = registration_identity(e, c);
     let op = registration::prepare_operation(&mut db_support::ports().0).unwrap();
     let file = wait_db::InputFile::new(&input(e, c), &op.to_string());
     assert!(
@@ -332,14 +362,21 @@ fn lost_ack_after_durable_release_cannot_clear_newer_generation() {
         relay.consumed(Duration::from_secs(10)),
         "the server never reported CommandComplete COMMIT; commit not server-confirmed"
     );
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if history_count(e, c) == 2 {
-            break;
-        }
-        assert!(Instant::now() < deadline, "released record never committed");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    // The server committed the release while its reply was withheld. Assert
+    // the exact durable released record — identity, generation, Broker
+    // login — before any recovery, replay or generation-2 prepare.
+    let released = await_history(e, c, op, "released_no_effects");
+    let released: SessionRecord = serde_json::from_value(released).unwrap();
+    assert_eq!(released.kind, "released_no_effects");
+    assert_eq!(released.generation, 1);
+    assert_eq!(released.operation_id, op);
+    assert_eq!(released.operator_ref.0, Uuid::from_u128(OPERATOR));
+    assert_eq!(released.expected_mission_revision, 1);
+    assert_eq!(released.writer_oid, broker_oid());
+    assert_eq!(released.registration_operation_id.0, reg_op);
+    assert_eq!(released.registration_event_id.0, reg_ev);
+    assert_eq!(fence(e, c).unwrap(), ("idle".to_string(), 1, None, None));
+    assert_eq!(history_count(e, c), 2);
     let (output, _) = wait_db::wait_bounded(
         child,
         wait_db::COMMAND_ENVELOPE + Duration::from_secs(5),
@@ -353,7 +390,8 @@ fn lost_ack_after_durable_release_cannot_clear_newer_generation() {
     );
     drop(relay);
     // Generation 2 claims after the lost ACK; replaying the generation-1
-    // release returns its durable record without clearing generation 2.
+    // release returns its durable record without clearing generation 2 or
+    // its Broker ownership.
     let op2 = registration::prepare_operation(&mut db_support::ports().0).unwrap();
     let file2 = wait_db::InputFile::new(&input(e, c), &op2.to_string());
     assert!(
@@ -361,16 +399,51 @@ fn lost_ack_after_durable_release_cannot_clear_newer_generation() {
             .status
             .success()
     );
-    assert_eq!(fence(e, c).unwrap().1, 2);
+    assert_eq!(
+        fence(e, c).unwrap(),
+        (
+            "prepared_no_effects".to_string(),
+            2,
+            Some(op2.0),
+            Some(broker_oid())
+        )
+    );
     let replay = run_cli(&session_args("release", op, file.path()), &broker);
     let r = receipt(&replay);
     assert_eq!(r["outcome"], "durable");
     assert_eq!(r["record"]["kind"], "released_no_effects");
     assert_eq!(r["record"]["generation"], 1);
-    let (_, generation, claimed, _) = fence(e, c).unwrap();
-    assert_eq!((generation, claimed), (2, Some(op2.0)));
-    // Recovery reports the durable released record, not a claim.
+    assert_no_leaks(&replay);
+    assert_eq!(
+        fence(e, c).unwrap(),
+        (
+            "prepared_no_effects".to_string(),
+            2,
+            Some(op2.0),
+            Some(broker_oid())
+        )
+    );
+    // Snapshot before fresh-process recovery; recovery reports the durable
+    // released record and mutates nothing.
+    let before = (
+        fence(e, c).unwrap(),
+        history(e, c, op).unwrap(),
+        history_count(e, c),
+    );
     let out = run_cli(&session_args("recover", op, file.path()), &runtime);
-    assert_eq!(receipt(&out)["record"]["kind"], "released_no_effects");
-    assert_flags_off(&receipt(&out));
+    assert!(out.status.success());
+    let r = receipt(&out);
+    assert_eq!(r["outcome"], "durable");
+    assert_eq!(r["record"]["kind"], "released_no_effects");
+    assert_eq!(r["record"]["generation"], 1);
+    assert_flags_off(&r);
+    assert_no_leaks(&out);
+    assert_eq!(
+        (
+            fence(e, c).unwrap(),
+            history(e, c, op).unwrap(),
+            history_count(e, c)
+        ),
+        before
+    );
 }
