@@ -23,6 +23,7 @@ mod authority_confirmation;
 mod database_config;
 mod database_wait;
 mod m1_policy_cli;
+mod m1_session_cli;
 mod planning_cli;
 
 fn category(f: Fail) -> &'static str {
@@ -276,7 +277,7 @@ fn run(command: &str, args: &[String]) -> Res<()> {
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),
         "m1-policy-check" => m1_policy_cli::cmd_policy_check(args),
-        _ => Err(Fail::Input("unknown_command")),
+        _ => m1_session_cli::command(command, args),
     }
 }
 

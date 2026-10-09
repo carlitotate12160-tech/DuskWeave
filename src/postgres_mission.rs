@@ -324,15 +324,23 @@ pub fn qualify_runtime(c: &mut Client) -> Res<()> {
                  AND (rolsuper OR rolbypassrls)) \
              AND NOT has_schema_privilege(current_user, 'mission', 'CREATE') \
                  AND NOT has_schema_privilege(current_user, 'trajectory', 'CREATE') \
+             AND NOT EXISTS (SELECT 1 FROM pg_namespace n \
+                 WHERE n.nspname = 'execution' AND \
+                 (has_schema_privilege(current_user, n.oid, 'CREATE') \
+                  OR pg_has_role(current_user, n.nspowner, 'MEMBER'))) \
              AND COALESCE(has_table_privilege(current_user, \
                  to_regclass('mission.planning_assessments'), 'SELECT'), false) \
              AND COALESCE(has_table_privilege(current_user, \
                  to_regclass('mission.planning_assessments'), 'INSERT'), false) \
              AND NOT EXISTS (SELECT 1 FROM pg_class cl \
                  JOIN pg_namespace n ON n.oid = cl.relnamespace \
-                 WHERE n.nspname IN ('mission','trajectory') AND cl.relkind = 'r' \
+                 WHERE n.nspname IN ('mission','trajectory','execution') AND cl.relkind = 'r' \
                  AND (cl.relowner = \
                       (SELECT oid FROM pg_roles WHERE rolname = current_user) \
+                     OR (n.nspname = 'execution' \
+                         AND (pg_has_role(current_user, cl.relowner, 'MEMBER') \
+                              OR has_table_privilege(current_user, cl.oid, 'INSERT') \
+                              OR has_table_privilege(current_user, cl.oid, 'TRIGGER'))) \
                      OR has_table_privilege(current_user, cl.oid, 'UPDATE') \
                      OR has_table_privilege(current_user, cl.oid, 'DELETE') \
                      OR has_table_privilege(current_user, cl.oid, 'TRUNCATE')))",
