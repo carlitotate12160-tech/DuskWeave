@@ -27,6 +27,7 @@ pub const WITHDRAWAL_REFUSAL_MIGRATION: &str =
     include_str!("../../migrations/0006_planning_withdrawal_refusal.sql");
 pub const ELIGIBILITY_MIGRATION: &str =
     include_str!("../../migrations/0007_planning_eligibility.sql");
+pub const SESSION_MIGRATION: &str = include_str!("../../migrations/0008_m1_session_fence.sql");
 
 /// Serializes DB tests (SSI predicate locks intentionally abort racing
 /// serializable transactions) and applies one-time admin setup.
@@ -112,6 +113,7 @@ fn setup() {
         // old migrations run only in owned upgrade fixtures before newer rows.
         a.batch_execute(WITHDRAWAL_MIGRATION).unwrap();
         a.batch_execute(ELIGIBILITY_MIGRATION).unwrap();
+        a.batch_execute(SESSION_MIGRATION).unwrap();
         a.batch_execute(&format!(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{rt_user}') \
              THEN CREATE ROLE {rt_user} LOGIN PASSWORD '{rt_pass}'; \
