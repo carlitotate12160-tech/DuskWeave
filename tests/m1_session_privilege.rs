@@ -108,6 +108,9 @@ fn expect_unqualified(
     );
 }
 
+/// Tests that logins granted prohibited database privileges (e.g. TRIGGER, UPDATE, DELETE,
+/// TRUNCATE) on shared mission, trajectory, or execution tables are rejected during 
+/// runtime qualification before they can perform any mutations or effects.
 #[test]
 fn overprivileged_logins_fail_shared_qualification_before_mutation() {
     let _g = db();

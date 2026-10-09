@@ -312,7 +312,12 @@ impl MissionStore for PgMissionStore {
         row.map(|row| decode_registration(&row)).transpose()
     }
 }
-
+/// Verifies the current PostgreSQL session environment for strict campaign runtime safety.
+///
+/// This qualification blocks any connections attempting to run without safe crash-durability 
+/// settings (fsync/full_page_writes), superusers, schema manipulators (DDL-capable roles),
+/// or any role holding disallowed privileges (e.g. `TRIGGER`, `UPDATE`, `DELETE`) on 
+/// `mission`, `trajectory`, or `execution` tables.
 pub fn qualify_runtime(c: &mut Client) -> Res<()> {
     let ok: bool = c
         .query_one(
