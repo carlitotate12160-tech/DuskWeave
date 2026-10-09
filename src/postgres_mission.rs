@@ -346,6 +346,7 @@ pub fn qualify_runtime(c: &mut Client) -> Res<()> {
                          AND (pg_has_role(current_user, cl.relowner, 'MEMBER') \
                               OR has_table_privilege(current_user, cl.oid, 'INSERT'))) \
                      OR has_table_privilege(current_user, cl.oid, 'TRIGGER') \
+                     OR EXISTS (SELECT 1 FROM pg_roles r WHERE pg_has_role(session_user, r.oid, 'SET') AND has_table_privilege(r.oid, cl.oid, 'TRIGGER')) \
                      OR has_table_privilege(current_user, cl.oid, 'UPDATE') \
                      OR has_table_privilege(current_user, cl.oid, 'DELETE') \
                      OR has_table_privilege(current_user, cl.oid, 'TRUNCATE')))",
