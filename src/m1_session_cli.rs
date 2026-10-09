@@ -46,7 +46,7 @@ pub(super) fn cmd_m1_session(args: &[String]) -> Res<()> {
                     "campaign_id": campaign.0,
                     "engagement_id": engagement.0,
                 }))
-                .unwrap()
+                .map_err(|_| Fail::State("receipt_encode"))?
             );
         }
         "recover" => {
@@ -60,11 +60,11 @@ pub(super) fn cmd_m1_session(args: &[String]) -> Res<()> {
                     "campaign_id": campaign.0,
                     "engagement_id": engagement.0,
                 }))
-                .unwrap()
+                .map_err(|_| Fail::State("receipt_encode"))?
             );
         }
         "release" => {
-            fence.release_m1_session(engagement, campaign, generation.unwrap())?;
+            fence.release_m1_session(engagement, campaign, generation.ok_or(Fail::Input("missing_generation"))?)?;
             println!(
                 "{}",
                 serde_json::to_string(&serde_json::json!({
@@ -73,7 +73,7 @@ pub(super) fn cmd_m1_session(args: &[String]) -> Res<()> {
                     "campaign_id": campaign.0,
                     "engagement_id": engagement.0,
                 }))
-                .unwrap()
+                .map_err(|_| Fail::State("receipt_encode"))?
             );
         }
         _ => return Err(Fail::Input("invalid_action")),

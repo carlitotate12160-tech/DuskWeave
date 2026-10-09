@@ -25,7 +25,9 @@ impl PgSessionFence {
 
     fn lock_key(campaign: CampaignId) -> i64 {
         let bytes = campaign.0.as_bytes();
-        i64::from_le_bytes(bytes[0..8].try_into().unwrap())
+        let mut arr = [0u8; 8];
+        arr.copy_from_slice(&bytes[0..8]);
+        i64::from_le_bytes(arr)
     }
 }
 
