@@ -156,13 +156,12 @@ fn op() -> OperationId {
 
 #[test]
 fn request_validation_rejects_nil_identity_and_wrong_revision() {
-    for nil_field in 0..4 {
+    for nil_field in 0..3 {
         let mut r = request();
         match nil_field {
             0 => r.engagement_id = EngagementId(Uuid::nil()),
             1 => r.campaign_id = CampaignId(Uuid::nil()),
-            2 => r.operator_ref = OperatorRef(Uuid::nil()),
-            _ => return,
+            _ => r.operator_ref = OperatorRef(Uuid::nil()),
         }
         assert_eq!(
             r.validate(op()),

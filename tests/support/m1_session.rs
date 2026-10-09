@@ -14,23 +14,31 @@ use std::sync::Once;
 use uuid::Uuid;
 
 pub const BROKER: &str = "dw_m1_broker_test";
-const BROKER_PASS: &str = "dw_m1_broker_test_probe";
 pub const OTHER_BROKER: &str = "dw_m1_broker_other";
-const OTHER_BROKER_PASS: &str = "dw_m1_broker_other_probe";
 pub const OPERATOR: u128 = 0x11;
+
+/// Fixture logins reuse the authorized DW_TEST_DATABASE_URL password; no
+/// credential literal ever enters the repository.
+fn broker_pass() -> String {
+    let rt = db_support::dsn("DW_TEST_DATABASE_URL");
+    String::from_utf8(rt.get_password().expect("runtime password").to_vec()).expect("utf8 password")
+}
 
 /// Idempotent cluster-role setup: one fixture-owned Broker login plus a
 /// second separately authenticated Broker login for impersonation probes.
 pub fn ensure_broker_logins() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
+        let pass = broker_pass().replace('\'', "''");
         db_support::admin_client()
             .batch_execute(&format!(
                 "DO $$ BEGIN \
                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{BROKER}') THEN \
-                 CREATE ROLE {BROKER} LOGIN PASSWORD '{BROKER_PASS}'; END IF; \
+                 CREATE ROLE {BROKER} LOGIN PASSWORD '{pass}'; \
+                 ELSE ALTER ROLE {BROKER} LOGIN PASSWORD '{pass}'; END IF; \
                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{OTHER_BROKER}') THEN \
-                 CREATE ROLE {OTHER_BROKER} LOGIN PASSWORD '{OTHER_BROKER_PASS}'; END IF; \
+                 CREATE ROLE {OTHER_BROKER} LOGIN PASSWORD '{pass}'; \
+                 ELSE ALTER ROLE {OTHER_BROKER} LOGIN PASSWORD '{pass}'; END IF; \
                  END $$; \
                  GRANT dw_runtime, dw_m1_broker TO {BROKER}; \
                  GRANT dw_runtime, dw_m1_broker TO {OTHER_BROKER};"
@@ -42,33 +50,41 @@ pub fn ensure_broker_logins() {
 /// Qualified runtime-and-Broker member connection for the guarded functions.
 pub fn broker_client() -> Client {
     let mut cfg = db_support::dsn("DW_TEST_DATABASE_URL");
-    cfg.user(BROKER).password(BROKER_PASS);
+    cfg.user(BROKER).password(broker_pass());
     cfg.connect(NoTls).expect("broker connect failed")
 }
 
 /// A second Broker login: same class, different session_user identity.
 pub fn other_broker_client() -> Client {
     let mut cfg = db_support::dsn("DW_TEST_DATABASE_URL");
-    cfg.user(OTHER_BROKER).password(OTHER_BROKER_PASS);
+    cfg.user(OTHER_BROKER).password(broker_pass());
     cfg.connect(NoTls).expect("other broker connect failed")
+}
+
+/// libpq keyword/value escaping: quote a value and escape quote/backslash.
+fn kw(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
 /// Correctly escaped keyword DSN for the given member login and port —
 /// real target port for a direct CLI connection, relay port under faults.
 pub fn member_dsn(role: &str, password: &str, port: u16) -> String {
     let rt = db_support::dsn("DW_TEST_DATABASE_URL");
-    let dbname = rt.get_dbname().expect("runtime dbname");
+    let dbname = rt.get_dbname().expect("runtime dbname").to_string();
     format!(
-        "host=127.0.0.1 port={port} user={role} password={password} dbname={dbname} sslmode=disable"
+        "host=127.0.0.1 port={port} user={} password={} dbname={} sslmode=disable",
+        kw(role),
+        kw(password),
+        kw(&dbname)
     )
 }
 
 pub fn broker_dsn(port: u16) -> String {
-    member_dsn(BROKER, BROKER_PASS, port)
+    member_dsn(BROKER, &broker_pass(), port)
 }
 
 pub fn other_broker_dsn(port: u16) -> String {
-    member_dsn(OTHER_BROKER, OTHER_BROKER_PASS, port)
+    member_dsn(OTHER_BROKER, &broker_pass(), port)
 }
 
 /// The target's real port from the authorized runtime DSN.
