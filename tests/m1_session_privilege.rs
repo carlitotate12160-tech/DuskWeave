@@ -1,7 +1,7 @@
-//! Real-role qualification coverage for the execution schema: a Broker-class
-//! login carrying any execution CREATE/ownership/mutation capability must
-//! fail shared runtime qualification before a session mutation through the
-//! actual CLI, while baseline actors still qualify. Admin is fixture control
+//! Real-role qualification coverage for the shared database boundary: a Broker-class
+//! login carrying any execution CREATE/ownership/mutation capability or prohibited
+//! shared privilege must fail shared runtime qualification before a session mutation
+//! through the actual CLI, while baseline actors still qualify. Admin is fixture control
 //! only; cluster-wide grants serialize under db_support::db(), and every
 //! probe restores exact original grants/owners and re-qualifies cleanly.
 
@@ -109,7 +109,7 @@ fn expect_unqualified(
 }
 
 #[test]
-fn overprivileged_execution_logins_fail_qualification_before_mutation() {
+fn overprivileged_logins_fail_shared_qualification_before_mutation() {
     let _g = db();
     ensure_broker_logins();
     ensure_priv_login();
@@ -134,14 +134,12 @@ fn overprivileged_execution_logins_fail_qualification_before_mutation() {
              REVOKE {PROBE} FROM {owner}; \
              REVOKE {PROBE} FROM {PRIV_BROKER}; \
              REVOKE CREATE ON SCHEMA execution FROM {PRIV_BROKER}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_fences FROM {PRIV_BROKER}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_history FROM {PRIV_BROKER}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_fences FROM {PROBE}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_history FROM {PROBE}"
+             REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER \
+             ON execution.session_fences FROM {PRIV_BROKER}, {PROBE}; \
+             REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER \
+             ON execution.session_history FROM {PRIV_BROKER}, {PROBE}; \
+             REVOKE TRIGGER ON mission.withdrawals FROM {PRIV_BROKER}, {PROBE}; \
+             REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PRIV_BROKER}, {PROBE}"
         ))
         .unwrap();
     // Baseline: the ordinary runtime login and the restricted probe Broker
@@ -216,6 +214,27 @@ fn overprivileged_execution_logins_fail_qualification_before_mutation() {
             format!("ALTER TABLE execution.session_history OWNER TO {PROBE}; GRANT {PROBE} TO {p}"),
             format!(
                 "REVOKE {PROBE} FROM {p}; ALTER TABLE execution.session_history OWNER TO {owner}"
+            ),
+        ),
+        // TRIGGER grants on shared mission and trajectory schemas.
+        (
+            format!("GRANT TRIGGER ON mission.withdrawals TO {p}"),
+            format!("REVOKE TRIGGER ON mission.withdrawals FROM {p}"),
+        ),
+        (
+            format!("GRANT TRIGGER ON trajectory.withdrawal_history TO {p}"),
+            format!("REVOKE TRIGGER ON trajectory.withdrawal_history FROM {p}"),
+        ),
+        (
+            format!("GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {p}"),
+            format!(
+                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"
+            ),
+        ),
+        (
+            format!("GRANT TRIGGER ON trajectory.withdrawal_history TO {PROBE}; GRANT {PROBE} TO {p}"),
+            format!(
+                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PROBE}"
             ),
         ),
     ] {
