@@ -7,7 +7,12 @@
 #![allow(dead_code)]
 
 use crate::db_support;
-use duskweave::mission::{CampaignId, EngagementId, OperationId};
+use duskweave::Res;
+use duskweave::m1_session::{SessionAction, SessionRequest, session};
+use duskweave::mission::{CampaignId, EngagementId, OperationId, OperatorRef};
+use duskweave::postgres_m1_session::PgSessionStore;
+use duskweave::postgres_mission::PgMissionStore;
+use duskweave::withdrawal::{WithdrawalReason, WithdrawalRequest};
 use postgres::{Client, NoTls};
 use serde_json::{Value, json};
 use std::sync::Once;
@@ -179,6 +184,64 @@ pub fn history_count(e: EngagementId, c: CampaignId) -> i64 {
         )
         .unwrap()
         .get(0)
+}
+
+/// Bounded session request for direct port-level calls.
+pub fn req(e: EngagementId, c: CampaignId) -> SessionRequest {
+    SessionRequest {
+        engagement_id: e,
+        campaign_id: c,
+        operator_ref: OperatorRef(Uuid::from_u128(OPERATOR)),
+        expected_mission_revision: 1,
+    }
+}
+
+/// Session operations use the same deliberate fresh allocation path as
+/// registration operations; deterministic ids would collide across reruns.
+pub fn session_op() -> OperationId {
+    duskweave::registration::prepare_operation(&mut db_support::ports().0).unwrap()
+}
+
+/// Register a current-window M1 scope through the ordinary runtime path.
+pub fn register_m1(e: EngagementId, c: CampaignId, shift: i64) -> duskweave::registration::Receipt {
+    let raw = serde_json::to_vec(&registration(e, c, now(), shift)).unwrap();
+    let input = duskweave::input::parse_register(&raw).unwrap();
+    let (mut a, mut s, mut t) = db_support::ports();
+    let op = duskweave::registration::prepare_operation(&mut a).unwrap();
+    duskweave::registration::register(&mut a, &mut s, &mut t, op, &input).unwrap()
+}
+
+/// Broker prepare through the guarded function and the Mission reader port.
+pub fn prepare(e: EngagementId, c: CampaignId, op: OperationId) -> Res<Option<Value>> {
+    let mut store = PgSessionStore::new(broker_client());
+    let mut reader = PgMissionStore::new(db_support::runtime_client());
+    session(
+        &mut store,
+        Some(&mut reader),
+        SessionAction::Prepare,
+        &req(e, c),
+        op,
+    )
+    .map(|r| r.map(|r| serde_json::to_value(r).unwrap()))
+}
+
+/// The fixture Broker login's role OID — writer identity proof.
+pub fn broker_oid() -> u32 {
+    db_support::runtime_client()
+        .query_one("SELECT oid FROM pg_roles WHERE rolname=$1", &[&BROKER])
+        .unwrap()
+        .get(0)
+}
+
+/// Matching withdrawal request for the ordinary writer-fence probes.
+pub fn withdraw_req(e: EngagementId, c: CampaignId) -> WithdrawalRequest {
+    WithdrawalRequest {
+        engagement_id: e,
+        campaign_id: c,
+        operator_ref: OperatorRef(Uuid::from_u128(OPERATOR)),
+        expected_mission_revision: 1,
+        reason: WithdrawalReason::OperatorRequested,
+    }
 }
 
 /// Bounded poll until the expected durable history row is visible through a

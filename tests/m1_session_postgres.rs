@@ -4,15 +4,13 @@
 //! recovery. Admin access is fixture setup only; runtime assertions use the
 //! restricted logins.
 
-use duskweave::m1_session::{SessionAction, SessionRequest, session};
+use duskweave::Fail;
+use duskweave::m1_session::{SessionAction, session};
 use duskweave::mission::*;
 use duskweave::postgres_m1_session::PgSessionStore;
 use duskweave::postgres_mission::{PgAllocator, PgMissionStore};
 use duskweave::registration::{self, MissionStore};
-use duskweave::withdrawal::{WithdrawalReason, WithdrawalRequest, WithdrawalStore};
-use duskweave::{Fail, Res};
-use postgres::NoTls;
-use serde_json::Value;
+use duskweave::withdrawal::WithdrawalStore;
 use uuid::Uuid;
 
 #[path = "support/registration_db.rs"]
@@ -23,66 +21,6 @@ mod session_support;
 use session_support::*;
 #[path = "support/upgrade_db.rs"]
 mod upgrade_db;
-
-fn req(e: EngagementId, c: CampaignId) -> SessionRequest {
-    SessionRequest {
-        engagement_id: e,
-        campaign_id: c,
-        operator_ref: OperatorRef(Uuid::from_u128(OPERATOR)),
-        expected_mission_revision: 1,
-    }
-}
-
-/// Session operations use the same deliberate fresh allocation path as
-/// registration operations; deterministic ids would collide across reruns.
-fn session_op() -> OperationId {
-    registration::prepare_operation(&mut ports().0).unwrap()
-}
-
-/// Register a current-window M1 scope through the ordinary runtime path.
-fn register_m1(e: EngagementId, c: CampaignId, shift: i64) -> registration::Receipt {
-    let raw = serde_json::to_vec(&registration(e, c, now(), shift)).unwrap();
-    let input = duskweave::input::parse_register(&raw).unwrap();
-    let (mut a, mut s, mut t) = ports();
-    let op = registration::prepare_operation(&mut a).unwrap();
-    registration::register(&mut a, &mut s, &mut t, op, &input).unwrap()
-}
-
-fn prepare(e: EngagementId, c: CampaignId, op: OperationId) -> Res<Option<Value>> {
-    let mut store = PgSessionStore::new(broker_client());
-    let mut reader = PgMissionStore::new(runtime_client());
-    session(
-        &mut store,
-        Some(&mut reader),
-        SessionAction::Prepare,
-        &req(e, c),
-        op,
-    )
-    .map(|r| r.map(|r| serde_json::to_value(r).unwrap()))
-}
-
-fn broker_oid() -> u32 {
-    runtime_client()
-        .query_one("SELECT oid FROM pg_roles WHERE rolname=$1", &[&BROKER])
-        .unwrap()
-        .get(0)
-}
-
-fn admin_db() -> postgres::Client {
-    let mut cfg = dsn("DW_TEST_ADMIN_DATABASE_URL");
-    cfg.dbname(dsn("DW_TEST_DATABASE_URL").get_dbname().unwrap());
-    cfg.connect(NoTls).unwrap()
-}
-
-fn withdraw_req(e: EngagementId, c: CampaignId) -> WithdrawalRequest {
-    WithdrawalRequest {
-        engagement_id: e,
-        campaign_id: c,
-        operator_ref: OperatorRef(Uuid::from_u128(OPERATOR)),
-        expected_mission_revision: 1,
-        reason: WithdrawalReason::OperatorRequested,
-    }
-}
 
 #[test]
 fn migration_backfills_existing_v1_v2_scopes_idle_and_reapplies() {
@@ -240,7 +178,7 @@ fn prepare_refusals_leave_no_durable_claim() {
     assert_eq!(history_count(ne, nc), 0);
     // Corrupt catalog: the missions row diverging from the original contract
     // fails closed at the port decode, before SQL, with no claim durable.
-    let mut admin = admin_db();
+    let mut admin = admin_db_client();
     admin
         .execute(
             "UPDATE mission.missions SET operator_ref=$3 WHERE engagement_id=$1 AND campaign_id=$2",
