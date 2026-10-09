@@ -1,8 +1,6 @@
--- M1 prepared session fence: durable database writer fence only. A prepared
--- record is neither an execution grant nor host control; no effect-enabled
--- state exists in this slice. The Broker class holds EXECUTE on the fixed
--- functions only; every fence/history mutation happens inside them or the
--- owner-definer INSERT guards.
+-- Prepared/no-effects fence: no execution grant, host control or active state.
+-- Broker holds EXECUTE only; fence/history writes use fixed owner-definer
+-- functions and INSERT guards.
 CREATE SCHEMA IF NOT EXISTS execution;
 DO $$
 BEGIN
@@ -68,14 +66,11 @@ BEGIN
     RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION execution.guard_mission_writer() FROM PUBLIC;
-DROP TRIGGER IF EXISTS m1_session_writer_fence ON mission.missions;
-CREATE TRIGGER m1_session_writer_fence BEFORE INSERT
+CREATE OR REPLACE TRIGGER m1_session_writer_fence BEFORE INSERT
 ON mission.missions FOR EACH ROW EXECUTE FUNCTION execution.guard_mission_writer();
-DROP TRIGGER IF EXISTS m1_session_writer_fence ON mission.registration_outbox;
-CREATE TRIGGER m1_session_writer_fence BEFORE INSERT
+CREATE OR REPLACE TRIGGER m1_session_writer_fence BEFORE INSERT
 ON mission.registration_outbox FOR EACH ROW EXECUTE FUNCTION execution.guard_mission_writer();
-DROP TRIGGER IF EXISTS m1_session_writer_fence ON mission.withdrawals;
-CREATE TRIGGER m1_session_writer_fence BEFORE INSERT
+CREATE OR REPLACE TRIGGER m1_session_writer_fence BEFORE INSERT
 ON mission.withdrawals FOR EACH ROW EXECUTE FUNCTION execution.guard_mission_writer();
 
 -- Role membership comes from session_user plus the actual pg_roles OID; a
@@ -113,14 +108,11 @@ BEGIN
     -- new generation, even after release or withdrawal; it grants nothing.
     SELECT * INTO prior FROM execution.session_history
     WHERE engagement_id=e AND campaign_id=c AND operation_id=op
-      AND kind='prepared_no_effects';
+    ORDER BY (kind='released_no_effects') DESC LIMIT 1;
     IF FOUND THEN
         IF prior.operator_ref IS DISTINCT FROM operator OR prior.writer_oid <> actor THEN
             RAISE EXCEPTION USING ERRCODE='P0001', MESSAGE='session_identity_conflict';
         END IF;
-        SELECT * INTO prior FROM execution.session_history
-        WHERE engagement_id=e AND campaign_id=c AND operation_id=op
-        ORDER BY (kind='released_no_effects') DESC LIMIT 1;
         RETURN prior;
     END IF;
     SELECT * INTO mission_row FROM mission.missions
@@ -211,12 +203,9 @@ REVOKE ALL ON FUNCTION execution.release_prepared_session(uuid,uuid,uuid,uuid,bi
 GRANT EXECUTE ON FUNCTION execution.prepare_session(uuid,uuid,uuid,uuid,bigint,jsonb),
     execution.release_prepared_session(uuid,uuid,uuid,uuid,bigint) TO dw_m1_broker;
 
--- Defense in depth against an over-provisioned runtime/Broker login: RLS
--- permits SELECT for every non-owner role and nothing else — direct
--- INSERT/UPDATE/DELETE are denied even if a later grant adds table-level
--- mutation rights, and TRUNCATE (not subject to RLS) is denied by trigger.
--- Every legitimate mutation runs inside the SECURITY DEFINER functions and
--- guards as the table owner, which RLS does not constrain.
+-- Non-owner DML remains denied by SELECT-only RLS even after mutation grants.
+-- TRUNCATE bypasses RLS and is blocked by statement triggers. Fixed
+-- SECURITY DEFINER functions/guards mutate as table owner, outside RLS.
 ALTER TABLE execution.session_fences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE execution.session_history ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS session_fences_read ON execution.session_fences;
@@ -230,11 +219,9 @@ LANGUAGE plpgsql SET search_path=pg_catalog AS $$
 BEGIN
     RAISE EXCEPTION USING ERRCODE='P0001', MESSAGE='session_table_immutable';
 END $$;
-DROP TRIGGER IF EXISTS session_fences_no_truncate ON execution.session_fences;
-CREATE TRIGGER session_fences_no_truncate BEFORE TRUNCATE
+CREATE OR REPLACE TRIGGER session_fences_no_truncate BEFORE TRUNCATE
 ON execution.session_fences FOR EACH STATEMENT
 EXECUTE FUNCTION execution.deny_session_mutation();
-DROP TRIGGER IF EXISTS session_history_no_truncate ON execution.session_history;
-CREATE TRIGGER session_history_no_truncate BEFORE TRUNCATE
+CREATE OR REPLACE TRIGGER session_history_no_truncate BEFORE TRUNCATE
 ON execution.session_history FOR EACH STATEMENT
 EXECUTE FUNCTION execution.deny_session_mutation();

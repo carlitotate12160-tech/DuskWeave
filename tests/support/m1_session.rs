@@ -20,6 +20,9 @@ use uuid::Uuid;
 
 pub const BROKER: &str = "dw_m1_broker_test";
 pub const OTHER_BROKER: &str = "dw_m1_broker_other";
+/// Privilege-probe login: the same restricted runtime+Broker class as the
+/// fixture Brokers; this fixture never widens its grants.
+pub const PRIV_BROKER: &str = "dw_m1_broker_priv";
 pub const OPERATOR: u128 = 0x11;
 
 /// Fixture logins reuse the authorized DW_TEST_DATABASE_URL password; no
@@ -63,18 +66,43 @@ pub fn admin_db_client() -> Client {
     a.connect(NoTls).expect("admin db connect failed")
 }
 
+fn member_client(role: &str) -> Client {
+    let mut cfg = db_support::dsn("DW_TEST_DATABASE_URL");
+    cfg.user(role).password(broker_pass());
+    cfg.connect(NoTls).expect("member connect failed")
+}
+
 /// Qualified runtime-and-Broker member connection for the guarded functions.
 pub fn broker_client() -> Client {
-    let mut cfg = db_support::dsn("DW_TEST_DATABASE_URL");
-    cfg.user(BROKER).password(broker_pass());
-    cfg.connect(NoTls).expect("broker connect failed")
+    member_client(BROKER)
 }
 
 /// A second Broker login: same class, different session_user identity.
 pub fn other_broker_client() -> Client {
-    let mut cfg = db_support::dsn("DW_TEST_DATABASE_URL");
-    cfg.user(OTHER_BROKER).password(broker_pass());
-    cfg.connect(NoTls).expect("other broker connect failed")
+    member_client(OTHER_BROKER)
+}
+
+/// Privilege-probe connection: qualified until a scenario widens a grant.
+pub fn priv_client() -> Client {
+    member_client(PRIV_BROKER)
+}
+
+/// Idempotent privilege-probe login setup, same class as the Brokers.
+pub fn ensure_priv_login() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let pass = broker_pass().replace('\'', "''");
+        db_support::admin_client()
+            .batch_execute(&format!(
+                "DO $$ BEGIN \
+                 IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{PRIV_BROKER}') THEN \
+                 CREATE ROLE {PRIV_BROKER} LOGIN PASSWORD '{pass}'; \
+                 ELSE ALTER ROLE {PRIV_BROKER} LOGIN PASSWORD '{pass}'; END IF; \
+                 END $$; \
+                 GRANT dw_runtime, dw_m1_broker TO {PRIV_BROKER};"
+            ))
+            .unwrap();
+    });
 }
 
 /// libpq keyword/value escaping: quote a value and escape quote/backslash.
@@ -101,6 +129,10 @@ pub fn broker_dsn(port: u16) -> String {
 
 pub fn other_broker_dsn(port: u16) -> String {
     member_dsn(OTHER_BROKER, &broker_pass(), port)
+}
+
+pub fn priv_dsn(port: u16) -> String {
+    member_dsn(PRIV_BROKER, &broker_pass(), port)
 }
 
 /// The target's real port from the authorized runtime DSN.

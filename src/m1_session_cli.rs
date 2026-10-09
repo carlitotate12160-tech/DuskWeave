@@ -27,11 +27,7 @@ fn outcome_name(outcome: &Res<Option<SessionRecord>>) -> &'static str {
     }
 }
 
-fn print_receipt(
-    r: &SessionRequest,
-    op: OperationId,
-    outcome: &Res<Option<SessionRecord>>,
-) -> Res<()> {
+fn print_receipt(r: &SessionRequest, op: OperationId, outcome: &Res<Option<SessionRecord>>) {
     // codeql[rust/cleartext-logging] bounded receipt: safe IDs/status only
     let receipt = serde_json::json!({
         "session_kind": "m1_prepared_no_effects_v1",
@@ -45,11 +41,7 @@ fn print_receipt(
         "acquisition_qualified": false,
         "host_control_qualified": false,
     });
-    println!(
-        "{}",
-        serde_json::to_string(&receipt).map_err(|_| Fail::State("receipt_encode"))?
-    );
-    Ok(())
+    println!("{receipt}");
 }
 
 fn identity(flags: &[(&str, &str)]) -> Res<(SessionAction, OperationId)> {
@@ -75,21 +67,11 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
     let (action, op, request) = parse(args)?;
     let outcome = (|| {
         let mut store = PgSessionStore::new(super::connect()?);
-        match action {
-            SessionAction::Prepare => {
-                let mut reader = PgMissionStore::new(super::connect()?);
-                m1_session::session(&mut store, Some(&mut reader), action, &request, op)
-            }
-            _ => m1_session::session(
-                &mut store,
-                None::<&mut PgMissionStore>,
-                action,
-                &request,
-                op,
-            ),
-        }
+        let mut reader = matches!(action, SessionAction::Prepare)
+            .then(|| super::connect().map(PgMissionStore::new))
+            .transpose()?;
+        m1_session::session(&mut store, reader.as_mut(), action, &request, op)
     })();
-    print_receipt(&request, op, &outcome)?;
-    outcome?;
-    Ok(())
+    print_receipt(&request, op, &outcome);
+    outcome.map(|_| ())
 }

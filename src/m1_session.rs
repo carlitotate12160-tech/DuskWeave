@@ -27,8 +27,7 @@ impl SessionRequest {
             self.operator_ref.0,
             op.0,
         ]
-        .iter()
-        .any(uuid::Uuid::is_nil)
+        .contains(&uuid::Uuid::nil())
             || self.expected_mission_revision != 1
         {
             return Err(Fail::Input("invalid_session_request"));
@@ -90,19 +89,13 @@ impl SessionRecord {
     /// fixed lifecycle vocabulary; anything else fails closed as unknown —
     /// a decode failure after mutating SQL can already be committed.
     fn checked(self, r: &SessionRequest, op: OperationId) -> Res<Self> {
-        let scoped = (
-            self.engagement_id,
-            self.campaign_id,
-            self.operation_id,
-            self.operator_ref,
-            self.expected_mission_revision,
-        ) == (
-            r.engagement_id,
-            r.campaign_id,
-            op,
-            r.operator_ref,
-            r.expected_mission_revision,
-        );
+        let expected = SessionRequest {
+            engagement_id: self.engagement_id,
+            campaign_id: self.campaign_id,
+            operator_ref: self.operator_ref,
+            expected_mission_revision: self.expected_mission_revision,
+        };
+        let scoped = (expected, self.operation_id) == (r.clone(), op);
         if !scoped
             || self.generation <= 0
             || self.writer_oid == 0
