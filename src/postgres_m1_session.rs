@@ -39,13 +39,13 @@ impl SessionFence for PgSessionFence {
             .isolation_level(IsolationLevel::Serializable)
             .start()
             .map_err(|e| store_err(&e))?;
-        
+
         let key = Self::lock_key(campaign);
         let locked: bool = tx
             .query_one("SELECT pg_try_advisory_xact_lock($1)", &[&key])
             .map_err(|e| store_err(&e))?
             .get(0);
-        
+
         if !locked {
             return Err(Fail::Conflict("lock_unavailable"));
         }
@@ -91,13 +91,13 @@ impl SessionFence for PgSessionFence {
             .isolation_level(IsolationLevel::Serializable)
             .start()
             .map_err(|e| store_err(&e))?;
-            
+
         let key = Self::lock_key(campaign);
         let locked: bool = tx
             .query_one("SELECT pg_try_advisory_xact_lock($1)", &[&key])
             .map_err(|e| store_err(&e))?
             .get(0);
-            
+
         if !locked {
             return Err(Fail::Conflict("lock_unavailable"));
         }
@@ -138,13 +138,13 @@ impl SessionFence for PgSessionFence {
             .isolation_level(IsolationLevel::Serializable)
             .start()
             .map_err(|e| store_err(&e))?;
-            
+
         let key = Self::lock_key(campaign);
         let locked: bool = tx
             .query_one("SELECT pg_try_advisory_xact_lock($1)", &[&key])
             .map_err(|e| store_err(&e))?
             .get(0);
-            
+
         if !locked {
             return Err(Fail::Conflict("lock_unavailable"));
         }

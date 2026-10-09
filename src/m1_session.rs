@@ -1,5 +1,5 @@
-use crate::mission::{CampaignId, EngagementId};
 use crate::Res;
+use crate::mission::{CampaignId, EngagementId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionState {

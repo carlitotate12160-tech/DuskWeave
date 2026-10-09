@@ -11,13 +11,28 @@ pub(super) fn cmd_m1_session(args: &[String]) -> Res<()> {
 
     let mut i = 2;
     while i < args.len() {
-        let name = args[i].strip_prefix("--").ok_or(Fail::Input("invalid_args"))?;
-        let value = args.get(i + 1).filter(|v| !v.starts_with("--")).ok_or(Fail::Input("invalid_args"))?;
+        let name = args[i]
+            .strip_prefix("--")
+            .ok_or(Fail::Input("invalid_args"))?;
+        let value = args
+            .get(i + 1)
+            .filter(|v| !v.starts_with("--"))
+            .ok_or(Fail::Input("invalid_args"))?;
         match name {
             "action" => action = Some(value.as_str()),
-            "engagement" => engagement = Some(EngagementId::parse(value).ok_or(Fail::Input("invalid_args"))?),
-            "campaign" => campaign = Some(CampaignId::parse(value).ok_or(Fail::Input("invalid_args"))?),
-            "generation" => generation = Some(value.parse::<u64>().map_err(|_| Fail::Input("invalid_generation"))?),
+            "engagement" => {
+                engagement = Some(EngagementId::parse(value).ok_or(Fail::Input("invalid_args"))?)
+            }
+            "campaign" => {
+                campaign = Some(CampaignId::parse(value).ok_or(Fail::Input("invalid_args"))?)
+            }
+            "generation" => {
+                generation = Some(
+                    value
+                        .parse::<u64>()
+                        .map_err(|_| Fail::Input("invalid_generation"))?,
+                )
+            }
             _ => return Err(Fail::Input("invalid_args")),
         }
         i += 2;
@@ -64,7 +79,11 @@ pub(super) fn cmd_m1_session(args: &[String]) -> Res<()> {
             );
         }
         "release" => {
-            fence.release_m1_session(engagement, campaign, generation.ok_or(Fail::Input("missing_generation"))?)?;
+            fence.release_m1_session(
+                engagement,
+                campaign,
+                generation.ok_or(Fail::Input("missing_generation"))?,
+            )?;
             println!(
                 "{}",
                 serde_json::to_string(&serde_json::json!({
@@ -78,6 +97,6 @@ pub(super) fn cmd_m1_session(args: &[String]) -> Res<()> {
         }
         _ => return Err(Fail::Input("invalid_action")),
     }
-    
+
     Ok(())
 }

@@ -44,4 +44,3 @@ fn session_fence_can_be_prepared_and_released() {
     let generation2 = fence.prepare_m1_session(e, c).unwrap();
     assert_eq!(generation2, 2);
 }
-

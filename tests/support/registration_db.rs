@@ -27,8 +27,7 @@ pub const WITHDRAWAL_REFUSAL_MIGRATION: &str =
     include_str!("../../migrations/0006_planning_withdrawal_refusal.sql");
 pub const ELIGIBILITY_MIGRATION: &str =
     include_str!("../../migrations/0007_planning_eligibility.sql");
-pub const M1_SESSION_MIGRATION: &str =
-    include_str!("../../migrations/0008_m1_session_fence.sql");
+pub const M1_SESSION_MIGRATION: &str = include_str!("../../migrations/0008_m1_session_fence.sql");
 
 /// Serializes DB tests (SSI predicate locks intentionally abort racing
 /// serializable transactions) and applies one-time admin setup.
