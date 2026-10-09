@@ -227,12 +227,12 @@ fn overprivileged_logins_fail_shared_qualification_before_mutation() {
         ),
         (
             format!("GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {p}"),
-            format!(
-                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"
-            ),
+            format!("REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"),
         ),
         (
-            format!("GRANT TRIGGER ON trajectory.withdrawal_history TO {PROBE}; GRANT {PROBE} TO {p}"),
+            format!(
+                "GRANT TRIGGER ON trajectory.withdrawal_history TO {PROBE}; GRANT {PROBE} TO {p}"
+            ),
             format!(
                 "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PROBE}"
             ),
