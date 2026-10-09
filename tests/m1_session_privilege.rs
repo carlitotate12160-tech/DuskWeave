@@ -184,6 +184,16 @@ fn overprivileged_execution_logins_fail_qualification_before_mutation() {
             format!("GRANT TRUNCATE ON execution.session_history TO {p}"),
             format!("REVOKE TRUNCATE ON execution.session_history FROM {p}"),
         ),
+        // TRIGGER grants enable attaching a tampering/DoS trigger inside the
+        // definer functions' own mutations — outside RLS entirely.
+        (
+            format!("GRANT TRIGGER ON execution.session_fences TO {p}"),
+            format!("REVOKE TRIGGER ON execution.session_fences FROM {p}"),
+        ),
+        (
+            format!("GRANT TRIGGER ON execution.session_history TO {p}"),
+            format!("REVOKE TRIGGER ON execution.session_history FROM {p}"),
+        ),
         // Inherited table privilege through a group role.
         (
             format!("GRANT UPDATE ON execution.session_fences TO {PROBE}; GRANT {PROBE} TO {p}"),
