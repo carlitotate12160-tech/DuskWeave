@@ -324,6 +324,14 @@ fn ordinary_writers_and_impersonators_are_fenced() {
             )
             .is_err()
     );
+    // Baseline first: clear any leftover mutation grant so this test is
+    // self-healing even if a prior run stopped between GRANT and REVOKE.
+    admin_db_client()
+        .batch_execute(
+            "REVOKE UPDATE, DELETE ON execution.session_fences FROM dw_runtime; \
+             REVOKE UPDATE, DELETE, TRUNCATE ON execution.session_history FROM dw_runtime",
+        )
+        .unwrap();
     // Runtime cannot mutate, truncate or role-shift into the fence.
     for sql in [
         "UPDATE execution.session_fences SET operation_id=NULL",
@@ -336,6 +344,37 @@ fn ordinary_writers_and_impersonators_are_fenced() {
             "runtime must be denied: {sql}"
         );
     }
+    // Even an over-provisioned grant cannot mutate the fence: RLS filters
+    // all non-owner rows so DML silently affects zero, and the trigger
+    // denies TRUNCATE outright. Assert the effect, not just the error.
+    admin_db_client()
+        .batch_execute(
+            "GRANT UPDATE, DELETE ON execution.session_fences TO dw_runtime; \
+             GRANT UPDATE, DELETE, TRUNCATE ON execution.session_history TO dw_runtime",
+        )
+        .unwrap();
+    for sql in [
+        "UPDATE execution.session_fences SET operation_id=NULL",
+        "DELETE FROM execution.session_history",
+    ] {
+        match rt.execute(sql, &[]) {
+            Err(_) => {}
+            Ok(0) => {}
+            Ok(n) => panic!("over-granted mutation affected {n} rows: {sql}"),
+        }
+    }
+    assert!(
+        rt.batch_execute("TRUNCATE execution.session_history")
+            .is_err()
+    );
+    assert_eq!(fence(e, c).unwrap().0, "prepared_no_effects");
+    assert_eq!(history_count(e, c), 1);
+    admin_db_client()
+        .batch_execute(
+            "REVOKE UPDATE, DELETE ON execution.session_fences FROM dw_runtime; \
+             REVOKE UPDATE, DELETE, TRUNCATE ON execution.session_history FROM dw_runtime",
+        )
+        .unwrap();
     assert_eq!(
         session(
             &mut PgSessionStore::new(rt),

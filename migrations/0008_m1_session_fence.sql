@@ -210,3 +210,31 @@ REVOKE ALL ON FUNCTION execution.prepare_session(uuid,uuid,uuid,uuid,bigint,json
 REVOKE ALL ON FUNCTION execution.release_prepared_session(uuid,uuid,uuid,uuid,bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION execution.prepare_session(uuid,uuid,uuid,uuid,bigint,jsonb),
     execution.release_prepared_session(uuid,uuid,uuid,uuid,bigint) TO dw_m1_broker;
+
+-- Defense in depth against an over-provisioned runtime/Broker login: RLS
+-- permits SELECT for every non-owner role and nothing else — direct
+-- INSERT/UPDATE/DELETE are denied even if a later grant adds table-level
+-- mutation rights, and TRUNCATE (not subject to RLS) is denied by trigger.
+-- Every legitimate mutation runs inside the SECURITY DEFINER functions and
+-- guards as the table owner, which RLS does not constrain.
+ALTER TABLE execution.session_fences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE execution.session_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS session_fences_read ON execution.session_fences;
+CREATE POLICY session_fences_read ON execution.session_fences
+    FOR SELECT USING (true);
+DROP POLICY IF EXISTS session_history_read ON execution.session_history;
+CREATE POLICY session_history_read ON execution.session_history
+    FOR SELECT USING (true);
+CREATE OR REPLACE FUNCTION execution.deny_session_mutation() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE='P0001', MESSAGE='session_table_immutable';
+END $$;
+DROP TRIGGER IF EXISTS session_fences_no_truncate ON execution.session_fences;
+CREATE TRIGGER session_fences_no_truncate BEFORE TRUNCATE
+ON execution.session_fences FOR EACH STATEMENT
+EXECUTE FUNCTION execution.deny_session_mutation();
+DROP TRIGGER IF EXISTS session_history_no_truncate ON execution.session_history;
+CREATE TRIGGER session_history_no_truncate BEFORE TRUNCATE
+ON execution.session_history FOR EACH STATEMENT
+EXECUTE FUNCTION execution.deny_session_mutation();

@@ -47,6 +47,17 @@ pub fn ensure_broker_logins() {
     });
 }
 
+/// Administrative connection bound to the test database itself — the plain
+/// admin DSN targets the maintenance database; table-local grants need the
+/// fixture database.
+pub fn admin_db_client() -> Client {
+    let rt = db_support::dsn("DW_TEST_DATABASE_URL");
+    let db = rt.get_dbname().expect("runtime dbname").to_string();
+    let mut a = db_support::dsn("DW_TEST_ADMIN_DATABASE_URL");
+    a.dbname(&db);
+    a.connect(NoTls).expect("admin db connect failed")
+}
+
 /// Qualified runtime-and-Broker member connection for the guarded functions.
 pub fn broker_client() -> Client {
     let mut cfg = db_support::dsn("DW_TEST_DATABASE_URL");

@@ -110,9 +110,10 @@ exists, and `outcome`:
 | `unknown` | Outcome unresolved — transport, commit or acknowledgment ambiguity |
 
 `refused` covers both categorical denials and retryable aborts: the
-stderr reason distinguishes them — `serialization_retry` (SQLSTATE
-40001/40P01) rolled back cleanly and the identical request may be
-retried, while `session_*`/input refusals are categorical. After
+`error=` line printed after the receipt distinguishes them —
+`serialization_retry` (SQLSTATE 40001/40P01) rolled back cleanly and
+the identical request may be retried, while `session_*`/input refusals
+are categorical. After
 `unknown` or exit 124, run `recover` on a fresh connection before
 any explicit retry: exit 124 means caller stop, not SQL rollback. Never
 infer absence, success or rollback from missing output. The retry is the
