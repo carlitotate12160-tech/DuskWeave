@@ -15,6 +15,24 @@ impl PgPreparedWithdrawalStore {
     pub fn new(client: Client) -> Self {
         Self { client }
     }
+
+    /// One transaction/acknowledgment boundary for both fixed queries.
+    /// No returned record is decoded before its transaction has committed.
+    fn query_record(
+        &mut self,
+        sql: &str,
+        params: &[&(dyn postgres::types::ToSql + Sync)],
+    ) -> Res<Option<PreparedWithdrawalRecord>> {
+        let mut tx = self
+            .client
+            .build_transaction()
+            .isolation_level(IsolationLevel::Serializable)
+            .start()
+            .map_err(|e| error(&e))?;
+        let row = tx.query_opt(sql, params).map_err(|e| error(&e))?;
+        tx.commit().map_err(|e| commit_error(&e))?;
+        row.map(decode).transpose()
+    }
 }
 
 fn error(e: &postgres::Error) -> Fail {
@@ -86,19 +104,9 @@ impl PreparedWithdrawalStore for PgPreparedWithdrawalStore {
             &reason,
             &source,
         ];
-        let mut tx = self
-            .client
-            .build_transaction()
-            .isolation_level(IsolationLevel::Serializable)
-            .start()
-            .map_err(|e| error(&e))?;
-        let row = tx
-            .query_opt(
-                if recover { RECOVER } else { SUBMIT },
-                &params[..if recover { 3 } else { 9 }],
-            )
-            .map_err(|e| error(&e))?;
-        tx.commit().map_err(|e| commit_error(&e))?;
-        row.map(decode).transpose()
+        self.query_record(
+            if recover { RECOVER } else { SUBMIT },
+            &params[..if recover { 3 } else { 9 }],
+        )
     }
 }

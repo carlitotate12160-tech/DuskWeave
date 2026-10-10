@@ -1,5 +1,7 @@
 //! Prepared-only withdrawal ingress; no host STOP or execution claim.
-use duskweave::m1_prepared_withdrawal::{self, PreparedWithdrawalRecord};
+use duskweave::m1_prepared_withdrawal::{
+    self, PreparedWithdrawalRecord, PreparedWithdrawalRequest,
+};
 use duskweave::m1_session_input::read_prepared_withdrawal_file;
 use duskweave::mission::OperationId;
 use duskweave::postgres_mission::PgMissionStore;
@@ -21,14 +23,21 @@ fn receipt(record: &PreparedWithdrawalRecord, recover: bool) -> serde_json::Valu
     super::durable_receipt(record.event.clone(), history)
 }
 
-pub(super) fn command(args: &[String]) -> Res<()> {
+/// Parse the closed command/input surface before constructing any database port.
+fn parse(args: &[String]) -> Res<(OperationId, bool, PreparedWithdrawalRequest)> {
     let flags = super::flags(args, &["operation", "input", "recover"])?;
     let op = OperationId::parse(super::flag(&flags, "operation")?)
         .ok_or(Fail::Input("invalid_operation"))?;
     let recover = super::flag(&flags, "recover")?
         .parse::<bool>()
         .map_err(|_| Fail::Input("invalid_args"))?;
-    let request = read_prepared_withdrawal_file(Path::new(super::flag(&flags, "input")?))?;
+    let request = super::flag(&flags, "input")
+        .and_then(|path| read_prepared_withdrawal_file(Path::new(path)))?;
+    Ok((op, recover, request))
+}
+
+pub(super) fn command(args: &[String]) -> Res<()> {
+    let (op, recover, request) = parse(args)?;
     request.validate(op)?;
     let outcome = (|| {
         let mut store = PgPreparedWithdrawalStore::new(super::connect()?);
