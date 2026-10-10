@@ -225,8 +225,8 @@ No product acceptance, capability authorization or historical seal changes.
 ## 10. M1 Trigger Qualification Correction
 
 On 2026-10-10, `DW-FIX-M1-TRIGGER-QUALIFICATION` on PR #48 corrected the authorization logic and test assertions:
-- **F1 FIXED**: Added rejection of SET-reachable TRIGGER authority in `src/postgres_mission.rs`. Direct privileges were already rejected before F1, so this block did not actually grant new permission, but it represented an invalid qualification path.
+- **F1 FIXED**: Added rejection of SET-reachable TRIGGER authority in `src/postgres_mission.rs` preventing bypass. Direct privileges were already rejected before F1.
 - **F2 FIXED**: Modified `tests/m1_session_privilege.rs` to implement an actual complete snapshot of `session_history` via JSONB aggregate without limit/substitution.
-- **F3 FIXED**: Complete runtime evidence was collected natively on `dwpg-r3` confirming the proper rejection of trigger-capable roles and that the `session_history` parsing executes flawlessly.
+- **F3 PENDING**: Retrospective SQL RED/GREEN boundary test (checking `8338f5e` against HEAD) confirmed the old SQL incorrectly evaluated to `true` (RED) and the new SQL properly evaluates to `false` (GREEN) when checking a SET-reachable TRIGGER authority. Previous full suite attempts had mismatching logs or were unverified. Final full native coverage run is pending.
 
 This is recorded before final verification for R1 delivery.
