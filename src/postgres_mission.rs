@@ -312,7 +312,12 @@ impl MissionStore for PgMissionStore {
         row.map(|row| decode_registration(&row)).transpose()
     }
 }
-
+/// Verifies the current PostgreSQL session environment for strict campaign runtime safety.
+///
+/// This qualification blocks any connections attempting to run without safe crash-durability
+/// settings (fsync/full_page_writes), superusers, schema manipulators (DDL-capable roles),
+/// or any role holding disallowed privileges (e.g. `TRIGGER`, `UPDATE`, `DELETE`) on
+/// `mission`, `trajectory`, or `execution` tables.
 pub fn qualify_runtime(c: &mut Client) -> Res<()> {
     let ok: bool = c
         .query_one(
@@ -339,8 +344,9 @@ pub fn qualify_runtime(c: &mut Client) -> Res<()> {
                       (SELECT oid FROM pg_roles WHERE rolname = current_user) \
                      OR (n.nspname = 'execution' \
                          AND (pg_has_role(current_user, cl.relowner, 'MEMBER') \
-                              OR has_table_privilege(current_user, cl.oid, 'INSERT') \
-                              OR has_table_privilege(current_user, cl.oid, 'TRIGGER'))) \
+                              OR has_table_privilege(current_user, cl.oid, 'INSERT'))) \
+                     OR has_table_privilege(current_user, cl.oid, 'TRIGGER') \
+                     OR EXISTS (SELECT 1 FROM pg_roles r WHERE pg_has_role(session_user, r.oid, 'SET') AND has_table_privilege(r.oid, cl.oid, 'TRIGGER')) \
                      OR has_table_privilege(current_user, cl.oid, 'UPDATE') \
                      OR has_table_privilege(current_user, cl.oid, 'DELETE') \
                      OR has_table_privilege(current_user, cl.oid, 'TRUNCATE')))",

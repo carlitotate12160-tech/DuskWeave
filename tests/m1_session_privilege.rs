@@ -1,10 +1,11 @@
-//! Real-role qualification coverage for the execution schema: a Broker-class
-//! login carrying any execution CREATE/ownership/mutation capability must
-//! fail shared runtime qualification before a session mutation through the
-//! actual CLI, while baseline actors still qualify. Admin is fixture control
+//! Real-role qualification coverage for the shared database boundary: a Broker-class
+//! login carrying any execution CREATE/ownership/mutation capability or prohibited
+//! shared privilege must fail shared runtime qualification before a session mutation
+//! through the actual CLI, while baseline actors still qualify. Admin is fixture control
 //! only; cluster-wide grants serialize under db_support::db(), and every
 //! probe restores exact original grants/owners and re-qualifies cleanly.
 
+use duskweave::Fail;
 use duskweave::mission::{CampaignId, EngagementId, OperationId};
 use duskweave::postgres_mission::qualify_runtime;
 use serde_json::Value;
@@ -21,6 +22,7 @@ mod wait_db;
 use session_support::*;
 
 const PROBE: &str = "dw_m1_exec_probe";
+const MID: &str = "dw_m1_set_mid";
 
 fn run_cli(args: &[String], dsn: &str) -> Output {
     wait_db::run_bounded(&mut wait_db::cli(args, dsn), Duration::from_secs(15)).0
@@ -66,6 +68,22 @@ fn session_args(action: &str, op: OperationId, path: &str) -> Vec<String> {
     ]
 }
 
+fn history_snapshot(e: EngagementId, c: CampaignId) -> Value {
+    let mut client = priv_client();
+    client
+        .query_one(
+            "SELECT COALESCE(
+             jsonb_agg(to_jsonb(h) ORDER BY h.operation_id, h.kind),
+             '[]'::jsonb
+             )
+             FROM execution.session_history h
+             WHERE h.engagement_id=$1 AND h.campaign_id=$2",
+            &[&e.0, &c.0],
+        )
+        .unwrap()
+        .get(0)
+}
+
 /// One over-privilege case: apply, prove qualification fails and the real
 /// CLI refuses before any session mutation, restore, prove clean.
 fn expect_unqualified(
@@ -75,41 +93,103 @@ fn expect_unqualified(
     args: &[String],
     e: EngagementId,
     c: CampaignId,
-    baseline_history: i64,
 ) {
+    let pre_fence = fence(e, c);
+    let pre_history = history_snapshot(e, c);
     admin.batch_execute(grant).unwrap();
-    assert!(
-        qualify_runtime(&mut priv_client()).is_err(),
-        "qualification accepted over-privilege: {grant}"
-    );
-    let out = run_cli(args, &priv_dsn(db_port()));
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "CLI must refuse before mutation: {grant}"
-    );
-    let r = receipt(&out);
-    assert_eq!(r["outcome"], "refused", "{grant}");
-    assert_flags_off(&r);
-    assert!(
-        String::from_utf8_lossy(&out.stdout).contains("error=unqualified_runtime"),
-        "qualification refusal must surface on stdout: {grant}"
-    );
-    assert_no_leaks(&out);
-    assert_eq!(
-        history_count(e, c),
-        baseline_history,
-        "refusal happened after a session mutation: {grant}"
-    );
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert_eq!(
+            qualify_runtime(&mut priv_client()),
+            Err(Fail::Config("unqualified_runtime")),
+            "qualification accepted over-privilege or wrong error: {grant}"
+        );
+        let out = run_cli(args, &priv_dsn(db_port()));
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "CLI must refuse before mutation: {grant}"
+        );
+        let r = receipt(&out);
+        assert_eq!(r["outcome"], "refused", "{grant}");
+        assert_flags_off(&r);
+        assert!(
+            String::from_utf8_lossy(&out.stdout).contains("error=unqualified_runtime"),
+            "qualification refusal must surface on stdout: {grant}"
+        );
+        assert_no_leaks(&out);
+        assert_eq!(
+            history_snapshot(e, c),
+            pre_history,
+            "refusal happened after a session mutation: {grant}"
+        );
+        assert_eq!(
+            pre_fence,
+            fence(e, c),
+            "fence changed during refused operation: {grant}"
+        );
+    }));
     admin.batch_execute(revoke).unwrap();
     assert!(
         qualify_runtime(&mut priv_client()).is_ok(),
         "restore left residual privilege: {revoke}"
     );
+    if let Err(err) = result {
+        std::panic::resume_unwind(err);
+    }
 }
 
+fn expect_qualified(
+    admin: &mut postgres::Client,
+    grant: &str,
+    revoke: &str,
+    args: &[String],
+    e: EngagementId,
+    c: CampaignId,
+) {
+    let pre_fence = fence(e, c);
+    let pre_history = history_snapshot(e, c);
+    admin.batch_execute(grant).unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert!(
+            qualify_runtime(&mut priv_client()).is_ok(),
+            "qualification rejected valid privilege: {grant}"
+        );
+        let out = run_cli(args, &priv_dsn(db_port()));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        let r = receipt(&out);
+        assert_eq!(r["outcome"], "durable");
+        assert_eq!(r["record"]["kind"], "prepared_no_effects");
+        assert_flags_off(&r);
+        assert_eq!(
+            history_snapshot(e, c),
+            pre_history,
+            "history changed during replay: {grant}"
+        );
+        assert_eq!(
+            pre_fence,
+            fence(e, c),
+            "fence changed during replay: {grant}"
+        );
+    }));
+    admin.batch_execute(revoke).unwrap();
+    assert!(
+        qualify_runtime(&mut priv_client()).is_ok(),
+        "restore left residual privilege: {revoke}"
+    );
+    if let Err(err) = result {
+        std::panic::resume_unwind(err);
+    }
+}
+
+/// Tests that logins granted prohibited database privileges (e.g. TRIGGER, UPDATE, DELETE,
+/// TRUNCATE) on shared mission, trajectory, or execution tables are rejected during
+/// runtime qualification before they can perform any mutations or effects.
 #[test]
-fn overprivileged_execution_logins_fail_qualification_before_mutation() {
+fn overprivileged_logins_fail_shared_qualification_before_mutation() {
     let _g = db();
     ensure_broker_logins();
     ensure_priv_login();
@@ -126,22 +206,27 @@ fn overprivileged_execution_logins_fail_qualification_before_mutation() {
         .batch_execute(&format!(
             "DO $$ BEGIN \
              IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{PROBE}') THEN \
-             CREATE ROLE {PROBE} NOLOGIN; END IF; END $$; \
+             CREATE ROLE {PROBE} NOLOGIN; END IF; \
+             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{MID}') THEN \
+             CREATE ROLE {MID} NOLOGIN; END IF; END $$; \
              GRANT {PROBE} TO {owner}; \
+             GRANT {MID} TO {owner}; \
              ALTER SCHEMA execution OWNER TO {owner}; \
              ALTER TABLE execution.session_fences OWNER TO {owner}; \
              ALTER TABLE execution.session_history OWNER TO {owner}; \
+             ALTER TABLE mission.withdrawals OWNER TO {owner}; \
              REVOKE {PROBE} FROM {owner}; \
+             REVOKE {MID} FROM {owner}; \
              REVOKE {PROBE} FROM {PRIV_BROKER}; \
+             REVOKE {MID} FROM {PRIV_BROKER}; \
+             REVOKE {PROBE} FROM {MID}; \
              REVOKE CREATE ON SCHEMA execution FROM {PRIV_BROKER}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_fences FROM {PRIV_BROKER}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_history FROM {PRIV_BROKER}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_fences FROM {PROBE}; \
-             REVOKE INSERT, UPDATE, DELETE, TRUNCATE \
-             ON execution.session_history FROM {PROBE}"
+             REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER \
+             ON execution.session_fences FROM {PRIV_BROKER}, {PROBE}, {MID}; \
+             REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER \
+             ON execution.session_history FROM {PRIV_BROKER}, {PROBE}, {MID}; \
+             REVOKE TRIGGER ON mission.withdrawals FROM {PRIV_BROKER}, {PROBE}, {MID}; \
+             REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PRIV_BROKER}, {PROBE}, {MID}"
         ))
         .unwrap();
     // Baseline: the ordinary runtime login and the restricted probe Broker
@@ -158,8 +243,6 @@ fn overprivileged_execution_logins_fail_qualification_before_mutation() {
     assert_eq!(r["outcome"], "durable");
     assert_eq!(r["record"]["kind"], "prepared_no_effects");
     assert_flags_off(&r);
-    let baseline_history = history_count(e, c);
-    assert_eq!(baseline_history, 1);
     let p = PRIV_BROKER;
     for (grant, revoke) in [
         // Effective CREATE on the execution schema.
@@ -218,18 +301,95 @@ fn overprivileged_execution_logins_fail_qualification_before_mutation() {
                 "REVOKE {PROBE} FROM {p}; ALTER TABLE execution.session_history OWNER TO {owner}"
             ),
         ),
+        // TRIGGER grants on shared mission and trajectory schemas.
+        (
+            format!("GRANT TRIGGER ON mission.withdrawals TO {p}"),
+            format!("REVOKE TRIGGER ON mission.withdrawals FROM {p}"),
+        ),
+        (
+            format!("GRANT TRIGGER ON trajectory.withdrawal_history TO {p}"),
+            format!("REVOKE TRIGGER ON trajectory.withdrawal_history FROM {p}"),
+        ),
+        (
+            format!("GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {p}"),
+            format!("REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"),
+        ),
+        (
+            format!(
+                "GRANT TRIGGER ON trajectory.withdrawal_history TO {PROBE}; GRANT {PROBE} TO {p}"
+            ),
+            format!(
+                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PROBE}"
+            ),
+        ),
+        // INHERIT FALSE, SET TRUE TRIGGER role
+        (
+            format!(
+                "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!("REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"),
+        ),
+        (
+            format!(
+                "GRANT TRIGGER ON trajectory.withdrawal_history TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!(
+                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON trajectory.withdrawal_history FROM {PROBE}"
+            ),
+        ),
+        (
+            format!(
+                "GRANT TRIGGER ON execution.session_fences TO {PROBE}; GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!(
+                "REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON execution.session_fences FROM {PROBE}"
+            ),
+        ),
+        // A transitive SET TRUE chain to the TRIGGER role: refused.
+        (
+            format!(
+                "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; \
+                 GRANT {PROBE} TO {MID} WITH INHERIT FALSE, SET TRUE; \
+                 GRANT {MID} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!(
+                "REVOKE {MID} FROM {p}; REVOKE {PROBE} FROM {MID}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"
+            ),
+        ),
+        // A SET-reachable owner of mission.withdrawals: refused; restore original owner.
+        (
+            format!(
+                "ALTER TABLE mission.withdrawals OWNER TO {PROBE}; \
+                 GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!("REVOKE {PROBE} FROM {p}; ALTER TABLE mission.withdrawals OWNER TO {owner}"),
+        ),
     ] {
-        expect_unqualified(&mut admin, &grant, &revoke, &args, e, c, baseline_history);
+        expect_unqualified(&mut admin, &grant, &revoke, &args, e, c);
     }
     // Clean qualification afterward: the restored probe Broker replays its
     // own durable record through the real CLI.
-    let out = run_cli(&args, &priv_dsn(db_port()));
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stdout)
-    );
-    assert_eq!(receipt(&out)["outcome"], "durable");
-    assert_flags_off(&receipt(&out));
-    assert_eq!(fence(e, c).unwrap().0, "prepared_no_effects");
+    for (grant, revoke) in [
+        // Direct membership WITH INHERIT FALSE, SET FALSE.
+        (
+            format!(
+                "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; \
+                 GRANT {PROBE} TO {p} WITH INHERIT FALSE, SET FALSE"
+            ),
+            format!("REVOKE {PROBE} FROM {p}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"),
+        ),
+        // Transitive chain dengan satu edge SET FALSE dan inheritance dinonaktifkan.
+        (
+            format!(
+                "GRANT TRIGGER ON mission.withdrawals TO {PROBE}; \
+                 GRANT {PROBE} TO {MID} WITH INHERIT FALSE, SET FALSE; \
+                 GRANT {MID} TO {p} WITH INHERIT FALSE, SET TRUE"
+            ),
+            format!(
+                "REVOKE {MID} FROM {p}; REVOKE {PROBE} FROM {MID}; REVOKE TRIGGER ON mission.withdrawals FROM {PROBE}"
+            ),
+        ),
+    ] {
+        expect_qualified(&mut admin, &grant, &revoke, &args, e, c);
+    }
 }
