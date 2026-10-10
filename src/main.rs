@@ -23,6 +23,7 @@ mod authority_confirmation;
 mod database_config;
 mod database_wait;
 mod m1_policy_cli;
+mod m1_prepared_withdrawal_cli;
 mod m1_session_cli;
 mod planning_cli;
 

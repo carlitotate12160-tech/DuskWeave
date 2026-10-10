@@ -78,6 +78,66 @@ a used operation conflicts. While a claim is held, ordinary INSERTs into
 own ordinary path — are refused by the writer guard, which creates the
 idle fence row when needed.
 
+## Withdraw the prepared session
+
+```text
+duskweave m1-session-withdraw --operation UUID --input FILE --recover false
+```
+
+The withdrawal operation must be non-nil and distinct from the session
+operation. Its strict JSON input is at most 16 KiB, with exactly:
+
+```json
+{
+  "withdrawal": {
+    "engagement_id": "uuid",
+    "campaign_id": "uuid",
+    "operator_ref": "uuid",
+    "expected_mission_revision": 1,
+    "reason": "operator_requested"
+  },
+  "session_operation_id": "uuid",
+  "expected_session_generation": 1
+}
+```
+
+All identities must be non-nil; generation must be positive. The existing
+reason vocabulary also permits `authorization_ended` and `scope_concern`.
+Unknown outer/nested fields, oversized input and invalid identities fail
+before database access, without echoing rejected bytes or file paths.
+
+Only the actual original Broker login, bound by its `session_user` OID,
+may submit or mutably replay the exact prepared session/generation.
+Operator fields, SET ROLE and custom GUCs cannot supply that identity.
+Mission owns the withdrawal and publication obligation; the immutable
+execution link records attribution. Both commit atomically. The fence
+stays `prepared_no_effects` with the same operation, generation and login;
+its MVCC epoch advances. Ordinary authority writers remain fenced.
+Withdrawal is allowed after operating-window expiry because it removes
+authority. No qualification flag becomes true.
+
+Identical explicit submit returns the original event/time/full payload
+and may finish pending Trajectory history exactly once. It may also replay
+after explicit release without reviving authority. Changed content or
+login conflicts. A fresh prepare remains denied after withdrawal,
+including after release.
+
+Use the same command and exact input/operation with `--recover true` on a
+fresh qualified runtime connection after an unknown outcome or exit 124.
+Recovery only inspects the immutable link, actual Mission catalog and
+existing history. It neither publishes pending history nor changes the
+fence. Missing owner rows or inconsistent contracts are integrity errors,
+never proof of absence. An ordinary runtime reader gains no writer rights.
+
+Withdrawal receipts name the withdrawal operation, session operation and
+expected generation. Existing owner/history projections distinguish
+`durable` owner commit from pending/unknown history, `not_committed` from
+missing recovery, and unresolved invocation from confirmed rejection.
+All four qualification flags remain false; `continuation_blocked` is
+true. Only SQLSTATE 40001/40P01 COMMIT failures establish a known abort.
+Other COMMIT/reply failures and watchdog exit 124 require recovery before
+any explicit retry. No receipt claims host STOP or target-effect evidence.
+
 ## Release
 
 Only the original prepared operation, operator, revision and same login
@@ -126,10 +186,14 @@ same identity — the fenced operation replays its original record.
    with the Broker credential source.
 3. While prepared, ordinary authority writes on the scope are refused;
    unrelated scopes stay writable.
-4. Before M0 withdrawal of the scope, run `m1-session --action release`
-   with the same operation/operator/login; withdrawal of a claimed scope
-   is fenced until release.
-5. Any `unknown` or 124 outcome: `m1-session --action recover` first.
+4. To withdraw that prepared scope, allocate a distinct withdrawal UUID
+   and run `m1-session-withdraw --recover false` with the original Broker
+   login and exact session/generation input. Explicit release is separate;
+   ordinary M0 withdrawal remains fenced while prepared.
+5. Any `unknown` or 124 outcome: recover the invoked command's original
+   operation on a fresh connection before retrying. For prepared withdrawal
+   use `m1-session-withdraw --recover true`; for session lifecycle commands
+   use `m1-session --action recover`.
 
 ## Limits
 

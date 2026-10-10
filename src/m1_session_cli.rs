@@ -61,6 +61,9 @@ fn parse(args: &[String]) -> Res<(SessionAction, OperationId, SessionRequest)> {
 
 /// Main's default dispatch delegates only this exact additional command.
 pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
+    if command == "m1-session-withdraw" {
+        return super::m1_prepared_withdrawal_cli::command(args);
+    }
     if command != "m1-session" {
         return Err(Fail::Input("unknown_command"));
     }

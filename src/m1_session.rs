@@ -133,7 +133,10 @@ fn check_source(
     Ok(event)
 }
 
-fn original_source(reader: &mut impl MissionStore, r: &SessionRequest) -> Res<MissionRegistered> {
+pub(crate) fn original_source(
+    reader: &mut impl MissionStore,
+    r: &SessionRequest,
+) -> Res<MissionRegistered> {
     let view = reader
         .mission_view(r.engagement_id, r.campaign_id)?
         .ok_or(Fail::State("session_mission_missing"))?;
