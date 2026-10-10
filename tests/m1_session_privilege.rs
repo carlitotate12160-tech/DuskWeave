@@ -68,6 +68,22 @@ fn session_args(action: &str, op: OperationId, path: &str) -> Vec<String> {
     ]
 }
 
+fn history_snapshot(e: EngagementId, c: CampaignId) -> Value {
+    let mut client = priv_client();
+    client
+        .query_one(
+            "SELECT COALESCE(
+             jsonb_agg(to_jsonb(h) ORDER BY h.operation_id, h.kind),
+             '[]'::jsonb
+             )
+             FROM execution.session_history h
+             WHERE h.engagement_id=$1 AND h.campaign_id=$2",
+            &[&e.0, &c.0],
+        )
+        .unwrap()
+        .get(0)
+}
+
 /// One over-privilege case: apply, prove qualification fails and the real
 /// CLI refuses before any session mutation, restore, prove clean.
 fn expect_unqualified(
@@ -77,10 +93,9 @@ fn expect_unqualified(
     args: &[String],
     e: EngagementId,
     c: CampaignId,
-    op: OperationId,
 ) {
     let pre_fence = fence(e, c);
-    let pre_history = history(e, c, op);
+    let pre_history = history_snapshot(e, c);
     admin.batch_execute(grant).unwrap();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         assert_eq!(
@@ -103,7 +118,7 @@ fn expect_unqualified(
         );
         assert_no_leaks(&out);
         assert_eq!(
-            history(e, c, op),
+            history_snapshot(e, c),
             pre_history,
             "refusal happened after a session mutation: {grant}"
         );
@@ -130,10 +145,9 @@ fn expect_qualified(
     args: &[String],
     e: EngagementId,
     c: CampaignId,
-    op: OperationId,
 ) {
     let pre_fence = fence(e, c);
-    let pre_history = history(e, c, op);
+    let pre_history = history_snapshot(e, c);
     admin.batch_execute(grant).unwrap();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         assert!(
@@ -151,7 +165,7 @@ fn expect_qualified(
         assert_eq!(r["record"]["kind"], "prepared_no_effects");
         assert_flags_off(&r);
         assert_eq!(
-            history(e, c, op),
+            history_snapshot(e, c),
             pre_history,
             "history changed during replay: {grant}"
         );
@@ -351,7 +365,7 @@ fn overprivileged_logins_fail_shared_qualification_before_mutation() {
             format!("REVOKE {PROBE} FROM {p}; ALTER TABLE mission.withdrawals OWNER TO {owner}"),
         ),
     ] {
-        expect_unqualified(&mut admin, &grant, &revoke, &args, e, c, op);
+        expect_unqualified(&mut admin, &grant, &revoke, &args, e, c);
     }
     // Clean qualification afterward: the restored probe Broker replays its
     // own durable record through the real CLI.
@@ -376,6 +390,6 @@ fn overprivileged_logins_fail_shared_qualification_before_mutation() {
             ),
         ),
     ] {
-        expect_qualified(&mut admin, &grant, &revoke, &args, e, c, op);
+        expect_qualified(&mut admin, &grant, &revoke, &args, e, c);
     }
 }
