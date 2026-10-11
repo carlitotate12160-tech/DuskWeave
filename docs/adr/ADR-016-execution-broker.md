@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | ACCEPTED — product owner, 2026-10-06; M1 selected lane only |
 | Date | 2026-10-06 |
-| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds generated-worker nested-effect admission and independent cognition/build budgets, published under the owner-approved 2026-10-07 direction with exact-text acceptance recorded separately |
+| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds generated-worker nested-effect admission and independent cognition/build budgets, published under the owner-approved 2026-10-07 direction. R3 proposes the initial bounded inference-repair profile; amendment exact-text status follows ENGINEERING_STATE.md |
 | Authoring base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-003/005/013/015; Stage 12 product-input rebind in accepted M1 enabling section 2 |
@@ -181,6 +181,20 @@ reservation and uncertain consumption survive restart; uncertain effects are not
 or replayed. Recovery first reconciles durable state, then replans. Withdrawal stops new
 inference/build/dispatch work and cancels owned workers; already-sent provider data and
 network effects cannot be retroactively recalled.
+
+For the initial cognitive decision profile, reserve finite call, input/output and total
+wall-time capacity for one generation and at most one conditional schema repair: two
+calls total per decision, not a replenishable campaign allowance. Token ceilings include
+provider reasoning tokens where applicable. Campaign remainder and deployment ceilings
+still govern; insufficient capacity prevents a new decision rather than promising repair
+that cannot be afforded. Each actual call has a durable identity and consumption state.
+Repair is not an automatic transport retry and cannot repair authority/scope/provenance
+refusal, execute an action or erase the original failure. Lost response/ACK remains
+uncertain consumed capacity; recovery does not call the provider, refill quota or replay
+the request. A later separately admitted decision consumes remaining campaign budget.
+Qualification must exercise malformed/empty/truncated output, exhausted repair capacity,
+duplicate/concurrent identities, restart, withdrawal and consumer recovery. Numeric profile
+selection does not qualify its storage, cancellation or transport implementation.
 
 ## 5. Consequences
 

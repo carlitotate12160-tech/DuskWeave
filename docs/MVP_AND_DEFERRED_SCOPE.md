@@ -2,7 +2,7 @@
 
 | Metadata | Value |
 | :--- | :--- |
-| Recorded | Initial direction 2026-09-30; offensive-direction guardrails 2026-10-03 |
+| Recorded | Initial direction 2026-09-30; offensive-direction guardrails 2026-10-03; cognitive MVP scope/phase confirmation 2026-10-11 |
 | Review base | `d7297dad0f5269b3d95e2bd9dc1d28919c2ecd97` |
 | Status | Owner-approved direction; M1 product/behavior contract and linear delivery ACCEPTED 2026-10-06; M1 cognitive direction approved 2026-10-07 (R2); enabling architecture and implementation remain subject to accepted authority |
 | Authority | PRD-000..010 and ADR-001..008; DW-FOUNDATION-001 unchanged |
@@ -20,6 +20,28 @@ Preserve DuskWeave's campaign reasoning identity, Strategic/Access/Expansion/Obj
 - Add one mission-relevant family of dependency or identity/trust relationships through eligible acquisition and owner reconciliation. Relationship discovery supplies a sourced candidate, not access or third-party execution authority.
 - Owner-approved delivery rhythm: minimum accepted outcome/contracts -> code/tests -> demo -> same-head review/fixes -> exact-head verification -> explicit bounded milestone seal.
 - Research is targeted at material ambiguity; no blanket operator-study requirement is introduced for every PRD/ADR.
+
+### 1.1 Cognitive MVP completion
+
+On 2026-10-11 the owner confirmed that operator-style hypothesis/action/evidence/adaptation
+belongs in MVP: the LLM chooses and revises strategy, may challenge the supplied options,
+request bounded additional owner context and identify a capability gap. Deterministic
+authority validates current use and execution; it cannot secretly replace strategy.
+APT41/Lazarus inform behavioral questions, not actor-persona playbooks or a claim of
+equivalent operator capability. The full four-loop/access breadth remains governed by
+its actual later dependencies; M1 does not acquire that breadth by analogy.
+
+A first real-inference ContextPack/proposal/history path is a partial delivery. Cognitive
+MVP completion additionally needs owner-qualified action outcomes consumed by the LLM,
+belief/question revision and another justified proposal, with bounded applicable
+campaign-local feedback. Synthesis/evolution remains in the approved R2 M1 direction
+under fixed effect, build, qualification and admission boundaries; compile/test success
+alone proves neither mission success nor an unrestricted new effect.
+
+Each complete observable runtime outcome retains the 600-line ceiling and linear
+delivery; no fixed PR count, dormant framework or cap increase is selected. Profile
+details and current amendment acceptance/readiness are recorded in
+[ENGINEERING_STATE.md](ENGINEERING_STATE.md), not inferred from this scope confirmation.
 
 ## 2. Deferred development candidates
 

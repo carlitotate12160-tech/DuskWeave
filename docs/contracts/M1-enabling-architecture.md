@@ -4,7 +4,7 @@
 | --- | --- |
 | Document | DW-DESIGN-M1-ENABLING-20261006 |
 | Status | ACCEPTED — product owner, 2026-10-06; selected M1 architecture, owner contracts and sequencing |
-| Revision | R1 — corrections reviewed; six scoped ADRs and this owner/sequencing outcome accepted on 2026-10-06. R2 — cognitive/generated-implementation amendment under the owner-approved 2026-10-07 direction, published as a candidate with exact-text acceptance recorded separately |
+| Revision | R1 — corrections reviewed; six scoped ADRs and this owner/sequencing outcome accepted on 2026-10-06. R2 — cognitive/generated-implementation amendment under the owner-approved 2026-10-07 direction, published as a candidate. R3 clarifies the owner-confirmed cognitive MVP scope of 2026-10-11; amendment exact-text status follows ENGINEERING_STATE.md |
 | Base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product input | [Accepted M1 product contract](M1-external-orientation-decision-loop.md), especially section 11 |
 | Authority | Accepted PRD-000..010, ADR-001..008 and the six scoped M1 ADRs; no target permission |
@@ -156,6 +156,21 @@ new observation is a new proposal through current authority. No raw content, sec
 unrestricted repositories, defender oracle or privileged evaluator answers enter the
 ContextPack.
 
+The eight-candidate bound applies to one ContextPack, not the campaign's complete set of
+hypotheses or assets. A bounded summary/page can expose population counts, coverage,
+grouping basis and explicit omissions, only as supported by the owner view. Additional
+pages name their owner revision/frontier; incompatible or changed premises require a fresh
+eligible pack, never an invisible mixture. Reads, pages, bytes and inference remain finite
+under Mission/deployment limits; missing limits disable the operation. A view read does
+not collect new target data.
+
+Terrain owns sourced environmental attributes/groupings; Pathing owns derived transitions
+and their premises; cognition chooses mission relevance. Deterministic eligibility checks
+and transparent sampling may prepare a view, but cannot silently choose strategy. Naming
+patterns remain hypotheses, and a provider/origin label needs its own evidence.
+Macro-to-micro navigation is optional, not a required two-stage playbook; current R1
+acquisition/intake ceilings are unchanged.
+
 A proposal names the question, relevant evidence references, an alternative considered,
 expected observation, falsifying observation, uncertainty and the proposed next
 operation — validate, observe more, synthesize a candidate implementation, retain, defer
@@ -167,6 +182,14 @@ reasoner must reason over, not a hidden selector. Output remains one typed propo
 no-action disposition per episode step; it cannot widen authority, accept model state or
 manufacture missing evidence. Expected/disconfirming outcomes and conditions for changing
 the choice precede dispatch.
+
+The proposal classes above are intent categories, distinct from ADR-013's externally
+visible effect profiles. Parameters select only an admitted profile/version/schema and
+eligible references. The reasoner may describe conditional future steps or a missing
+capability, but cannot authorize their execution as a batch. DNS MX and TLS SAN expansion
+are not implied by current R1 A/IN and HTTPS HEAD profiles; new effect/output semantics
+require their owning decision. Synthesis may introduce novel internal computation under
+the admitted interfaces, not arbitrary new I/O.
 
 After an owner-qualified outcome, the reasoner revises beliefs and unresolved questions
 before proposing again. Out-of-envelope redirect leaves the route premise unresolved; an
@@ -193,6 +216,30 @@ eligible episode and current premises. Provider- or target-derived text remains
 source-labeled untrusted input and cannot change system policy, authorize tools or
 rewrite acceptance criteria; generated source, reflections, traces and report narration
 obey the same INV-005 sensitive-data boundary as every other surface.
+
+For the first inference deployment, the owner selected DeepSeek behind the replaceable
+port. Qualify its exact model, endpoint, protocol, supported schema constraints and
+completion/error handling before claiming support.
+[DeepSeek Responses API](https://api-docs.deepseek.com/api/create-response/) documents
+JSON Schema output via text.format (checked 2026-10-11); prefer that profile for
+qualification over generic JSON mode. Other providers require their own compatible
+qualified profile or adapter, not SDK-name equivalence or silent fallback.
+
+Structured decoding constrains format only within the supported schema and a completed
+response. It does not establish evidence truth, reference eligibility, meaningful
+falsification or current permission; local size, semantic and owner checks remain
+mandatory. Record the final bounded proposal and safe provenance, not private
+chain-of-thought.
+The initial bounded generation/repair profile follows ADR-016. Repair retains the same
+question, safe ContextPack and allowed references, plus bounded validation errors and
+admitted response material labeled as untrusted. Do not resend an arbitrary raw response,
+relax policy, repair a scope/provenance rejection or assume network timeout is a schema
+defect. Every repaired proposal passes complete validation.
+
+Provider failure remains a visible cognitive failure/defer/unknown. A non-cognitive
+selector requires an explicitly selected and qualified operating mode with separate
+provenance and current admission; failure alone never activates it or satisfies cognitive
+MVP acceptance.
 
 ### Trajectory and narrow consumers
 
@@ -328,19 +375,20 @@ full-domain scaffold, scheduler or comparative superiority claim is introduced.
 
 ## 6. Completion and next packet
 
-This DESIGN delivers six ACCEPTED scoped ADRs, this accepted amendment/owner contract,
-registry links and factual predecessor/tracking reconciliation, now revised by the R2
-cognitive amendment under the owner-approved 2026-10-07 direction. Existing accepted
-product scope and M0 evidence are unchanged. Document validation/review are distinct from
-acceptance; the R2 text is a publication candidate whose exact-text acceptance is
-recorded separately.
+R1 delivered six ACCEPTED scoped ADRs and the accepted owner/sequencing contract.
+R2 was published under the owner-approved 2026-10-07 cognitive direction. R3 records
+scope/phase confirmation of 2026-10-11 and proposes the detailed cognitive MVP and
+repair-profile clarification. Amendment exact-text status follows ENGINEERING_STATE.md;
+document validation/review is distinct from acceptance. M0 evidence and seals are unchanged.
 
-The next runtime outcomes are prepared in dependency order — bounded cognitive
-context/proposal consumer, then isolated synthesis/admission consumer, then
-feedback/reuse and report completion — reusing existing authority/effect capabilities
-where implemented. This is an ordering recommendation, not acceptance of a new runtime
-slice sequence: each IMPLEMENT packet still needs a measured complete vertical file map
-and its exact accepted base.
+The next runtime outcome is a measured real-inference ContextPack/proposal/history
+consumer, with its permitted bounded repair and recovery. It is a partial enabling
+delivery, not cognitive MVP completion. Subsequent connected outcomes must provide
+owner-qualified action feedback and LLM belief/question revision, bounded applicable
+campaign-local retrieval, isolated synthesis/admission and report completion within M1.
+Their exact order follows real dependencies and measurement, not a compulsory tool
+sequence or fixed PR count. Each IMPLEMENT packet needs its own accepted base and
+complete observable entrypoint/consumer map.
 
 An IMPLEMENT packet is NOT ISSUED/NOT READY here. After accepted authority is published,
 Work must inspect the actual selected runtime source/consumer/fixtures and supported
