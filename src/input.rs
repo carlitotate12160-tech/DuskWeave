@@ -26,12 +26,20 @@ struct RegisterDto {
     ends_at: i64,
     #[serde(default, deserialize_with = "present_permission")]
     m1_permission: Option<crate::m1_permission::M1Permission>,
+    #[serde(default, deserialize_with = "present_inference_permission")]
+    m1_inference_permission: Option<crate::m1_inference_permission::InferencePermission>,
 }
 
 fn present_permission<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<crate::m1_permission::M1Permission>, D::Error> {
     crate::m1_permission::M1Permission::deserialize(deserializer).map(Some)
+}
+
+fn present_inference_permission<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<crate::m1_inference_permission::InferencePermission>, D::Error> {
+    crate::m1_inference_permission::InferencePermission::deserialize(deserializer).map(Some)
 }
 
 pub fn read_register_file(path: &Path) -> Res<RegistrationInput> {
@@ -83,10 +91,13 @@ fn build(dto: RegisterDto) -> Res<RegistrationInput> {
         dto.starts_at,
         dto.ends_at,
         dto.m1_permission,
-    )?;
-    Ok(RegistrationInput {
+    )?
+    .with_inference_permission(dto.m1_inference_permission)?;
+    let input = RegistrationInput {
         engagement_id: EngagementId(dto.engagement_id),
         campaign_id: CampaignId(dto.campaign_id),
         fields,
-    })
+    };
+    input.validate()?;
+    Ok(input)
 }

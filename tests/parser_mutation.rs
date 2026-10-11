@@ -13,6 +13,10 @@ use duskweave::trajectory::check_event;
 use duskweave::withdrawal_input::parse_withdrawal;
 use serde_json::{Value, json};
 use uuid::Uuid;
+#[path = "support/registration_db.rs"]
+mod db_support;
+#[path = "support/m1_inference_permission.rs"]
+mod inference;
 
 /// The declared ingress bound: `MAX_INPUT_BYTES` in the production source.
 /// Spelled as a literal so a mutant shrinking the constant cannot also move
@@ -227,4 +231,37 @@ fn missing_m1_attachment_preserves_legacy_v1_serialization() {
             .is_none()
     );
     assert_eq!(check_event(&event), Ok(()));
+}
+
+#[test]
+fn inference_attachment_is_independent_and_cannot_disappear_or_downgrade() {
+    let e = duskweave::mission::EngagementId(id(1));
+    let c = duskweave::mission::CampaignId(id(2));
+    let good = inference::registration(e, c);
+    let parsed = parse_register(&padded(&good, DECLARED_BOUND)).unwrap();
+    let ev = Mission::register(&parsed, OperationId(id(41)), EventId(id(42)), 150)
+        .unwrap()
+        .1;
+    assert_eq!(ev.version, 3);
+    assert_eq!(
+        serde_json::to_value(&ev).unwrap()["fields"]["m1_inference_permission"],
+        good["m1_inference_permission"]
+    );
+    assert_eq!(check_event(&ev), Ok(()));
+    for value in [Value::Null, json!("invalid")] {
+        let mut invalid = good.clone();
+        invalid["m1_inference_permission"] = value;
+        assert_eq!(
+            parse_register(&invalid.to_string().into_bytes()),
+            Err(Fail::Input("schema_violation"))
+        );
+    }
+    assert_eq!(
+        parse_register(&padded(&good, DECLARED_BOUND + 1)),
+        Err(Fail::Input("size_limit"))
+    );
+    let mut raw = serde_json::to_value(ev).unwrap();
+    raw["version"] = json!(2);
+    let ev = serde_json::from_value(raw).unwrap();
+    assert_eq!(check_event(&ev), Err("unsupported_contract"));
 }

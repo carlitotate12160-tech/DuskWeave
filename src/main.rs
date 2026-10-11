@@ -145,6 +145,21 @@ fn emit_inspect(v: Option<registration::InspectView>) {
         ),
         None => println!("inspect result=empty"),
     }
+    if let Some((permission, history)) = v
+        .as_ref()
+        .and_then(|v| v.m1_inference_permission.as_ref().map(|p| (p, v.history)))
+    {
+        // codeql[rust/cleartext-logging] fixed validated consent IDs/settings only
+        println!(
+            "{}",
+            serde_json::json!({
+                "kind": "m1_inference_historical_configuration_v1",
+                "attachment": permission, "history": status_str(history),
+                "current_permission": false, "dispatch_granted": false,
+                "provider_qualified": false, "acquisition_qualified": false,
+            })
+        );
+    }
     if let Some((summary, history)) = v.and_then(|v| v.m1_permission.map(|p| (p, v.history))) {
         emit_permission(&summary, history);
     }

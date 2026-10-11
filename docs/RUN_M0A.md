@@ -61,6 +61,27 @@ persisted. At M0A delivery, `assess` and `withdraw` were unsupported. B1a adds
 
 ## Wiring
 
+New campaigns may independently include `m1_inference_permission` with or without
+`m1_permission` (crt.sh). Omission remains absent; explicit null and unknown/duplicate
+keys reject under the unchanged 16 KiB input cap. The closed
+[`m1_inference_permission_v1` contract](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance)
+binds campaign/operator/authority/purpose/mode and resulting Mission revision 1,
+the exact DeepSeek recipient/profile, approved provider terms, field classes,
+Mission-contained window and explicit positive campaign/operation limits.
+
+Registration emits MissionRegistered v1 with neither attachment, v2 with crt.sh
+only, and v3 whenever inference consent exists. v1/v2 wire meaning stays unchanged.
+v3 first history acceptance verifies the exact committed Mission publication through
+its narrow read-only port inside the Trajectory transaction. Existing registration
+refusals prohibit consent amendment; later revision/rebinding needs an independent lane.
+
+`inspect` emits `m1_inference_historical_configuration_v1` JSON with the validated
+attachment and pending/completed/anomaly history. It always reports
+`current_permission=false`, `dispatch_granted=false`, `provider_qualified=false`,
+and `acquisition_qualified=false`. Withdrawal retains the original consent while
+Mission inspection reports revision 2. Consent limits configure ceilings only;
+this lane performs no inference admission, quota consumption or provider call.
+
 ```text
 main.rs (CLI) → src/input.rs (boundary parse, bounded read)
   → src/registration.rs (application; narrow ports only)

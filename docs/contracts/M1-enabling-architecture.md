@@ -5,7 +5,7 @@
 | Document | DW-DESIGN-M1-ENABLING-20261006 |
 | Status | ACCEPTED — product owner, 2026-10-06; selected M1 architecture, owner contracts and sequencing |
 | Revision | R1 — corrections reviewed; six scoped ADRs and this owner/sequencing outcome accepted on 2026-10-06. R2 — cognitive/generated-implementation amendment under the owner-approved 2026-10-07 direction, published as a candidate. R3 clarifies the owner-confirmed cognitive MVP scope of 2026-10-11; amendment exact-text status follows ENGINEERING_STATE.md |
-| Inference amendment | `DW-DESIGN-M1-INFERENCE-PROFILE` — PROPOSED for exact-text review at base `5d8bc3a236eb2f322096aa7cd71024477949ca90`; no blanket R2/R3 acceptance |
+| Inference amendment | Initial #51 profile and required R2/R3 refinements ACCEPTED by the owner on 2026-10-11 for this lane; merged at `35a31fd`; no blanket amendment acceptance or seal |
 | Base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product input | [Accepted M1 product contract](M1-external-orientation-decision-loop.md), especially section 11 |
 | Authority | Accepted PRD-000..010, ADR-001..008 and the six scoped M1 ADRs; no target permission |
@@ -149,7 +149,7 @@ Input is a purpose-scoped immutable ContextPack: authorized mission question and
 eligible owner views with revisions/frontiers, source/time/completeness, uncertainty and
 conflicting claims, eligible capability manifests, remaining budgets, pending/UNKNOWN
 effects and relevant campaign-local feedback. Pack capacity follows
-[ADR-016's inference profile](../adr/ADR-016-execution-broker.md#initial-inference-accounting-profile-proposed);
+[ADR-016's inference profile](../adr/ADR-016-execution-broker.md#initial-inference-accounting-profile-scoped-acceptance);
 no raw provider input, private aggregates, execution handles, privileged defender feed
 or all-campaign context.
 Include references and explicit omission reasons; visible truncation must not imply that
@@ -220,10 +220,10 @@ source-labeled untrusted input and cannot change system policy, authorize tools 
 rewrite acceptance criteria; generated source, reflections, traces and report narration
 obey the same INV-005 sensitive-data boundary as every other surface.
 
-#### Initial inference contracts (PROPOSED)
+#### Initial inference contracts (scoped acceptance)
 
-`DW-DESIGN-M1-INFERENCE-PROFILE` closes the following concrete profile for exact-text
-review. Accepted R1 and published R2/R3 keep their separate status. This is preparation
+The owner accepted the initial #51 profile and required R2/R3 refinements for this
+lane on 2026-10-11; unrelated amendment text keeps its status. This is preparation
 for actual LLM reasoning, not completion of cognitive MVP, acquisition or execution.
 Mission owns disclosure consent/limits; Broker owns reservation/consumption/cancellation;
 Cognition owns safe context assembly, proposal validation and decision publication;
@@ -236,8 +236,9 @@ Mission revision to which consent applies; mission-purpose/goal reference and ex
 mode; exact approved recipient; inference profile version; permitted safe field classes;
 valid-from/inclusive and valid-until/exclusive UTC times; explicit finite campaign and
 per-operation limits under ADR-016; approval of engagement-compatible provider use/retention
-terms. Mission accepts/revises this independently through expected-revision and durable
-publication, not by mutating old registration history. A later Mission revision requires
+terms. INITIAL-CONSENT co-creates this independently of crt.sh on new registration
+(absent Mission revision 0 -> 1). Later amendment needs its own expected-revision lane;
+existing campaigns cannot gain/revise consent by rewriting registration. Revision requires
 explicitly rebound consent; no historical attachment is silently carried forward as current.
 Missing attachment disables inference. Existing crt.sh disclosure and legacy registrations
 keep their original meanings and grant no inference permission. Consent is neither an API
@@ -398,7 +399,7 @@ Additional verification is claim-specific. Inspection is not client-proof releas
 No read/reference fetches raw capture. History and projection replay call no capability.
 Composition retains only narrow application ports; no object acquires all five models.
 
-#### Initial decision publication and inspection — PROPOSED
+#### Initial decision publication and inspection — scoped acceptance
 
 Future production flow: existing CLI dispatch under CommandGuard -> current Mission public
 view -> Cognition pack assembly -> Broker durable consent/quota admission -> replaceable
@@ -459,7 +460,7 @@ state/history, not a new evidence owner.
 ## 4. Fixed execution and sensitive decisions
 
 ADR-013 owns numerical limits and fixed profile versions for its execution scope; the
-proposed ADR-016 inference profile owns inference accounting numbers. ADR-015 selects
+scoped accepted ADR-016 inference profile owns inference accounting numbers. ADR-015 selects
 qualified Linux
 worker isolation; ADR-016 owns current authority/effect admission and cancellation;
 ADR-017 owns private framing and phase binding; ADR-011 owns pre-core safe egress and
@@ -546,12 +547,13 @@ full-domain scaffold, scheduler or comparative superiority claim is introduced.
 R1 delivered six ACCEPTED scoped ADRs and the accepted owner/sequencing contract.
 R2 was published under the owner-approved 2026-10-07 cognitive direction. Published R3
 records scope/phase confirmation of 2026-10-11 and the detailed cognitive MVP clarification.
-This inference-profile amendment remains PROPOSED. Exact-text status follows
-ENGINEERING_STATE.md; document validation/review is distinct from acceptance.
+The owner accepted the initial #51 inference profile and its required R2/R3 refinements
+for this lane on 2026-10-11; unrelated amendment text remains pending exact-text acceptance.
 M0 evidence and seals are unchanged.
 
-The next runtime outcome is a measured real-inference ContextPack/proposal/history
-consumer, with its permitted bounded repair and recovery. It is a partial enabling
+The current runtime packet is INITIAL-CONSENT for new registration/history only.
+Later consent amendment/rebinding and real-inference ContextPack/proposal/history,
+bounded repair and recovery remain required. These are partial enabling
 delivery, not cognitive MVP completion. Subsequent connected outcomes must provide
 owner-qualified action feedback and LLM belief/question revision, bounded applicable
 campaign-local retrieval, isolated synthesis/admission and report completion within M1.
@@ -559,13 +561,12 @@ Their exact order follows real dependencies and measurement, not a compulsory to
 sequence or fixed PR count. Each IMPLEMENT packet needs its own accepted base and
 complete observable entrypoint/consumer map.
 
-An IMPLEMENT packet is NOT ISSUED/NOT READY here. After accepted authority is published,
-Work must inspect the actual selected runtime source/consumer/fixtures and supported
-execution environment, measure a complete observable slice against the exact new base,
-reserve correction room and give an exact file map. The 600-line ceiling is unchanged;
-this DESIGN does not promise a full M1 loop in one runtime PR or a fixed PR count.
-Runtime fit remains UNVERIFIED until that complete formatted slice is measured against
-the accepted resulting base with correction room. Stop at this DESIGN boundary.
+`DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT` is issued at merged base `35a31fd`;
+its measured 510-line feasibility probe is not candidate verification. Initial consent
+uses the existing atomic registration/publication/Trajectory lane; no old row changes.
+The 600-line ceiling is unchanged. Each later packet requires a measured complete path
+and exact map with correction room; full provider-chain fit/deployment remain UNVERIFIED.
+No fixed PR count, cognitive MVP completion, provider call or seal is granted here.
 
 ### Required future inference qualification
 

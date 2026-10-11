@@ -27,6 +27,9 @@ pub trait MissionStore {
 pub trait TrajectoryPort {
     fn deliver(&mut self, event: &MissionRegistered) -> Res<Delivered>;
     fn status(&mut self, e: EngagementId, c: CampaignId, ev: EventId) -> Res<HistoryStatus>;
+    fn registration_status(&mut self, event: &MissionRegistered) -> Res<HistoryStatus> {
+        self.status(event.engagement_id, event.campaign_id, event.event_id)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +62,7 @@ pub struct InspectView {
     pub event_id: Option<EventId>,
     pub history: HistoryStatus,
     pub m1_permission: Option<crate::m1_permission::PermissionSummary>,
+    pub m1_inference_permission: Option<crate::m1_inference_permission::InferencePermission>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,31 +131,41 @@ pub fn inspect(
     let Some(mission) = store.mission_view(e, c)? else {
         return Ok(None);
     };
-    let (event_id, history, m1_permission) = match store.outbox_event(e, c, mission.operation_id)? {
-        Some(ev) => {
-            let summary = historical_permission(&ev, &mission, e, c)?;
-            (Some(ev.event_id), traj.status(e, c, ev.event_id)?, summary)
-        }
-        None => (None, HistoryStatus::Pending, None),
-    };
+    let (event_id, history, m1_permission, m1_inference_permission) =
+        match store.outbox_event(e, c, mission.operation_id)? {
+            Some(ev) => {
+                let (permission, inference) = historical_attachments(&ev, &mission, e, c)?;
+                (
+                    Some(ev.event_id),
+                    traj.registration_status(&ev)?,
+                    permission,
+                    inference,
+                )
+            }
+            None => (None, HistoryStatus::Pending, None, None),
+        };
     Ok(Some(InspectView {
         mission,
         event_id,
         history,
         m1_permission,
+        m1_inference_permission,
     }))
 }
 
-fn historical_permission(
+fn historical_attachments(
     ev: &MissionRegistered,
     mission: &MissionView,
     e: EngagementId,
     c: CampaignId,
-) -> Res<Option<crate::m1_permission::PermissionSummary>> {
+) -> Res<(
+    Option<crate::m1_permission::PermissionSummary>,
+    Option<crate::m1_inference_permission::InferencePermission>,
+)> {
     crate::trajectory::check_event(ev).map_err(|_| Fail::Store("contract_decode"))?;
-    let Some(permission) = ev.fields.m1_permission() else {
-        return Ok(None);
-    };
+    if ev.fields.m1_permission().is_none() && ev.fields.m1_inference_permission().is_none() {
+        return Ok((None, None));
+    }
     let bound = (
         ev.engagement_id,
         ev.campaign_id,
@@ -173,7 +187,10 @@ fn historical_permission(
     {
         return Err(Fail::Store("contract_decode"));
     }
-    Ok(Some(permission.summary(&ev.fields)))
+    Ok((
+        ev.fields.m1_permission().map(|p| p.summary(&ev.fields)),
+        ev.fields.m1_inference_permission().cloned(),
+    ))
 }
 
 pub fn reconcile(
@@ -186,7 +203,7 @@ pub fn reconcile(
     let Some(ev) = store.outbox_event(e, c, op)? else {
         return Ok(ReconcileOutcome::NotCommitted);
     };
-    match traj.status(e, c, ev.event_id)? {
+    match traj.registration_status(&ev)? {
         HistoryStatus::Completed => Ok(ReconcileOutcome::Committed),
         HistoryStatus::Anomaly => Ok(ReconcileOutcome::Conflicted),
         HistoryStatus::Pending => reconcile_delivery(traj.deliver(&ev)?),

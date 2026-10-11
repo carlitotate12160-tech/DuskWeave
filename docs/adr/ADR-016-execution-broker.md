@@ -4,8 +4,8 @@
 | --- | --- |
 | Status | ACCEPTED — product owner, 2026-10-06; M1 selected lane only |
 | Date | 2026-10-06 |
-| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds generated-worker nested-effect admission and independent cognition/build budgets, published under the owner-approved 2026-10-07 direction. R3 proposes the initial bounded inference-repair profile; amendment exact-text status follows ENGINEERING_STATE.md |
-| Inference amendment | `DW-DESIGN-M1-INFERENCE-PROFILE` — PROPOSED for exact-text review; does not accept R2/R3 or alter accepted R1 |
+| Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds generated-worker nested-effect admission and independent cognition/build budgets, published under the owner-approved 2026-10-07 direction. R3 defines the initial bounded inference-repair profile; scoped acceptance and unrelated amendment exact-text limits follow ENGINEERING_STATE.md |
+| Inference amendment | Initial #51 profile and required R2/R3 refinements ACCEPTED by the owner on 2026-10-11 for this inference lane; no blanket R2/R3 acceptance, R1 change or seal |
 | Authoring base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-003/005/013/015; Stage 12 product-input rebind in accepted M1 enabling section 2 |
@@ -183,12 +183,14 @@ or replayed. Recovery first reconciles durable state, then replans. Withdrawal s
 inference/build/dispatch work and cancels owned workers; already-sent provider data and
 network effects cannot be retroactively recalled.
 
-### Initial inference accounting profile (PROPOSED)
+### Initial inference accounting profile (scoped acceptance)
 
 This section canonically owns the numerical rules for `deepseek-responses-v1` and
-`m1_inference_permission_v1`; the [enabling contract](../contracts/M1-enabling-architecture.md#initial-inference-contracts-proposed)
-owns their field semantics, provider selection and history consumer. This is a proposed
-refinement of published R3, not new acceptance of R1/R2/R3 or runtime qualification.
+`m1_inference_permission_v1`; the [enabling contract](../contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance)
+owns field semantics, provider selection and history. The owner accepted the initial
+#51 profile and required R2/R3 refinements for this lane on 2026-10-11, without blanket
+amendment acceptance or a seal. Initial registration consent configures these ceilings;
+it implements no reservation, consumption, refill, provider qualification or send.
 
 | Resource | Deployment ceiling / accounting unit |
 | --- | --- |
