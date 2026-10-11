@@ -45,10 +45,11 @@ Current seal:
 
 Current engineering state:
 
-Current candidate: `DW-DESIGN-M1-COGNITIVE-MVP-R3` (documentation-only, exact-text review).
-See [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
-for acceptance, delivery evidence and the next action. This candidate issues no
-IMPLEMENT packet, qualifies no effects and changes no seal.
+Current candidate: `DW-DESIGN-M1-INFERENCE-PROFILE` (documentation-only, PROPOSED).
+See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-proposed)
+and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
+for exact-text review, delivery evidence and next action. No IMPLEMENT packet,
+runtime-fit qualification, effect permission or seal change is issued here.
 
 Current design document:
 
