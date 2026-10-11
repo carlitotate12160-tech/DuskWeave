@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave-ci-complexity` (selected reusable M1 source worktree; verify actual branch/HEAD per packet)
-- **Current Phase**: PR #49 prepared-session withdrawal is MERGED at `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377`; exact-master CI 38108255468 SUCCESS. `DW-DESIGN-M1-COGNITIVE-MVP-R3` is the documentation candidate on `docs/m1-cognitive-mvp-r3`. The owner confirmed cognitive MVP scope and phases on 2026-10-11; R3 records that decision and proposes the detailed clarification for exact-text review. This is not blanket acceptance of every published R2 clause, runtime readiness or an M1 seal. Prepared-only withdrawal supplies no START, acquisition or qualified host STOP; M0/foundation seals and historical evidence limits remain unchanged.
+- **Current Phase**: PR #50 cognitive MVP R3 clarification is MERGED at `5d8bc3a236eb2f322096aa7cd71024477949ca90`; exact-master CI 38123485097 SUCCESS. `DW-DESIGN-M1-INFERENCE-PROFILE` is the active documentation candidate on `docs/m1-inference-profile`, PROPOSED for exact-text review. The owner confirmed cognitive MVP scope/phases on 2026-10-11; publication of R2/R3 is not blanket exact-text acceptance, runtime readiness or an M1 seal. Runtime fit and provider/storage/cancellation qualification remain UNVERIFIED. Prepared-only withdrawal supplies no inference cancellation, START, acquisition or qualified host STOP; M0/foundation seals and historical evidence limits remain unchanged.
 - **Active Seal**: `DW-FOUNDATION-001`; `DW-M0-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified); **M0 SEALED** (product-owner authorization, 2026-10-05)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -77,7 +77,7 @@ All interactions and plans are subject to:
 
 ## 6. Current slices and next action
 
-Latest verified delivery base: `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377`, the 2026-10-11 squash merge of [PR #49](https://github.com/carlitotate12160-tech/DuskWeave/pull/49); exact-master [run 38108255468](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/38108255468) completed SUCCESS. The original Broker -> guarded Mission withdrawal/publication -> existing Trajectory path keeps the prepared writer fence; no START, acquisition or host STOP qualification is claimed. #48's earlier native-log provenance remains historical UNVERIFIED; later Linux CI does not retroactively validate those attempts. #39 published R2; the owner confirmed the discussed cognitive MVP scope/phases on 2026-10-11, while blanket R2 exact-text acceptance is not inferred.
+Latest verified delivery base: `5d8bc3a236eb2f322096aa7cd71024477949ca90`, the 2026-10-11 squash merge of [PR #50](https://github.com/carlitotate12160-tech/DuskWeave/pull/50); exact-master [run 38123485097](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/38123485097) completed SUCCESS (links, structure, Rust, CodeQL, dependencies and ci-ok; diagnostic Geiger also succeeded). That CI verifies the predecessor, not this candidate's inference implementation. The merged #49 Broker -> guarded Mission withdrawal/publication -> existing Trajectory path remains prepared-only: no inference cancellation, START, acquisition or host STOP qualification. #48's earlier native-log provenance remains historical UNVERIFIED; later Linux CI does not retroactively validate those attempts. #39 published R2 and #50 published R3; owner confirmation of cognitive MVP scope/phases on 2026-10-11 is not blanket amendment exact-text acceptance.
 
 ### Current work
 
@@ -105,7 +105,8 @@ Latest verified delivery base: `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377`, the 2
 | `DW-IMPLEMENT-M1-SESSION-FENCE` | MERGED through PR #47 at `fa40474010cb9fcf71d41c4f9ffdcc7914376667` | exact-master run 37957957900 SUCCESS | none for master |
 | `DW-FIX-M1-TRIGGER-QUALIFICATION` | MERGED through PR #48 at `076425a5a1f1f1422936b6f0444f3122acaa0fd8` | Exact-master run 38040810544 SUCCESS; F1 SET-reachable TRIGGER rejection and F2 complete ordered session-history snapshots | Earlier native-log provenance remains historical UNVERIFIED; no new #48 audit or seal |
 | `DW-IMPLEMENT-M1-PREPARED-WITHDRAWAL` | MERGED through [PR #49](https://github.com/carlitotate12160-tech/DuskWeave/pull/49) at `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377` on 2026-10-11 | Base `076425a5`; original Broker -> guarded SQL -> Mission withdrawal/publication -> existing Trajectory; exact-master run 38108255468 SUCCESS | Prepared-only coordination complete; no START/acquisition/host STOP qualification or M1 seal |
-| `DW-DESIGN-M1-COGNITIVE-MVP-R3` | AUTHORED documentation candidate; not merged, exact-text accepted or sealed | Base `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377`; owner confirmed discussed scope/phases on 2026-10-11; PRD-006, ADR-016, both M1 contracts, MVP record and tracking; runtime diff 0 | Review exact clarification; then resolve remaining accepted contracts and measure the real-inference consumer before issuing IMPLEMENT |
+| `DW-DESIGN-M1-COGNITIVE-MVP-R3` | MERGED through PR #50 at `5d8bc3a236eb2f322096aa7cd71024477949ca90` on 2026-10-11; publication, not blanket amendment acceptance | Base `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377`; owner confirmed discussed scope/phases; runtime diff 0; exact-master run 38123485097 SUCCESS | Predecessor publication complete; preserve exact-text review limits and existing seals |
+| `DW-DESIGN-M1-INFERENCE-PROFILE` | Active documentation candidate on `docs/m1-inference-profile`; PROPOSED for exact-text review, not merged/accepted/sealed | Base `5d8bc3a236eb2f322096aa7cd71024477949ca90`; [versioned consent/context/proposal/history contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-proposed) and [canonical inference accounting](adr/ADR-016-execution-broker.md#initial-inference-accounting-profile-proposed); runtime diff 0 | Review exact profile; runtime fit and provider/storage/cancellation qualification UNVERIFIED; no IMPLEMENT packet issued |
 
 ### Remaining owner-priority dispositions (updated 2026-10-11)
 
@@ -113,10 +114,12 @@ Latest verified delivery base: `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377`, the 2
    approval did not implement campaign-secret custody or qualify M1 deployment.
 2. DB wait bounds: MERGED through #44; startup, query/lock, ambiguous-result
    and stop bounds for the existing local CLI; no M1 broker/stop qualification.
-3. Cognitive delivery is the next product priority: review the R3 clarification,
-   then measure a real-inference ContextPack/proposal/history/repair consumer.
-   That partial outcome does not complete cognitive MVP; connected qualified
-   action feedback, LLM revision and applicable retrieval remain M1 outcomes.
+3. Cognitive delivery is the next product priority: review the proposed inference
+   profile and required amendment exact text, then Work measures the complete real-inference
+   CLI/ContextPack/reservation/proposal/Trajectory/repair/recovery slice against the accepted
+   resulting base, retaining correction room under 600 runtime LOC. Fit is UNVERIFIED.
+   That partial outcome does not complete cognitive MVP; connected qualified action feedback,
+   LLM revision, applicable retrieval, isolated synthesis and reporting remain M1 obligations.
    Actual acquisition still requires qualified admission/isolation/START/renewal/
    host STOP/stop-writer controls; merged #49 grants none of those qualifications.
 4. Human docs/account/app controls: separate bounded README/SECURITY delivery and
@@ -160,7 +163,7 @@ Preserved owner decisions and C1a verification evidence (historical, superseded 
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
-Next: deliver `DW-DESIGN-M1-COGNITIVE-MVP-R3` for exact-text review, then resolve remaining accepted runtime contracts and measure the complete real-inference ContextPack/proposal/history consumer with bounded repair and recovery. No IMPLEMENT packet is issued by this documentation candidate. Owner scope/phase confirmation is recorded without blanket R2 acceptance; connected action feedback and LLM adaptation remain required within M1. Effect-enabled acquisition still needs qualified admission, isolation, START/renewal, host STOP and stop-writer fallback. The candidate is not merged; no automatic continuation, target execution or seal transition is authorized.
+Next: deliver `DW-DESIGN-M1-INFERENCE-PROFILE` as one draft documentation PR for exact-text review. After required authority acceptance, Work must measure the complete formatted entrypoint/consumer slice and its exact map against the accepted resulting base, with correction room under the unchanged 600 runtime LOC ceiling. No IMPLEMENT packet or runtime-fit claim is issued here. Official DeepSeek documentation supports the selected parameters as checked 2026-10-11; no native provider call, storage or cancellation qualification was performed. Owner scope/phase confirmation is not blanket R2/R3 acceptance; action feedback, LLM belief revision, retrieval, synthesis and reporting retain their M1 dependencies. Effect-enabled acquisition still needs qualified admission, isolation, START/renewal, host STOP and stop-writer fallback. This profile candidate is not merged or accepted; no automatic continuation, target execution or seal transition is authorized.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 
@@ -237,4 +240,4 @@ On 2026-10-10, `DW-FIX-M1-TRIGGER-QUALIFICATION` on PR #48 corrected the authori
 - **F2 FIXED**: Modified `tests/m1_session_privilege.rs` to implement an actual complete snapshot of `session_history` via JSONB aggregate without limit/substitution.
 - **F3 HISTORICAL NATIVE LIMIT**: The retrospective SQL RED/GREEN check compared `8338f5e` with the correction: old SQL accepted SET-reachable TRIGGER authority, corrected SQL rejected it. Previous full native attempts had mismatching logs or remained unverified. #48 is now merged at `076425a5` with exact-master Linux CI SUCCESS; that does not retroactively close the native provenance gap.
 
-This correction is a merged predecessor. Its historical failures and native evidence limits are retained; prepared-only withdrawal subsequently merged through #49. The current R3 documentation candidate is recorded in section 6.
+This correction is a merged predecessor. Its historical failures and native evidence limits are retained; prepared-only withdrawal subsequently merged through #49. R3 subsequently published through #50; the proposed inference-profile candidate is recorded in section 6.

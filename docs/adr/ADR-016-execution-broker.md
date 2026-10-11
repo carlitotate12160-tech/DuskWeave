@@ -5,6 +5,7 @@
 | Status | ACCEPTED — product owner, 2026-10-06; M1 selected lane only |
 | Date | 2026-10-06 |
 | Revision | R1 — scoped architecture accepted by the product owner on 2026-10-06; R2 adds generated-worker nested-effect admission and independent cognition/build budgets, published under the owner-approved 2026-10-07 direction. R3 proposes the initial bounded inference-repair profile; amendment exact-text status follows ENGINEERING_STATE.md |
+| Inference amendment | `DW-DESIGN-M1-INFERENCE-PROFILE` — PROPOSED for exact-text review; does not accept R2/R3 or alter accepted R1 |
 | Authoring base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-003/005/013/015; Stage 12 product-input rebind in accepted M1 enabling section 2 |
@@ -182,19 +183,116 @@ or replayed. Recovery first reconciles durable state, then replans. Withdrawal s
 inference/build/dispatch work and cancels owned workers; already-sent provider data and
 network effects cannot be retroactively recalled.
 
-For the initial cognitive decision profile, reserve finite call, input/output and total
-wall-time capacity for one generation and at most one conditional schema repair: two
-calls total per decision, not a replenishable campaign allowance. Token ceilings include
-provider reasoning tokens where applicable. Campaign remainder and deployment ceilings
-still govern; insufficient capacity prevents a new decision rather than promising repair
-that cannot be afforded. Each actual call has a durable identity and consumption state.
-Repair is not an automatic transport retry and cannot repair authority/scope/provenance
-refusal, execute an action or erase the original failure. Lost response/ACK remains
-uncertain consumed capacity; recovery does not call the provider, refill quota or replay
-the request. A later separately admitted decision consumes remaining campaign budget.
-Qualification must exercise malformed/empty/truncated output, exhausted repair capacity,
-duplicate/concurrent identities, restart, withdrawal and consumer recovery. Numeric profile
-selection does not qualify its storage, cancellation or transport implementation.
+### Initial inference accounting profile (PROPOSED)
+
+This section canonically owns the numerical rules for `deepseek-responses-v1` and
+`m1_inference_permission_v1`; the [enabling contract](../contracts/M1-enabling-architecture.md#initial-inference-contracts-proposed)
+owns their field semantics, provider selection and history consumer. This is a proposed
+refinement of published R3, not new acceptance of R1/R2/R3 or runtime qualification.
+
+| Resource | Deployment ceiling / accounting unit |
+| --- | --- |
+| Immutable ContextPack | 4096 UTF-8 bytes; at most 8 candidates per pack, not a campaign-wide hypothesis cap |
+| Complete serialized request / retained configuration | Each <=16384 UTF-8 bytes per call; request includes instructions, schema, pack and any repair material |
+| Response envelope | 65536 bytes per call, including reasoning items and non-streaming keep-alive whitespace |
+| Calls per decision | 1 generation plus at most 1 conditional schema repair; 2 reserved slots before generation |
+| Output capacity | `max_output_tokens=4096` per call, including provider reasoning tokens |
+| Shared generation/repair duration | At most 20 seconds, clamped to remaining command, Mission and consent deadlines |
+| Connection establishment | At most 5 seconds per call inside the same shared envelope; DNS/TCP/TLS included |
+| Proposal / repair material | 8192 / 2048 UTF-8 bytes; each proposal text field <=1024 bytes; at most 8 static repair-error codes |
+| Local JSON parsing | At most 8 nesting levels and 64 entries per collection; bounds checked before growth |
+| Inference concurrency | 1 live decision/call per campaign; no parallel repair or concurrent session owner |
+
+Response counting includes HTTP headers and entity bytes before parsing, counts leading
+blank lines, and rejects compression rather than permitting unbounded decompression.
+Request accounting measures the complete JSON entity, not TLS framing or the API key;
+transport metadata is fixed and bounded, with no caller-supplied headers or proxy route.
+These are deployment assumptions, not latency guarantees or exact token-billing estimates.
+Byte counts, reserved output tokens and reported input/output/reasoning usage are distinct.
+No tokenizer or byte-to-input-token conversion is claimed; input billing remains reported
+usage (or unknown), not a preverified token charge. Campaign financial billing is not
+inferred from these byte budgets.
+
+Mission supplies explicit positive finite campaign totals for calls, request bytes,
+response bytes, output-token capacity and inference wall-time milliseconds, plus per-pack,
+per-call, per-decision and concurrency limits no wider than this profile. Missing, zero,
+negative, overflowed or unsupported limits disable inference; exhausted remainder defers.
+Effective limits are the minimum of campaign remainder, campaign per-operation limits and
+deployment ceilings. Never silently lower the selected output cap, omit the repair reserve
+or switch profile to fit: if the complete configured decision cannot be reserved, defer.
+Budget identity belongs to the campaign, not the permission revision or CLI invocation;
+renewed consent, a new decision, session release or restart cannot refill consumed totals.
+
+Broker atomically reserves both call slots and their full per-call request/response/output
+capacity plus the single shared wall-time envelope in a short durable transaction before
+any send. Concurrent decisions compare campaign remainder and exclusive generation under
+that transaction; loser gets a duplicate/conflict/busy/insufficient-capacity disposition,
+not another allowance. Each slot has a stable scoped call identity and role (generation or
+repair), with reserved-not-sent distinct from a call actually initiated. All transitions
+retain original identity, expected state and append-only accounting evidence.
+
+Before each call, Broker obtains current committed Mission inference authority through its
+public contract, checks withdrawal/freeze/termination, revision, purpose/mode, recipient,
+field classes, profile support, time and reserved capacity, and durably records `may_send`
+with that call's exact admitted P/C/B bytes and locally computed binding. Generation bytes
+bind before generation; repair bytes bind only after eligible repair admission, without
+changing its pre-reserved identity/capacity. A slot alone cannot authorize different bytes.
+All relevant authority writers serialize with this inference admission fence; local send
+release and stop serialize under the same campaign/generation owner, after SQL ends.
+Immediately at release recheck stop/generation, unchanged authority revision and remaining
+Mission/consent/shared/command time; expired, pending-writer or unavailable authority blocks
+release even after a successful marker commit. Clock uncertainty cannot extend authority.
+Release is the send linearization point under that owner: a stop ordered before release
+prevents transport and leaves reserved/cancelled local accounting; a stop ordered after
+release means a possible send, so owned transport is cancelled and the call stays
+cancelled-uncertain, never rolled back to unused. No database lock spans inference. A reservation or `may_send` marker is not proof of a
+send: a crash in the marker-to-send gap conservatively means uncertain consumption.
+Unconfirmed reservation/marker COMMIT blocks send even if it may have committed.
+Actual send start is recorded separately when observable, never reconstructed from a
+reservation. No provider idempotency/exactly-once claim substitutes for this local fence.
+
+Consumption states distinguish reserved-not-sent, may-send/uncertain, sent-awaiting-result,
+completed-with-reported-usage, failed-with-known-local-disposition and cancelled-uncertain.
+Any possible send consumes the call slot and keeps its reserved byte/token capacity charged;
+reported actual usage is additional evidence, not a quota refund. Wall time is measured
+monotonically; after interruption its unaccounted reserved duration remains charged.
+Only capacity proven never released, with the previous sender fenced from later release,
+may be freed by a linked record (for example an unused repair slot); unknown never refunds.
+A lost response, missing usage or ambiguous commit survives restart. Reconciliation does
+not equate an absent observation with absence of the provider effect. A restored database
+with a possible accounting gap blocks new calls until the gap is resolved, not reset.
+
+The shared clock begins before generation admission/transport and includes generation,
+validation, repair admission and repair transport; keep-alives, retries of database-only
+work and repair do not reset it. Clamp each wait to the remaining shared/command/authority
+window. The existing 30-second CommandGuard and database socket/startup/statement/lock
+bounds remain unchanged; inference cannot use the C0 human-response pause to extend them.
+No guaranteed history/receipt completion is promised in the residual command time. Exit
+124, timeout or history failure leaves deferred/pending/unknown evidence as applicable.
+
+Only a completed response with eligible schema defects may use the reserved repair slot;
+local safe-admission must first produce bounded error codes and optional admitted fields.
+Malformed/empty completed proposal text may use codes alone; raw text is never echoed.
+Same question, pack and allowed references apply. Authority/scope/provenance rejection,
+digest mismatch, unsupported protocol, timeout, lost response, incomplete/truncated output
+or exhausted capacity cannot trigger repair. A repair result repeats complete validation;
+there is no second repair, automatic transport retry, fallback or non-cognitive success.
+
+Withdrawal blocks new sends and cancels owned in-flight transport before history waits.
+Cancellation closes owned I/O and remains inside the original shared deadline; an
+unconfirmed stop is reported unresolved, never successful rollback. Expiry, lost current
+authority or ownership similarly blocks new work and terminates local waiting. Already
+disclosed data cannot be recalled and provider-side cancellation is not guaranteed.
+`prepared_no_effects` and merged prepared-only withdrawal do not implement or qualify this
+inference fence/cancellation, acquisition, host STOP or target START. Their existing
+no-effects release semantics must not be reused for a possibly sent inference call.
+
+Duplicate inspection and history/accounting recovery never invoke the provider, continue
+an unused repair slot, re-reserve the same decision or replenish quota. Database-only
+recovery retains ADR-013's bounded invocation policy and existing wait guards. A genuinely
+new decision requires explicit new identity, current consent and remaining capacity; it
+cannot erase uncertainty. Concrete future assertions are in the enabling contract; all
+storage, cancellation, transport and formatted runtime-fit evidence remains UNVERIFIED.
 
 ## 5. Consequences
 

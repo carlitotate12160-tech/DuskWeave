@@ -5,6 +5,7 @@
 | Document | DW-DESIGN-M1-ENABLING-20261006 |
 | Status | ACCEPTED — product owner, 2026-10-06; selected M1 architecture, owner contracts and sequencing |
 | Revision | R1 — corrections reviewed; six scoped ADRs and this owner/sequencing outcome accepted on 2026-10-06. R2 — cognitive/generated-implementation amendment under the owner-approved 2026-10-07 direction, published as a candidate. R3 clarifies the owner-confirmed cognitive MVP scope of 2026-10-11; amendment exact-text status follows ENGINEERING_STATE.md |
+| Inference amendment | `DW-DESIGN-M1-INFERENCE-PROFILE` — PROPOSED for exact-text review at base `5d8bc3a236eb2f322096aa7cd71024477949ca90`; no blanket R2/R3 acceptance |
 | Base | `086936d2903b8958c0e5bc69af9891d9710e092f` |
 | Product input | [Accepted M1 product contract](M1-external-orientation-decision-loop.md), especially section 11 |
 | Authority | Accepted PRD-000..010, ADR-001..008 and the six scoped M1 ADRs; no target permission |
@@ -147,8 +148,10 @@ test control or explicitly labeled non-cognitive operating mode.
 Input is a purpose-scoped immutable ContextPack: authorized mission question and limits,
 eligible owner views with revisions/frontiers, source/time/completeness, uncertainty and
 conflicting claims, eligible capability manifests, remaining budgets, pending/UNKNOWN
-effects and relevant campaign-local feedback. At most 8 candidates; no raw provider input,
-private aggregates, execution handles, privileged defender feed or all-campaign context.
+effects and relevant campaign-local feedback. Pack capacity follows
+[ADR-016's inference profile](../adr/ADR-016-execution-broker.md#initial-inference-accounting-profile-proposed);
+no raw provider input, private aggregates, execution handles, privileged defender feed
+or all-campaign context.
 Include references and explicit omission reasons; visible truncation must not imply that
 omitted evidence does not exist. The worker may request another bounded safe owner view
 before choosing an effect; such a read does not recollect target data, and any requested
@@ -156,7 +159,7 @@ new observation is a new proposal through current authority. No raw content, sec
 unrestricted repositories, defender oracle or privileged evaluator answers enter the
 ContextPack.
 
-The eight-candidate bound applies to one ContextPack, not the campaign's complete set of
+The per-pack candidate bound applies to one ContextPack, not the campaign's complete set of
 hypotheses or assets. A bounded summary/page can expose population counts, coverage,
 grouping basis and explicit omissions, only as supported by the owner view. Additional
 pages name their owner revision/frontier; incompatible or changed premises require a fresh
@@ -217,24 +220,147 @@ source-labeled untrusted input and cannot change system policy, authorize tools 
 rewrite acceptance criteria; generated source, reflections, traces and report narration
 obey the same INV-005 sensitive-data boundary as every other surface.
 
-For the first inference deployment, the owner selected DeepSeek behind the replaceable
-port. Qualify its exact model, endpoint, protocol, supported schema constraints and
-completion/error handling before claiming support.
-[DeepSeek Responses API](https://api-docs.deepseek.com/api/create-response/) documents
-JSON Schema output via text.format (checked 2026-10-11); prefer that profile for
-qualification over generic JSON mode. Other providers require their own compatible
-qualified profile or adapter, not SDK-name equivalence or silent fallback.
+#### Initial inference contracts (PROPOSED)
 
-Structured decoding constrains format only within the supported schema and a completed
-response. It does not establish evidence truth, reference eligibility, meaningful
-falsification or current permission; local size, semantic and owner checks remain
-mandatory. Record the final bounded proposal and safe provenance, not private
-chain-of-thought.
-The initial bounded generation/repair profile follows ADR-016. Repair retains the same
-question, safe ContextPack and allowed references, plus bounded validation errors and
-admitted response material labeled as untrusted. Do not resend an arbitrary raw response,
-relax policy, repair a scope/provenance rejection or assume network timeout is a schema
-defect. Every repaired proposal passes complete validation.
+`DW-DESIGN-M1-INFERENCE-PROFILE` closes the following concrete profile for exact-text
+review. Accepted R1 and published R2/R3 keep their separate status. This is preparation
+for actual LLM reasoning, not completion of cognitive MVP, acquisition or execution.
+Mission owns disclosure consent/limits; Broker owns reservation/consumption/cancellation;
+Cognition owns safe context assembly, proposal validation and decision publication;
+Trajectory owns accepted history/inspection/recovery. Use narrow public views/ports,
+never a CognitiveManager, GlobalContext, new operational model or sibling mutable import.
+
+**Mission attachment — `m1_inference_permission_v1`.** Required fields: attachment identity
+and version; engagement/campaign; operator/authority references; the resulting current
+Mission revision to which consent applies; mission-purpose/goal reference and exercise
+mode; exact approved recipient; inference profile version; permitted safe field classes;
+valid-from/inclusive and valid-until/exclusive UTC times; explicit finite campaign and
+per-operation limits under ADR-016; approval of engagement-compatible provider use/retention
+terms. Mission accepts/revises this independently through expected-revision and durable
+publication, not by mutating old registration history. A later Mission revision requires
+explicitly rebound consent; no historical attachment is silently carried forward as current.
+Missing attachment disables inference. Existing crt.sh disclosure and legacy registrations
+keep their original meanings and grant no inference permission. Consent is neither an API
+key nor target-contact/dispatch authority; an environment value, model answer, caller JSON,
+name-policy match or prepared-session receipt cannot substitute for the Mission owner view.
+
+Safe field classes are closed: mission question/constraints; scoped opaque references;
+owner-qualified non-sensitive claim summaries with source/time/status; admitted operator
+premises labeled as such; manifest availability; omissions/UNKNOWN dispositions; capacity;
+and admitted proposal fields/static validation codes for conditional repair. Each actual
+field must be both safe and permitted by consent. No class admits raw client content,
+secrets, private chain-of-thought or privileged defender context in blind mode. Missing
+required disclosure classes defers; redact/drop optional fields only with visible omissions.
+Before every generation and repair, require current Mission authority, unchanged revision,
+matching campaign/purpose/mode/recipient/profile, valid window, field eligibility and Broker
+capacity. Withdrawal, expiry, unsupported profile or unavailable authority blocks the call;
+ADR-016 owns the send/stop race, reservation and cancellation semantics.
+
+**Provider — `deepseek-responses-v1`.** Select only HTTPS POST to
+`https://api.deepseek.com/responses`, model `deepseek-flash`, text-only non-streaming
+Responses (`stream=false`), `reasoning={"effort":"high"}`, no tools (`tools=[]`,
+`tool_choice="none"`), and `text.format={"type":"json_schema",
+"name":"m1_inference_proposal_v1","schema":...}` with the proposal schema below.
+`max_output_tokens` and all numerical limits are canonical in ADR-016, not SDK defaults.
+Use explicit versioned instructions; omit temperature/top_p and record those omissions.
+No image/file input, conversation continuation, redirects, automatic transport retries,
+ambient proxies, provider fallback or model-switch fallback. Normal certificate/hostname
+validation is required. The provider API key stays in adapter-only infrastructure secret
+configuration, outside the pack, request provenance, SQL, diagnostics and receipt.
+
+Official [Responses reference](https://api-docs.deepseek.com/api/create-response) and
+[compatibility guide](https://api-docs.deepseek.com/guides/responses_api), checked 2026-10-11,
+explicitly document this model, endpoint, text input/non-streaming output, JSON Schema
+text.format, high effort and reasoning-inclusive max_output_tokens. This is not an OpenAI
+SDK-equivalence claim. Unsupported parameters may be silently ignored: send only this
+selected supported subset, and locally validate every output. The
+[model reference](https://api-docs.deepseek.com/quick_start/pricing) currently maps the alias
+to DeepSeek-V4.1-Flash; hidden provider changes remain a reproducibility limit. Record
+requested and reported model/configuration separately, profile/schema/template versions,
+adapter release, and provider revision/fingerprint when actually supplied, otherwise
+unavailable. Do not manufacture a fingerprint or infer identical output on replay.
+The API's stateless/store-false description is not zero-retention certification; automatic
+provider caching and engagement-compatible terms still require disclosure approval.
+[Keep-alive documentation](https://api-docs.deepseek.com/quick_start/rate_limit) allows blank
+lines while waiting: they count toward the envelope and never extend the deadline.
+
+**Context — `m1_context_pack_v1`.** An immutable strict UTF-8 JSON object assembled locally
+from eligible owner contracts, not a caller-supplied accepted view. Required fields:
+- `version`, engagement/campaign, decision identity, permission identity, Mission revision,
+  purpose/goal, scope and exercise mode bind the question and its authority provenance.
+- `question` is the admitted mission question; `evaluated_at` states the evaluation time.
+  `owner_views` names each owner, availability, revision/frontier and evaluation time;
+  unavailable Terrain/Pathing/Access/Objective stays unavailable, never empty-as-complete.
+- `references` assigns pack-local IDs to scoped owner/entity/revision references, with
+  safe meaning, source lineage, perception time/time uncertainty, epistemic status/tier,
+  freshness and completeness. Supplied JSON or a name is not source qualification.
+- `candidates` references eligible premises, not a forced ranked A/B answer. Safe operator
+  premises are separately admitted and source-labeled; they do not qualify acquisition.
+- `omissions` gives unavailable/withheld/stale/truncated reasons and supported coverage
+  only; `pending_unknown` names unresolved work and limitations, not fabricated outcomes.
+- `manifests` lists admitted profile/version/digest and actual availability, never inferred
+  from an ADR alone. `remaining_capacity` is Broker's safe reservation/remainder view,
+  distinguishing bytes, tokens, calls and time; it is not authority to consume them.
+A missing Mission view defers the decision. Missing other views permits honest limited
+reasoning, not manufactured access, path, environmental or objective claims. Another safe
+view request is `observe_more` intent: obtaining changed context needs a new decision and
+reservation; repair cannot expand the pack. Questions/alternatives remain open-ended.
+
+**Proposal — `m1_inference_proposal_v1`.** Require a strict JSON object with `version` equal
+to that contract identifier; the question/decision binding comes from the local pack, not
+a model-selected identity. Remaining required fields are
+`hypothesis`, `considered_alternative`, `references` (pack-local IDs), `expected_observation`,
+`falsifying_observation`, `uncertainty`, `rationale`, and `next_intent`. Each text field is
+nonempty bounded safe explanation, not private reasoning; uncertainty names missing or
+conflicting support, and falsification states what would change the hypothesis.
+`next_intent` has exactly one category: `validate`, `observe_more`,
+`synthesize_candidate_implementation`, `retain`, `defer` or `stop`; it carries eligible
+reference IDs and an optional manifest reference, not a command, arbitrary endpoint or
+execution handle. Only `observe_more` may additionally carry one typed `view_request`
+naming the owner view (`cyber_terrain`, `foothold_graph`, `attack_path_view`,
+`objective_state` or `campaign_trajectory`) and bounded pack-local selectors; deterministic
+ContextPack assembly decides admission, so the request stays explanation, not a fetch.
+Missing-capability/conditional future intent remains explanation and cannot dispatch a
+batch or grant synthesis/build permission. Empty reference lists may support an honest
+defer/stop, never an unsupported factual premise.
+The schema uses required fields, closed objects (`additionalProperties=false`), string/
+array/object types and closed category/version values. Local byte/nesting/collection
+bounds follow ADR-016 even if provider schema enforcement differs. Reject duplicate or
+unknown keys, malformed/trailing JSON, wrong types/version, empty required text and extra
+proposals structurally. Reject invented/cross-campaign/stale references, digest mismatch,
+mode/provenance laundering, widened scope, unsupported manifest or current-use failure
+semantically. Recheck required owner premises and Mission authority before current-use
+validation; unavailable authority cannot become a validated current proposal. A later
+invalidation preserves the historical record but blocks dependent use. Schema validity
+is neither truth nor permission; even valid hypotheses require owner reconciliation.
+
+**Local request binding — `dw-inference-binding-v1`.** Let P be the exact admitted immutable
+pack UTF-8 bytes; B the exact serialized HTTP JSON entity sent; C the immutable UTF-8 JSON
+configuration bytes recording recipient/method/content-type, profile/schema/template
+versions and their exact schema/instruction text, requested model/settings (including
+omissions), adapter release and effective transport/resource settings. Preserve admitted
+P/C/B with the local decision provenance; do not reserialize them during verification.
+Digest is lower-case hex SHA-256 of ASCII `dw-inference-binding-v1` followed by a zero byte,
+then length(P), P, length(C), C, length(B), B; each length is an unsigned 64-bit big-endian
+byte count. C/B exclude credentials and contain no digest field, avoiding circular binding.
+Each call has its own binding, including actual repair material; P stays byte-identical.
+Transport must send B unchanged under C, and validation compares against the locally
+reserved binding, never model-supplied digest text. A provider digest/identity field is
+untrusted extra output. No digest exists without retained bound safe bytes, and a digest
+proves neither source truth, provider identity nor current permission.
+
+The adapter accepts only a complete bounded response envelope and completed assistant
+message carrying proposal text; reasoning items are discarded without logging, storage,
+repair forwarding or operator exposure. Unexpected tools, unsupported item/protocol,
+failed/incomplete/truncated responses, error bodies and transport failures yield safe
+categories, never partial cognitive success. Raw response/error/chain-of-thought bytes
+stay transient inside the adapter admission boundary; only admitted safe proposal fields,
+usage/provenance and fixed error categories may leave. Size-bounded free text is not
+inherently safe. If safe admission cannot be established, reject without echo or retention.
+Repair follows ADR-016 only: same question, exact pack and references plus static errors
+and optionally bounded independently admitted proposal fields labeled untrusted. It never
+resends arbitrary raw response or repairs authority/scope/provenance failure. Every
+repaired proposal passes the same complete structural, reference and current-use checks.
 
 Provider failure remains a visible cognitive failure/defer/unknown. A non-cognitive
 selector requires an explicitly selected and qualified operating mode with separate
@@ -272,6 +398,46 @@ Additional verification is claim-specific. Inspection is not client-proof releas
 No read/reference fetches raw capture. History and projection replay call no capability.
 Composition retains only narrow application ports; no object acquires all five models.
 
+#### Initial decision publication and inspection — PROPOSED
+
+Future production flow: existing CLI dispatch under CommandGuard -> current Mission public
+view -> Cognition pack assembly -> Broker durable consent/quota admission -> replaceable
+inference adapter -> Cognition complete proposal validation -> durable decision/outbox ->
+Trajectory consumer -> bounded receipt. No stage imports a sibling mutable aggregate.
+The first delivery adds no target dispatch, Terrain/Pathing/Access/Objective mutation or synthesis run.
+
+A core-allocated decision operation identity is scoped by engagement/campaign and producer
+`cognition`; its generation/repair call identities are that scope plus decision and call
+role, never provider-assigned IDs. Broker owns the call ledger; Cognition owns immutable
+`ReasoningDecision` v1 publication and its validation disposition. Each event has a stable
+core event ID, decision ID, Mission/permission references, pack/request bindings, call
+references, occurrence/recording times, source/mode and admitted proposal or safe failure
+category. Validation and publication acceptance are separate from provider consumption.
+Cognition's accepted decision and required `trajectory.reasoning_history.v1` obligation
+commit together under ADR-003/005; no best-effort callback after a standalone save.
+Trajectory verifies producer provenance through the wired owner port and committed source,
+scope/version/identity, Mission predecessor and bound bytes, then atomically appends accepted
+history and consumer completion. Historical admission checks the recorded basis, not a new
+inference or renewed consent; current use remains separately checked. Pending predecessor
+or unavailable publication stays pending/unknown, not completed or a validation rollback.
+Same scoped identity/content redelivers idempotently; changed question/pack/config/proposal
+under the identity is an integrity conflict, not last-writer-wins. Anomaly dominates a prior
+completed row; resolution appends verified correction under ADR-003, without rewriting it.
+
+Receipt/inspection `m1_inference_receipt_v1` carries scoped decision/call/event IDs, proposal
+validation disposition, publication and consumer status, reservation/consumption states,
+requested/reported configuration, safe counters/times and a fixed recovery category.
+Distinguish validated proposal + completed history; proposal + pending/unknown history;
+deferred/failed inference; uncertain provider consumption; and integrity conflict. These
+axes may coexist and must not collapse to success. All receipts say dispatch is not granted.
+Inspection reads owner/Trajectory views; explicit bounded recovery may redeliver committed
+safe obligations but never invoke inference, repair, refill quota or reinterpret an absent
+record as a known no-send. If validation happened but decision commit is unknown, recovery
+reads the original identity; if safe proposal persistence never completed, leave it failed/
+unknown rather than regenerate. Fresh processes must reconstruct these statuses from durable
+records, not receipt text. Accepted history retains only admitted safe proposal/provenance,
+not API keys, raw responses, private chain-of-thought or raw client content.
+
 ### Minimum report
 
 The minimum M1 deliverable is one machine-readable report and one human-readable
@@ -292,7 +458,9 @@ state/history, not a new evidence owner.
 
 ## 4. Fixed execution and sensitive decisions
 
-ADR-013 owns numerical limits and fixed profile versions. ADR-015 selects qualified Linux
+ADR-013 owns numerical limits and fixed profile versions for its execution scope; the
+proposed ADR-016 inference profile owns inference accounting numbers. ADR-015 selects
+qualified Linux
 worker isolation; ADR-016 owns current authority/effect admission and cancellation;
 ADR-017 owns private framing and phase binding; ADR-011 owns pre-core safe egress and
 honest disposal/contamination. They are concrete accepted decisions, not choices delegated
@@ -376,10 +544,11 @@ full-domain scaffold, scheduler or comparative superiority claim is introduced.
 ## 6. Completion and next packet
 
 R1 delivered six ACCEPTED scoped ADRs and the accepted owner/sequencing contract.
-R2 was published under the owner-approved 2026-10-07 cognitive direction. R3 records
-scope/phase confirmation of 2026-10-11 and proposes the detailed cognitive MVP and
-repair-profile clarification. Amendment exact-text status follows ENGINEERING_STATE.md;
-document validation/review is distinct from acceptance. M0 evidence and seals are unchanged.
+R2 was published under the owner-approved 2026-10-07 cognitive direction. Published R3
+records scope/phase confirmation of 2026-10-11 and the detailed cognitive MVP clarification.
+This inference-profile amendment remains PROPOSED. Exact-text status follows
+ENGINEERING_STATE.md; document validation/review is distinct from acceptance.
+M0 evidence and seals are unchanged.
 
 The next runtime outcome is a measured real-inference ContextPack/proposal/history
 consumer, with its permitted bounded repair and recovery. It is a partial enabling
@@ -395,4 +564,36 @@ Work must inspect the actual selected runtime source/consumer/fixtures and suppo
 execution environment, measure a complete observable slice against the exact new base,
 reserve correction room and give an exact file map. The 600-line ceiling is unchanged;
 this DESIGN does not promise a full M1 loop in one runtime PR or a fixed PR count.
-Stop at this enabling DESIGN boundary.
+Runtime fit remains UNVERIFIED until that complete formatted slice is measured against
+the accepted resulting base with correction room. Stop at this DESIGN boundary.
+
+### Required future inference qualification
+
+These assertions are future requirements, not tests executed by this DESIGN packet.
+Use deterministic provider fixtures, real restricted PostgreSQL and the real CLI/consumer;
+separately qualify actual DeepSeek behavior only with authorized safe disclosure inputs.
+- Valid completed proposal produces one durable decision and one completed Trajectory item;
+  one eligible schema repair keeps P/references unchanged and yields separately charged calls.
+- Malformed/empty completed output uses safe error codes only; incomplete/truncated output
+  never repairs. Invalid repair exhausts capacity without a selector fallback or dispatch.
+- Forged references, mismatched bound bytes/digest, cross-campaign identity reuse and unsafe/
+  privileged-source text reject; no prohibited sentinel reaches prompts, SQL or inspection.
+- Missing consent, revised Mission, expiry, withdrawal and unavailable authority block each
+  generation/repair release; race withdrawal against release and prove owned cancellation.
+- Duplicate/concurrent identity makes no additional call; conflicting content yields anomaly.
+  Insufficient campaign capacity prevents generation; contention cannot overspend remainder.
+- Restart after may-send/lost response retains uncertain consumption and counts zero replay;
+  unused reserved repair stays distinguishable from sent work, never resumed by recovery.
+- Commit reservation durably, assert it through a fresh restricted connection, then lose the
+  physical COMMIT ACK: caller sends nothing; recovery preserves identity/capacity. A fault
+  before commit or a mock returning an error is not this qualification.
+- Inject decision publication/consumer failures and consumer commit/ACK loss; fresh-context
+  recovery completes only durable safe obligations once, or reports pending/unknown/conflict,
+  with zero provider calls and no regeneration of a lost uncommitted proposal.
+- Oversize headers/body/keep-alives, stalled connection and slow completed output respect
+  ADR-016 byte/deadline bounds; cancel/parent loss leaves honest uncertain disposition.
+- Exercise the actual CLI -> Mission -> pack -> Broker -> provider adapter -> validated
+  publication -> Trajectory -> inspection/recovery path; a unit-only export fails reachability.
+  Record candidate/platform/configuration and actual call/history counts. Fixture success
+  is not provider availability, storage/cancellation qualification on another platform,
+  action feedback, synthesis, reporting, cognitive MVP completion or an M1 seal.
