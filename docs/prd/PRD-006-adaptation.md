@@ -8,7 +8,7 @@
 | **Stage** | Stage 2 — Campaign Semantics |
 | **Direct Dependencies** | [PRD-005 Objective Loop](PRD-005-objective-loop.md) |
 | **Target Seal** | DW-PRD-006 |
-| **Amendment** | R2 — cognitive direction approved by the product owner on 2026-10-07 (evidence-led reasoning, capability feedback/evolution); published as a candidate amendment, exact-text acceptance recorded separately |
+| **Amendment** | R2 — cognitive direction approved by the product owner on 2026-10-07 (evidence-led reasoning, capability feedback/evolution); published as a candidate amendment; R3 clarifies the owner-confirmed cognitive MVP scope of 2026-10-11, with amendment exact-text status in ENGINEERING_STATE.md |
 
 ## 1. Purpose and actors
 
@@ -29,6 +29,8 @@ A trigger may be a fresh campaign-visible control or denial, new key terrain, ex
 Each material decision must be explainable from campaign-visible observation and reconciled evidence, plus any explicitly authorized and labeled defender-informed feedback, through a hypothesis, plausible alternatives (including observe more, refresh, dwell, or stop), the selected proposal, expected evidence and disconfirming result, authorization, observed outcome, and subsequent revision of the affected models. The reasoner may choose no target action when evidence is insufficient. This is a bounded decision process, not a sixth operational model or an autonomous source of truth. A proposal describes intent and its evidence test; it grants no execution authority and does not prescribe a tool sequence.
 
 The decision process is evidence-led and cognitive: the reasoner itself proposes hypotheses, compares alternatives, identifies missing information, chooses the next proposed action and adapts after outcomes. Deterministic mechanisms retain authorization, bounds, schema validation, current-use checks, execution accounting and owner-specific reconciliation; they may reject a proposal but must not silently preselect every action through a fixed ranking and then ask the reasoner to narrate the choice. A deterministic selector may remain a test control or an explicitly labeled non-cognitive operating mode; it cannot satisfy this requirement. When no admitted capability can address a recognized problem, the reasoner may propose a candidate implementation, which reaches dispatch only through the isolated build, qualification and admission lane of the owning capability and execution contracts; a new algorithm is distinct from a new permission.
+
+Within M1, the LLM must be able to challenge the presented premises, propose an alternative absent from an initial candidate list, and request another bounded safe owner view rather than merely choose A or B. A conditional multi-step plan is revisable intent: only the next proposal reaches current admission, and later steps are reconsidered after owner-qualified outcomes. Resource and output bounds do not prescribe a hidden strategy or a mandatory tool sequence. This is an operator-style decision loop, not a claim to reproduce an actor's internal cognition or complete toolset.
 
 In blind mode, privileged defender-internal EDR/AV/SIEM verdicts, SOC tickets, and Observer/Grader assessments remain outside decision inputs. Campaign-visible environmental friction may guide bounded adaptation without automatic attribution. Defender telemetry legitimately observed through an authorized campaign position follows observation/fact reconciliation at the appropriate epistemic tier and can inform a decision within its actual evidentiary limits. A separately authorized defender-informed exercise or retest may use bounded feedback, but is labeled and evaluated independently of blind results under [PRD-000 INV-007](PRD-000-product-thesis.md).
 
@@ -113,6 +115,9 @@ No privileged defender verdict influences any of these decisions. A defender-inf
 6. Tempo transitions (entering and exiting exploitation mode) are recorded with justification and trigger appropriate post-tempo reconciliation.
 7. Rapid, bounded, and persistent engagement envelopes constrain adaptation without changing proof standards; expiry or budget exhaustion prevents self-extension and produces a bounded-completion account of assessed scope and residual uncertainty.
 8. The synthetic cross-PRD trace maintains distinct terrain, path, foothold, objective, and trajectory claims without raw sensitive material, audit modification, or privileged defender-oracle feedback in blind mode; any defender-informed variant is distinctly authorized, labeled, and evaluated.
+9. M1's connected cognitive demonstration shows objective -> hypothesis/alternatives -> admitted action -> owner-qualified evidence -> revised belief/question and next proposal through actual LLM inference. Inference followed only by stored narration, or deterministic selection with LLM explanation, does not complete that loop.
+10. A held-out case challenges the initial alternatives: the reasoner may obtain another eligible bounded owner view, propose a sourced alternative or honestly defer when premises or limits are insufficient. A changed outcome causes appropriate reconsideration, not a mandatory different answer for every new observation.
+11. A bounded campaign-local retrieval case checks reflection applicability against current premises; contradictory or superseded advice is not silently reused. Tests record model/configuration, evidence/context and limits; identical stochastic output or improved capability is not presumed.
 
 ## 7. Explicit non-goals
 

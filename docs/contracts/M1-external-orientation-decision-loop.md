@@ -4,7 +4,7 @@
 | --- | --- |
 | Document | DW-M1-EXTERNAL-ORIENTATION-CONTRACT-20261006 |
 | Status | ACCEPTED — product owner, 2026-10-06; product/behavior scope and linear delivery cadence |
-| Amendment | R2 — cognitive direction approved by the product owner on 2026-10-07 (evidence-led reasoning, bounded capability synthesis/evolution, feedback learning, minimum report); published as a candidate amendment, exact-text acceptance recorded separately |
+| Amendment | R2 — cognitive direction approved by the product owner on 2026-10-07 (evidence-led reasoning, bounded capability synthesis/evolution, feedback learning, minimum report); published as a candidate amendment; R3 clarifies the owner-confirmed cognitive MVP scope of 2026-10-11, with amendment exact-text status in ENGINEERING_STATE.md |
 | Date | 2026-10-06 |
 | Repository path | `docs/contracts/M1-external-orientation-decision-loop.md` |
 | Verified authoring base | `d421c776da2d030d344338181628d5852b3bbe81` |
@@ -179,6 +179,10 @@ M1 must show a connected production entrypoint-to-consumer path, not just parser
 | Eligible acquisition | DuskWeave obtains a candidate hint, a DNS binding and an admitted HTTPS result; owner-qualified material changes or supports a decision |
 | Decision-relevant relationship | Removing, expiring, contradicting or prohibiting the routing premise changes the dependent contact proposal or candidate disposition |
 | Material feedback | New permitted evidence causes a different next candidate/action, premise or defer decision; rationale predates dispatch |
+| Open hypothesis space | A held-out case challenges the initial offered options; the LLM may request an eligible bounded owner view and propose another sourced approach, or a justified no-action disposition; a forced A/B selector fails |
+| Cognitive loop completion | Actual LLM inference consumes owner-qualified action outcomes and revises beliefs/questions before the next proposal; a single inference/receipt or stored narration is only a partial enabling delivery |
+| Bounded context navigation | Additional summary/pages carry owner revision/frontier and explicit omissions; eight candidates per pack never implies complete campaign coverage or permission to expand R1 acquisition |
+| Reflection applicability | Campaign-local retrieval distinguishes current applicability, counterevidence and supersession; retained historical advice cannot substitute for fresh owner premises |
 | No-action path | No eligible candidate, unmet burden or exhausted authority/budget yields a safe stop/defer with no target dispatch |
 | False permission | Outside-scope name/redirect, excluded address, changed binding, expired/revoked authority and forged worker input cannot create a contact |
 | False certainty | CT age, copied lineage, banner/status, timeout and tool exit cannot create unsupported ownership, access or global absence |
