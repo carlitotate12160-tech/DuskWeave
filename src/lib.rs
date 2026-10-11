@@ -2,6 +2,7 @@
 //! DuskWeave M0A: durable mission registration and sourced history.
 
 pub mod input;
+pub mod m1_inference_budget;
 pub mod m1_inference_permission;
 pub mod m1_permission;
 pub mod m1_policy;
@@ -14,6 +15,7 @@ pub mod planning;
 pub mod planning_assessment;
 pub mod planning_history;
 pub mod planning_input;
+pub mod postgres_inference_budget;
 pub mod postgres_m1_session;
 pub mod postgres_mission;
 mod postgres_planning_history;

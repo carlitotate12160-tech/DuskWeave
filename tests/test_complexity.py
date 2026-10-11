@@ -15,7 +15,7 @@ CHECKER = SCRIPTS / "check_complexity.py"
 ANALYZER = os.environ.get("DW_COMPLEXITY_ANALYZER")
 
 REVIEWED_RUN_SHA = (
-    "8cb5f70b4f3da26ef3078171e11263ce0e845d212c7b399228a3199dc315b74a"
+    "921bc2f3407da4afa83462c940cd7748137e1dcc780680cee59fb7fc7cb5c20d"
 )
 REVIEWED_RUN_SRC = """fn run(command: &str, args: &[String]) -> Res<()> {
     match command {
@@ -27,7 +27,7 @@ REVIEWED_RUN_SRC = """fn run(command: &str, args: &[String]) -> Res<()> {
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),
         "m1-policy-check" => m1_policy_cli::cmd_policy_check(args),
-        _ => m1_session_cli::command(command, args),
+        _ => m1_cli::command(command, args),
     }
 }
 """

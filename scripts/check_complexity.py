@@ -31,7 +31,7 @@ REQUIRED_VERSION = "rust-code-analysis-cli 0.0.25"
 DISPATCH_FILE = "src/main.rs"
 DISPATCH_NAME = "run"
 REVIEWED_RUN_SHA256 = (
-    "8cb5f70b4f3da26ef3078171e11263ce0e845d212c7b399228a3199dc315b74a"
+    "921bc2f3407da4afa83462c940cd7748137e1dcc780680cee59fb7fc7cb5c20d"
 )
 
 
