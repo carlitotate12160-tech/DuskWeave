@@ -38,12 +38,8 @@ fn registration_publication_ready(
     let known = tx
         .query_opt(
             "SELECT 1 FROM trajectory.registration_history WHERE engagement_id=$1
-         AND campaign_id=$2 AND event_id=$3 LIMIT 1",
-            &[
-                &event.engagement_id.0,
-                &event.campaign_id.0,
-                &event.event_id.0,
-            ],
+         AND campaign_id=$2 LIMIT 1",
+            &[&event.engagement_id.0, &event.campaign_id.0],
         )
         .map_err(|e| store_err(&e))?
         .is_some();

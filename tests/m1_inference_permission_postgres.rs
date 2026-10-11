@@ -136,6 +136,34 @@ fn raw_owner_contract_unknown_or_normalized_content_fails_closed() {
 }
 
 #[test]
+fn accepted_scope_identity_conflicts_remain_monotonic_anomalies() {
+    let _g = db_support::db();
+    for index in 1..=3 {
+        let (e, c) = db_support::scope(0xa700 + index);
+        let ev = consent::committed(e, c);
+        let mut conflict = ev.clone();
+        if index != 2 {
+            conflict.event_id = EventId(Uuid::from_u128(0xf1));
+        }
+        if index != 1 {
+            conflict.operation_id = OperationId(Uuid::from_u128(0xf2));
+            conflict.causation_id = conflict.operation_id;
+            conflict.correlation_id = conflict.operation_id;
+        }
+        let (_, mut s, mut t) = db_support::ports();
+        assert_eq!(t.deliver(&conflict).unwrap(), Delivered::Anomaly);
+        assert_eq!(t.registration_status(&ev).unwrap(), HistoryStatus::Anomaly);
+        assert_eq!(t.deliver(&ev).unwrap(), Delivered::Anomaly);
+        assert_eq!(t.deliver(&conflict).unwrap(), Delivered::Anomaly);
+        assert_eq!(
+            registration::reconcile(&mut s, &mut t, e, c, ev.operation_id).unwrap(),
+            ReconcileOutcome::Conflicted
+        );
+        consent::assert_rows(e, c, 2);
+    }
+}
+
+#[test]
 fn owner_catalog_and_original_row_are_bound_during_decoding() {
     let _g = db_support::db();
     for (index, assignment) in [
@@ -189,6 +217,10 @@ fn accepted_contract_catalog_completion_corruption_cannot_report_completed() {
         (5, "completed_at=NULL"),
         (6, "contract=jsonb_set(contract,'{version}','1')"),
         (7, "event_id=gen_random_uuid()"),
+        (
+            8,
+            "event_id=gen_random_uuid(),operation_id=gen_random_uuid()",
+        ),
     ] {
         let (e, c) = db_support::scope(0xa400 + index);
         let ev = consent::committed(e, c);

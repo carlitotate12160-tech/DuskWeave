@@ -29,9 +29,15 @@ fn has_anomaly(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<boo
     Ok(tx
         .query_opt(
             "SELECT 1 FROM trajectory.registration_history \
-             WHERE engagement_id = $1 AND campaign_id = $2 AND event_id = $3 \
-             AND status = 'anomaly'",
-            &[&record.engagement_id, &record.campaign_id, &record.event_id],
+             WHERE engagement_id = $1 AND campaign_id = $2 \
+             AND (event_id = $3 OR ($4::jsonb->>'version') = '3') \
+             AND status = 'anomaly' LIMIT 1",
+            &[
+                &record.engagement_id,
+                &record.campaign_id,
+                &record.event_id,
+                record.contract,
+            ],
         )
         .map_err(|error| store_err(&error))?
         .is_some())
@@ -45,7 +51,7 @@ fn accepted_match(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<
                   AND completed_at IS NOT NULL)) \
              FROM trajectory.registration_history \
              WHERE engagement_id = $1 AND campaign_id = $2 \
-             AND (event_id = $3 OR (($4->>'version') = '3' AND operation_id = $6)) \
+             AND (event_id = $3 OR ($4->>'version') = '3') \
              AND status = 'accepted'",
             &[
                 &record.engagement_id,
@@ -162,8 +168,7 @@ pub(super) fn bound_status(
         .query(
             "SELECT status, event_id=$3 AND contract=$4::jsonb AND operation_id=$5 AND producer='mission'
          AND obligation='trajectory.registration_history.v1' AND completed_at IS NOT NULL
-         FROM trajectory.registration_history WHERE engagement_id=$1 AND campaign_id=$2
-         AND (event_id=$3 OR operation_id=$5)",
+         FROM trajectory.registration_history WHERE engagement_id=$1 AND campaign_id=$2",
             &[
                 &event.engagement_id.0,
                 &event.campaign_id.0,
