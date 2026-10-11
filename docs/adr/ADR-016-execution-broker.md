@@ -242,7 +242,10 @@ release and stop serialize under the same campaign/generation owner, after SQL e
 Immediately at release recheck stop/generation, unchanged authority revision and remaining
 Mission/consent/shared/command time; expired, pending-writer or unavailable authority blocks
 release even after a successful marker commit. Clock uncertainty cannot extend authority.
-No database lock spans inference. A reservation or `may_send` marker is not proof of a
+Release is the send linearization point under that owner: a stop ordered before release
+prevents transport and leaves reserved/cancelled local accounting; a stop ordered after
+release means a possible send, so owned transport is cancelled and the call stays
+cancelled-uncertain, never rolled back to unused. No database lock spans inference. A reservation or `may_send` marker is not proof of a
 send: a crash in the marker-to-send gap conservatively means uncertain consumption.
 Unconfirmed reservation/marker COMMIT blocks send even if it may have committed.
 Actual send start is recorded separately when observable, never reconstructed from a

@@ -316,9 +316,13 @@ conflicting support, and falsification states what would change the hypothesis.
 `next_intent` has exactly one category: `validate`, `observe_more`,
 `synthesize_candidate_implementation`, `retain`, `defer` or `stop`; it carries eligible
 reference IDs and an optional manifest reference, not a command, arbitrary endpoint or
-execution handle. Missing-capability/conditional future intent remains explanation and
-cannot dispatch a batch or grant synthesis/build permission. Empty reference lists may
-support an honest defer/stop, never an unsupported factual premise.
+execution handle. Only `observe_more` may additionally carry one typed `view_request`
+naming the owner view (`cyber_terrain`, `foothold_graph`, `attack_path_view`,
+`objective_state` or `campaign_trajectory`) and bounded pack-local selectors; deterministic
+ContextPack assembly decides admission, so the request stays explanation, not a fetch.
+Missing-capability/conditional future intent remains explanation and cannot dispatch a
+batch or grant synthesis/build permission. Empty reference lists may support an honest
+defer/stop, never an unsupported factual premise.
 The schema uses required fields, closed objects (`additionalProperties=false`), string/
 array/object types and closed category/version values. Local byte/nesting/collection
 bounds follow ADR-016 even if provider schema enforcement differs. Reject duplicate or
@@ -454,7 +458,9 @@ state/history, not a new evidence owner.
 
 ## 4. Fixed execution and sensitive decisions
 
-ADR-013 owns numerical limits and fixed profile versions. ADR-015 selects qualified Linux
+ADR-013 owns numerical limits and fixed profile versions for its execution scope; the
+proposed ADR-016 inference profile owns inference accounting numbers. ADR-015 selects
+qualified Linux
 worker isolation; ADR-016 owns current authority/effect admission and cancellation;
 ADR-017 owns private framing and phase binding; ADR-011 owns pre-core safe egress and
 honest disposal/contamination. They are concrete accepted decisions, not choices delegated
