@@ -45,11 +45,14 @@ Current seal:
 
 Current engineering state:
 
-Current candidate: `DW-DESIGN-M1-INFERENCE-PROFILE` (documentation-only, PROPOSED).
-See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-proposed)
+Current candidate: `DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT`, based on merged
+PR #51 at `35a31fd6879e9050f1455c25489e6c5140312cf0` (master CI 38127757340 SUCCESS).
+See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
-for exact-text review, delivery evidence and next action. No IMPLEMENT packet,
-runtime-fit qualification, effect permission or seal change is issued here.
+for the 2026-10-11 scoped owner acceptance, delivery evidence and next action.
+The issued packet co-creates consent only for new campaigns; independent later
+amendment/rebinding and actual inference remain required. Full provider-chain fit,
+deployment and cognitive MVP completion remain UNVERIFIED; seals are unchanged.
 
 Current design document:
 

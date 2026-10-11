@@ -40,9 +40,12 @@ fn has_anomaly(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<boo
 fn accepted_match(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<Option<bool>> {
     Ok(tx
         .query_opt(
-            "SELECT contract = $4::jsonb AND obligation = $5 \
+            "SELECT event_id = $3 AND contract = $4::jsonb AND obligation = $5 \
+             AND (($4->>'version') <> '3' OR (operation_id=$6 AND producer=$7 \
+                  AND completed_at IS NOT NULL)) \
              FROM trajectory.registration_history \
-             WHERE engagement_id = $1 AND campaign_id = $2 AND event_id = $3 \
+             WHERE engagement_id = $1 AND campaign_id = $2 \
+             AND (event_id = $3 OR (($4->>'version') = '3' AND operation_id = $6)) \
              AND status = 'accepted'",
             &[
                 &record.engagement_id,
@@ -50,10 +53,12 @@ fn accepted_match(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<
                 &record.event_id,
                 record.contract,
                 &record.obligation,
+                &record.operation_id,
+                &record.producer,
             ],
         )
         .map_err(|error| store_err(&error))?
-        .map(|row| row.get(0)))
+        .map(|row| row.get::<_, Option<bool>>(0) == Some(true)))
 }
 
 fn insert_anomaly(tx: &mut Transaction, record: &RegistrationRecord<'_>) -> Res<()> {
@@ -143,5 +148,42 @@ pub(super) fn status(
         HistoryStatus::Completed
     } else {
         HistoryStatus::Pending
+    })
+}
+
+/// A v3 completed receipt binds both the safe contract and its history catalog.
+/// Anomaly status still dominates; a corrupt accepted row fails closed.
+pub(super) fn bound_status(
+    client: &mut Client,
+    event: &crate::mission::MissionRegistered,
+) -> Res<HistoryStatus> {
+    let contract = serde_json::to_value(event).map_err(|_| Fail::Store("encode"))?;
+    let rows = client
+        .query(
+            "SELECT status, event_id=$3 AND contract=$4::jsonb AND operation_id=$5 AND producer='mission'
+         AND obligation='trajectory.registration_history.v1' AND completed_at IS NOT NULL
+         FROM trajectory.registration_history WHERE engagement_id=$1 AND campaign_id=$2
+         AND (event_id=$3 OR operation_id=$5)",
+            &[
+                &event.engagement_id.0,
+                &event.campaign_id.0,
+                &event.event_id.0,
+                &contract,
+                &event.operation_id.0,
+            ],
+        )
+        .map_err(|e| store_err(&e))?;
+    if rows.iter().any(|r| r.get::<_, &str>(0) == "anomaly") {
+        return Ok(HistoryStatus::Anomaly);
+    }
+    if rows.iter().any(|row| {
+        row.get::<_, &str>(0) != "accepted" || row.get::<_, Option<bool>>(1) != Some(true)
+    }) {
+        return Err(Fail::Store("contract_decode"));
+    }
+    Ok(if rows.is_empty() {
+        HistoryStatus::Pending
+    } else {
+        HistoryStatus::Completed
     })
 }

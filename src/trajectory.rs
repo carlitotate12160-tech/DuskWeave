@@ -24,8 +24,12 @@ fn declared(ev: &MissionRegistered) -> bool {
     ev.producer == PRODUCER
         && ev.kind == CONTRACT_KIND
         && matches!(
-            (ev.version, ev.fields.m1_permission().is_some()),
-            (CONTRACT_VERSION, false) | (2, true)
+            (
+                ev.version,
+                ev.fields.m1_permission().is_some(),
+                ev.fields.m1_inference_permission().is_some()
+            ),
+            (CONTRACT_VERSION, false, false) | (2, true, false) | (3, _, true)
         )
         && ev.owner_revision == 1
 }
@@ -43,7 +47,7 @@ pub fn check_event(ev: &MissionRegistered) -> Result<(), &'static str> {
     if !scoped(ev) {
         return Err("scope_violation");
     }
-    if ev.version == 2
+    if matches!(ev.version, 2 | 3)
         && [
             ev.event_id.0,
             ev.operation_id.0,
@@ -55,7 +59,17 @@ pub fn check_event(ev: &MissionRegistered) -> Result<(), &'static str> {
     {
         return Err("scope_violation");
     }
-    ev.fields.validate().map_err(|_| "invalid_fields")
+    ev.fields.validate().map_err(|_| "invalid_fields")?;
+    check_inference_binding(ev)
+}
+
+fn check_inference_binding(ev: &MissionRegistered) -> Result<(), &'static str> {
+    if let Some(permission) = ev.fields.m1_inference_permission() {
+        permission
+            .bind_scope(ev.engagement_id, ev.campaign_id, ev.owner_revision)
+            .map_err(|_| "invalid_fields")?;
+    }
+    Ok(())
 }
 
 /// Version-2 bases carry the owner's scope snapshot; it must equal the

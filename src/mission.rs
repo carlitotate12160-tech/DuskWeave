@@ -55,6 +55,8 @@ pub struct RegistrationFields {
     pub(crate) ends_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) m1_permission: Option<crate::m1_permission::M1Permission>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) m1_inference_permission: Option<crate::m1_inference_permission::InferencePermission>,
 }
 
 impl RegistrationFields {
@@ -82,6 +84,7 @@ impl RegistrationFields {
             starts_at,
             ends_at,
             m1_permission,
+            m1_inference_permission: None,
         };
         f.validate()?;
         f.included_assets.sort();
@@ -128,7 +131,36 @@ impl RegistrationFields {
         if let Some(permission) = &self.m1_permission {
             permission.validate(self)?;
         }
+        if let Some(permission) = &self.m1_inference_permission {
+            permission.validate(self)?;
+        }
         Ok(())
+    }
+
+    pub(crate) fn with_inference_permission(
+        mut self,
+        permission: Option<crate::m1_inference_permission::InferencePermission>,
+    ) -> Res<Self> {
+        self.m1_inference_permission = permission;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn m1_inference_permission(
+        &self,
+    ) -> Option<&crate::m1_inference_permission::InferencePermission> {
+        self.m1_inference_permission.as_ref()
+    }
+
+    fn event_version(&self) -> u32 {
+        match (
+            self.m1_inference_permission.is_some(),
+            self.m1_permission.is_some(),
+        ) {
+            (true, _) => 3,
+            (false, true) => 2,
+            _ => CONTRACT_VERSION,
+        }
     }
 
     pub fn m1_permission(&self) -> Option<&crate::m1_permission::M1Permission> {
@@ -154,6 +186,16 @@ pub struct RegistrationInput {
     pub engagement_id: EngagementId,
     pub campaign_id: CampaignId,
     pub fields: RegistrationFields,
+}
+
+impl RegistrationInput {
+    pub(crate) fn validate(&self) -> Res<()> {
+        self.fields.validate()?;
+        if let Some(permission) = self.fields.m1_inference_permission() {
+            permission.bind_scope(self.engagement_id, self.campaign_id, 1)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -200,7 +242,7 @@ impl Mission {
         {
             return Err(Fail::Input("nil_identity"));
         }
-        input.fields.validate()?;
+        input.validate()?;
         let mission = Mission {
             engagement_id: input.engagement_id,
             campaign_id: input.campaign_id,
@@ -216,11 +258,7 @@ impl Mission {
             affected_entity: input.campaign_id,
             owner_revision: 1,
             kind: CONTRACT_KIND.to_string(),
-            version: if input.fields.m1_permission.is_some() {
-                2
-            } else {
-                CONTRACT_VERSION
-            },
+            version: input.fields.event_version(),
             causation_id: operation_id,
             correlation_id: operation_id,
             occurred_at: now_unix,

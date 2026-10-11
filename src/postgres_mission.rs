@@ -1,6 +1,10 @@
 //! Mission owner's PostgreSQL adapter. Queries only mission.* tables;
 //! the registration and its outbox contract commit in one transaction.
 
+#[path = "postgres_mission_publication.rs"]
+mod postgres_mission_publication;
+pub(crate) use postgres_mission_publication::source_matches;
+
 #[path = "postgres_m1_policy.rs"]
 mod postgres_m1_policy;
 #[path = "postgres_mission_assessment.rs"]
@@ -52,9 +56,16 @@ const REGISTRATION_READ: &str = "SELECT o.contract, o.event_id, o.engagement_id,
     WHERE o.engagement_id=$1 AND o.campaign_id=$2 AND o.operation_id=$3";
 
 fn decode_registration(row: &postgres::Row) -> Res<MissionRegistered> {
+    let raw: serde_json::Value = row.get(0);
     let ev: MissionRegistered =
-        serde_json::from_value(row.get(0)).map_err(|_| Fail::Store("contract_decode"))?;
-    if ev.version == CONTRACT_VERSION && ev.fields.m1_permission.is_none() {
+        serde_json::from_value(raw.clone()).map_err(|_| Fail::Store("contract_decode"))?;
+    postgres_mission_publication::check_contract(&raw, &ev)?;
+    let shape = (
+        ev.version,
+        ev.fields.m1_permission.is_some(),
+        ev.fields.m1_inference_permission.is_some(),
+    );
+    if shape == (CONTRACT_VERSION, false, false) {
         return Ok(ev);
     }
     crate::trajectory::check_event(&ev).map_err(|_| Fail::Store("contract_decode"))?;
@@ -78,6 +89,7 @@ fn bind_registration(row: &postgres::Row, ev: &MissionRegistered) -> Res<()> {
             .map_err(|_| Fail::Store("contract_decode"))?;
     let mut base = ev.fields.clone();
     base.m1_permission = None;
+    base.m1_inference_permission = None;
     if base != original || Some(ev.owner_revision as i64) != row.get::<_, Option<i64>>(6) {
         return Err(Fail::Store("contract_decode"));
     }

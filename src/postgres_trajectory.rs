@@ -1,5 +1,6 @@
 //! CampaignTrajectory owner's PostgreSQL adapter. Queries only
-//! trajectory.* tables; history insertion and completion commit atomically.
+//! trajectory.* tables and a narrow read-only Mission publication port;
+//! history insertion and completion commit atomically.
 #[path = "postgres_withdrawal_history.rs"]
 mod postgres_withdrawal_history;
 
@@ -25,6 +26,52 @@ impl PgTrajectory {
     }
 }
 
+/// Existing identity conflicts stay journal anomalies; first v3 acceptance
+/// additionally requires the exact committed publication from the Mission port.
+fn registration_publication_ready(
+    tx: &mut postgres::Transaction,
+    event: &MissionRegistered,
+) -> Res<bool> {
+    if event.version != 3 {
+        return Ok(true);
+    }
+    let known = tx
+        .query_opt(
+            "SELECT 1 FROM trajectory.registration_history WHERE engagement_id=$1
+         AND campaign_id=$2 AND event_id=$3 LIMIT 1",
+            &[
+                &event.engagement_id.0,
+                &event.campaign_id.0,
+                &event.event_id.0,
+            ],
+        )
+        .map_err(|e| store_err(&e))?
+        .is_some();
+    if known {
+        return Ok(true);
+    }
+    crate::postgres_mission::source_matches(tx, event)
+}
+
+/// Trajectory owns the short acceptance/completion transaction.
+fn commit_registration_history(
+    client: &mut Client,
+    ev: &MissionRegistered,
+    record: &RegistrationRecord<'_>,
+) -> Res<Delivered> {
+    let mut tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::Serializable)
+        .start()
+        .map_err(|e| store_err(&e))?;
+    if !registration_publication_ready(&mut tx, ev)? {
+        return Ok(Delivered::Unresolved("missing_committed_publication"));
+    }
+    let outcome = postgres_trajectory_history::append(&mut tx, record)?;
+    tx.commit().map_err(|e| store_err(&e))?;
+    Ok(outcome)
+}
+
 impl TrajectoryPort for PgTrajectory {
     fn deliver(&mut self, ev: &MissionRegistered) -> Res<Delivered> {
         if let Err(cat) = check_event(ev) {
@@ -40,15 +87,18 @@ impl TrajectoryPort for PgTrajectory {
             obligation: REGISTRATION_OBLIGATION,
             contract: &contract,
         };
-        let mut tx = self
-            .client
-            .build_transaction()
-            .isolation_level(IsolationLevel::Serializable)
-            .start()
-            .map_err(|e| store_err(&e))?;
-        let outcome = postgres_trajectory_history::append(&mut tx, &record)?;
-        tx.commit().map_err(|e| store_err(&e))?;
-        Ok(outcome)
+        if ev.version == 3 {
+            planning::qualify(&mut self.client, true)?;
+        }
+        commit_registration_history(&mut self.client, ev, &record)
+    }
+
+    fn registration_status(&mut self, event: &MissionRegistered) -> Res<HistoryStatus> {
+        if event.version != 3 {
+            return self.status(event.engagement_id, event.campaign_id, event.event_id);
+        }
+        planning::qualify(&mut self.client, false)?;
+        postgres_trajectory_history::bound_status(&mut self.client, event)
     }
 
     fn status(&mut self, e: EngagementId, c: CampaignId, ev: EventId) -> Res<HistoryStatus> {
