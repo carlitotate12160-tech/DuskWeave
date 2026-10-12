@@ -208,21 +208,24 @@ fn operation_and_campaign_limits_are_validated_at_the_sql_boundary() {
             json!(9.0e30),
             Value::Null,
         ] {
-            // The window cross-check eagerly casts the two clock fields to
-            // bigint before the bounds door can run; a non-integral number
-            // there aborts as a data exception — 22P02 when unparsable,
-            // 22003 when the integral literal overflows bigint — the same
-            // refused, mutation-free call.
+            // The window cross-check casts the two clock fields to bigint;
+            // under a custom plan the constant-folded cast aborts first
+            // (22P02 unparsable, 22003 out of range), while a generic plan
+            // reaches the bounds door first (P0001 inference_limits_refused).
+            // All three are refused, mutation-free calls.
             if matches!(field, "connect_time_ms" | "decision_wall_time_ms") && case.is_f64() {
-                let code = if case.as_f64().unwrap().abs() > 9.2e18 {
-                    "22003"
-                } else {
-                    "22P02"
-                };
-                budget::tamper_refuse_code(&mut admin, &q, &qv, &original, code, None, |f| {
-                    f["fields"]["m1_inference_permission"]["operation_limits"][field] =
-                        case.clone();
-                });
+                budget::tamper_refuse_codes(
+                    &mut admin,
+                    &q,
+                    &qv,
+                    &original,
+                    &["P0001", "22P02", "22003"],
+                    Some("inference_limits_refused"),
+                    |f| {
+                        f["fields"]["m1_inference_permission"]["operation_limits"][field] =
+                            case.clone();
+                    },
+                );
             } else {
                 budget::tamper_refuse(
                     &mut admin,

@@ -240,20 +240,21 @@ pub fn tamper_refuse(
     expect: &str,
     mutate: impl Fn(&mut Value),
 ) {
-    tamper_refuse_code(admin, q, qv, original, "P0001", Some(expect), mutate);
+    tamper_refuse_codes(admin, q, qv, original, &["P0001"], Some(expect), mutate);
 }
 
-/// Same tamper/refuse cycle as tamper_refuse, asserting the SQLSTATE class
-/// and optionally the guard message: used where Postgres's own eager cast
-/// produces the refusal (the detail text is versioned), while the
-/// mutation-free guarantee is identical.
-pub fn tamper_refuse_code(
+/// Same tamper/refuse cycle asserting the SQLSTATE is one of the admitted
+/// refusals and — when the refusal is a raised door (P0001) — the exact
+/// guard message. Data-exception codes (22xxx) come from Postgres's own
+/// eager casts; their detail text is versioned so only the class is bound.
+/// The mutation-free guarantee is identical either way.
+pub fn tamper_refuse_codes(
     admin: &mut postgres::Client,
     q: &ReservationRequest,
     qv: &Value,
     original: &Value,
-    code: &str,
-    message: Option<&str>,
+    codes: &[&str],
+    expect: Option<&str>,
     mutate: impl Fn(&mut Value),
 ) {
     let mut forged = original.clone();
@@ -261,12 +262,12 @@ pub fn tamper_refuse_code(
     tamper(admin, q, &forged);
     let snapshot = state(q);
     let error = sql_call("reserve", qv, &forged).expect_err("guarded function must refuse");
-    assert_eq!(
-        error.code().map(postgres::error::SqlState::code),
-        Some(code),
-        "{error}"
-    );
-    if let Some(expect) = message {
+    let code = error
+        .code()
+        .map(postgres::error::SqlState::code)
+        .unwrap_or("transport");
+    assert!(codes.contains(&code), "expected one of {codes:?}: {error}");
+    if let (Some(expect), "P0001") = (expect, code) {
         assert_eq!(
             error.as_db_error().map(|d| d.message()),
             Some(expect),
