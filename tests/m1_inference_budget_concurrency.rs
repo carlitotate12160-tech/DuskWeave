@@ -19,7 +19,6 @@ use duskweave::registration;
 use duskweave::withdrawal::WithdrawalStore;
 use serde_json::json;
 use std::sync::Barrier;
-use uuid::Uuid;
 
 #[path = "support/m1_inference_budget.rs"]
 mod budget;
@@ -35,38 +34,100 @@ use session_support::*;
 mod upgrade_db;
 
 #[test]
-fn fixed_snapshot_aborts_instead_of_spending_stale_capacity() {
+fn fixed_snapshots_abort_stale_reservation_and_stale_cancellation() {
     let _g = db();
-    let (q, source) = budget::fixture(0xf003);
-    let request = serde_json::to_value(&q).unwrap();
-    let source_v = serde_json::to_value(&source).unwrap();
-    // Open a SERIALIZABLE transaction that takes its snapshot before the
-    // first hold exists, then block it while a concurrent hold commits.
-    let mut stale = priv_client();
-    stale
-        .batch_execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
-        .unwrap();
-    stale
-        .query_one("SELECT count(*) FROM execution.inference_reservations", &[])
-        .unwrap();
-    let first = budget::run(&q, budget::op(), Reserve).unwrap().unwrap();
-    assert_eq!(first.generation, 1);
-    // The stale transaction's reserve attempt sees pre-hold capacity
-    // accounting and must abort serializably rather than spend stale budget.
-    let result = stale.query_one(
-        "SELECT to_jsonb(execution.inference_reservation($1,$2,$3,$4))",
-        &[&"reserve", &Uuid::from_u128(0xf003), &request, &source_v],
-    );
-    let error = result.expect_err("stale snapshot must abort");
-    assert_eq!(
-        error.code().map(postgres::error::SqlState::code),
-        Some("40001")
-    );
-    stale.batch_execute("ROLLBACK").unwrap();
-    // The committed hold remains the only durable record.
-    let ledger = budget::state(&q)["ledger"].clone();
-    assert_eq!(ledger.as_array().unwrap().len(), 1);
-    assert_eq!(ledger[0]["operation_id"], first.operation_id.to_string());
+    let mut n = 0xf003u128;
+    for isolation in ["REPEATABLE READ", "SERIALIZABLE"] {
+        // Stale new reservation: the snapshot is taken before a competing
+        // writer's committed hold/epoch change, then the mutation attempt
+        // must abort rather than spend capacity it cannot see.
+        let (q, source) = budget::fixture(n);
+        let request = serde_json::to_value(&q).unwrap();
+        let source_v = serde_json::to_value(&source).unwrap();
+        let before = budget::state(&q);
+        let mut stale = broker_client();
+        stale
+            .batch_execute(&format!("BEGIN ISOLATION LEVEL {isolation}"))
+            .unwrap();
+        stale
+            .query_one("SELECT count(*) FROM execution.inference_reservations", &[])
+            .unwrap();
+        // The competing writer commits synchronously before the attempt:
+        // observable ordering, no assumed scheduling.
+        let first = budget::run(&q, budget::op(), Reserve).unwrap().unwrap();
+        let error = stale
+            .query_one(
+                "SELECT to_jsonb(execution.inference_reservation($1,$2,$3,$4))",
+                &[&"reserve", &budget::op().0, &request, &source_v],
+            )
+            .expect_err("stale snapshot must abort");
+        assert_eq!(
+            error.code().map(postgres::error::SqlState::code),
+            Some("40001"),
+            "{isolation}: {error}"
+        );
+        stale.batch_execute("ROLLBACK").unwrap();
+        // Only the committed hold and its one epoch increment exist.
+        let after = budget::state(&q);
+        assert_eq!(after["fence"], budget::fence_after(&before["fence"], 1));
+        assert_eq!(after["ledger"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            after["ledger"][0]["operation_id"],
+            first.operation_id.to_string()
+        );
+        for key in ["mission", "publication", "session_history"] {
+            assert_eq!(after[key], before[key], "{isolation}: {key} unchanged");
+        }
+        n += 0x40;
+        // Stale first cancellation: the snapshot still sees a live hold
+        // while a competing cancellation already committed the fence epoch.
+        // The stale mutation must abort rather than refund from old data.
+        let (q2, _s2) = budget::fixture(n);
+        let qv2 = serde_json::to_value(&q2).unwrap();
+        let held = budget::run(&q2, budget::op(), Reserve).unwrap().unwrap();
+        // Same-writer stale transaction: a different session_user would be
+        // refused on writer identity before the epoch write, not aborted.
+        let mut stale = broker_client();
+        stale
+            .batch_execute(&format!("BEGIN ISOLATION LEVEL {isolation}"))
+            .unwrap();
+        stale
+            .query_one("SELECT count(*) FROM execution.inference_reservations", &[])
+            .unwrap();
+        let before = budget::state(&q2);
+        // A competing first cancellation commits its epoch bump.
+        let cancelled = budget::run(&q2, held.operation_id, Cancel)
+            .unwrap()
+            .unwrap();
+        let error = stale
+            .query_one(
+                "SELECT to_jsonb(execution.inference_reservation($1,$2,$3,$4))",
+                &[
+                    &"cancel",
+                    &held.operation_id.0,
+                    &qv2,
+                    &serde_json::Value::Null,
+                ],
+            )
+            .expect_err("stale cancellation must abort");
+        assert_eq!(
+            error.code().map(postgres::error::SqlState::code),
+            Some("40001"),
+            "{isolation}: {error}"
+        );
+        stale.batch_execute("ROLLBACK").unwrap();
+        let after = budget::state(&q2);
+        assert_eq!(after["fence"], budget::fence_after(&before["fence"], 1));
+        assert_eq!(after["ledger"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            after["ledger"][1],
+            serde_json::to_value(&cancelled).unwrap()
+        );
+        for key in ["mission", "publication", "session_history"] {
+            assert_eq!(after[key], before[key], "{isolation}: {key} unchanged");
+        }
+        n += 0x40;
+    }
 }
 
 #[test]

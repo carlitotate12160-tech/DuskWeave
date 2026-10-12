@@ -115,40 +115,125 @@ fn direct_dml_truncate_and_widened_grants_never_mutate_ledger() {
     .unwrap()
     .unwrap();
     let before = budget::state(&q);
-    let mut broker = priv_client();
-    // Without any grant the Broker cannot write the ledger directly.
-    for sql in [
-        "INSERT INTO execution.inference_reservations (engagement_id,campaign_id,operation_id) \
-         VALUES (gen_random_uuid(),gen_random_uuid(),gen_random_uuid())",
-        "UPDATE execution.inference_reservations SET kind='forged'",
-        "DELETE FROM execution.inference_reservations",
-        "TRUNCATE execution.inference_reservations",
+    let mut probe = priv_client();
+    // A complete valid row: a missing-column or constraint error cannot mask
+    // the boundary this probe must reach.
+    let insert = "INSERT INTO execution.inference_reservations \
+        (engagement_id,campaign_id,operation_id,generation,record_revision,writer_oid,request,\
+         registration_operation_id,registration_event_id,generation_call_id,repair_call_id,\
+         capacity,kind) \
+        SELECT engagement_id,campaign_id,gen_random_uuid(),generation,record_revision,writer_oid,\
+        request,registration_operation_id,registration_event_id,gen_random_uuid(),\
+        gen_random_uuid(),capacity,kind FROM execution.inference_reservations \
+        WHERE engagement_id=$1 AND campaign_id=$2";
+    // Without grants every statement stops at the permission door (42501);
+    // an arbitrary error would not prove which boundary refused it.
+    for (label, result) in [
+        (
+            "insert",
+            probe.execute(insert, &[&q.engagement_id.0, &q.campaign_id.0]),
+        ),
+        (
+            "update",
+            probe.execute(
+                "UPDATE execution.inference_reservations SET kind='forged'",
+                &[],
+            ),
+        ),
+        (
+            "delete",
+            probe.execute("DELETE FROM execution.inference_reservations", &[]),
+        ),
+        (
+            "truncate",
+            probe.execute("TRUNCATE execution.inference_reservations", &[]),
+        ),
     ] {
-        broker
-            .execute(sql, &[])
-            .expect_err("ungranted DML must fail");
+        assert_eq!(
+            errcode(&result.expect_err("ungranted DML must fail")),
+            Some("42501".into()),
+            "{label} must stop at permission denial"
+        );
     }
-    // Temporarily widened grants still cannot bypass RLS/TRUNCATE protection.
-    let _restore = Restore::install(
-        "GRANT INSERT, UPDATE, DELETE ON execution.inference_reservations TO dw_m1_broker_priv",
-        "REVOKE INSERT, UPDATE, DELETE ON execution.inference_reservations FROM dw_m1_broker_priv",
+    // The probe login is an ordinary restricted non-owner; the widened grant
+    // must be effective before the boundary assertions run.
+    let shape = runtime_client()
+        .query_one(
+            "SELECT r.rolsuper,r.rolbypassrls,pg_get_userbyid(t.relowner)::text \
+             FROM pg_roles r CROSS JOIN pg_class t WHERE r.rolname=$1 \
+             AND t.relname='inference_reservations' AND t.relnamespace='execution'::regnamespace",
+            &[&PRIV_BROKER],
+        )
+        .unwrap();
+    let (sup, bypass, owner): (bool, bool, String) = (shape.get(0), shape.get(1), shape.get(2));
+    assert!(
+        !sup && !bypass,
+        "probe login must be non-superuser/non-BYPASSRLS"
     );
+    assert_ne!(owner, PRIV_BROKER, "probe login must not own the ledger");
+    // Temporarily widened grants — including TRUNCATE — still cannot bypass
+    // RLS or the shared no-truncate trigger.
+    let _restore = Restore::install(
+        "GRANT INSERT, UPDATE, DELETE, TRUNCATE ON execution.inference_reservations TO dw_m1_broker_priv",
+        "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON execution.inference_reservations FROM dw_m1_broker_priv",
+    );
+    let granted: bool = runtime_client()
+        .query_one(
+            "SELECT has_table_privilege($1,'execution.inference_reservations','TRUNCATE')",
+            &[&PRIV_BROKER],
+        )
+        .unwrap()
+        .get(0);
+    assert!(granted, "widened TRUNCATE grant must be effective");
+    // Granted INSERT reaches row-level security: a permission denial would
+    // carry the grant-check message, never the RLS one.
+    let insert_err = probe
+        .execute(insert, &[&q.engagement_id.0, &q.campaign_id.0])
+        .expect_err("granted INSERT must still fail");
+    assert_eq!(errcode(&insert_err), Some("42501".into()));
+    assert!(
+        insert_err
+            .as_db_error()
+            .is_some_and(|d| d.message().contains("row-level security")),
+        "INSERT must stop at RLS, not at the grant check: {insert_err}"
+    );
+    // Granted UPDATE/DELETE see no rows: there is no mutation policy, so
+    // zero affected rows is the RLS boundary's own verdict.
     for sql in [
-        "INSERT INTO execution.inference_reservations (engagement_id,campaign_id,operation_id) \
-         VALUES (gen_random_uuid(),gen_random_uuid(),gen_random_uuid())",
         "UPDATE execution.inference_reservations SET kind='forged'",
         "DELETE FROM execution.inference_reservations",
-        "TRUNCATE execution.inference_reservations",
     ] {
-        if let Ok(n) = broker.execute(sql, &[]) {
-            assert_eq!(n, 0, "widened DML must not affect rows: {sql}");
-        }
+        assert_eq!(
+            probe.execute(sql, &[]).unwrap(),
+            0,
+            "granted {sql} must affect zero rows under RLS"
+        );
     }
+    // Granted TRUNCATE reaches the shared trigger itself: P0001 with the
+    // inherited guard message, never a permission denial.
+    let truncated = probe
+        .execute("TRUNCATE execution.inference_reservations", &[])
+        .expect_err("granted TRUNCATE must hit the trigger");
+    let db_err = truncated
+        .as_db_error()
+        .expect("trigger refusal is a db error");
+    assert_eq!(db_err.code().code(), "P0001");
+    assert_eq!(db_err.message(), "session_table_immutable");
     drop(_restore);
+    assert!(
+        !runtime_client()
+            .query_one(
+                "SELECT has_table_privilege($1,'execution.inference_reservations','TRUNCATE')",
+                &[&PRIV_BROKER],
+            )
+            .unwrap()
+            .get::<_, bool>(0),
+        "fixture-owned grant must be fully restored"
+    );
     assert_eq!(
         budget::state(&q),
         before,
-        "ledger and fence must be unchanged after DML probes"
+        "complete scoped state must be unchanged after DML probes"
     );
 }
 
