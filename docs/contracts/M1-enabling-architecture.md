@@ -551,7 +551,10 @@ The owner accepted the initial #51 inference profile and its required R2/R3 refi
 for this lane on 2026-10-11; unrelated amendment text remains pending exact-text acceptance.
 M0 evidence and seals are unchanged.
 
-The current runtime packet is INITIAL-CONSENT for new registration/history only.
+`DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT` merged through PR #52 at `1ea0ea7`.
+The current runtime packet is `DW-IMPLEMENT-M1-INFERENCE-RESERVATION`: a
+Broker-owned pre-send capacity ledger — durable reserve/recover/cancel with
+campaign/operation accounting and session/inference mutual exclusion.
 Later consent amendment/rebinding and real-inference ContextPack/proposal/history,
 bounded repair and recovery remain required. These are partial enabling
 delivery, not cognitive MVP completion. Subsequent connected outcomes must provide
@@ -561,9 +564,6 @@ Their exact order follows real dependencies and measurement, not a compulsory to
 sequence or fixed PR count. Each IMPLEMENT packet needs its own accepted base and
 complete observable entrypoint/consumer map.
 
-`DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT` is issued at merged base `35a31fd`;
-its measured 510-line feasibility probe is not candidate verification. Initial consent
-uses the existing atomic registration/publication/Trajectory lane; no old row changes.
 The 600-line ceiling is unchanged. Each later packet requires a measured complete path
 and exact map with correction room; full provider-chain fit/deployment remain UNVERIFIED.
 No fixed PR count, cognitive MVP completion, provider call or seal is granted here.

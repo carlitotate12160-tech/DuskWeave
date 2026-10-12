@@ -22,6 +22,8 @@ use std::process::ExitCode;
 mod authority_confirmation;
 mod database_config;
 mod database_wait;
+mod m1_cli;
+mod m1_inference_budget_cli;
 mod m1_policy_cli;
 mod m1_prepared_withdrawal_cli;
 mod m1_session_cli;
@@ -293,7 +295,7 @@ fn run(command: &str, args: &[String]) -> Res<()> {
         "inspect" => cmd_inspect(args),
         "reconcile" => cmd_reconcile(args),
         "m1-policy-check" => m1_policy_cli::cmd_policy_check(args),
-        _ => m1_session_cli::command(command, args),
+        _ => m1_cli::command(command, args),
     }
 }
 
