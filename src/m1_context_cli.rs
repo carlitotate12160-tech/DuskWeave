@@ -11,7 +11,8 @@ pub(super) fn command(args: &[String]) -> Res<()> {
     let flags = super::flags(args, &["input"])?;
     let q = read_request(super::flag(&flags, "input")?)?;
     let op = OperationId(PgAllocator::new(super::connect()?).allocate()?);
-    let outcome = m1_context::prepare(&mut PgContextReader::new(super::connect()?), &q, op);
+    let outcome = super::connect()
+        .and_then(|client| m1_context::prepare(&mut PgContextReader::new(client), &q, op));
     emit_receipt(op, &outcome);
     outcome.map(|_| ())
 }
@@ -35,6 +36,7 @@ fn read_request(path: &str) -> Res<ContextRequest> {
 fn emit_receipt(op: OperationId, outcome: &Res<m1_context::PreparedContext>) {
     let status = match outcome {
         Ok(_) => "prepared",
+        Err(Fail::State("context_basis_mismatch")) => "refused",
         Err(Fail::State(_)) => "deferred",
         Err(Fail::Input(_)) => "refused",
         _ => "unavailable",

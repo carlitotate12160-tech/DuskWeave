@@ -213,3 +213,29 @@ fn cli_missing_flags_fails_command_guard() {
     let txt = String::from_utf8_lossy(&out.stdout);
     assert!(txt.contains("error=invalid_args"));
 }
+
+#[test]
+fn cli_context_prepare_refused_outcome_on_basis_mismatch() {
+    let _g = db_support::db();
+    session_support::ensure_broker_logins();
+    let (e, c) = db_support::scope(0x9506);
+    let raw = budget::registration_value(e, c, session_support::now());
+    let (_, _source) = budget::register(e, c, &raw);
+    let mut mission_req = budget::request(e, c, &raw);
+    mission_req.permission_id = uuid::Uuid::from_u128(0xbeef);
+
+    let req_val = context_support::request(&serde_json::to_value(&mission_req).unwrap(), &[]);
+    let broker_dsn = session_support::broker_dsn(session_support::db_port());
+    let input = wait_db::InputFile::new(&req_val, "prep_basis_mismatch");
+    let args = vec![
+        "m1-context-prepare".into(),
+        "--input".into(),
+        input.path().into(),
+    ];
+    let out = context_support::run(&args, &broker_dsn);
+    assert!(!out.status.success());
+    let r = context_support::receipt(&out);
+    assert_eq!(r["outcome"], "refused");
+    assert!(r["pack_utf8"].is_null());
+    context_support::assert_false_flags(&r);
+}
