@@ -23,6 +23,12 @@ pub struct ReservationRequest {
 
 impl ReservationRequest {
     pub fn validate(&self, op: OperationId) -> Res<()> {
+        if op.0.is_nil() {
+            return Err(Fail::Input("invalid_inference_reservation"));
+        }
+        self.validate_basis()
+    }
+    pub fn validate_basis(&self) -> Res<()> {
         if self.version != "m1_inference_reservation_request_v1"
             || self.expected_mission_revision != 1
             || [
@@ -31,7 +37,6 @@ impl ReservationRequest {
                 self.operator_ref.0,
                 self.permission_id,
                 self.goal_ref.0,
-                op.0,
             ]
             .contains(&Uuid::nil())
         {

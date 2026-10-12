@@ -45,15 +45,15 @@ Current seal:
 
 Current engineering state:
 
-Current candidate: `DW-IMPLEMENT-M1-INFERENCE-RESERVATION`, based on merged
-PR #52 at `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8` (master CI 38142792508 SUCCESS).
+Current candidate: `DW-IMPLEMENT-M1-CONTEXT-PREPARE`, based on merged
+PR #53 at `e4635682f7369516b90980a6a687b879ee65a0e1` (master CI 38209944272 SUCCESS).
 See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance),
-the [reservation runbook](RUN_M1_INFERENCE_RESERVATION.md)
+the [context prepare runbook](RUN_M1_CONTEXT_PREPARE.md)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 for the 2026-10-11 scoped owner acceptance, delivery evidence and next action.
-The issued packet reserves pre-send inference capacity only; no provider call,
-ContextPack, proposal, dispatch or send path exists. Independent later consent
-amendment/rebinding and actual inference remain required. Full provider-chain fit,
+The issued packet prepares local inference context (future P) only; no provider call,
+proposal, dispatch, send path, or durable decision history exists. Independent later
+consent amendment/rebinding and actual inference remain required. Full provider-chain fit,
 deployment and cognitive MVP completion remain UNVERIFIED; seals are unchanged.
 
 Current design document:

@@ -14,6 +14,10 @@ mod postgres_mission_basis;
 #[path = "postgres_withdrawal.rs"]
 mod postgres_withdrawal;
 
+#[path = "postgres_mission_context.rs"]
+mod postgres_mission_context;
+pub use postgres_mission_context::PgContextReader;
+
 use crate::mission::*;
 use crate::planning::{PlanningAssessed, PlanningRequest};
 use crate::planning_assessment::PlanningStore;
