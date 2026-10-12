@@ -240,40 +240,34 @@ pub fn tamper_refuse(
     expect: &str,
     mutate: impl Fn(&mut Value),
 ) {
-    tamper_refuse_codes(admin, q, qv, original, &["P0001"], Some(expect), mutate);
-}
-
-/// Same tamper/refuse cycle asserting the SQLSTATE is one of the admitted
-/// refusals and — when the refusal is a raised door (P0001) — the exact
-/// guard message. Data-exception codes (22xxx) come from Postgres's own
-/// eager casts; their detail text is versioned so only the class is bound.
-/// The mutation-free guarantee is identical either way.
-pub fn tamper_refuse_codes(
-    admin: &mut postgres::Client,
-    q: &ReservationRequest,
-    qv: &Value,
-    original: &Value,
-    codes: &[&str],
-    expect: Option<&str>,
-    mutate: impl Fn(&mut Value),
-) {
+    assert_eq!(*qv, serde_json::to_value(q).unwrap());
     let mut forged = original.clone();
     mutate(&mut forged);
     tamper(admin, q, &forged);
+    assert_refused_unchanged(&mut session_support::broker_client(), q, &forged, expect);
+    tamper(admin, q, original);
+}
+
+pub fn assert_refused_unchanged(
+    client: &mut postgres::Client,
+    q: &ReservationRequest,
+    source: &Value,
+    expect: &str,
+) {
     let snapshot = state(q);
-    let error = sql_call("reserve", qv, &forged).expect_err("guarded function must refuse");
-    let code = error
-        .code()
-        .map(postgres::error::SqlState::code)
-        .unwrap_or("transport");
-    assert!(codes.contains(&code), "expected one of {codes:?}: {error}");
-    if let (Some(expect), "P0001") = (expect, code) {
-        assert_eq!(
-            error.as_db_error().map(|d| d.message()),
-            Some(expect),
-            "{error}"
-        );
-    }
+    let error = sql(
+        client,
+        "reserve",
+        &serde_json::to_value(q).unwrap(),
+        op(),
+        source,
+    )
+    .expect_err("guarded function must refuse");
+    let db = error
+        .as_db_error()
+        .expect("refusal must be a database error");
+    assert_eq!(db.code().code(), "P0001", "{db:?}");
+    assert_eq!(db.message(), expect, "{db:?}");
     assert_eq!(state(q), snapshot, "refusal must not mutate scoped state");
 }
 

@@ -204,41 +204,22 @@ fn operation_and_campaign_limits_are_validated_at_the_sql_boundary() {
             json!(lo - 1),
             json!(hi + 1),
             json!(hi.to_string()),
+            json!("not-an-integer"),
             json!(hi as f64 + 0.5),
             json!(9.0e30),
             Value::Null,
         ] {
-            // The window cross-check casts the two clock fields to bigint;
-            // under a custom plan the constant-folded cast aborts first
-            // (22P02 unparsable, 22003 out of range), while a generic plan
-            // reaches the bounds door first (P0001 inference_limits_refused).
-            // All three are refused, mutation-free calls.
-            if matches!(field, "connect_time_ms" | "decision_wall_time_ms") && case.is_f64() {
-                budget::tamper_refuse_codes(
-                    &mut admin,
-                    &q,
-                    &qv,
-                    &original,
-                    &["P0001", "22P02", "22003"],
-                    Some("inference_limits_refused"),
-                    |f| {
-                        f["fields"]["m1_inference_permission"]["operation_limits"][field] =
-                            case.clone();
-                    },
-                );
-            } else {
-                budget::tamper_refuse(
-                    &mut admin,
-                    &q,
-                    &qv,
-                    &original,
-                    "inference_limits_refused",
-                    |f| {
-                        f["fields"]["m1_inference_permission"]["operation_limits"][field] =
-                            case.clone();
-                    },
-                );
-            }
+            budget::tamper_refuse(
+                &mut admin,
+                &q,
+                &qv,
+                &original,
+                "inference_limits_refused",
+                |f| {
+                    f["fields"]["m1_inference_permission"]["operation_limits"][field] =
+                        case.clone();
+                },
+            );
         }
         budget::tamper_refuse(
             &mut admin,
@@ -347,30 +328,106 @@ fn operation_and_campaign_limits_are_validated_at_the_sql_boundary() {
 }
 
 #[test]
+fn plan_modes_refuse_malformed_clock_limits_without_mutation() {
+    let _g = db();
+    for (n, mode) in ["force_custom_plan", "force_generic_plan", "auto"]
+        .into_iter()
+        .enumerate()
+    {
+        let (q, source) = budget::fixture(0xf060 + n as u128);
+        let original = serde_json::to_value(&source).unwrap();
+        let before = budget::state(&q);
+        let mut admin = consent::admin();
+        let mut broker = broker_client();
+        broker
+            .batch_execute(&format!("SET plan_cache_mode='{mode}'"))
+            .unwrap();
+        assert_eq!(
+            broker
+                .query_one("SHOW plan_cache_mode", &[])
+                .unwrap()
+                .get::<_, String>(0),
+            mode
+        );
+        for (field, hi) in [("connect_time_ms", 5000), ("decision_wall_time_ms", 20000)] {
+            for case in [
+                json!(1.5),
+                json!(9.0e30),
+                Value::Null,
+                json!(hi.to_string()),
+                json!("not-an-integer"),
+                json!(0),
+                json!(-1),
+                json!(hi + 1),
+                json!(9223372036854775808u64),
+            ] {
+                let mut forged = original.clone();
+                forged["fields"]["m1_inference_permission"]["operation_limits"][field] = case;
+                budget::tamper(&mut admin, &q, &forged);
+                for _ in 0..if mode == "auto" { 6 } else { 1 } {
+                    budget::assert_refused_unchanged(
+                        &mut broker,
+                        &q,
+                        &forged,
+                        "inference_limits_refused",
+                    );
+                }
+                budget::tamper(&mut admin, &q, &original);
+            }
+        }
+        let mut forged = original.clone();
+        forged["fields"]["m1_inference_permission"]["operation_limits"]["decision_wall_time_ms"] =
+            json!(4000);
+        forged["fields"]["m1_inference_permission"]["operation_limits"]["connect_time_ms"] =
+            json!(5000);
+        budget::tamper(&mut admin, &q, &forged);
+        budget::assert_refused_unchanged(&mut broker, &q, &forged, "inference_limits_refused");
+        budget::tamper(&mut admin, &q, &original);
+        broker.batch_execute("RESET plan_cache_mode").unwrap();
+        assert_eq!(budget::state(&q), before);
+    }
+}
+
+#[test]
 fn boundary_limits_reserve_exactly_their_derived_capacity() {
     let _g = db();
     session_support::ensure_broker_logins();
     // Lower and upper accepted bounds register through the real path, each
     // with campaign totals exactly equal to the resulting reservation.
-    for (n, high) in [(0xf040u128, false), (0xf041, true)] {
-        let (e, c) = scope(n);
-        let ops = budget::limits_at(high);
-        let mut raw = budget::registration_value(e, c, session_support::now());
-        raw["m1_inference_permission"]["operation_limits"] = ops.clone();
-        raw["m1_inference_permission"]["campaign_limits"] = budget::capacity_for(&ops);
-        let (_, source) = budget::register(e, c, &raw);
-        let q = budget::request(e, c, &raw);
-        let id = budget::op();
-        let held = budget::run(&q, id, Reserve).unwrap().unwrap();
-        // Two stable call slots, two request/response allowances, 8192
-        // output tokens and one shared wall-time envelope — never a
-        // silently downshifted fixed field.
-        assert_eq!(
-            serde_json::to_value(&held.capacity).unwrap(),
-            budget::capacity_for(&ops)
-        );
-        let rows = budget::state(&q)["ledger"].clone();
-        assert_eq!(rows.as_array().unwrap().len(), 1);
-        budget::assert_full_record(&rows[0], &q, id, "reserved_not_sent", 1, 1, &source);
+    for (i, mode) in ["force_custom_plan", "force_generic_plan", "auto"]
+        .into_iter()
+        .enumerate()
+    {
+        for (n, high) in [(0xf040u128, false), (0xf041, true)] {
+            let (e, c) = scope(n + i as u128 * 0x40);
+            let ops = budget::limits_at(high);
+            let mut raw = budget::registration_value(e, c, session_support::now());
+            raw["m1_inference_permission"]["operation_limits"] = ops.clone();
+            raw["m1_inference_permission"]["campaign_limits"] = budget::capacity_for(&ops);
+            let (_, source) = budget::register(e, c, &raw);
+            let q = budget::request(e, c, &raw);
+            let id = budget::op();
+            let mut broker = broker_client();
+            broker
+                .batch_execute(&format!("SET plan_cache_mode='{mode}'"))
+                .unwrap();
+            let held = budget::sql(
+                &mut broker,
+                "reserve",
+                &serde_json::to_value(&q).unwrap(),
+                id,
+                &serde_json::to_value(&source).unwrap(),
+            )
+            .unwrap()
+            .unwrap();
+            // Two stable call slots, two request/response allowances, 8192
+            // output tokens and one shared wall-time envelope — never a
+            // silently downshifted fixed field.
+            assert_eq!(held["capacity"], budget::capacity_for(&ops));
+            let rows = budget::state(&q)["ledger"].clone();
+            assert_eq!(rows.as_array().unwrap().len(), 1);
+            budget::assert_full_record(&rows[0], &q, id, "reserved_not_sent", 1, 1, &source);
+            broker.batch_execute("RESET plan_cache_mode").unwrap();
+        }
     }
 }

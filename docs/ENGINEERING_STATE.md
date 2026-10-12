@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave-ci-complexity` (selected reusable M1 source worktree; verify actual branch/HEAD per packet)
-- **Current Phase**: PR #52 initial inference consent is MERGED at `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8`; exact-master CI 38142792508 SUCCESS. `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` is the active runtime candidate on `feat/m1-inference-reservation`: Broker-owned pre-send capacity reservation only — no provider call, ContextPack, proposal, dispatch or send path. Independent later consent amendment/rebinding and actual inference remain required; full provider-chain fit, storage/cancellation and deployment qualification remain UNVERIFIED. Prepared-only withdrawal supplies no inference cancellation, START, acquisition or qualified host STOP; M0/foundation seals and historical evidence limits remain unchanged.
+- **Current Phase**: PR #52 initial inference consent is MERGED at `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8`; exact-master CI 38142792508 SUCCESS. `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` is draft PR #53 on `feat/m1-inference-reservation`, with the `DW-FIX-PR53-CAST-AND-PROVENANCE` guard correction in the current candidate; source-bound qualification and delta review are reported externally; owner acceptance/merge remain pending. Broker-owned pre-send capacity reservation only — no provider call, ContextPack, proposal, dispatch or send path. Independent later consent amendment/rebinding and actual inference remain required; full provider-chain fit, storage/cancellation and deployment qualification remain UNVERIFIED. Prepared-only withdrawal supplies no inference cancellation, START, acquisition or qualified host STOP; M0/foundation seals and historical evidence limits remain unchanged.
 - **Active Seal**: `DW-FOUNDATION-001`; `DW-M0-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified); **M0 SEALED** (product-owner authorization, 2026-10-05)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -108,7 +108,17 @@ Latest verified delivery base: `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8`, the 2
 | `DW-DESIGN-M1-COGNITIVE-MVP-R3` | MERGED through PR #50 at `5d8bc3a236eb2f322096aa7cd71024477949ca90` on 2026-10-11; publication, not blanket amendment acceptance | Base `4f92d4c4543b6ea22a11b69f088fe78a3fe8d377`; owner confirmed discussed scope/phases; runtime diff 0; exact-master run 38123485097 SUCCESS | Predecessor publication complete; preserve exact-text review limits and existing seals |
 | `DW-DESIGN-M1-INFERENCE-PROFILE` | MERGED through #51 at `35a31fd`; initial profile and required lane-specific R2/R3 refinements ACCEPTED by the owner on 2026-10-11 | Base `5d8bc3a`; [consent/context/proposal/history contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance) and [canonical accounting](adr/ADR-016-execution-broker.md#initial-inference-accounting-profile-scoped-acceptance); runtime diff 0; exact-master run 38127757340 SUCCESS | Publication complete; no blanket R2/R3 acceptance, runtime/deployment qualification or seal |
 | `DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT` | MERGED through [PR #52](https://github.com/carlitotate12160-tech/DuskWeave/pull/52) at `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8` on 2026-10-11 | Base `35a31fd`; new registration -> Mission/outbox -> source-qualified Trajectory -> historical inspect/reconcile; exact-master run 38142792508 SUCCESS | Initial-only; preserve existing-campaign refusal. Independent later consent amendment/rebinding and actual inference remain required |
-| `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` | Active pre-send reservation candidate on `feat/m1-inference-reservation`; delivery/review and candidate CI reported externally | Exact base `1ea0ea7`; CLI -> Mission publication -> Broker -> guarded SQL ledger with campaign/operation capacity accounting and session/inference mutual exclusion; measured runtime diff in candidate report | Pre-send reservation only — no provider call, ContextPack, proposal, dispatch or send path. Actual inference, feedback, synthesis and reporting remain required; no merge or seal |
+| `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` | Draft PR #53; `DW-FIX-PR53-CAST-AND-PROVENANCE` corrects the limits guard with CASE-protected numeric evaluation before a separate clock comparison; final tested-tree native/Linux evidence and delta review reported externally | Exact base `1ea0ea7`; Mission owns publication, Broker owns ledger; strict custom/generic/auto refusal tests preserve complete scoped state and the F1–F3 evidence; cumulative runtime measured in candidate report | Owner final review/acceptance and merge pending; native/Linux checks and cast-thread disposition are external candidate evidence. Pre-send only: no provider call, ContextPack, proposal, dispatch or send; no merge or seal |
+
+The preceding evidence-only fix created `tests/m1_inference_budget_limits.rs`
+outside its assigned file map. This was a scope deviation, not previously
+approved delivery. The current CAST-AND-PROVENANCE packet explicitly authorizes
+retaining and correcting that existing cohesive file; it does not retroactively
+authorize its creation. Earlier native coverage is historical evidence only;
+this correction requires a captured tested tree matching the final commit,
+current command/result logs and exact-head Linux checks. The malformed-consent
+cast defect was demonstrated through raw guarded SQL, not the ordinary CLI:
+Mission's typed decoder rejects that malformed publication before reservation.
 
 ### Remaining owner-priority dispositions (updated 2026-10-11)
 
@@ -117,8 +127,11 @@ Latest verified delivery base: `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8`, the 2
 2. DB wait bounds: MERGED through #44; startup, query/lock, ambiguous-result
    and stop bounds for the existing local CLI; no M1 broker/stop qualification.
 3. Cognitive delivery is the next product priority: INITIAL-CONSENT merged through #52;
-   INFERENCE-RESERVATION is delivered as draft PR #53 against merged #52;
-   review/merge reconciliation belongs to the next packet's preflight.
+   INFERENCE-RESERVATION is draft PR #53 against merged #52; owner final
+   review/acceptance must use the CAST-AND-PROVENANCE correction's source-bound
+   native/Linux results and verified cast-thread disposition reported externally.
+   Merge reconciliation belongs to the next packet's preflight; no merge is
+   authorized here.
    Independent consent amendment/rebinding and the
    real-inference CLI/ContextPack/proposal/Trajectory/repair/recovery path require
    later measured packets with correction room under 600 runtime LOC. Full fit is UNVERIFIED.
@@ -167,7 +180,7 @@ Preserved owner decisions and C1a verification evidence (historical, superseded 
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
-Next: `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` is delivered as draft PR #53 on `feat/m1-inference-reservation`; candidate CI/review proceed externally and merge reconciliation belongs to the next packet's preflight, then stop. #52 merged at `1ea0ea7` with successful master run 38142792508; #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent is independent of crt.sh and binds Mission revision 1; later consent amendment/rebinding cannot rewrite registration history. The reservation slice holds pre-send capacity only: no provider call, ContextPack, proposal, dispatch or send path. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; each later outcome needs a measured complete path and bounded file map, without a promised PR count. No provider/target call, automatic continuation, merge or seal is authorized.
+Next: `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` is delivered as draft PR #53 on `feat/m1-inference-reservation`; owner final review/acceptance of the CAST-AND-PROVENANCE correction uses the external source-bound native/Linux evidence and verified cast-thread disposition, then STOP. Merge reconciliation belongs to the next packet's preflight. #52 merged at `1ea0ea7` with successful master run 38142792508; #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent is independent of crt.sh and binds Mission revision 1; later consent amendment/rebinding cannot rewrite registration history. The reservation slice holds pre-send capacity only: no provider call, ContextPack, proposal, dispatch or send path. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; each later outcome needs a measured complete path and bounded file map, without a promised PR count. No provider/target call, automatic continuation, merge or seal is authorized.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 

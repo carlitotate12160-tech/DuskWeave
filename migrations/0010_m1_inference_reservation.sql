@@ -213,10 +213,14 @@ BEGIN
         ('repair_bytes',1,2048),('text_field_bytes',1,1024),('repair_error_codes',1,8),
         ('json_depth',1,8),('collection_entries',1,64),('calls_per_decision',2,2),
         ('output_tokens_per_call',4096,4096),('concurrency',1,1)) AS b(name,floor,ceiling)
-        WHERE jsonb_typeof(limits->b.name) IS DISTINCT FROM 'number'
-        OR limits->>b.name !~ '^[0-9]+$' OR (limits->>b.name)::numeric<b.floor
-        OR (limits->>b.name)::numeric>b.ceiling)
-       OR (limits->>'connect_time_ms')::bigint>(limits->>'decision_wall_time_ms')::bigint THEN
+        WHERE CASE WHEN jsonb_typeof(limits->b.name)='number'
+            AND limits->>b.name ~ '^[0-9]+$'
+            THEN (limits->>b.name)::numeric<b.floor
+                OR (limits->>b.name)::numeric>b.ceiling
+            ELSE true END) THEN
+        RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='inference_limits_refused';
+    END IF;
+    IF (limits->>'connect_time_ms')::bigint>(limits->>'decision_wall_time_ms')::bigint THEN
         RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='inference_limits_refused';
     END IF;
     cap := jsonb_build_object('calls',2,'request_bytes',2*(limits->>'request_bytes')::bigint,
