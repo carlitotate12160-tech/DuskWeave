@@ -117,7 +117,8 @@ Latest verified delivery base: `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8`, the 2
 2. DB wait bounds: MERGED through #44; startup, query/lock, ambiguous-result
    and stop bounds for the existing local CLI; no M1 broker/stop qualification.
 3. Cognitive delivery is the next product priority: INITIAL-CONSENT merged through #52;
-   deliver the issued INFERENCE-RESERVATION packet against merged #52, then stop.
+   INFERENCE-RESERVATION is delivered as draft PR #53 against merged #52;
+   review/merge reconciliation belongs to the next packet's preflight.
    Independent consent amendment/rebinding and the
    real-inference CLI/ContextPack/proposal/Trajectory/repair/recovery path require
    later measured packets with correction room under 600 runtime LOC. Full fit is UNVERIFIED.
@@ -166,7 +167,7 @@ Preserved owner decisions and C1a verification evidence (historical, superseded 
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
-Next: deliver `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` as one draft implementation PR, then stop. #52 merged at `1ea0ea7` with successful master run 38142792508; #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent is independent of crt.sh and binds Mission revision 1; later consent amendment/rebinding cannot rewrite registration history. The reservation slice holds pre-send capacity only: no provider call, ContextPack, proposal, dispatch or send path. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; each later outcome needs a measured complete path and bounded file map, without a promised PR count. No provider/target call, automatic continuation, merge or seal is authorized.
+Next: `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` is delivered as draft PR #53 on `feat/m1-inference-reservation`; candidate CI/review proceed externally and merge reconciliation belongs to the next packet's preflight, then stop. #52 merged at `1ea0ea7` with successful master run 38142792508; #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent is independent of crt.sh and binds Mission revision 1; later consent amendment/rebinding cannot rewrite registration history. The reservation slice holds pre-send capacity only: no provider call, ContextPack, proposal, dispatch or send path. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; each later outcome needs a measured complete path and bounded file map, without a promised PR count. No provider/target call, automatic continuation, merge or seal is authorized.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 

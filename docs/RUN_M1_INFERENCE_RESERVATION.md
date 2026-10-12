@@ -104,8 +104,9 @@ allocates, renews consent or revives a cancelled hold.
 `cancel` flips exactly that operation's held record to
 `cancelled_never_sent` (revision 2), freeing its accounted capacity. A
 replayed or duplicated cancel returns the same cancelled record;
-cancel on a missing operation reports the unresolved outcome, never a
-fabricated absence. Cancelling one operation cannot release a newer
+cancel on a missing operation is `refused`
+(`inference_missing_reservation`), never a fabricated absence.
+Cancelling one operation cannot release a newer
 different hold. Mission withdrawal blocks *new* reservations while the
 durable ledger stays recoverable and cancellable.
 
