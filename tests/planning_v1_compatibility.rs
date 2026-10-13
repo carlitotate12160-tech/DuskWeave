@@ -146,6 +146,53 @@ fn upgrade_identity_is_bounded_and_cannot_name_a_template_or_sql() {
     assert!(upgrade_identifier("dw_test_v1_upgrade_123").is_ok());
 }
 
+#[test]
+fn upgrade_names_are_deterministic_and_preserve_complete_nonce() {
+    let first = Uuid::from_u128(0x1234abcd);
+    let second = Uuid::from_u128(0x5678ef01);
+    let name = upgrade_name("dw_test", first).unwrap();
+    assert_eq!(name, upgrade_name("dw_test", first).unwrap());
+    assert_ne!(name, upgrade_name("dw_test", second).unwrap());
+    assert_eq!(name, format!("dw_test_v1_upgrade_{}", first.simple()));
+    assert!(upgrade_identifier(&name).is_ok());
+}
+
+#[test]
+fn upgrade_name_bounds_validate_primary_before_any_sql() {
+    let nonce = Uuid::from_u128(0xabcdef1234567890);
+    let primary = "a".repeat(63);
+    let name = upgrade_name(&primary, nonce).unwrap();
+    assert_eq!(name.len(), 63);
+    assert_eq!(
+        name,
+        format!("{}_v1_upgrade_{}", "a".repeat(19), nonce.simple())
+    );
+    assert!(upgrade_identifier(&name).is_ok());
+    for primary in [
+        "",
+        "postgres",
+        "POSTGRES",
+        "template0",
+        "template1",
+        "bad-name",
+        "é",
+        "x\";DROP",
+    ] {
+        assert_eq!(
+            upgrade_name(primary, nonce),
+            Err("invalid_upgrade_identifier")
+        );
+    }
+    assert_eq!(
+        upgrade_name(&"a".repeat(64), nonce),
+        Err("invalid_upgrade_identifier")
+    );
+    assert_eq!(
+        upgrade_name("dw_test", Uuid::nil()),
+        Err("invalid_upgrade_nonce")
+    );
+}
+
 fn register_contract(
     e: EngagementId,
     c: duskweave::mission::CampaignId,
@@ -163,7 +210,7 @@ fn upgrade_from_0001_0003_schema_preserves_v1_rows_and_admits_v2() {
     let _guard = db();
     let owned = OwnedUpgradeDatabase::create().unwrap();
     assert_eq!(
-        OwnedUpgradeDatabase::create().err(),
+        OwnedUpgradeDatabase::create_with_name(&owned.name).err(),
         Some("upgrade_identity_collision")
     );
     let mut admin = admin_in(&owned.name);

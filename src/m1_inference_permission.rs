@@ -193,3 +193,55 @@ impl InferencePermission {
         Ok(())
     }
 }
+
+/// Narrow Mission-owned disclosure projection; arrays use calls, request bytes,
+/// response bytes, output-token capacity, and shared wall-time milliseconds.
+pub(crate) struct ContextDisclosure {
+    pub permission_id: Uuid,
+    pub starts_at: i64,
+    pub ends_at: i64,
+    pub context_bytes: usize,
+    pub candidates: usize,
+    pub required_classes: bool,
+    pub operator_premises: bool,
+    pub totals: [i64; 5],
+    pub required: [i64; 5],
+}
+impl InferencePermission {
+    pub(crate) fn context_disclosure(&self) -> ContextDisclosure {
+        let c = &self.campaign_limits;
+        let o = &self.operation_limits;
+        ContextDisclosure {
+            permission_id: self.permission_id,
+            starts_at: self.starts_at,
+            ends_at: self.ends_at,
+            context_bytes: o.context_bytes as usize,
+            candidates: o.candidates as usize,
+            required_classes: [
+                SafeFieldClass::MissionQuestionConstraints,
+                SafeFieldClass::ScopedOpaqueReferences,
+                SafeFieldClass::OmissionsUnknown,
+                SafeFieldClass::Capacity,
+            ]
+            .iter()
+            .all(|c| self.field_classes.contains(c)),
+            operator_premises: self
+                .field_classes
+                .contains(&SafeFieldClass::AdmittedOperatorPremises),
+            totals: [
+                c.calls,
+                c.request_bytes,
+                c.response_bytes,
+                c.output_token_capacity,
+                c.wall_time_ms,
+            ],
+            required: [
+                2,
+                2 * o.request_bytes,
+                2 * o.response_bytes,
+                8192,
+                o.decision_wall_time_ms,
+            ],
+        }
+    }
+}

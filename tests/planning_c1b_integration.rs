@@ -129,6 +129,34 @@ fn focused_c1b_corruption_and_collision_deny() {
     assert_eq!(refused.withdrawal.unwrap().event_id, withdrawn.event_id);
 }
 
+fn retained_identity(name: &str) -> (u32, u32) {
+    let row = admin_in("postgres").query_one(
+        "SELECT oid,datdba,datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM pg_database WHERE datname=$1",
+        &[&name],
+    ).unwrap();
+    assert!(row.get::<_, bool>(2));
+    (row.get(0), row.get(1))
+}
+
+#[test]
+fn default_upgrade_invocations_are_fresh_in_one_process() {
+    let _guard = db();
+    let first = OwnedUpgradeDatabase::create().unwrap();
+    let first_name = first.name.clone();
+    let first_identity = retained_identity(&first_name);
+    first.finish().unwrap();
+    let second = OwnedUpgradeDatabase::create()
+        .unwrap_or_else(|error| panic!("same-process fresh default invocation failed: {error}"));
+    assert_ne!(first_name, second.name);
+    let second_name = second.name.clone();
+    let second_identity = retained_identity(&second_name);
+    assert_ne!(first_identity.0, second_identity.0);
+    assert_eq!(first_identity.1, second_identity.1);
+    second.finish().unwrap();
+    assert_eq!(retained_identity(&first_name), first_identity);
+    assert_eq!(retained_identity(&second_name), second_identity);
+}
+
 #[test]
 fn upgrade_fixture_retains_owned_database() {
     let _guard = db();
@@ -178,10 +206,57 @@ fn upgrade_fixture_retains_owned_database() {
     assert_eq!(sentinel, 7);
     drop(isolated);
 
-    // A second create in this process must collide without touching the retained DB.
+    let second = OwnedUpgradeDatabase::create().unwrap();
+    assert_ne!(name, second.name);
+    let second_name = second.name.clone();
+    let second_identity = retained_identity(&second_name);
+    assert_ne!(oid, second_identity.0);
+    assert_eq!(owner, second_identity.1);
+    second.finish().unwrap();
+    assert_eq!(retained_identity(&name), (oid, owner));
+    assert_eq!(retained_identity(&second_name), second_identity);
     assert_eq!(
-        OwnedUpgradeDatabase::create().err(),
+        admin_in(&name)
+            .query_one("SELECT v FROM c1b_retention_sentinel", &[])
+            .unwrap()
+            .get::<_, i32>(0),
+        7
+    );
+
+    // A same-name create must collide without touching the retained DB.
+    assert_eq!(
+        OwnedUpgradeDatabase::create_with_name(&name).err(),
         Some("upgrade_identity_collision")
+    );
+    assert_eq!(retained_identity(&name), (oid, owner));
+    assert_eq!(retained_identity(&second_name), second_identity);
+    assert_eq!(
+        admin_in(&name)
+            .query_one("SELECT v FROM c1b_retention_sentinel", &[])
+            .unwrap()
+            .get::<_, i32>(0),
+        7
+    );
+    let primary = dsn("DW_TEST_DATABASE_URL").get_dbname().unwrap().to_owned();
+    assert_eq!(
+        OwnedUpgradeDatabase::create_with_name(&primary).err(),
+        Some("upgrade_identity_collision")
+    );
+    for invalid in ["postgres", "template0", "template1", "bad-name"] {
+        assert_eq!(
+            OwnedUpgradeDatabase::create_with_name(invalid).err(),
+            Some("invalid_upgrade_identifier")
+        );
+    }
+    let foreign = format!("outside_v1_upgrade_{}", Uuid::from_u128(0x1234).simple());
+    assert_eq!(
+        OwnedUpgradeDatabase::create_with_name(&foreign).err(),
+        Some("invalid_upgrade_namespace")
+    );
+    let malformed = format!("{}{}", &name[..name.len() - 32], "G".repeat(32));
+    assert_eq!(
+        OwnedUpgradeDatabase::create_with_name(&malformed).err(),
+        Some("invalid_upgrade_namespace")
     );
     let catalog = cluster
         .query_one(
