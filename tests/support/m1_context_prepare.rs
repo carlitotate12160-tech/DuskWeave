@@ -208,3 +208,45 @@ pub fn scoped_state(e: Uuid, c: Uuid) -> Value {
         .unwrap()
         .get(0)
 }
+
+pub fn assert_capacity_remainder(p: &Value, expected: [i64; 5]) {
+    assert_eq!(p["remaining_capacity"]["campaign"]["calls"], expected[0]);
+    assert_eq!(
+        p["remaining_capacity"]["campaign"]["request_bytes"],
+        expected[1]
+    );
+    assert_eq!(
+        p["remaining_capacity"]["campaign"]["response_bytes"],
+        expected[2]
+    );
+    assert_eq!(
+        p["remaining_capacity"]["campaign"]["output_token_capacity"],
+        expected[3]
+    );
+    assert_eq!(
+        p["remaining_capacity"]["campaign"]["wall_time_ms"],
+        expected[4]
+    );
+}
+
+pub fn smaller_limits_fixture(
+    seed: u128,
+) -> (
+    duskweave::m1_inference_budget::ReservationRequest,
+    duskweave::mission::MissionRegistered,
+) {
+    let (e, c) = crate::db_support::scope(seed);
+    let now = crate::session_support::now();
+    let mut raw = crate::budget::registration_value(e, c, now);
+    let perm = raw["m1_inference_permission"].as_object_mut().unwrap();
+    let limits = perm["operation_limits"].as_object_mut().unwrap();
+    limits.insert("request_bytes".into(), json!(1024));
+    limits.insert("response_bytes".into(), json!(2048));
+    limits.insert("decision_wall_time_ms".into(), json!(5000));
+    limits.insert("connect_time_ms".into(), json!(1000));
+    limits.insert("output_tokens_per_call".into(), json!(4096));
+
+    let (_, source) = crate::budget::register(e, c, &raw);
+    let req = crate::budget::request(e, c, &raw);
+    (req, source)
+}

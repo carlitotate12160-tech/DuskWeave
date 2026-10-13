@@ -12,39 +12,87 @@ use std::time::{Duration, Instant};
 const BARRIER_CLASS_ID: u32 = 202;
 const BARRIER_LOCK_ID: u32 = 888_777;
 
-const ORIGINAL_0011_BODY: &str = r#"
-CREATE OR REPLACE FUNCTION execution.inference_capacity_snapshot(e uuid,c uuid)
-RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog AS $$
-    SELECT jsonb_build_object('version','m1_inference_capacity_snapshot_v1',
-        'epoch',f.epoch,'session_claimed',f.operation_id IS NOT NULL,
-        'active_holds',count(h.operation_id),'charged',jsonb_build_object(
-            'calls',coalesce(sum((h.capacity->>'calls')::bigint),0),
-            'request_bytes',coalesce(sum((h.capacity->>'request_bytes')::bigint),0),
-            'response_bytes',coalesce(sum((h.capacity->>'response_bytes')::bigint),0),
-            'output_token_capacity',coalesce(sum((h.capacity->>'output_token_capacity')::bigint),0),
-            'wall_time_ms',coalesce(sum((h.capacity->>'wall_time_ms')::bigint),0)))
-    FROM execution.session_fences f LEFT JOIN execution.inference_reservations h
-    ON (h.engagement_id,h.campaign_id)=(f.engagement_id,f.campaign_id)
-    AND h.record_revision=1 AND NOT EXISTS (SELECT 1 FROM execution.inference_reservations x
-        WHERE (x.engagement_id,x.campaign_id,x.operation_id)=
-              (h.engagement_id,h.campaign_id,h.operation_id) AND x.record_revision=2)
-    WHERE f.engagement_id=e AND f.campaign_id=c GROUP BY f.epoch,f.operation_id
-$$;
-REVOKE ALL ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) TO dw_m1_broker;
-"#;
-
 static BARRIER_MUTEX: Mutex<()> = Mutex::new(());
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionSnapshot {
+    pub def: String,
+    pub owner: String,
+    pub lang: String,
+    pub volatile: String,
+    pub secdef: bool,
+    pub config: Option<Vec<String>>,
+    pub acl: Option<String>,
+}
+
+pub fn capture_metadata(admin: &mut Client) -> Result<FunctionSnapshot, String> {
+    let row = admin
+        .query_one(
+            "SELECT pg_get_functiondef(p.oid), p.proowner::regrole::text, l.lanname, \
+                    p.provolatile::text, p.prosecdef, p.proconfig, p.proacl::text \
+             FROM pg_proc p \
+             JOIN pg_namespace n ON n.oid = p.pronamespace \
+             JOIN pg_language l ON l.oid = p.prolang \
+             WHERE p.oid = 'execution.inference_capacity_snapshot(uuid,uuid)'::regprocedure::oid",
+            &[],
+        )
+        .map_err(|e| format!("failed to resolve inference_capacity_snapshot metadata: {e}"))?;
+
+    let def: String = row.get(0);
+    let owner: String = row.get(1);
+    let lang: String = row.get(2);
+    let volatile: String = row.get(3);
+    let secdef: bool = row.get(4);
+    let config: Option<Vec<String>> = row.get(5);
+    let acl: Option<String> = row.get(6);
+
+    if lang != "sql" {
+        return Err(format!("unexpected language: expected 'sql', got '{lang}'"));
+    }
+    if volatile != "s" {
+        return Err(format!(
+            "unexpected volatility: expected 's', got '{volatile}'"
+        ));
+    }
+    if secdef {
+        return Err("unexpected security definer: expected invoker (prosecdef=false)".into());
+    }
+
+    Ok(FunctionSnapshot {
+        def,
+        owner,
+        lang,
+        volatile,
+        secdef,
+        config,
+        acl,
+    })
+}
 
 pub struct CapacityBarrierFault {
     _lock: std::sync::MutexGuard<'static, ()>,
     admin: Client,
+    baseline: FunctionSnapshot,
     released: bool,
+    finished: bool,
 }
 
 impl CapacityBarrierFault {
     pub fn install(mut admin: Client) -> Self {
         let lock = BARRIER_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+        let baseline = capture_metadata(&mut admin).expect("capture normal function baseline");
+
+        // Verify fixture alias does not already exist
+        let alias_exists: bool = admin
+            .query_one(
+                "SELECT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                 WHERE n.nspname = 'execution' AND p.proname = 'dw_context_capacity_fixture')",
+                &[],
+            )
+            .expect("check alias existence")
+            .get(0);
+        assert!(!alias_exists, "fixture alias must not already exist");
 
         // Acquire advisory lock
         admin
@@ -52,12 +100,30 @@ impl CapacityBarrierFault {
                 "SELECT pg_advisory_lock($1::int, $2::int)",
                 &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
             )
-            .unwrap();
+            .expect("acquire advisory barrier lock");
 
-        // Install hooked function body that attempts to acquire the advisory lock
+        // Create alias with identical body and declaration identity
+        let alias_def = baseline.def.replacen(
+            "execution.inference_capacity_snapshot",
+            "execution.dw_context_capacity_fixture",
+            1,
+        );
+        if let Err(e) = admin.batch_execute(&format!(
+            "{alias_def};\n\
+             REVOKE ALL ON FUNCTION execution.dw_context_capacity_fixture(uuid,uuid) FROM PUBLIC;\n\
+             GRANT EXECUTE ON FUNCTION execution.dw_context_capacity_fixture(uuid,uuid) TO dw_m1_broker;"
+        )) {
+            let _ = admin.query_one(
+                "SELECT pg_advisory_unlock($1::int, $2::int)",
+                &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
+            );
+            panic!("failed to install fixture alias: {e}");
+        }
+
+        // Install hooked function delegating to captured alias
         let hooked = format!(
             r#"
-            CREATE OR REPLACE FUNCTION execution.inference_capacity_snapshot(e uuid,c uuid)
+            CREATE OR REPLACE FUNCTION execution.inference_capacity_snapshot(e uuid, c uuid)
             RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path=pg_catalog AS $$
             DECLARE
                 res jsonb;
@@ -68,21 +134,7 @@ impl CapacityBarrierFault {
                 PERFORM pg_advisory_lock({class_id}, {lock_id});
                 PERFORM pg_advisory_unlock({class_id}, {lock_id});
                 PERFORM set_config('lock_timeout', coalesce(old_lock, '750ms'), true);
-                SELECT jsonb_build_object('version','m1_inference_capacity_snapshot_v1',
-                    'epoch',f.epoch,'session_claimed',f.operation_id IS NOT NULL,
-                    'active_holds',count(h.operation_id),'charged',jsonb_build_object(
-                        'calls',coalesce(sum((h.capacity->>'calls')::bigint),0),
-                        'request_bytes',coalesce(sum((h.capacity->>'request_bytes')::bigint),0),
-                        'response_bytes',coalesce(sum((h.capacity->>'response_bytes')::bigint),0),
-                        'output_token_capacity',coalesce(sum((h.capacity->>'output_token_capacity')::bigint),0),
-                        'wall_time_ms',coalesce(sum((h.capacity->>'wall_time_ms')::bigint),0)))
-                INTO res
-                FROM execution.session_fences f LEFT JOIN execution.inference_reservations h
-                ON (h.engagement_id,h.campaign_id)=(f.engagement_id,f.campaign_id)
-                AND h.record_revision=1 AND NOT EXISTS (SELECT 1 FROM execution.inference_reservations x
-                    WHERE (x.engagement_id,x.campaign_id,x.operation_id)=
-                          (h.engagement_id,h.campaign_id,h.operation_id) AND x.record_revision=2)
-                WHERE f.engagement_id=e AND f.campaign_id=c GROUP BY f.epoch,f.operation_id;
+                SELECT execution.dw_context_capacity_fixture(e, c) INTO res;
                 RETURN res;
             END;
             $$;
@@ -93,11 +145,23 @@ impl CapacityBarrierFault {
             lock_id = BARRIER_LOCK_ID
         );
 
-        admin.batch_execute(&hooked).unwrap();
+        if let Err(e) = admin.batch_execute(&hooked) {
+            let _ = admin.batch_execute(
+                "DROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
+            );
+            let _ = admin.query_one(
+                "SELECT pg_advisory_unlock($1::int, $2::int)",
+                &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
+            );
+            panic!("failed to install barrier hook: {e}");
+        }
+
         Self {
             _lock: lock,
             admin,
+            baseline,
             released: false,
+            finished: false,
         }
     }
 
@@ -131,12 +195,59 @@ impl CapacityBarrierFault {
             self.released = true;
         }
     }
+
+    pub fn finish(mut self) -> Result<(), String> {
+        self.release();
+
+        self.admin
+            .batch_execute(&format!(
+                "{};\n\
+                 REVOKE ALL ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) FROM PUBLIC;\n\
+                 GRANT EXECUTE ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) TO dw_m1_broker;\n\
+                 DROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
+                self.baseline.def
+            ))
+            .map_err(|e| format!("failed to restore public function: {e}"))?;
+
+        let alias_exists: bool = self
+            .admin
+            .query_one(
+                "SELECT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                 WHERE n.nspname = 'execution' AND p.proname = 'dw_context_capacity_fixture')",
+                &[],
+            )
+            .map_err(|e| format!("failed to check alias absence: {e}"))?
+            .get(0);
+        if alias_exists {
+            return Err("alias execution.dw_context_capacity_fixture was not removed".into());
+        }
+
+        let current = capture_metadata(&mut self.admin)?;
+        if current != self.baseline {
+            return Err(format!(
+                "restoration mismatch: expected {:?}, got {:?}",
+                self.baseline, current
+            ));
+        }
+
+        self.finished = true;
+        Ok(())
+    }
 }
 
 impl Drop for CapacityBarrierFault {
     fn drop(&mut self) {
-        self.release();
-        let _ = self.admin.batch_execute(ORIGINAL_0011_BODY);
+        if !self.finished {
+            self.release();
+            let _ = self.admin.batch_execute(&format!(
+                "{};\n\
+                 REVOKE ALL ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) FROM PUBLIC;\n\
+                 GRANT EXECUTE ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) TO dw_m1_broker;\n\
+                 DROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
+                self.baseline.def
+            ));
+            self.finished = true;
+        }
     }
 }
 
@@ -165,14 +276,12 @@ impl TwoConnectionRelay {
                     Ok((client, _)) => {
                         conn_count += 1;
                         if conn_count == 1 {
-                            // Forward connection 1
                             let stop = stop_clone.clone();
                             let h = std::thread::spawn(move || {
                                 forward_conn(client, target, stop);
                             });
                             threads_clone.lock().unwrap().push(h);
                         } else {
-                            // Drop connection 2 immediately
                             let _ = client.shutdown(Shutdown::Both);
                         }
                     }
