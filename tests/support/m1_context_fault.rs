@@ -80,45 +80,47 @@ pub struct CapacityBarrierFault {
 impl CapacityBarrierFault {
     pub fn install(mut admin: Client) -> Self {
         let lock = BARRIER_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-
         let baseline = capture_metadata(&mut admin).expect("capture normal function baseline");
 
         // Verify fixture alias does not already exist
         let alias_exists: bool = admin
             .query_one(
-                "SELECT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
-                 WHERE n.nspname = 'execution' AND p.proname = 'dw_context_capacity_fixture')",
+                "SELECT to_regprocedure('execution.dw_context_capacity_fixture(uuid,uuid)') IS NOT NULL",
                 &[],
             )
             .expect("check alias existence")
             .get(0);
         assert!(!alias_exists, "fixture alias must not already exist");
+        let mut fault = Self {
+            _lock: lock,
+            admin,
+            baseline,
+            released: true,
+            finished: false,
+        };
 
         // Acquire advisory lock
-        admin
+        fault
+            .admin
             .query_one(
                 "SELECT pg_advisory_lock($1::int, $2::int)",
                 &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
             )
             .expect("acquire advisory barrier lock");
+        fault.released = false;
 
         // Create alias with identical body and declaration identity
-        let alias_def = baseline.def.replacen(
+        let alias_def = fault.baseline.def.replacen(
             "execution.inference_capacity_snapshot",
             "execution.dw_context_capacity_fixture",
             1,
         );
-        if let Err(e) = admin.batch_execute(&format!(
+        let mut tx = fault.admin.transaction().expect("install transaction");
+        tx.batch_execute(&format!(
             "{alias_def};\n\
              REVOKE ALL ON FUNCTION execution.dw_context_capacity_fixture(uuid,uuid) FROM PUBLIC;\n\
              GRANT EXECUTE ON FUNCTION execution.dw_context_capacity_fixture(uuid,uuid) TO dw_m1_broker;"
-        )) {
-            let _ = admin.query_one(
-                "SELECT pg_advisory_unlock($1::int, $2::int)",
-                &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
-            );
-            panic!("failed to install fixture alias: {e}");
-        }
+        )).expect("install captured fixture alias");
 
         // Install hooked function delegating to captured alias
         let hooked = format!(
@@ -138,31 +140,13 @@ impl CapacityBarrierFault {
                 RETURN res;
             END;
             $$;
-            REVOKE ALL ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) FROM PUBLIC;
-            GRANT EXECUTE ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) TO dw_m1_broker;
             "#,
             class_id = BARRIER_CLASS_ID,
             lock_id = BARRIER_LOCK_ID
         );
-
-        if let Err(e) = admin.batch_execute(&hooked) {
-            let _ = admin.batch_execute(
-                "DROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
-            );
-            let _ = admin.query_one(
-                "SELECT pg_advisory_unlock($1::int, $2::int)",
-                &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
-            );
-            panic!("failed to install barrier hook: {e}");
-        }
-
-        Self {
-            _lock: lock,
-            admin,
-            baseline,
-            released: false,
-            finished: false,
-        }
+        tx.batch_execute(&hooked).expect("install barrier hook");
+        tx.commit().expect("commit barrier installation");
+        fault
     }
 
     /// Poll pg_locks until a backend is waiting on BARRIER_LOCK_ID
@@ -186,28 +170,37 @@ impl CapacityBarrierFault {
         false
     }
 
-    pub fn release(&mut self) {
+    pub fn release(&mut self) -> Result<(), String> {
         if !self.released {
-            let _ = self.admin.query_one(
-                "SELECT pg_advisory_unlock($1::int, $2::int)",
-                &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
-            );
+            let unlocked: bool = self
+                .admin
+                .query_one(
+                    "SELECT pg_advisory_unlock($1::int, $2::int)",
+                    &[&(BARRIER_CLASS_ID as i32), &(BARRIER_LOCK_ID as i32)],
+                )
+                .map_err(|_| "barrier_release_failed")?
+                .get(0);
+            if !unlocked {
+                return Err("barrier_lock_not_owned".into());
+            }
             self.released = true;
         }
+        Ok(())
     }
 
     pub fn finish(mut self) -> Result<(), String> {
-        self.release();
+        self.release()?;
 
-        self.admin
-            .batch_execute(&format!(
-                "{};\n\
-                 REVOKE ALL ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) FROM PUBLIC;\n\
-                 GRANT EXECUTE ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) TO dw_m1_broker;\n\
-                 DROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
-                self.baseline.def
-            ))
-            .map_err(|e| format!("failed to restore public function: {e}"))?;
+        let mut tx = self
+            .admin
+            .transaction()
+            .map_err(|_| "barrier_restore_transaction")?;
+        tx.batch_execute(&format!(
+            "{};\nDROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
+            self.baseline.def
+        ))
+        .map_err(|_| "barrier_restore_definition")?;
+        tx.commit().map_err(|_| "barrier_restore_commit")?;
 
         let alias_exists: bool = self
             .admin
@@ -238,17 +231,28 @@ impl CapacityBarrierFault {
 impl Drop for CapacityBarrierFault {
     fn drop(&mut self) {
         if !self.finished {
-            self.release();
+            let _ = self.release();
             let _ = self.admin.batch_execute(&format!(
-                "{};\n\
-                 REVOKE ALL ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) FROM PUBLIC;\n\
-                 GRANT EXECUTE ON FUNCTION execution.inference_capacity_snapshot(uuid,uuid) TO dw_m1_broker;\n\
-                 DROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
+                "{};\nDROP FUNCTION IF EXISTS execution.dw_context_capacity_fixture(uuid,uuid);",
                 self.baseline.def
             ));
             self.finished = true;
         }
     }
+}
+
+pub fn join_bounded<T>(worker: JoinHandle<T>, bound: Duration) -> T {
+    let start = Instant::now();
+    while !worker.is_finished() {
+        assert!(
+            start.elapsed() < bound,
+            "snapshot worker completion exceeded {bound:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    worker
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
 }
 
 /// A relay that forwards the first connection (e.g. for operation allocation)

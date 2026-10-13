@@ -229,6 +229,90 @@ pub fn assert_capacity_remainder(p: &Value, expected: [i64; 5]) {
     );
 }
 
+pub fn context_request(
+    mission: &duskweave::m1_inference_budget::ReservationRequest,
+) -> ContextRequest {
+    ContextRequest {
+        version: "m1_context_prepare_request_v1".into(),
+        mission: mission.clone(),
+        candidates: vec![],
+    }
+}
+
+pub fn prepare_pack(q: &ContextRequest) -> Value {
+    let mut reader =
+        duskweave::postgres_mission::PgContextReader::new(crate::session_support::broker_client());
+    let prepared = duskweave::m1_context::prepare(&mut reader, q, crate::budget::op()).unwrap();
+    serde_json::from_str(prepared.utf8()).unwrap()
+}
+
+pub fn run_request(q: &ContextRequest, tag: &str) -> Output {
+    let raw = request(
+        &serde_json::to_value(&q.mission).unwrap(),
+        &q.candidates
+            .iter()
+            .map(|c| serde_json::to_value(c).unwrap())
+            .collect::<Vec<_>>(),
+    );
+    let input = crate::wait_db::InputFile::new(&raw, tag);
+    run(
+        &[
+            "m1-context-prepare".into(),
+            "--input".into(),
+            input.path().into(),
+        ],
+        &crate::session_support::broker_dsn(crate::session_support::db_port()),
+    )
+}
+
+pub fn assert_failed_receipt(out: &Output, outcome: &str) {
+    assert!(!out.status.success());
+    let r = receipt(out);
+    assert_eq!(r["outcome"], outcome);
+    assert!(r["pack_utf8"].is_null());
+    let decision: Uuid = serde_json::from_value(r["decision_id"].clone()).unwrap();
+    assert!(!decision.is_nil());
+    assert_false_flags(&r);
+}
+
+pub fn assert_dimensions(value: &Value, expected: [i64; 5]) {
+    for (key, n) in [
+        "calls",
+        "request_bytes",
+        "response_bytes",
+        "output_token_capacity",
+        "wall_time_ms",
+    ]
+    .into_iter()
+    .zip(expected)
+    {
+        assert_eq!(value[key], n, "{key}");
+    }
+}
+
+pub fn assert_charge(value: &ReservedCapacity, expected: [i64; 5]) {
+    assert_eq!(
+        [
+            value.calls,
+            value.request_bytes,
+            value.response_bytes,
+            value.output_token_capacity,
+            value.wall_time_ms
+        ],
+        expected,
+    );
+}
+
+pub fn assert_mission_frontier(pack: &Value, source: &MissionRegistered) {
+    assert_eq!(pack["owner_views"][0]["owner"], "mission");
+    assert_eq!(pack["owner_views"][0]["revision"], source.owner_revision);
+    assert_eq!(pack["owner_views"][0]["frontier"], json!(source.event_id));
+    assert_eq!(
+        pack["references"][0]["lineage"],
+        json!([source.event_id, source.operation_id])
+    );
+}
+
 pub fn smaller_limits_fixture(
     seed: u128,
 ) -> (

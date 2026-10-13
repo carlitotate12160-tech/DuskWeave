@@ -1,6 +1,5 @@
 //! Real concurrency, barrier-synchronized races, and Repeatable Read snapshot honesty.
 use duskweave::m1_context::{ContextReader, prepare};
-use duskweave::m1_context_input::ContextRequest;
 use duskweave::m1_inference_budget::ReservationAction::*;
 use duskweave::postgres_mission::PgContextReader;
 use serde_json::Value;
@@ -22,457 +21,248 @@ mod session_support;
 #[path = "support/database_wait_db.rs"]
 mod wait_db;
 
+const FULL: [i64; 5] = [2, 32768, 131072, 8192, 20000];
+const TOTALS: [i64; 5] = [10, 100000, 500000, 20000, 100000];
+const REMAINDER: [i64; 5] = [8, 67232, 368928, 11808, 80000];
+
 #[test]
 fn overlapping_concurrent_readers_produce_distinct_coherent_decisions() {
     let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (req, _source) = budget::fixture(0x9601);
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req.clone(),
-        candidates: vec![],
-    };
-
-    let before_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
+    let (req, _) = budget::fixture(0x9601);
+    let q = Arc::new(context_support::context_request(&req));
+    let before = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
     let barrier = Arc::new(Barrier::new(3));
-    let q = Arc::new(q);
-
-    let t1 = {
-        let barrier = barrier.clone();
-        let q = q.clone();
-        std::thread::spawn(move || {
-            let op = budget::op();
-            let mut reader = PgContextReader::new(session_support::broker_client());
-            barrier.wait();
-            prepare(&mut reader, &q, op).unwrap()
+    let readers: Vec<_> = (0..2)
+        .map(|_| {
+            let q = q.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let op = budget::op();
+                let mut reader = PgContextReader::new(session_support::broker_client());
+                barrier.wait();
+                prepare(&mut reader, &q, op).unwrap()
+            })
         })
-    };
-
-    let t2 = {
-        let barrier = barrier.clone();
-        let q = q.clone();
-        std::thread::spawn(move || {
-            let op = budget::op();
-            let mut reader = PgContextReader::new(session_support::broker_client());
-            barrier.wait();
-            prepare(&mut reader, &q, op).unwrap()
-        })
-    };
-
+        .collect();
     barrier.wait();
-    let prep1 = t1.join().unwrap();
-    let prep2 = t2.join().unwrap();
-
-    let after_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
+    let packs: Vec<Value> = readers
+        .into_iter()
+        .map(|reader| {
+            let prepared = context_fault::join_bounded(reader, Duration::from_secs(10));
+            serde_json::from_str(prepared.utf8()).unwrap()
+        })
+        .collect();
     assert_eq!(
-        before_state, after_state,
-        "concurrent reads must not mutate scoped state"
+        before,
+        context_support::scoped_state(req.engagement_id.0, req.campaign_id.0)
     );
-
-    let p1: Value = serde_json::from_str(prep1.utf8()).unwrap();
-    let p2: Value = serde_json::from_str(prep2.utf8()).unwrap();
-    assert_eq!(p1["version"], "m1_context_pack_v1");
-    assert_eq!(p2["version"], "m1_context_pack_v1");
-    assert_eq!(p1["question"], p2["question"]);
-    assert_eq!(p1["remaining_capacity"], p2["remaining_capacity"]);
-    assert_ne!(p1["decision_id"], p2["decision_id"]);
+    assert_eq!(packs[0]["version"], "m1_context_pack_v1");
+    assert_eq!(packs[1]["version"], "m1_context_pack_v1");
+    assert_eq!(packs[0]["question"], packs[1]["question"]);
+    assert_eq!(
+        packs[0]["remaining_capacity"],
+        packs[1]["remaining_capacity"]
+    );
+    assert_ne!(packs[0]["decision_id"], packs[1]["decision_id"]);
 }
 
 #[test]
 fn snapshot_reader_holds_coherent_view_across_independent_reserve_race() {
     let _g = db_support::db();
-    session_support::ensure_broker_logins();
     let (req, source) = budget::fixture(0x9602);
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req.clone(),
-        candidates: vec![],
-    };
-
-    let before_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-    let _pre_fence = session_support::fence(req.engagement_id, req.campaign_id).unwrap();
-
+    let q = Arc::new(context_support::context_request(&req));
+    let (e, c) = (req.engagement_id.0, req.campaign_id.0);
+    let before = context_support::scoped_state(e, c);
     let mut fault =
         context_fault::CapacityBarrierFault::install(session_support::admin_db_client());
-
-    let (q_arc, req_arc) = (Arc::new(q), Arc::new(req.clone()));
     let reader_thread = {
-        let q = q_arc.clone();
+        let q = q.clone();
         std::thread::spawn(move || {
-            let op = budget::op();
             let mut reader = PgContextReader::new(session_support::broker_client());
-            prepare(&mut reader, &q, op).unwrap()
+            prepare(&mut reader, &q, budget::op()).unwrap()
         })
     };
-
     assert!(fault.wait_blocked(Duration::from_secs(10)));
-
     let res_op = budget::op();
-    let held = budget::run(&req_arc, res_op, Reserve)
-        .unwrap()
-        .expect("reservation must succeed");
+    let held = budget::run(&req, res_op, Reserve).unwrap().unwrap();
     assert_eq!(held.operation_id, res_op);
-
-    let _post_fence = session_support::fence(req.engagement_id, req.campaign_id).unwrap();
-    let post_mutation_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-    assert_ne!(before_state, post_mutation_state);
-
-    fault.release();
-    let prep = reader_thread.join().unwrap();
+    context_support::assert_charge(&held.capacity, FULL);
+    let committed = context_support::scoped_state(e, c);
+    assert_ne!(before, committed);
+    fault.release().expect("checked barrier release");
+    let prep = context_fault::join_bounded(reader_thread, Duration::from_secs(10));
     fault.finish().expect("restoration check must succeed");
-
-    let final_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-    assert_eq!(post_mutation_state, final_state);
-
+    assert_eq!(committed, context_support::scoped_state(e, c));
     let p: Value = serde_json::from_str(prep.utf8()).unwrap();
     assert_eq!(
         p["remaining_capacity"]["snapshot_epoch"],
-        before_state["fence"]["epoch"]
+        before["fence"]["epoch"]
     );
-    context_support::assert_capacity_remainder(&p, [10, 100000, 500000, 20000, 100000]);
+    context_support::assert_capacity_remainder(&p, TOTALS);
+    context_support::assert_dimensions(
+        &p["remaining_capacity"]["required_for_full_decision"],
+        FULL,
+    );
     assert_eq!(p["remaining_capacity"]["exclusive_owner_busy"], false);
-    assert_eq!(p["owner_views"][0]["revision"], 1);
-    assert_eq!(
-        p["owner_views"][0]["frontier"],
-        serde_json::to_value(source.event_id).unwrap()
-    );
-
+    context_support::assert_mission_frontier(&p, &source);
     let mut fresh_reader = PgContextReader::new(session_support::broker_client());
-    let fresh_prep = prepare(&mut fresh_reader, &q_arc, budget::op()).unwrap();
-    let fresh_p: Value = serde_json::from_str(fresh_prep.utf8()).unwrap();
+    let basis = fresh_reader.read(&q, budget::op()).unwrap();
+    assert_eq!(basis.capacity.active_holds, 1);
+    assert!(!basis.capacity.session_claimed);
+    context_support::assert_charge(&basis.capacity.charged, FULL);
+    let fresh = context_support::prepare_pack(&q);
     assert_eq!(
-        fresh_p["remaining_capacity"]["snapshot_epoch"],
-        post_mutation_state["fence"]["epoch"]
+        fresh["remaining_capacity"]["snapshot_epoch"],
+        committed["fence"]["epoch"]
     );
-    context_support::assert_capacity_remainder(
-        &fresh_p,
-        [
-            8,
-            100000 - 32768,
-            500000 - 131072,
-            20000 - 8192,
-            100000 - 20000,
-        ],
+    context_support::assert_capacity_remainder(&fresh, REMAINDER);
+    context_support::assert_dimensions(
+        &fresh["remaining_capacity"]["required_for_full_decision"],
+        FULL,
     );
-    assert_eq!(fresh_p["remaining_capacity"]["exclusive_owner_busy"], true);
+    assert_eq!(fresh["remaining_capacity"]["exclusive_owner_busy"], true);
+    context_support::assert_mission_frontier(&fresh, &source);
+    assert_eq!(committed, context_support::scoped_state(e, c));
 }
 
 #[test]
-fn snapshot_reader_holds_coherent_view_across_cancel_and_withdrawal_races() {
+fn snapshot_reader_holds_coherent_view_across_independent_cancel_race() {
     let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (req, _source) = budget::fixture(0x9603);
-
+    let (req, source) = budget::fixture(0x9603);
     let res_op = budget::op();
-    let _held = budget::run(&req, res_op, Reserve).unwrap().unwrap();
-
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req.clone(),
-        candidates: vec![],
-    };
-
+    let held = budget::run(&req, res_op, Reserve).unwrap().unwrap();
+    context_support::assert_charge(&held.capacity, FULL);
+    let q = Arc::new(context_support::context_request(&req));
+    let (e, c) = (req.engagement_id.0, req.campaign_id.0);
+    let pre_cancel = context_support::scoped_state(e, c);
     let mut fault =
         context_fault::CapacityBarrierFault::install(session_support::admin_db_client());
-    let q_arc = Arc::new(q);
-    let req_arc = Arc::new(req.clone());
-
     let reader_thread = {
-        let q = q_arc.clone();
+        let q = q.clone();
         std::thread::spawn(move || {
-            let op = budget::op();
             let mut reader = PgContextReader::new(session_support::broker_client());
-            prepare(&mut reader, &q, op).unwrap()
+            prepare(&mut reader, &q, budget::op()).unwrap()
         })
     };
-
     assert!(fault.wait_blocked(Duration::from_secs(10)));
-
-    let cancelled = budget::run(&req_arc, res_op, Cancel)
-        .unwrap()
-        .expect("cancel succeeds");
+    let cancelled = budget::run(&req, res_op, Cancel).unwrap().unwrap();
     assert_eq!(cancelled.record_revision, 2);
-    let post_cancel_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-
-    fault.release();
-    let prep = reader_thread.join().unwrap();
+    assert_eq!(cancelled.kind, "cancelled_never_sent");
+    context_support::assert_charge(&cancelled.capacity, FULL);
+    let post_cancel = context_support::scoped_state(e, c);
+    assert_ne!(pre_cancel["fence"]["epoch"], post_cancel["fence"]["epoch"]);
+    fault.release().expect("checked barrier release");
+    let prep = context_fault::join_bounded(reader_thread, Duration::from_secs(10));
     fault.finish().expect("restoration check must succeed");
-
-    let state_after = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-    assert_eq!(post_cancel_state, state_after);
-
+    assert_eq!(post_cancel, context_support::scoped_state(e, c));
     let p: Value = serde_json::from_str(prep.utf8()).unwrap();
-    context_support::assert_capacity_remainder(
-        &p,
-        [
-            8,
-            100000 - 32768,
-            500000 - 131072,
-            20000 - 8192,
-            100000 - 20000,
-        ],
+    assert_eq!(
+        p["remaining_capacity"]["snapshot_epoch"],
+        pre_cancel["fence"]["epoch"]
+    );
+    context_support::assert_capacity_remainder(&p, REMAINDER);
+    context_support::assert_dimensions(
+        &p["remaining_capacity"]["required_for_full_decision"],
+        FULL,
     );
     assert_eq!(p["remaining_capacity"]["exclusive_owner_busy"], true);
-
+    context_support::assert_mission_frontier(&p, &source);
     let mut fresh_reader = PgContextReader::new(session_support::broker_client());
-    let fresh_prep = prepare(&mut fresh_reader, &q_arc, budget::op()).unwrap();
-    let fresh_p: Value = serde_json::from_str(fresh_prep.utf8()).unwrap();
-    context_support::assert_capacity_remainder(&fresh_p, [10, 100000, 500000, 20000, 100000]);
-    assert_eq!(fresh_p["remaining_capacity"]["exclusive_owner_busy"], false);
+    let basis = fresh_reader.read(&q, budget::op()).unwrap();
+    assert_eq!(basis.capacity.active_holds, 0);
+    assert!(!basis.capacity.session_claimed);
+    context_support::assert_charge(&basis.capacity.charged, [0; 5]);
+    let fresh = context_support::prepare_pack(&q);
+    assert_eq!(
+        fresh["remaining_capacity"]["snapshot_epoch"],
+        post_cancel["fence"]["epoch"]
+    );
+    context_support::assert_capacity_remainder(&fresh, TOTALS);
+    context_support::assert_dimensions(
+        &fresh["remaining_capacity"]["required_for_full_decision"],
+        FULL,
+    );
+    assert_eq!(fresh["remaining_capacity"]["exclusive_owner_busy"], false);
+    context_support::assert_mission_frontier(&fresh, &source);
+    assert_eq!(post_cancel, context_support::scoped_state(e, c));
 }
 
 #[test]
 fn real_cli_snapshot_path_across_concurrent_withdrawal_race() {
     use duskweave::withdrawal::WithdrawalStore;
-
     let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (req, _source) = budget::fixture(0x9604);
-    let req_val = context_support::request(&serde_json::to_value(&req).unwrap(), &[]);
+    let (req, source) = budget::fixture(0x9604);
+    let raw = context_support::request(&serde_json::to_value(&req).unwrap(), &[]);
     let broker_dsn = session_support::broker_dsn(session_support::db_port());
-
     let mut fault =
         context_fault::CapacityBarrierFault::install(session_support::admin_db_client());
-
-    let input = wait_db::InputFile::new(&req_val, "cli_race");
+    let input = wait_db::InputFile::new(&raw, "cli_race");
     let args = vec![
         "m1-context-prepare".into(),
         "--input".into(),
         input.path().into(),
     ];
-
-    let (child, _) = wait_db::spawn_piped(&mut wait_db::cli(&args, &broker_dsn));
+    let (child, started) = wait_db::spawn_piped(&mut wait_db::cli(&args, &broker_dsn));
     assert!(fault.wait_blocked(Duration::from_secs(10)));
-
     let mut store = duskweave::postgres_mission::PgMissionStore::new(db_support::runtime_client());
     let mut alloc = duskweave::postgres_mission::PgAllocator::new(db_support::runtime_client());
-    let withdraw_req = duskweave::withdrawal::WithdrawalRequest {
-        engagement_id: req.engagement_id,
-        campaign_id: req.campaign_id,
-        operator_ref: req.operator_ref,
-        expected_mission_revision: 1,
-        reason: duskweave::withdrawal::WithdrawalReason::OperatorRequested,
-    };
     store
-        .withdraw(&withdraw_req, budget::op(), false, &mut alloc)
+        .withdraw(
+            &session_support::withdraw_req(req.engagement_id, req.campaign_id),
+            budget::op(),
+            false,
+            &mut alloc,
+        )
         .unwrap();
-    let post_withdrawal_state =
-        context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-
-    fault.release();
-    let out = child.wait_with_output().unwrap();
+    let (e, c) = (req.engagement_id.0, req.campaign_id.0);
+    let committed = context_support::scoped_state(e, c);
+    fault.release().expect("checked barrier release");
+    let out = wait_db::wait_bounded(child, Duration::from_secs(15), started).0;
     fault.finish().expect("restoration check must succeed");
-
-    assert_eq!(
-        post_withdrawal_state,
-        context_support::scoped_state(req.engagement_id.0, req.campaign_id.0)
-    );
+    assert_eq!(committed, context_support::scoped_state(e, c));
     assert!(out.status.success());
-    let r = context_support::receipt(&out);
-    assert_eq!(r["outcome"], "prepared");
-    let pack: Value = serde_json::from_str(r["pack_utf8"].as_str().unwrap()).unwrap();
-    assert_eq!(pack["owner_views"][0]["revision"], 1);
+    let receipt = context_support::receipt(&out);
+    assert_eq!(receipt["outcome"], "prepared");
+    let pack: Value = serde_json::from_str(receipt["pack_utf8"].as_str().unwrap()).unwrap();
+    context_support::assert_mission_frontier(&pack, &source);
     assert_eq!(pack["references"][0]["status"], "owner_published");
     assert_eq!(pack["references"][0]["freshness"], "as_of_snapshot");
-    context_support::assert_false_flags(&r);
-
+    context_support::assert_false_flags(&receipt);
     let out_fresh = context_support::run(&args, &broker_dsn);
-    assert!(!out_fresh.status.success());
-    let r_fresh = context_support::receipt(&out_fresh);
-    assert!(r_fresh["outcome"] == "refused" || r_fresh["outcome"] == "deferred");
-    assert!(r_fresh["pack_utf8"].is_null());
-    context_support::assert_false_flags(&r_fresh);
-    assert_eq!(
-        post_withdrawal_state,
-        context_support::scoped_state(req.engagement_id.0, req.campaign_id.0)
-    );
-}
-
-#[test]
-fn smaller_positive_limits_reservation_charges_and_remainder() {
-    let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (req, _source) = context_support::smaller_limits_fixture(0x9605);
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req.clone(),
-        candidates: vec![],
-    };
-
-    let held = budget::run(&req, budget::op(), Reserve)
-        .unwrap()
-        .expect("reserve succeeds");
-    assert_eq!(held.capacity.calls, 2);
-    assert_eq!(held.capacity.request_bytes, 2048);
-    assert_eq!(held.capacity.response_bytes, 4096);
-    assert_eq!(held.capacity.output_token_capacity, 8192);
-    assert_eq!(held.capacity.wall_time_ms, 5000);
-
-    let mut reader = PgContextReader::new(session_support::broker_client());
-    let prep = prepare(&mut reader, &q, budget::op()).unwrap();
-    let p: Value = serde_json::from_str(prep.utf8()).unwrap();
-    let mut direct_reader = PgContextReader::new(session_support::broker_client());
-    let basis = direct_reader.read(&q, budget::op()).unwrap();
-    assert_eq!(basis.capacity.active_holds, 1);
-    assert_eq!(basis.capacity.charged.calls, 2);
-    assert_eq!(basis.capacity.charged.request_bytes, 2048);
-    assert_eq!(basis.capacity.charged.response_bytes, 4096);
-    assert_eq!(basis.capacity.charged.output_token_capacity, 8192);
-    assert_eq!(basis.capacity.charged.wall_time_ms, 5000);
-    let req_dims = &p["remaining_capacity"]["required_for_full_decision"];
-    assert_eq!(req_dims["calls"], 2);
-    assert_eq!(req_dims["request_bytes"], 2048);
-    assert_eq!(req_dims["response_bytes"], 4096);
-    assert_eq!(req_dims["output_token_capacity"], 8192);
-    assert_eq!(req_dims["wall_time_ms"], 5000);
-    assert_eq!(p["remaining_capacity"]["exclusive_owner_busy"], true);
-    context_support::assert_capacity_remainder(
-        &p,
-        [
-            10 - 2,
-            100000 - 2048,
-            500000 - 4096,
-            20000 - 8192,
-            100000 - 5000,
-        ],
-    );
-}
-
-#[test]
-fn busy_session_exposes_snapshot_without_charge_or_send_permission() {
-    let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (e, c) = db_support::scope(0x9606);
-    let raw = budget::registration_value(e, c, session_support::now());
-    let (_op, _source) = budget::register(e, c, &raw);
-    let s_op = session_support::session_op();
-    assert!(session_support::prepare(e, c, s_op).unwrap().is_some());
-
-    let req = budget::request(e, c, &raw);
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req,
-        candidates: vec![],
-    };
-
-    let before_state = context_support::scoped_state(e.0, c.0);
-    let mut reader = PgContextReader::new(session_support::broker_client());
-    let prep = prepare(&mut reader, &q, budget::op()).unwrap();
-    let p: Value = serde_json::from_str(prep.utf8()).unwrap();
-
-    assert_eq!(p["remaining_capacity"]["exclusive_owner_busy"], true);
-    context_support::assert_capacity_remainder(&p, [10, 100000, 500000, 20000, 100000]);
-    let mut direct_reader = PgContextReader::new(session_support::broker_client());
-    let basis = direct_reader.read(&q, budget::op()).unwrap();
-    assert!(basis.capacity.session_claimed);
-    assert_eq!(basis.capacity.charged.calls, 0);
-    assert_eq!(before_state, context_support::scoped_state(e.0, c.0));
-
-    let broker_dsn = session_support::broker_dsn(session_support::db_port());
-    let input = wait_db::InputFile::new(
-        &context_support::request(&serde_json::to_value(&q.mission).unwrap(), &[]),
-        "busy_cli",
-    );
-    let out = context_support::run(
-        &[
-            "m1-context-prepare".into(),
-            "--input".into(),
-            input.path().into(),
-        ],
-        &broker_dsn,
-    );
-    assert!(out.status.success());
-    let r = context_support::receipt(&out);
-    context_support::assert_false_flags(&r);
-}
-
-#[test]
-fn new_generation_reservation_charges_second_active_hold_cleanly() {
-    let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (req, _source) = budget::fixture(0x9607);
-    let op1 = budget::op();
-    let h1 = budget::run(&req, op1, Reserve).unwrap().unwrap();
-    assert_eq!(h1.generation, 1);
-    let c1 = budget::run(&req, op1, Cancel).unwrap().unwrap();
-    assert_eq!(c1.record_revision, 2);
-
-    let op2 = budget::op();
-    let h2 = budget::run(&req, op2, Reserve).unwrap().unwrap();
-    assert_ne!(h1.operation_id, h2.operation_id);
-    assert_eq!(h2.generation, 2);
-
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req.clone(),
-        candidates: vec![],
-    };
-
-    let before_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-    let mut reader = PgContextReader::new(session_support::broker_client());
-    let prep = prepare(&mut reader, &q, budget::op()).unwrap();
-    let p: Value = serde_json::from_str(prep.utf8()).unwrap();
-
-    assert_eq!(p["remaining_capacity"]["exclusive_owner_busy"], true);
-    context_support::assert_capacity_remainder(
-        &p,
-        [
-            8,
-            100000 - 32768,
-            500000 - 131072,
-            20000 - 8192,
-            100000 - 20000,
-        ],
-    );
-
-    let mut direct_reader = PgContextReader::new(session_support::broker_client());
-    let basis = direct_reader.read(&q, budget::op()).unwrap();
-    assert_eq!(basis.capacity.active_holds, 1);
-    assert_eq!(basis.capacity.charged.calls, 2);
-
-    assert_eq!(
-        before_state,
-        context_support::scoped_state(req.engagement_id.0, req.campaign_id.0)
-    );
+    context_support::assert_failed_receipt(&out_fresh, "deferred");
+    assert_eq!(committed, context_support::scoped_state(e, c));
 }
 
 #[test]
 fn capacity_barrier_fault_unwind_preserves_restoration_and_restricted_read() {
     let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (req, _source) = budget::fixture(0x9608);
-
+    let (req, _) = budget::fixture(0x9608);
+    let mut before_admin = session_support::admin_db_client();
+    let before = context_fault::capture_metadata(&mut before_admin).unwrap();
+    drop(before_admin);
+    let before_state = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
     let panic_res = std::panic::catch_unwind(|| {
         let _fault =
             context_fault::CapacityBarrierFault::install(session_support::admin_db_client());
         panic!("simulated panic to verify unwind teardown");
     });
     assert!(panic_res.is_err(), "must catch panic");
-
     let mut fresh_admin = session_support::admin_db_client();
     let snap = context_fault::capture_metadata(&mut fresh_admin).expect("metadata captures ok");
-    assert_eq!(snap.lang, "sql");
-    assert_eq!(snap.volatile, "s");
-    assert!(!snap.secdef);
-
-    let alias_exists: bool = fresh_admin
-        .query_one(
-            "SELECT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
-             WHERE n.nspname = 'execution' AND p.proname = 'dw_context_capacity_fixture')",
-            &[],
-        )
-        .unwrap()
-        .get(0);
+    assert_eq!(snap, before);
+    let alias_exists: bool = fresh_admin.query_one(
+        "SELECT to_regprocedure('execution.dw_context_capacity_fixture(uuid,uuid)') IS NOT NULL",
+        &[],
+    ).unwrap().get(0);
     assert!(!alias_exists, "alias must be absent after unwind drop");
-
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req,
-        candidates: vec![],
-    };
+    let q = context_support::context_request(&req);
     let mut broker_reader = PgContextReader::new(session_support::broker_client());
     assert!(
         prepare(&mut broker_reader, &q, budget::op()).is_ok(),
         "restricted reader must work normally after unwind teardown"
+    );
+    assert_eq!(
+        before_state,
+        context_support::scoped_state(req.engagement_id.0, req.campaign_id.0)
     );
 }

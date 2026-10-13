@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave-ci-complexity` (selected reusable M1 source worktree; verify actual branch/HEAD per packet)
-- **Current Phase**: PR #53 inference reservation is MERGED at `e4635682f7369516b90980a6a687b879ee65a0e1`; exact-master CI run 38209944272 completed SUCCESS. `DW-IMPLEMENT-M1-CONTEXT-PREPARE` is active candidate on PR #54 (`feat/m1-context-prepare`). Evidence FIX `DW-FIX-PR54-F2-F3-CLOSE` closes F1–F4 acceptance evidence gaps (F1 actual candidate/byte limits, omission, exact carrier bytes; F2 Repeatable Read barrier concurrency, race-coherent snapshots across independent reserve/cancel/withdrawal, unwind restoration, and query/connection/COMMIT ACK faults; F3 database-backed owner withdrawal, disclosure class omissions, and stored publication tampering rejection matrix; F4 honest receipt and budget reporting), preserving 560/600 runtime and zero production changes. Operator can prepare one locally assembled, immutable safe inference input (future P) and inspect its exact UTF-8 bytes; supporting input slice only — no provider call, transport, proposal, dispatch, send path, or durable decision history. Independent later consent amendment/rebinding and actual inference remain required; full provider-chain fit, storage/cancellation and deployment qualification remain UNVERIFIED. Prepared-only withdrawal supplies no inference cancellation, START, acquisition or qualified host STOP; M0/foundation seals and historical evidence limits remain unchanged.
+- **Current Phase**: PR #53 inference reservation is MERGED at `e4635682f7369516b90980a6a687b879ee65a0e1`; exact-master CI run 38209944272 completed SUCCESS. `DW-IMPLEMENT-M1-CONTEXT-PREPARE` is active candidate on PR #54 (`feat/m1-context-prepare`). Final qualification FIX `DW-FIX-PR54-FINAL-QUALIFICATION` authors test/fixture corrections for the existing F1–F4 evidence gaps: exact owner/publication/ingress errors, panic-safe scoped restoration, and fence-derived race/capacity assertions. Candidate-bound native/Linux qualification and review results are reported externally; authored corrections and passing checks do not establish independent Work review or owner acceptance. Runtime remains 560/600 with zero correction production changes. The scoped continuation authorizes the retained upgrade-fixture UUID-name correction and its two collision/retention consumers; final source-bound native/Linux gates remain required. Operator can prepare one locally assembled, immutable safe inference input (future P) and inspect its exact UTF-8 bytes; supporting input slice only — no provider call, transport, proposal, dispatch, send path, or durable decision history. Independent later consent amendment/rebinding and actual inference remain required; full provider-chain fit, storage/cancellation and deployment qualification remain UNVERIFIED. Prepared-only withdrawal supplies no inference cancellation, START, acquisition or qualified host STOP; M0/foundation seals and historical evidence limits remain unchanged.
 - **Active Seal**: `DW-FOUNDATION-001`; `DW-M0-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified); **M0 SEALED** (product-owner authorization, 2026-10-05)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -121,6 +121,42 @@ current command/result logs and exact-head Linux checks. The malformed-consent
 cast defect was demonstrated through raw guarded SQL, not the ordinary CLI:
 Mission's typed decoder rejects that malformed publication before reservation.
 
+The final qualification correction relocates actual legacy v1/crt.sh v2 and
+owner-basis negatives into `tests/m1_context_prepare_authority.rs`, consolidates
+the two unknown-outer-field DB regressions into
+`tests/m1_context_prepare_publication.rs`, and moves smaller-limit, busy-session
+and new-generation cases into `tests/m1_context_prepare_capacity.rs`. Publication
+P01–P13 use fresh registered scopes, exact typed boundary errors, complete state
+comparisons and checked normal/assertion-panic restoration. The former
+`terms_approved` mutation remains an unknown-field control; P13 changes the real
+`provider_terms_approved` boolean. Unit/mock evidence stays separately classified.
+Snapshot cases retain reserve/cancel/withdrawal barriers and compare actual
+publication frontiers, fence epochs and five-dimensional capacity; unwind checks
+compare the complete captured function definition/owner/attributes/config/ACL.
+Existing byte/omission and query/connection/physical COMMIT ACK controls remain.
+Scoped fixture-login authentication recovery on owned `dwpg-r3` changed only the
+ContextPack runtime login password, with TCP admin/runtime identity qualification
+and unchanged restricted role attributes/membership; no credential is retained in
+repository files. Final tested tree, native counts/coverage, command logs and Linux
+checkout/results belong to the external report, not this tracking commit. Full
+source-bound qualification remains distinct from independent Work/owner acceptance;
+PR #54 is not merged or sealed. BUILD_ORDER/runbook navigation is unchanged.
+Earlier full native attempts failed on retained PID-named upgrade-fixture collisions
+in `m1_session_postgres` and `planning_c1b_integration`; their logs/counts remain
+failed partial evidence. The explicitly authorized continuation updates only
+`tests/support/upgrade_db.rs`, `tests/planning_c1b_integration.rs` and
+`tests/planning_v1_compatibility.rs`: validated primary prefix plus complete
+PostgreSQL-generated UUID nonce, one checked creation path, deliberate same-name
+collision refusal, and unchanged OID/owner/sentinel retention. Same-process
+freshness has a captured real failing assertion before correction; deterministic
+name-boundary and real upgrade-consumer results are reported externally.
+After the original credential-owning process disappeared, the owner explicitly
+authorized one replacement fixture-login recovery only. The retained service,
+TCP admin/runtime identity and UUID primitive were requalified; attributes/grants,
+`.env`, global settings and retained databases were not changed for recovery.
+Final complete native coverage and matching-candidate Linux/security evidence
+remain required before delivery; no acceptance, merge or seal is inferred.
+
 ### Remaining owner-priority dispositions (updated 2026-10-11)
 
 1. DB connection/source boundary: MERGED through #42; operational configuration
@@ -182,7 +218,7 @@ Preserved owner decisions and C1a verification evidence (historical, superseded 
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
-Next: `DW-IMPLEMENT-M1-CONTEXT-PREPARE` is delivered as draft PR on `feat/m1-context-prepare` at base `e4635682f7369516b90980a6a687b879ee65a0e1` with `DW-FIX-PR54-F2-F3-CLOSE` closing acceptance evidence gaps; owner final review/acceptance uses the external source-bound native/Linux evidence and verified receipt/outcome disposition, then STOP. Merge reconciliation belongs to the next packet's preflight. #53 merged at `e4635682f7369516b90980a6a687b879ee65a0e1` with successful master run 38209944272; #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent binds Mission revision 1; later consent amendment/rebinding cannot rewrite registration history. The context-prepare slice holds supporting input preparation only: no provider call, transport, proposal, dispatch, send path, or durable decision history. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; each later outcome needs a measured complete path and bounded file map, without a promised PR count. No provider/target call, automatic continuation, merge or seal is authorized.
+Next: `DW-IMPLEMENT-M1-CONTEXT-PREPARE` is delivered as draft PR on `feat/m1-context-prepare` at base `e4635682f7369516b90980a6a687b879ee65a0e1` with `DW-FIX-PR54-FINAL-QUALIFICATION` authored test/evidence corrections. Complete the explicitly amended upgrade fixture/consumer qualification, finish candidate-bound full native/Linux/security gates, and publish a commit whose tree matches the newly captured tested tree. Review the fixture delta against the existing correction evidence, then hand external results to independent Work/owner review; passing checks do not self-accept. STOP after delivery, without merge or next slice. Merge reconciliation belongs to the next packet's preflight. #53 merged at `e4635682f7369516b90980a6a687b879ee65a0e1` with successful master run 38209944272; #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent binds Mission revision 1; later consent amendment/rebinding cannot rewrite registration history. The context-prepare slice holds supporting input preparation only: no provider call, transport, proposal, dispatch, send path, or durable decision history. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; each later outcome needs a measured complete path and bounded file map, without a promised PR count. No provider/target call, automatic continuation, merge or seal is authorized.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 

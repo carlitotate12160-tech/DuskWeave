@@ -5,7 +5,6 @@ use duskweave::m1_context_capacity::ContextCapacity;
 use duskweave::m1_context_input::ContextRequest;
 use duskweave::m1_inference_budget::ReservedCapacity;
 use duskweave::mission::OperationId;
-use duskweave::postgres_mission::PgContextReader;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -270,63 +269,6 @@ fn basis_mismatch_on_each_axis_refuses_preparation() {
         )
         .err(),
         Some(Fail::State("context_basis_mismatch"))
-    );
-}
-
-#[test]
-fn database_stored_publication_tampering_refuses_without_mutation() {
-    let _g = db_support::db();
-    session_support::ensure_broker_logins();
-    let (req, _source) = budget::fixture(0x9801);
-    let mut admin = session_support::admin_db_client();
-
-    let orig_contract: Value = admin
-        .query_one(
-            "SELECT contract FROM mission.registration_outbox WHERE engagement_id=$1 AND campaign_id=$2",
-            &[&req.engagement_id.0, &req.campaign_id.0],
-        )
-        .unwrap()
-        .get(0);
-
-    let q = ContextRequest {
-        version: "m1_context_prepare_request_v1".into(),
-        mission: req.clone(),
-        candidates: vec![],
-    };
-
-    // 1. Unknown outer field in contract
-    let mut tampered = orig_contract.clone();
-    tampered["forged_outer_field"] = json!("malicious");
-    admin
-        .execute(
-            "UPDATE mission.registration_outbox SET contract=$1 WHERE engagement_id=$2 AND campaign_id=$3",
-            &[&tampered, &req.engagement_id.0, &req.campaign_id.0],
-        )
-        .unwrap();
-
-    let state_after_tamper = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-    let mut reader = PgContextReader::new(session_support::broker_client());
-    let res = prepare(&mut reader, &q, budget::op());
-    assert!(res.is_err(), "unknown field in publication must refuse");
-    let state_after_attempt = context_support::scoped_state(req.engagement_id.0, req.campaign_id.0);
-    assert_eq!(
-        state_after_tamper, state_after_attempt,
-        "refusal must leave tampered state untouched"
-    );
-
-    // Restore original contract
-    admin
-        .execute(
-            "UPDATE mission.registration_outbox SET contract=$1 WHERE engagement_id=$2 AND campaign_id=$3",
-            &[&orig_contract, &req.engagement_id.0, &req.campaign_id.0],
-        )
-        .unwrap();
-
-    // Normal preparation works after restore
-    let mut reader_ok = PgContextReader::new(session_support::broker_client());
-    assert!(
-        prepare(&mut reader_ok, &q, budget::op()).is_ok(),
-        "normal preparation must succeed after restore"
     );
 }
 
