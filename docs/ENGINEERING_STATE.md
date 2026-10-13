@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave-ci-complexity` (selected reusable M1 source worktree; verify actual branch/HEAD per packet)
-- **Current Phase**: PR #53 inference reservation is MERGED at `e4635682f7369516b90980a6a687b879ee65a0e1`; exact-master CI run 38209944272 completed SUCCESS. `DW-IMPLEMENT-M1-CONTEXT-PREPARE` is active candidate on PR #54 (`feat/m1-context-prepare`). Final qualification FIX `DW-FIX-PR54-FINAL-QUALIFICATION` authors test/fixture corrections for the existing F1–F4 evidence gaps: exact owner/publication/ingress errors, panic-safe scoped restoration, and fence-derived race/capacity assertions. Candidate-bound native/Linux qualification and review results are reported externally; authored corrections and passing checks do not establish independent Work review or owner acceptance. Runtime remains 560/600 with zero correction production changes. The scoped continuation authorizes the retained upgrade-fixture UUID-name correction and its two collision/retention consumers; final source-bound native/Linux gates remain required. Operator can prepare one locally assembled, immutable safe inference input (future P) and inspect its exact UTF-8 bytes; supporting input slice only — no provider call, transport, proposal, dispatch, send path, or durable decision history. Independent later consent amendment/rebinding and actual inference remain required; full provider-chain fit, storage/cancellation and deployment qualification remain UNVERIFIED. Prepared-only withdrawal supplies no inference cancellation, START, acquisition or qualified host STOP; M0/foundation seals and historical evidence limits remain unchanged.
+- **Current Phase**: PR #54 context preparation is MERGED at `e91d5f9fe4c9dda868152e11f8586bbdb49550f4`; exact-master CI run 38424031754 completed SUCCESS. Reviewed candidate/native and Linux evidence binds tree `265861557d7ed1b0f021ca2d7ffdc0f069201425`; native qualification passed 413 tests at 97.75% coverage and Linux passed 418 at 97.90%. Runtime remains 560/600. `DW-FIX-MVP-DELIVERY-CADENCE` is the active workflow-only candidate on `chore/mvp-delivery-cadence`: restrict push CI to master while retaining PR/schedule checks, carry MVP/offensive operator context into engineering prompts, and bound FIX cadence. Next product priority is a measured connected initial-inference outcome; its complete provider-chain fit remains UNVERIFIED. Operator currently can prepare and inspect immutable safe inference input (future P) only; no provider call, transport, proposal, dispatch, send path or durable cognition decision history exists. Later consent amendment/rebinding and inference cancellation remain required. Context preparation does not complete cognition, action feedback, synthesis/evolution, reporting or M1; foundation/M0 seals remain unchanged.
 - **Active Seal**: `DW-FOUNDATION-001`; `DW-M0-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified); **M0 SEALED** (product-owner authorization, 2026-10-05)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -77,7 +77,7 @@ All interactions and plans are subject to:
 
 ## 6. Current slices and next action
 
-Latest verified delivery base: `e4635682f7369516b90980a6a687b879ee65a0e1`, the 2026-10-12 merge of [PR #53](https://github.com/carlitotate12160-tech/DuskWeave/pull/53); exact-master run 38209944272 completed SUCCESS. That CI verifies the predecessor, not CONTEXT-PREPARE. #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11; unrelated amendment text retains its exact-text limits. The merged #49 Broker -> guarded Mission withdrawal/publication -> existing Trajectory path remains prepared-only: no inference cancellation, START, acquisition or host STOP qualification. #48's earlier native-log provenance remains historical UNVERIFIED; later Linux CI does not retroactively validate those attempts. No seal changed.
+Latest verified delivery base: `e91d5f9fe4c9dda868152e11f8586bbdb49550f4`, the 2026-10-13 merge of [PR #54](https://github.com/carlitotate12160-tech/DuskWeave/pull/54); exact-master run 38424031754 completed SUCCESS. This qualifies the merged context-preparation tree, not the new workflow candidate or future inference. #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11; unrelated amendment text retains its exact-text limits. The merged #49 Broker -> guarded Mission withdrawal/publication -> existing Trajectory path remains prepared-only: no inference cancellation, START, acquisition or host STOP qualification. #48's earlier native-log provenance remains historical UNVERIFIED; later Linux CI does not retroactively validate those attempts. No seal changed.
 
 ### Current work
 
@@ -109,11 +109,16 @@ Latest verified delivery base: `e4635682f7369516b90980a6a687b879ee65a0e1`, the 2
 | `DW-DESIGN-M1-INFERENCE-PROFILE` | MERGED through #51 at `35a31fd`; initial profile and required lane-specific R2/R3 refinements ACCEPTED by the owner on 2026-10-11 | Base `5d8bc3a`; [consent/context/proposal/history contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance) and [canonical accounting](adr/ADR-016-execution-broker.md#initial-inference-accounting-profile-scoped-acceptance); runtime diff 0; exact-master run 38127757340 SUCCESS | Publication complete; no blanket R2/R3 acceptance, runtime/deployment qualification or seal |
 | `DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT` | MERGED through [PR #52](https://github.com/carlitotate12160-tech/DuskWeave/pull/52) at `1ea0ea73808a4d2dd19c777f6e7787ff9123c7f8` on 2026-10-11 | Base `35a31fd`; new registration -> Mission/outbox -> source-qualified Trajectory -> historical inspect/reconcile; exact-master run 38142792508 SUCCESS | Initial-only; preserve existing-campaign refusal. Independent later consent amendment/rebinding and actual inference remain required |
 | `DW-IMPLEMENT-M1-INFERENCE-RESERVATION` | MERGED through [PR #53](https://github.com/carlitotate12160-tech/DuskWeave/pull/53) at `e4635682f7369516b90980a6a687b879ee65a0e1` on 2026-10-12 | Base `1ea0ea7`; pre-send capacity ledger, durable reserve/recover/cancel, `DW-FIX-PR53-CAST-AND-PROVENANCE` limits guard correction; exact-master run 38209944272 SUCCESS | Predecessor merge complete; pre-send only — no provider call, ContextPack, proposal, dispatch, send path, or durable decision history |
-| `DW-IMPLEMENT-M1-CONTEXT-PREPARE` | active candidate on `feat/m1-context-prepare` at base `e4635682f7369516b90980a6a687b879ee65a0e1` | [RUN_M1_CONTEXT_PREPARE.md](RUN_M1_CONTEXT_PREPARE.md); locally assembled immutable safe inference context (future P) under `m1_context_pack_v1`; safe receipt | supporting input slice only — no provider call, transport, proposal, dispatch, send path, or durable decision history; no merge or seal |
+| `DW-IMPLEMENT-M1-CONTEXT-PREPARE` | merged PR #54 at `e91d5f9fe4c9dda868152e11f8586bbdb49550f4`; exact-master CI 38424031754 SUCCESS | [RUN_M1_CONTEXT_PREPARE.md](RUN_M1_CONTEXT_PREPARE.md); locally assembled immutable safe inference context (future P) under `m1_context_pack_v1`; safe receipt | supporting input slice only — no provider call, transport, proposal, dispatch, send path or durable cognition decision history; no M1 seal |
+| `DW-FIX-MVP-DELIVERY-CADENCE` | active workflow-only candidate on `chore/mvp-delivery-cadence`, based on merged #54 | CI trigger deduplication; persistent MVP/offensive operator context; bounded FIX cadence | runtime delta 0; no inference or M1 completion claim; no automatic merge |
+
+### Historical #53/#54 delivery and qualification notes
+
+These notes describe pre-merge candidates; merged delivery is recorded above.
 
 The preceding evidence-only fix created `tests/m1_inference_budget_limits.rs`
 outside its assigned file map. This was a scope deviation, not previously
-approved delivery. The current CAST-AND-PROVENANCE packet explicitly authorizes
+approved delivery. The then-current CAST-AND-PROVENANCE packet explicitly authorizes
 retaining and correcting that existing cohesive file; it does not retroactively
 authorize its creation. Earlier native coverage is historical evidence only;
 this correction requires a captured tested tree matching the final commit,
@@ -140,7 +145,8 @@ and unchanged restricted role attributes/membership; no credential is retained i
 repository files. Final tested tree, native counts/coverage, command logs and Linux
 checkout/results belong to the external report, not this tracking commit. Full
 source-bound qualification remains distinct from independent Work/owner acceptance;
-PR #54 is not merged or sealed. BUILD_ORDER/runbook navigation is unchanged.
+At that candidate stage, PR #54 was not merged or sealed; it is now merged
+as recorded above, with no M1 seal.
 Earlier full native attempts failed on retained PID-named upgrade-fixture collisions
 in `m1_session_postgres` and `planning_c1b_integration`; their logs/counts remain
 failed partial evidence. The explicitly authorized continuation updates only
@@ -154,19 +160,22 @@ After the original credential-owning process disappeared, the owner explicitly
 authorized one replacement fixture-login recovery only. The retained service,
 TCP admin/runtime identity and UUID primitive were requalified; attributes/grants,
 `.env`, global settings and retained databases were not changed for recovery.
-Final complete native coverage and matching-candidate Linux/security evidence
-remain required before delivery; no acceptance, merge or seal is inferred.
+At that candidate stage, final complete native coverage and matching-candidate
+Linux/security evidence remained required before delivery; later reviewed
+qualification and the actual merge are recorded above. No M1 seal is inferred.
 
-### Remaining owner-priority dispositions (updated 2026-10-11)
+### Remaining owner-priority dispositions (updated 2026-10-13)
 
 1. DB connection/source boundary: MERGED through #42; operational configuration
    approval did not implement campaign-secret custody or qualify M1 deployment.
 2. DB wait bounds: MERGED through #44; startup, query/lock, ambiguous-result
    and stop bounds for the existing local CLI; no M1 broker/stop qualification.
-3. Cognitive delivery is the next product priority: INITIAL-CONSENT merged through #52;
-   INFERENCE-RESERVATION merged through #53 at `e4635682f7369516b90980a6a687b879ee65a0e1`
-   with exact-master run 38209944272 SUCCESS. Active candidate is CONTEXT-PREPARE on
-   `feat/m1-context-prepare` at base `e4635682f7369516b90980a6a687b879ee65a0e1`.
+3. Cognitive delivery is the next product priority: INITIAL-CONSENT (#52),
+   INFERENCE-RESERVATION (#53) and CONTEXT-PREPARE (#54) are merged.
+   Latest base is `e91d5f9fe4c9dda868152e11f8586bbdb49550f4`, with exact-master
+   run 38424031754 SUCCESS. Active workflow-only candidate is
+   `DW-FIX-MVP-DELIVERY-CADENCE` on `chore/mvp-delivery-cadence` at that base;
+   the next product outcome is measured connected initial inference.
    Operator can prepare one locally assembled, immutable safe inference input (future P)
    and inspect its exact UTF-8 bytes; supporting input slice only — no provider call,
    transport, proposal, dispatch, send path, or durable decision history.
@@ -218,7 +227,7 @@ Preserved owner decisions and C1a verification evidence (historical, superseded 
 
 `DW-FOUNDATION-001` remains explicitly resealed against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. PRD-000..010, ADR-001..008, and the [minimum M0 mission/planning/history contract](contracts/M0-mission-authority-history.md) are ACCEPTED under their recorded owner decisions. The accepted bounded sequencing permits local M0 delivery before full domain/evidence coverage; it grants no target acquisition/execution or full `DW-DOMAIN-001` seal.
 
-Next: `DW-IMPLEMENT-M1-CONTEXT-PREPARE` is delivered as draft PR on `feat/m1-context-prepare` at base `e4635682f7369516b90980a6a687b879ee65a0e1` with `DW-FIX-PR54-FINAL-QUALIFICATION` authored test/evidence corrections. Complete the explicitly amended upgrade fixture/consumer qualification, finish candidate-bound full native/Linux/security gates, and publish a commit whose tree matches the newly captured tested tree. Review the fixture delta against the existing correction evidence, then hand external results to independent Work/owner review; passing checks do not self-accept. STOP after delivery, without merge or next slice. Merge reconciliation belongs to the next packet's preflight. #53 merged at `e4635682f7369516b90980a6a687b879ee65a0e1` with successful master run 38209944272; #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent binds Mission revision 1; later consent amendment/rebinding cannot rewrite registration history. The context-prepare slice holds supporting input preparation only: no provider call, transport, proposal, dispatch, send path, or durable decision history. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; each later outcome needs a measured complete path and bounded file map, without a promised PR count. No provider/target call, automatic continuation, merge or seal is authorized.
+Next: deliver and review `DW-FIX-MVP-DELIVERY-CADENCE` against merged #54, with candidate-bound hosted PR checks; no native database rerun is required for this workflow/docs-only change. Then measure the complete connected initial-inference path before issuing a runtime IMPLEMENT packet: operator entrypoint, Mission view, exact P/C/B, reservation/current may-send and release/cancel, replaceable provider, strict admission, durable cognition decision/outbox, Trajectory and receipt/inspect/recover. Keep accepted one-generation/at-most-one-conditional-repair behavior; do not add automatic retries or fallback. #51's initial profile and required R2/R3 refinements remain owner-accepted for this lane on 2026-10-11, without blanket amendment acceptance. Initial consent binds Mission revision 1; later amendment/rebinding cannot rewrite registration history. Actual inference, connected action feedback, LLM belief revision, retrieval, synthesis/evolution and reporting remain required. Full provider-chain fit, deployment, storage/cancellation and cognitive MVP completion remain UNVERIFIED; use measured cohesive outcomes without promising a PR count. No provider/target call, automatic continuation, merge or seal is authorized.
 
 The local `.cargo/config.toml` is untracked configuration. Preserve it; do not stage, delete or overwrite it automatically.
 

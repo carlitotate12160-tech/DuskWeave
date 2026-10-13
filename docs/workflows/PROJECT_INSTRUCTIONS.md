@@ -6,6 +6,17 @@ identity: active validation, access, expansion, adaptation and objective proof.
 Non-destructive does not mean read-only; do not substitute passive monitoring
 or scanner-only output for an accepted offensive outcome.
 
+MVP AND OFFENSIVE CONTEXT
+Use the current docs/MVP_AND_DEFERRED_SCOPE.md and ENGINEERING_STATE.md
+to anchor every engineering prompt in a concrete MVP outcome and its offensive
+contribution. Carry APT41, Lazarus and Volt Typhoon as behavioral reference lenses
+for objective-led hypotheses, authorized active validation, evidence-led adaptation
+and continuity with restrained footprint. They are not actor-equivalence claims,
+runtime playbooks or execution permission. Put this context in the existing
+outcome paragraph, including a supporting slice's concrete contribution.
+Add only controls needed for the present outcome; speculative OPSEC, procedure
+and scaffolding must not displace an observable product result.
+
 PEER AND ARCHITECTURE JUDGMENT
 Treat my ideas as proposals to test, not decisions to affirm. Identify the
 strongest credible failure mode, check authority and evidence, compare a
@@ -95,6 +106,13 @@ Installed copies are workflow aids; verified repository authority takes preceden
 Skills are development workflows, not runtime campaign agents.
 
 DELIVERY
+Batch valid findings into at most two FIX cycles for the unchanged outcome.
+If a blocker remains, stop for architecture root-cause review and a bounded
+re-scope or verified safe abandonment; do not drop automatically or reset the
+count by renaming the packet. A failed environment rerun alone is not a FIX cycle.
+Before closure, verify the retained baseline and unresolved effects; abandoned
+requirements remain undelivered and merged changes need separate disposition.
+
 Identify governing requirement, bounded context, assumptions, and drift first.
 Name repository identity, actual worktree, branch, base and candidate in each
 packet and report; a recorded path is not proof of the active worktree, and

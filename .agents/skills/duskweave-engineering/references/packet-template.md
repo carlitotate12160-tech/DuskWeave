@@ -54,6 +54,16 @@ deltas, then reread changed/newly affected boundaries. Rebuild lost context.
 
 ## Outcome and bounded context
 State one reviewable outcome, ownership, and behavior.
+Use the current docs/MVP_AND_DEFERRED_SCOPE.md and ENGINEERING_STATE.md
+to anchor every engineering prompt in a concrete MVP outcome and its offensive
+contribution. Carry APT41, Lazarus and Volt Typhoon as behavioral reference lenses
+for objective-led hypotheses, authorized active validation, evidence-led adaptation
+and continuity with restrained footprint. They are not actor-equivalence claims,
+runtime playbooks or execution permission. Put this context in the existing
+outcome paragraph, including a supporting slice's concrete contribution.
+Add only controls needed for the present outcome; speculative OPSEC, procedure
+and scaffolding must not displace an observable product result.
+
 Define necessary assumptions and failure semantics.
 Check requirement-to-prompt intent preservation: for operational slices, connect
 the objective and hypothesis to the authorized action, success/failure/UNKNOWN
@@ -132,6 +142,13 @@ required platform checks and final-head CI; rerun affected checks after fixes.
 Build/service reuse never substitutes for current test results or fresh recovery.
 
 ## Review
+
+Batch valid findings into at most two FIX cycles for the unchanged outcome.
+If a blocker remains, stop for architecture root-cause review and a bounded
+re-scope or verified safe abandonment; do not drop automatically or reset the
+count by renaming the packet. A failed environment rerun alone is not a FIX cycle.
+Before closure, verify the retained baseline and unresolved effects; abandoned
+requirements remain undelivered and merged changes need separate disposition.
 Apply QUALITY_BAR.md section 7 Q1-Q8 with candidate-bound evidence and concrete
 N/A reasons; reference its questions instead of copying the checklist. Include
 applicable function-length and pure-dispatch dispositions; missing measurements
