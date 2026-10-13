@@ -199,16 +199,17 @@ fn repeated_sequential_preparation_is_consistent() {
     assert_eq!(p1["question"], p2["question"]);
     assert_eq!(p1["remaining_capacity"], p2["remaining_capacity"]);
     assert_eq!(
-        p1["owner_views"]["mission"]["status"],
-        p2["owner_views"]["mission"]["status"]
+        p1["owner_views"][0]["revision"],
+        p2["owner_views"][0]["revision"]
     );
     assert_eq!(
-        p1["owner_views"]["mission"]["revision"],
-        p2["owner_views"]["mission"]["revision"]
+        p1["owner_views"][0]["frontier"],
+        p2["owner_views"][0]["frontier"]
     );
+    assert_eq!(p1["references"][0]["status"], p2["references"][0]["status"]);
     assert_eq!(
-        p1["owner_views"]["mission"]["lineage"],
-        p2["owner_views"]["mission"]["lineage"]
+        p1["references"][0]["lineage"],
+        p2["references"][0]["lineage"]
     );
     assert_ne!(p1["decision_id"], p2["decision_id"]);
 }

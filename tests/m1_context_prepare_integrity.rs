@@ -366,9 +366,20 @@ fn closed_ingress_rejects_duplicate_keys_literal_bytes() {
         f.path().into(),
     ];
     let out = context_support::run(&args, &dsn);
-    // Unknown or duplicate fields fail closed
+    assert!(
+        !out.status.success(),
+        "duplicate keys must cause nonzero exit"
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(!stdout.contains("crab"), "no echo");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stdout.contains("m1_context_preparation_receipt_v1"),
+        "no preparation receipt emitted"
+    );
+    assert!(
+        !stdout.contains("crab") && !stderr.contains("crab"),
+        "no echo on either stream"
+    );
 }
 
 #[test]
@@ -451,22 +462,23 @@ fn malformed_capacity_projections_fail_closed() {
         Err(Fail::Store("context_capacity_unavailable"))
     );
 
-    // 5. Checked subtraction underflow (used > totals)
+    // 5. Checked subtraction underflow (used > totals where check_charge accepts)
     let c_over = ContextCapacity {
         version: "m1_inference_capacity_snapshot_v1".into(),
         epoch: 1,
         session_claimed: false,
         active_holds: 1,
         charged: ReservedCapacity {
-            calls: 20,
-            request_bytes: 0,
-            response_bytes: 0,
-            output_token_capacity: 0,
-            wall_time_ms: 0,
+            calls: 2,
+            request_bytes: 32768,
+            response_bytes: 131072,
+            output_token_capacity: 8192,
+            wall_time_ms: 20000,
         },
     };
+    let small_totals = [1, 100000, 200000, 50000, 60000];
     assert_eq!(
-        c_over.remaining(totals),
+        c_over.remaining(small_totals),
         Err(Fail::Store("context_capacity_unavailable"))
     );
 }

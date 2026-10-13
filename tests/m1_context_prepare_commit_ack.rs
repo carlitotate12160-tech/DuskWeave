@@ -55,6 +55,12 @@ fn query_timeout_on_locked_outbox_yields_bounded_refusal_without_mutation() {
     );
     assert!(!out.status.success(), "timeout must fail non-zero: {out:?}");
 
+    let r = context_support::receipt(&out);
+    assert_eq!(r["outcome"], "unavailable");
+    assert!(r["decision_id"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(r["pack_utf8"].is_null());
+    context_support::assert_false_flags(&r);
+
     // Lock was held, so CLI timed out within bounded envelope
     assert!(
         elapsed <= wait_db::COMMAND_ENVELOPE + Duration::from_secs(5),
