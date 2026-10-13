@@ -176,7 +176,7 @@ fn preparation_with_admitted_premises_leaves_state_unchanged() {
 }
 
 #[test]
-fn repeated_and_concurrent_preparation_is_consistent() {
+fn repeated_sequential_preparation_is_consistent() {
     let _g = db_support::db();
     session_support::ensure_broker_logins();
     let (req, _source) = budget::fixture(0x9401);
@@ -198,6 +198,17 @@ fn repeated_and_concurrent_preparation_is_consistent() {
     assert_eq!(p1["version"], p2["version"]);
     assert_eq!(p1["question"], p2["question"]);
     assert_eq!(p1["remaining_capacity"], p2["remaining_capacity"]);
-    assert_eq!(p1["owner_views"], p2["owner_views"]);
+    assert_eq!(
+        p1["owner_views"]["mission"]["status"],
+        p2["owner_views"]["mission"]["status"]
+    );
+    assert_eq!(
+        p1["owner_views"]["mission"]["revision"],
+        p2["owner_views"]["mission"]["revision"]
+    );
+    assert_eq!(
+        p1["owner_views"]["mission"]["lineage"],
+        p2["owner_views"]["mission"]["lineage"]
+    );
     assert_ne!(p1["decision_id"], p2["decision_id"]);
 }

@@ -1,10 +1,10 @@
 //! Behavioral unit and invariant tests for m1_context and ingress parsing.
-use duskweave::m1_context::{self, ContextBasis, ContextReader, QUESTION};
+use duskweave::Fail;
+use duskweave::m1_context::{self, QUESTION};
 use duskweave::m1_context_capacity::ContextCapacity;
 use duskweave::m1_context_input::{Candidate, ContextRequest, Priority};
 use duskweave::m1_inference_budget::ReservedCapacity;
-use duskweave::mission::{AssetRef, CONTRACT_KIND, MissionRegistered, OperationId, PRODUCER};
-use duskweave::{Fail, Res};
+use duskweave::mission::{AssetRef, OperationId};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -21,83 +21,7 @@ mod session_support;
 #[path = "support/database_wait_db.rs"]
 mod wait_db;
 
-struct MockReader {
-    basis: Res<ContextBasis>,
-}
-
-impl ContextReader for MockReader {
-    fn read(&mut self, _q: &ContextRequest, _op: OperationId) -> Res<ContextBasis> {
-        match &self.basis {
-            Ok(b) => Ok(ContextBasis {
-                mission: b.mission.clone(),
-                capacity: ContextCapacity {
-                    version: b.capacity.version.clone(),
-                    epoch: b.capacity.epoch,
-                    session_claimed: b.capacity.session_claimed,
-                    active_holds: b.capacity.active_holds,
-                    charged: b.capacity.charged.clone(),
-                },
-                evaluated_at: b.evaluated_at,
-            }),
-            Err(e) => Err(*e),
-        }
-    }
-}
-
-fn sample_basis(now: i64, e: Uuid, c: Uuid, with_premises: bool) -> (ContextBasis, Value) {
-    let mut raw = budget::registration_value(
-        duskweave::mission::EngagementId(e),
-        duskweave::mission::CampaignId(c),
-        now,
-    );
-    raw["included_assets"] = json!([Uuid::from_u128(0x701), Uuid::from_u128(0x702)]);
-    raw["excluded_assets"] = json!([Uuid::from_u128(0x703)]);
-    if with_premises {
-        let classes = raw["m1_inference_permission"]["field_classes"]
-            .as_array_mut()
-            .unwrap();
-        classes.push(json!("admitted_operator_premises"));
-    }
-    let op = Uuid::from_u128(0xa002);
-    let mission: MissionRegistered = serde_json::from_value(json!({
-        "event_id": Uuid::from_u128(0xa001),
-        "operation_id": op,
-        "engagement_id": e,
-        "campaign_id": c,
-        "producer": PRODUCER,
-        "affected_entity": c,
-        "owner_revision": 1,
-        "kind": CONTRACT_KIND,
-        "version": 3,
-        "causation_id": op,
-        "correlation_id": op,
-        "occurred_at": now,
-        "recorded_at": now,
-        "fields": raw
-    }))
-    .unwrap();
-    let capacity = ContextCapacity {
-        version: "m1_inference_capacity_snapshot_v1".into(),
-        epoch: 1,
-        session_claimed: false,
-        active_holds: 0,
-        charged: ReservedCapacity {
-            calls: 0,
-            request_bytes: 0,
-            response_bytes: 0,
-            output_token_capacity: 0,
-            wall_time_ms: 0,
-        },
-    };
-    (
-        ContextBasis {
-            mission,
-            capacity,
-            evaluated_at: now,
-        },
-        raw,
-    )
-}
+use context_support::{MockReader, sample_basis};
 
 #[test]
 fn context_pack_successful_assembly_and_byte_equivalence() {
@@ -155,6 +79,11 @@ fn context_pack_successful_assembly_and_byte_equivalence() {
     assert_eq!(parsed["omissions"]["omitted_candidates"], 0);
     assert_eq!(parsed["omissions"]["manifests"], "catalog_unavailable");
     assert_eq!(parsed["manifests"].as_array().unwrap().len(), 0);
+
+    let (basis2, _) = sample_basis(now, e, c, true);
+    let mut reader2 = MockReader { basis: Ok(basis2) };
+    let prepared2 = m1_context::prepare(&mut reader2, &q, op).expect("prepare must succeed");
+    assert_eq!(prepared.utf8().as_bytes(), prepared2.utf8().as_bytes());
 }
 
 #[test]

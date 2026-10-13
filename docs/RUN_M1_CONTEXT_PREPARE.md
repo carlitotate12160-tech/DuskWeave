@@ -95,7 +95,7 @@ Cognition compiles the accepted M1 mission question:
 
 ## Receipt and outcomes
 
-The command outputs a single-line JSON receipt:
+For successful ingress parsing and operation allocation, the command outputs a single-line JSON receipt:
 
 ```json
 {
@@ -119,17 +119,24 @@ Outcomes:
 - `prepared`: success; `pack_utf8` carries the exact immutable JSON string.
 - `deferred`: consent window not yet open or expired, consent missing required
   field classes, or candidates supplied without `admitted_operator_premises`.
-- `refused`: out-of-scope candidate assets or invalid basis.
-- `unavailable`: database query error, uncommitted snapshot, or missing Broker role.
+- `refused`: out-of-scope candidate assets or basis mismatch.
+- `unavailable`: post-allocation reader failures (e.g. database query error,
+  second reader-connect failure, lock wait timeout, or missing Broker role). Emits
+  a receipt with allocated `decision_id`, `pack_utf8: null`, all false flags, and exits non-zero.
 
-Failure outcomes emit `pack_utf8: null` and exit with non-zero code.
+Early pre-allocation input/config failures (e.g. missing/malformed `--input` flag,
+unrecognized arguments, duplicate keys, or invalid JSON syntax) fail closed under
+`CommandGuard` and ingress validation with static error output and non-zero exit code
+without emitting a receipt (no operation or decision ID was allocated).
 
 ## Explicit snapshot and non-durable limits
 
-- Snapshot values reflect database state as-of-read. They do not constitute a
-  send-time fence or reserve capacity.
+- Prepared bytes (`pack_utf8`) are strictly as-of-snapshot and non-durable.
+  Snapshot values reflect database state at read-time under Repeatable Read.
+- They do not constitute a send-time fence, do not reserve capacity, grant no
+  provider send qualification, and write no durable Trajectory history or decisions.
 - Preparation creates no reservation ledger record, refunds no capacity, and
-  writes no durable Trajectory history.
+  neither accesses external inference providers nor contacts targets.
 - Re-preparation is a fresh operation; this slice includes no automatic replay.
 
 ## Future dependencies
