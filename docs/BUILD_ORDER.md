@@ -45,16 +45,21 @@ Current seal:
 
 Current engineering state:
 
-Current candidate: `DW-IMPLEMENT-M1-CONTEXT-PREPARE`, based on merged
-PR #53 at `e4635682f7369516b90980a6a687b879ee65a0e1` (master CI 38209944272 SUCCESS).
+PR #54 context preparation is merged at
+`e91d5f9fe4c9dda868152e11f8586bbdb49550f4` (exact-master CI 38424031754 SUCCESS).
+Current workflow-only candidate: `DW-FIX-MVP-DELIVERY-CADENCE` on
+`chore/mvp-delivery-cadence`; no runtime change or automatic merge.
+Next product priority: measure the complete connected initial-inference outcome
+before issuing a runtime IMPLEMENT packet; its budget fit is not yet verified.
 See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance),
 the [context prepare runbook](RUN_M1_CONTEXT_PREPARE.md)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
-for the 2026-10-11 scoped owner acceptance, delivery evidence and next action.
-The issued packet prepares local inference context (future P) only; no provider call,
-proposal, dispatch, send path, or durable decision history exists. Independent later
-consent amendment/rebinding and actual inference remain required. Full provider-chain fit,
-deployment and cognitive MVP completion remain UNVERIFIED; seals are unchanged.
+for scoped owner acceptance, merged delivery evidence and next action.
+Current runtime prepares local inference context (future P) only; no provider call,
+proposal, dispatch, send path or durable cognition decision history exists.
+Later consent amendment/rebinding and actual inference remain required.
+Context preparation does not complete cognition, action feedback,
+synthesis/evolution, reporting or M1; seals are unchanged.
 
 Current design document:
 

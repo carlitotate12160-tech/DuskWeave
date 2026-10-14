@@ -30,6 +30,16 @@ recheck identity/HEAD/status, and reread affected authority and boundaries.
 
 ## Offensive intent preservation
 
+Use the current docs/MVP_AND_DEFERRED_SCOPE.md and ENGINEERING_STATE.md
+to anchor every engineering prompt in a concrete MVP outcome and its offensive
+contribution. Carry APT41, Lazarus and Volt Typhoon as behavioral reference lenses
+for objective-led hypotheses, authorized active validation, evidence-led adaptation
+and continuity with restrained footprint. They are not actor-equivalence claims,
+runtime playbooks or execution permission. Put this context in the existing
+outcome paragraph, including a supporting slice's concrete contribution.
+Add only controls needed for the present outcome; speculative OPSEC, procedure
+and scaffolding must not displace an observable product result.
+
 Trace governing requirement -> assigned prompt -> observable implementation.
 For an operational slice, check that its objective, hypothesis, authorized
 scope, active validation, success/failure/UNKNOWN evidence, adaptation and stop
@@ -159,6 +169,15 @@ not proven defects. Respect owner-specific burden and the actual ADR-004
 component responsibility when reviewing Rust-first changes.
 
 ## Boundaries and handoff
+
+Batch valid findings into at most two FIX cycles for the unchanged outcome.
+If a blocker remains, stop for architecture root-cause review and a bounded
+re-scope or verified safe abandonment. If the choice changes an accepted
+outcome, obtain a recorded disposition from the governing product owner or
+accepted authority before proceeding. Do not drop automatically or reset the
+count by renaming the packet. A failed environment rerun alone is not a FIX cycle.
+Before closure, verify the retained baseline and unresolved effects; abandoned
+requirements remain undelivered and merged changes need separate disposition.
 
 Review-only requests produce findings; do not edit, self-accept, seal, or merge.
 When explicitly assigned FIX, use `build-duskweave` and its allowed file map.

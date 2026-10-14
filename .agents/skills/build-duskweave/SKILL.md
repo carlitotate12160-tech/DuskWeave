@@ -68,6 +68,16 @@ or speculative adapter merely because a skill mentions one.
 
 ## Offensive intent preservation
 
+Use the current docs/MVP_AND_DEFERRED_SCOPE.md and ENGINEERING_STATE.md
+to anchor every engineering prompt in a concrete MVP outcome and its offensive
+contribution. Carry APT41, Lazarus and Volt Typhoon as behavioral reference lenses
+for objective-led hypotheses, authorized active validation, evidence-led adaptation
+and continuity with restrained footprint. They are not actor-equivalence claims,
+runtime playbooks or execution permission. Put this context in the existing
+outcome paragraph, including a supporting slice's concrete contribution.
+Add only controls needed for the present outcome; speculative OPSEC, procedure
+and scaffolding must not displace an observable product result.
+
 Compare the governing requirement, assigned prompt and implemented outcome.
 Preserve the current slice's accepted operational objective, hypothesis,
 authorized scope, active validation, success/failure/UNKNOWN criteria,
@@ -217,6 +227,15 @@ report the exact dependency and return SPLIT_REQUIRED.
 Do not dismiss a real defect merely because the current packet cannot fix it.
 
 ## Review and delivery
+
+Batch valid findings into at most two FIX cycles for the unchanged outcome.
+If a blocker remains, stop for architecture root-cause review and a bounded
+re-scope or verified safe abandonment. If the choice changes an accepted
+outcome, obtain a recorded disposition from the governing product owner or
+accepted authority before proceeding. Do not drop automatically or reset the
+count by renaming the packet. A failed environment rerun alone is not a FIX cycle.
+Before closure, verify the retained baseline and unresolved effects; abandoned
+requirements remain undelivered and merged changes need separate disposition.
 
 Apply the verified repository QUALITY_BAR.md section 7 eight-question review.
 Keep that question set canonical there; do not duplicate it in packets or skills.
