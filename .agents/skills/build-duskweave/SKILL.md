@@ -230,7 +230,9 @@ Do not dismiss a real defect merely because the current packet cannot fix it.
 
 Batch valid findings into at most two FIX cycles for the unchanged outcome.
 If a blocker remains, stop for architecture root-cause review and a bounded
-re-scope or verified safe abandonment; do not drop automatically or reset the
+re-scope or verified safe abandonment. If the choice changes an accepted
+outcome, obtain a recorded disposition from the governing product owner or
+accepted authority before proceeding. Do not drop automatically or reset the
 count by renaming the packet. A failed environment rerun alone is not a FIX cycle.
 Before closure, verify the retained baseline and unresolved effects; abandoned
 requirements remain undelivered and merged changes need separate disposition.
