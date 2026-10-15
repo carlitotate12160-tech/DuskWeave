@@ -57,6 +57,9 @@ Historical coverage/live results do not qualify this correction; current local,
 exact-head CI/native CodeQL, distinct delta review and fresh bounded live evidence
 are reconciled in the PR and external fix-review01 report. No acceptance,
 merge, deployment or M1 seal is claimed. `dispatch_granted=false` remains fixed.
+The corrected runtime has passing isolated CI coverage and one bounded native
+live episode with zero replay during inspect/two recoveries. Next: owner review
+of corrected PR #60 after final exact-head checks; no further slice is authorized.
 The prior workflow-only candidate remains historical; no merge is inferred.
 See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance),
 the [context prepare runbook](RUN_M1_CONTEXT_PREPARE.md)
