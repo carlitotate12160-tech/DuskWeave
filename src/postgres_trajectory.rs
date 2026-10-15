@@ -1,6 +1,8 @@
 //! CampaignTrajectory owner's PostgreSQL adapter. Queries only
 //! trajectory.* tables and a narrow read-only Mission publication port;
 //! history insertion and completion commit atomically.
+#[path = "postgres_reasoning_history.rs"]
+mod postgres_reasoning_history;
 #[path = "postgres_withdrawal_history.rs"]
 mod postgres_withdrawal_history;
 

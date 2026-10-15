@@ -40,8 +40,10 @@ impl ContextCapacity {
         })
     }
     fn check_snapshot(&self, used: &[i64; 5]) -> Res<()> {
-        if self.version != "m1_inference_capacity_snapshot_v1"
-            || self.epoch < 0
+        if !matches!(
+            self.version.as_str(),
+            "m1_inference_capacity_snapshot_v1" | "m1_inference_capacity_snapshot_v2"
+        ) || self.epoch < 0
             || !(0..=1).contains(&self.active_holds)
             || used.iter().any(|n| *n < 0)
         {
@@ -50,6 +52,9 @@ impl ContextCapacity {
         Ok(())
     }
     fn check_charge(&self, used: &[i64; 5]) -> Res<()> {
+        if self.version == "m1_inference_capacity_snapshot_v2" {
+            return Ok(());
+        }
         if self.active_holds == 0 {
             if used.iter().any(|n| *n != 0) {
                 return Err(Fail::Store("context_capacity_unavailable"));

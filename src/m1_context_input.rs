@@ -19,7 +19,7 @@ pub struct Candidate {
     pub priority: Priority,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextRequest {
     pub version: String,

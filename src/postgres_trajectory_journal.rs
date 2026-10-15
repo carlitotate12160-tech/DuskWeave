@@ -18,6 +18,7 @@ use uuid::Uuid;
 pub(super) enum JournalTable {
     Planning,
     Withdrawal,
+    Reasoning,
 }
 
 impl JournalTable {
@@ -25,6 +26,7 @@ impl JournalTable {
         match self {
             Self::Planning => "trajectory.planning_history",
             Self::Withdrawal => "trajectory.withdrawal_history",
+            Self::Reasoning => "trajectory.reasoning_history",
         }
     }
 }

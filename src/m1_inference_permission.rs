@@ -68,7 +68,7 @@ struct OperationInferenceLimits {
 }
 
 impl OperationInferenceLimits {
-    fn validate(&self) -> Res<()> {
+    fn validate(&self, depth: i64) -> Res<()> {
         let bounded = [
             (self.context_bytes, 4096),
             (self.candidates, 8),
@@ -81,7 +81,7 @@ impl OperationInferenceLimits {
             (self.repair_bytes, 2048),
             (self.text_field_bytes, 1024),
             (self.repair_error_codes, 8),
-            (self.json_depth, 8),
+            (self.json_depth, depth),
             (self.collection_entries, 64),
         ];
         if bounded.iter().any(|(n, cap)| *n <= 0 || n > cap) {
@@ -126,22 +126,25 @@ pub struct InferencePermission {
 
 impl InferencePermission {
     fn check_profile(&self) -> Res<()> {
-        if (
-            self.version.as_str(),
-            self.recipient.as_str(),
-            self.profile.as_str(),
-        ) != (
-            "m1_inference_permission_v1",
-            "https://api.deepseek.com/responses",
-            "deepseek-responses-v1",
-        ) || !self.provider_terms_approved
+        let supported = matches!(
+            (self.version.as_str(), self.profile.as_str()),
+            ("m1_inference_permission_v1", "deepseek-responses-v1")
+                | (
+                    "m1_inference_permission_v2",
+                    "deepseek-responses-envelope32-v1"
+                )
+        );
+        if !supported
+            || self.recipient != "https://api.deepseek.com/responses"
+            || !self.provider_terms_approved
         {
             return Err(Fail::Input("inference_unsupported_profile"));
         }
         if self.permission_id.is_nil() || self.provider_terms_ref.is_nil() {
             return Err(Fail::Input("nil_reference"));
         }
-        self.check_field_classes()
+        self.check_field_classes()?;
+        self.validate_native_profile()
     }
 
     fn check_field_classes(&self) -> Res<()> {
@@ -180,7 +183,40 @@ impl InferencePermission {
             return Err(Fail::Input("inference_invalid_window"));
         }
         self.campaign_limits.validate()?;
-        self.operation_limits.validate()
+        self.operation_limits.validate(self.envelope_depth())
+    }
+
+    fn validate_native_profile(&self) -> Res<()> {
+        if self.version != "m1_inference_permission_v2" {
+            return Ok(());
+        }
+        let o = &self.operation_limits;
+        let fixed = [
+            (o.json_depth, 32),
+            (o.collection_entries, 64),
+            (o.response_bytes, 65536),
+            (o.proposal_bytes, 8192),
+            (o.text_field_bytes, 1024),
+            (o.repair_bytes, 2048),
+            (o.repair_error_codes, 8),
+            (o.connect_time_ms, 5000),
+        ];
+        if !self
+            .field_classes
+            .contains(&SafeFieldClass::AdmittedRepairFieldsCodes)
+            || fixed.iter().any(|(actual, required)| actual != required)
+        {
+            return Err(Fail::Input("inference_unsupported_profile"));
+        }
+        Ok(())
+    }
+
+    fn envelope_depth(&self) -> i64 {
+        if self.version == "m1_inference_permission_v2" {
+            32
+        } else {
+            8
+        }
     }
 
     pub(crate) fn bind_scope(&self, e: EngagementId, c: CampaignId, revision: u64) -> Res<()> {

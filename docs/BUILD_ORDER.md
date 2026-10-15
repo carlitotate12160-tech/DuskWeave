@@ -47,15 +47,25 @@ Current engineering state:
 
 PR #54 context preparation is merged at
 `e91d5f9fe4c9dda868152e11f8586bbdb49550f4` (exact-master CI 38424031754 SUCCESS).
-Current workflow-only candidate: `DW-FIX-MVP-DELIVERY-CADENCE` on
-`chore/mvp-delivery-cadence`; no runtime change or automatic merge.
-Next product priority: measure the complete connected initial-inference outcome
-before issuing a runtime IMPLEMENT packet; its budget fit is not yet verified.
+Current candidate: `DW-IMPLEMENT-M1-NATIVE-INFERENCE`, existing OPEN
+[PR #60](https://github.com/carlitotate12160-tech/DuskWeave/pull/60), on
+`feat/m1-native-inference`, pinned to cumulative base `d2b34e5`.
+The first batched FIX corrects credential provisioning, v2 profile admission,
+full-input identity, owner/writer isolation, verified anomalies and dependent
+continuation. Preserve launch-under-campaign-lock release and uncertain charging.
+Historical coverage/live results do not qualify this correction; current local,
+exact-head CI/native CodeQL, distinct delta review and fresh bounded live evidence
+are reconciled in the PR and external fix-review01 report. No acceptance,
+merge, deployment or M1 seal is claimed. `dispatch_granted=false` remains fixed.
+The corrected runtime has passing isolated CI coverage and one bounded native
+live episode with zero replay during inspect/two recoveries. Next: owner review
+of corrected PR #60 after final exact-head checks; no further slice is authorized.
+The prior workflow-only candidate remains historical; no merge is inferred.
 See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance),
 the [context prepare runbook](RUN_M1_CONTEXT_PREPARE.md)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 for scoped owner acceptance, merged delivery evidence and next action.
-Current runtime prepares local inference context (future P) only; no provider call,
+Merged runtime prepares local inference context (future P) only; no provider call,
 proposal, dispatch, send path or durable cognition decision history exists.
 Later consent amendment/rebinding and actual inference remain required.
 Context preparation does not complete cognition, action feedback,

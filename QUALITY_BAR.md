@@ -41,6 +41,9 @@ Recorded delivery-budget exceptions (scoped, non-recurring; duplicate records ar
 M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=a9da047b2bf0bf4822536187ab3e1734ac56fc12; cap=1200; initial-only
 (History: originally pinned to base f52cfcc53c183f7c852fba191f9da14858c7ae5d; repointed to a9da047 after protected master advanced via documentation-only PR #6 containing no runtime changes.)
 
+M1_NATIVE_INFERENCE_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M1-NATIVE-INFERENCE; base=d2b34e5fdcb6cc774b12388d928cd7cd5954fb94; cap=3200; initial-only
+(Product-owner authorization, 2026-10-15: one initial native-inference packet only; measured starting projection +2,622/-27 = 2,649. Applies cumulatively to its pinned base and exact 26-path production map in the issued packet, including corrections. Default 600, production-file 400, McCabe, test/coverage and all other gates remain unchanged. The existing checker must enforce this exact scope before runtime integration; no arbitrary override or recurring exception.)
+
 ### Function and dispatch classification
 
 Count a function from its declaration through its closing brace, including

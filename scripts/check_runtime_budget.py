@@ -12,7 +12,9 @@ DW-IMPLEMENT-M0A delivery: it applies only when the resolved base is the
 pinned protected-master baseline (M0A_BASE), the candidate tree (INDEX or
 commit — never the dirty worktree file) contains the exact M0A exception record in
 QUALITY_BAR.md exactly once, and every changed runtime path is inside the
-declared M0A runtime map. Anything else uses the default 600.
+declared M0A runtime map. The initial native-inference delivery has a separate
+fixed record, base and 26-path map below, with the same candidate-tree checks.
+Anything else uses the default 600; binary runtime changes always fail.
 
 Usage: check_runtime_budget.py --base <commit> --head <commit|INDEX>
 INDEX diffs the staged index against base (pre-commit checks).
@@ -50,6 +52,42 @@ M0A_RUNTIME_MAP = frozenset(
         "migrations/0001_mission_registration.sql",
     }
 )
+
+NATIVE_BASE = "d2b34e5fdcb6cc774b12388d928cd7cd5954fb94"
+NATIVE_CAP = 3200
+NATIVE_RECORD_KEY = "M1_NATIVE_INFERENCE_RUNTIME_DIFF_EXCEPTION"
+NATIVE_RECORD = (
+    "M1_NATIVE_INFERENCE_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M1-NATIVE-INFERENCE; "
+    "base=d2b34e5fdcb6cc774b12388d928cd7cd5954fb94; cap=3200; initial-only"
+)
+NATIVE_RUNTIME_MAP = frozenset({
+    "Cargo.toml",
+    "migrations/0012_native_inference.sql",
+    "migrations/0013_inference_profile_and_continuation.sql",
+    "src/database_config.rs",
+    "src/database_wait.rs",
+    "src/lib.rs",
+    "src/m1_cli.rs",
+    "src/m1_context_capacity.rs",
+    "src/m1_context_cli.rs",
+    "src/m1_context_input.rs",
+    "src/m1_inference_permission.rs",
+    "src/m1_reasoning/mod.rs",
+    "src/m1_reasoning/bounded_json.rs",
+    "src/m1_reasoning/decision_attempt.rs",
+    "src/m1_reasoning/inference.rs",
+    "src/m1_reasoning/postgres.rs",
+    "src/m1_reasoning/proposal.rs",
+    "src/m1_reasoning/provider_diagnostic.rs",
+    "src/m1_reasoning/request.rs",
+    "src/m1_reasoning/response.rs",
+    "src/m1_reasoning/transport.rs",
+    "src/m1_reasoning_cli.rs",
+    "src/main.rs",
+    "src/postgres_reasoning_history.rs",
+    "src/postgres_trajectory.rs",
+    "src/postgres_trajectory_journal.rs",
+})
 
 
 def is_runtime_path(path: str) -> bool:
@@ -92,18 +130,20 @@ def numstat(repo: str, base: str, head: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-def candidate_exception_cap(repo: str, head: str) -> int | None:
-    """M0A cap only if the candidate INDEX/commit records the exact exception."""
+def candidate_exception_cap(repo: str, head: str, native: bool = False) -> int | None:
+    """A fixed cap only when the candidate records exactly one matching record."""
     spec = ":QUALITY_BAR.md" if head == "INDEX" else f"{head}:QUALITY_BAR.md"
     content = git_show(repo, spec)
     if content is None:
         return None
+    key, record, cap = ((NATIVE_RECORD_KEY, NATIVE_RECORD, NATIVE_CAP) if native
+                        else (M0A_RECORD_KEY, M0A_RECORD, M0A_CAP))
     records = [
         line.strip()
         for line in content.splitlines()
-        if line.strip().startswith(M0A_RECORD_KEY)
+        if line.strip().startswith(key)
     ]
-    return M0A_CAP if records == [M0A_RECORD] else None
+    return cap if records == [record] else None
 
 
 def resolve_cap(repo: str, base: str, head: str, runtime_paths: list[str]) -> tuple[int, str]:
@@ -114,6 +154,12 @@ def resolve_cap(repo: str, base: str, head: str, runtime_paths: list[str]) -> tu
         and all(p in M0A_RUNTIME_MAP for p in runtime_paths)
     ):
         return M0A_CAP, "m0a_exception"
+    if (
+        resolved_base == NATIVE_BASE
+        and candidate_exception_cap(repo, head, native=True) == NATIVE_CAP
+        and all(p in NATIVE_RUNTIME_MAP for p in runtime_paths)
+    ):
+        return NATIVE_CAP, "m1_native_inference_exception"
     return HARD_CAP, "default"
 
 

@@ -18,7 +18,7 @@ pub(super) fn command(args: &[String]) -> Res<()> {
 }
 
 // Input admission is complete before allocating identities or opening database ports.
-fn read_request(path: &str) -> Res<ContextRequest> {
+pub(super) fn read_request(path: &str) -> Res<ContextRequest> {
     let file = std::fs::File::open(path).map_err(|_| Fail::Input("unreadable_input"))?;
     let mut raw = Vec::new();
     file.take((duskweave::input::MAX_INPUT_BYTES + 1) as u64)

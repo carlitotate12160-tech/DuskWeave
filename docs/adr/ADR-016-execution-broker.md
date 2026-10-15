@@ -185,12 +185,14 @@ network effects cannot be retroactively recalled.
 
 ### Initial inference accounting profile (scoped acceptance)
 
-This section canonically owns the numerical rules for `deepseek-responses-v1` and
-`m1_inference_permission_v1`; the [enabling contract](../contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance)
+This section canonically owns the numerical rules for `deepseek-responses-v1`,
+`deepseek-responses-envelope32-v1`, `m1_inference_permission_v1` and `m1_inference_permission_v2`;
+the [enabling contract](../contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance)
 owns field semantics, provider selection and history. The owner accepted the initial
-#51 profile and required R2/R3 refinements for this lane on 2026-10-11, without blanket
-amendment acceptance or a seal. Initial registration consent configures these ceilings;
-it implements no reservation, consumption, refill, provider qualification or send.
+#51 profile and required R2/R3 refinements for this lane on 2026-10-11, and the native
+continuation profile on 2026-10-15, without blanket amendment acceptance or a seal.
+Initial registration consent configures these ceilings; it implements no reservation,
+consumption, refill, provider qualification or send.
 
 | Resource | Deployment ceiling / accounting unit |
 | --- | --- |
@@ -202,8 +204,16 @@ it implements no reservation, consumption, refill, provider qualification or sen
 | Shared generation/repair duration | At most 20 seconds, clamped to remaining command, Mission and consent deadlines |
 | Connection establishment | At most 5 seconds per call inside the same shared envelope; DNS/TCP/TLS included |
 | Proposal / repair material | 8192 / 2048 UTF-8 bytes; each proposal text field <=1024 bytes; at most 8 static repair-error codes |
-| Local JSON parsing | At most 8 nesting levels and 64 entries per collection; bounds checked before growth |
+| Local JSON parsing | At most 8 nesting levels (depth 32 for response envelope under `deepseek-responses-envelope32-v1`) and 64 entries per collection; bounds checked before growth |
 | Inference concurrency | 1 live decision/call per campaign; no parallel repair or concurrent session owner |
+
+Native v2 registration requires `admitted_repair_fields_codes` and the exact supported
+fixed values: envelope depth32, collection64, response65536, proposal8192, text1024,
+repair2048, repair-error-codes8, connect5000ms, calls2, output4096 and concurrency1.
+Unsupported narrower fixed settings are rejected at consent registration and SQL
+admission. Smaller positive ContextPack/candidate/request/configuration limits remain
+supported; shared duration decreases with Mission/consent expiry. Historical v1 semantics
+remain unchanged and existing consent is never silently widened or upgraded.
 
 Response counting includes HTTP headers and entity bytes before parsing, counts leading
 blank lines, and rejects compression rather than permitting unbounded decompression.

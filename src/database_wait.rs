@@ -246,7 +246,14 @@ fn verify_effective_waits(client: &mut Client) -> Res<()> {
 /// and the unchanged role/durability qualification, all inside one
 /// independent 5-second startup guard spanning connect, authentication and
 /// qualification.
-pub(super) fn connect_qualified(mut cfg: postgres::Config) -> Res<Client> {
+pub(super) fn connect_qualified(cfg: postgres::Config) -> Res<Client> {
+    connect_owner(cfg, qualify_runtime)
+}
+
+pub(super) fn connect_owner(
+    mut cfg: postgres::Config,
+    qualify: fn(&mut Client) -> Res<()>,
+) -> Res<Client> {
     let done = spawn_monitor(Budget::start(STARTUP))?;
     let outcome = (|| {
         apply_wait_policy(&mut cfg);
@@ -254,7 +261,7 @@ pub(super) fn connect_qualified(mut cfg: postgres::Config) -> Res<Client> {
             .connect(NoTls)
             .map_err(|_| Fail::Config("connect_failed"))?;
         verify_effective_waits(&mut client)?;
-        qualify_runtime(&mut client)?;
+        qualify(&mut client)?;
         Ok(client)
     })();
     let _ = done.send(Control::Done);
