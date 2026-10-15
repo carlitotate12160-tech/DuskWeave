@@ -31,6 +31,8 @@ class Fixture:
     def __init__(self, container, kind, ci=False):
         if container not in ("dwpg-r3", "dwpg"):
             raise RuntimeError("native_service_unqualified")
+        if ci and container != "dwpg":
+            raise RuntimeError("native_service_unqualified")
         self.container = container
         # Container names allow the existing owned dash spelling, never SQL use.
         self.database = DATABASES[kind]
@@ -52,6 +54,7 @@ class Fixture:
         if kind == "fixture":
             owners.append("otherbroker")
         self.roles = {name: identifier(f"dw_nf60_{suffix}_{name}") for name in owners}
+        self.migration_actor = "postgres" if ci else self.roles["admin"]
         for role in self.roles.values():
             if self.sql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'", database="postgres").strip():
                 raise RuntimeError("native_login_collision")
@@ -132,7 +135,7 @@ class Fixture:
                 source = re.sub(r"CREATE TRIGGER (\w+) (.*?);", lambda m:
                                 "DO $refresh$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='" + m[1] +
                                 "') THEN " + m[0] + " END IF; END $refresh$;", source, flags=re.S)
-            self.sql(f"SET ROLE {self.roles['admin']};\n" + source)
+            self.sql(f"SET ROLE {self.migration_actor};\n" + source)
 
     def run(self, label, args, report):
         if not re.fullmatch(r"[a-z0-9_-]+", label) or not isinstance(args, list) or not args:
@@ -141,7 +144,7 @@ class Fixture:
         if path.exists():
             raise RuntimeError("native_report_collision")
         result = subprocess.run(args, cwd=ROOT, env=self.env, capture_output=True, text=True)
-        output = result.stdout + "\n" + result.stderr
+        output = result.stderr + "\n" + result.stdout
         for value in self.secrets:
             output = output.replace(value, "[REDACTED]")
         path.write_text(output, encoding="utf-8")
