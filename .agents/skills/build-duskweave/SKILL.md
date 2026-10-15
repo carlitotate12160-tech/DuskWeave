@@ -122,9 +122,11 @@ requires them. Do not silently weaken a gate.
 Batch independent preflight/read operations. Record loaded authority and check
 provenance briefly in the session; reread changed/newly affected boundaries only.
 Start with focused contract tests. As soon as the complete production path exists,
-format and measure the actual cumulative budget against the packet base, before
-polishing tests/docs. Preserve the packet's ceilings, correction room and STOP
-conditions; crossing a review trigger alone is not a hard-budget failure.
+format and measure the actual cumulative metrics against the packet base, before
+polishing tests/docs. Engineering metrics (runtime diff, file size, McCabe, function span)
+are advisory review reference points under QUALITY_BAR.md, not hard ceilings. A crossing
+produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor
+in the same PR. Numerical crossings alone do not require an exception, new packet, or STOP.
 
 Reuse Cargo build artifacts during normal iterations; do not routinely cargo clean.
 Follow the AGENTS.md artifact convention: set the packet's concrete
@@ -291,7 +293,8 @@ for over-budget work by unrelated cleanup, comment removal, or out-of-map edits.
 ## STOP conditions
 
 Return SPLIT_REQUIRED for an unsealed required dependency, new architectural
-decision outside assigned design authoring, materially wider file map/scope, or a size limit requiring a new packet.
+decision outside assigned design authoring, or materially wider file map/scope.
+Numerical crossings alone do not require SPLIT_REQUIRED.
 Return AUTHORITY_CONFLICT for contradictory governing instructions.
 Return DESIGN_DRIFT when the pinned base or required baseline differs.
 For each, name the exact file/dependency, conflict, and smallest required resolution.

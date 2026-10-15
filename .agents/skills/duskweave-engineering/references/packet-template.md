@@ -1,186 +1,56 @@
-# DuskWeave bounded packet template
+# DuskWeave Bounded Packet Template
 
 Use only when authoring a packet. Fill every field from verified DuskWeave sources.
-Do not publish placeholders as ready-to-execute instructions.
-Write task-specific instructions; reference permanent authority instead of
-repeating it. Keep concrete contract, failure assertions, protections and gates.
-This template adds no prompt-length gate or separate planning deliverable.
-These are professional engineering controls, not enterprise certification;
-add no arbitrary docstring quotas, extra approval tiers or unrelated
-full-suite repetition.
+Do not publish placeholders as ready-to-execute instructions. Reference permanent
+authority instead of repeating it. Routine fixes stay in the same branch/PR; compiler
+and test failures require correction before merge and do not automatically require
+another packet.
+
+---
 
 PROJECT: DuskWeave
 MODE: DESIGN | IMPLEMENT | FIX
-PACKET: exact identifier
-WORKSPACE: verified path
-BRANCH: actual delivery branch
-EXPECTED_BASE_SHA: verified full commit
-EXPECTED_START_HEAD: verified full commit
-DELIVERY: exact requested artifacts
+PACKET: <exact identifier>
+WORKSPACE: <verified path>
+BRANCH: <actual delivery branch>
+BASE: <verified full commit>
+OUTCOME: <one coherent reviewable outcome and its offensive/MVP contribution>
 
-Execute the assigned packet directly. Do not return another implementation plan.
+Execute the assigned packet directly. Do not return another architecture plan.
 
-## Preconditions
-- Exact base, branch/worktree rules, and verified current stage.
-- Actual worktree identity: inspect `git worktree list` before treating a
-  dirty or stale main folder as the active candidate; a recorded path is not
-  proof. State how unrelated worktrees and drafts are preserved.
-- Required accepted authority and sealed dependencies.
-- Relevant conflicting work check, if required.
-- Required tools and verification capability.
-- Supported/tested OS, architecture, toolchain, database and runtime role.
-- Concrete process-scoped artifact paths: ordinary target directory,
-  per-packet coverage path and report path, plus the cache ownership rule.
-  One owner holds a shared target for the whole verification sequence,
-  including CLI subprocess tests; instrumented and ordinary directories stay
-  separate. Resolve drafting fields to concrete paths before handoff.
-- Actual owned local service state and its qualification: reuse a compatible
-  owned service rather than recreating it, name a fresh disposable database
-  and restricted login per runtime packet, serialize fixtures that mutate
-  cluster-wide roles, and keep credentials in the authorized environment.
-  Absent authorized DSNs block a required database gate; they do not waive it.
-- Measured formatted cumulative size, exact packet ceiling (at most 600 runtime
-  lines under ordinary policy), and room for corrections; normally reserve
-  15-20% during planning. Keep production files <=400 and tests <=500.
-  Above 400 runtime lines, include the cohesion/ownership review trigger and
-  required disposition. That trigger alone does not need an exception or STOP.
-  Resolve known infeasibility before handoff; do not promise an unmeasured fit.
+## Preconditions & Base / Workspace
+- Verified repository identity, worktree (`git worktree list`), branch, and base commit.
+- Preserve unrelated worktrees and untracked files.
+- Local resources: process-scoped build target, owned PostgreSQL service, fresh disposable test database/login if required.
+- Git is candidate custody for ordinary changes: base commit, committed PR head, git diff, and CI. Do not embed candidate HEAD SHA in commit files.
 
-## Authority read
-List only applicable files in the repository-mandated order.
-Distinguish accepted authority from documents this packet is tasked to draft.
-Establish context once; on continuation recheck identity/HEAD/status and authority
-deltas, then reread changed/newly affected boundaries. Rebuild lost context.
+## Necessary Scope (Allowed Files)
+- Exact editable file paths. Include required test/consumer changes established by inspection.
+- List read-only authority/caller/consumer references separately.
+- Do not authorize arbitrary wildcard edits.
 
-## Outcome and bounded context
-State one reviewable outcome, ownership, and behavior.
-Use the current docs/MVP_AND_DEFERRED_SCOPE.md and ENGINEERING_STATE.md
-to anchor every engineering prompt in a concrete MVP outcome and its offensive
-contribution. Carry APT41, Lazarus and Volt Typhoon as behavioral reference lenses
-for objective-led hypotheses, authorized active validation, evidence-led adaptation
-and continuity with restrained footprint. They are not actor-equivalence claims,
-runtime playbooks or execution permission. Put this context in the existing
-outcome paragraph, including a supporting slice's concrete contribution.
-Add only controls needed for the present outcome; speculative OPSEC, procedure
-and scaffolding must not displace an observable product result.
+## Decisions to Implement
+- Concrete architectural and implementation decisions captured by accepted PRDs/ADRs and packet.
+- Engineering metrics (runtime diff, file LOC, McCabe, function span) are advisory review reference points under QUALITY_BAR.md, not hard ceilings. A crossing produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR.
+- No budget exception ledgers, separate authorization packets, or pure-dispatch digest allowances are required for numerical crossings.
 
-Define necessary assumptions and failure semantics.
-Check requirement-to-prompt intent preservation: for operational slices, connect
-the objective and hypothesis to the authorized action, success/failure/UNKNOWN
-evidence, next decision/adaptation and stop conditions. For supporting slices,
-state their operational contribution without inventing target actions. Preserve
-accepted active behavior; surface conflicts rather than silently substituting
-passive/scanner-only behavior. No scope expansion or extra review gate follows.
-Give exact acceptance criteria; define what evidence proves completion.
-Keep the packet cohesive across its necessary files; avoid prompts per module.
-Preserve the authorized offensive outcome, meaningful failure behavior and
-low unnecessary footprint. Do not replace active validation with a stub or
-defensive-only alternative and claim the original requirement is satisfied.
+## Acceptance Criteria
+- Exact observable assertions proving completion.
+- Grounded in requirements, owner contracts, failure boundaries, and observable evidence.
+- Wiring for runtime slices: traced path from authorized entrypoint through changed production component to consumer and observable result.
 
-## Allowed files
-List exact paths. Include required test/consumer changes established by inspection.
-Do not authorize arbitrary wildcard edits.
-List read-only authority/callers/consumers separately. Existing wiring need not
-be editable. Include only actual required fixture/config/CI changes in edit scope.
+## Relevant Checks & Validation
+- DESIGN: document conventions, authority references, links, invariants; runtime wiring is N/A.
+- IMPLEMENT/FIX: unit, integration, and scenario tests; conflict markers, hygiene, formatting, and Clippy.
+- Advisory metrics reported in `metrics` job; successful measurement exits 0 even if thresholds are exceeded.
+- Material failures (broken tests, compiler errors, hygiene violations, invalid input) must be corrected before merge in the same PR.
 
-## Required work
-Use concise, directly executable steps.
-The IDE implements the decisions already captured by authority and packet.
-Do not ask it to choose a new architecture or return another plan.
-Keep product semantics in PRDs and architectural decisions in permitted ADRs.
-Do not duplicate entire authority documents in the prompt.
-Separate new behavior from existing reuse. Schedule focused tests and an early
-formatted cumulative-budget check once the complete production path exists,
-before polishing tests/docs. This does not replace pre-handoff feasibility.
+## Genuine STOP Conditions
+Pause implementation only for:
+- Unresolved or ambiguous authority (missing PRD/ADR)
+- Violated architectural invariants (INV-001 through INV-007)
+- Material scope expansion beyond assigned outcome
+- New unexpected cross-domain dependencies or God Object pressure
+- Unrelated work that cannot be safely preserved
 
-## Non-goals
-List later-stage work and adjacent changes that must not be performed.
-
-## Tracking disposition
-Declare UPDATE with exact tracking files and effects, or NO_CHANGE with a
-concrete reason. Include docs/ENGINEERING_STATE.md in the editable map when
-active delivery status or the next action changes; include
-docs/BUILD_ORDER.md only when current navigation changes. Reconcile the
-actual predecessor merge at this packet's preflight; do not issue a ready
-packet while a required predecessor merge is still open. A candidate does not
-record its own merge and does not embed its final commit SHA in a committed
-file; the external delivery report carries candidate provenance. A
-review-only packet reports required corrections without editing; an unchanged
-status records NO_CHANGE rather than meaningless churn. A needed correction
-outside the editable map returns SPLIT_REQUIRED with the exact map defect,
-not silent scope expansion.
-
-## Validation
-DESIGN: scope, document conventions, semantic consistency, links, invariants;
-state runtime wiring N/A.
-IMPLEMENT/FIX: behavior/negative controls and exact repository check commands.
-List entrypoint -> caller/port -> changed production component -> consumer/output.
-Include a test through the real consumer path, or explain stage-specific limits.
-Inspect all changed symbols, modules, event producers/consumers, configuration,
-migrations, adapters, and errors for dead code or orphan islands.
-If necessary consumer/test paths are outside the file map, STOP and split.
-Do not invent test commands for nonexistent runtime scaffolding.
-Map material criteria to evidence: requirement, owner, observable failure or
-success assertion, real boundary exercised, environment and candidate SHA.
-Name production checks, failure/recovery tests and relevant negative controls.
-Select fuzz/property/concurrency tests only where the changed risk warrants them.
-For transaction faults, state whether failure is before commit, after durable
-commit before acknowledgment, or during recovery; assert state before recovery.
-A behavior fix requires a genuine failing assertion before the fix. A refactor
-of already-correct behavior reports passing baseline characterization and
-preserved regression evidence; never fabricate RED history or introduce a
-production defect to create it. A material mismatch with higher authority is
-reported, not silently rewritten.
-State mandatory environment variable names without values; prohibit hardcoded
-secret defaults and ordinary-surface secret diagnostics. Separate infrastructure
-configuration from campaign custody. Do not claim untested platform support.
-Keep required deterministic checks in CI when runtime is introduced; verify
-actual current-head results and skipped tests. Do not weaken a gate to fit scope.
-Schedule one final full pass per unchanged candidate/platform/configuration;
-an all-targets coverage run executes that same suite. Retain coverage cleanup,
-required platform checks and final-head CI; rerun affected checks after fixes.
-Build/service reuse never substitutes for current test results or fresh recovery.
-
-## Review
-
-Batch valid findings into at most two FIX cycles for the unchanged outcome.
-If a blocker remains, stop for architecture root-cause review and a bounded
-re-scope or verified safe abandonment. If the choice changes an accepted
-outcome, obtain a recorded disposition from the governing product owner or
-accepted authority before proceeding. Do not drop automatically or reset the
-count by renaming the packet. A failed environment rerun alone is not a FIX cycle.
-Before closure, verify the retained baseline and unresolved effects; abandoned
-requirements remain undelivered and merged changes need separate disposition.
-Apply QUALITY_BAR.md section 7 Q1-Q8 with candidate-bound evidence and concrete
-N/A reasons; reference its questions instead of copying the checklist. Include
-applicable function-length and pure-dispatch dispositions; missing measurements
-are UNVERIFIED. One adversarial pass, fix valid in-scope findings, final changed-result review.
-Review fixes as a delta unless changed authority/boundaries or unresolved risk
-invalidates earlier evidence. Form counterexamples before the author's verdict.
-Distinguish false positives from valid out-of-scope blockers.
-Distinguish author self-review from an independent session. For >400 runtime
-lines, explicitly assess one coherent behavior, owner boundaries, file footprint,
-failure/recovery coverage and safe state after merge. Green CI is not this review.
-Evaluate changed
-behavior and assertions, not test count or scanner completion alone.
-
-## STOP
-Pin exact base-drift, authority-conflict, dependency, scope, and budget conditions.
-Use SPLIT_REQUIRED / AUTHORITY_CONFLICT / DESIGN_DRIFT as appropriate.
-
-## Completion
-Report repository identity, actual worktree, branch, base/head, actual
-artifacts, actual verification, findings, and blockers.
-State whether work is authored, reviewed, accepted, merged, or sealed.
-State the tracking disposition (UPDATE with exact effects or NO_CHANGE with a
-reason), the candidate delivery state and remaining blockers before handoff,
-and review consistency between the current-phase summary, next action and
-build navigation.
-Record command/results, candidate SHA, platform/toolchain/DB/role, service
-reuse/qualification, cache/report provenance, and local/CI provenance.
-When available, include approximate preparation/implementation/check time and
-rework/STOP cause in the delivery report; no new artifact or timing gate.
-Missing evidence is UNVERIFIED/BLOCKED. State residual limits and the exact next
-action; do not substitute enterprise/military labels for assurance evidence.
-Do not grant acceptance or claim seal transitions implicitly.
-Stop. Do not execute the next packet.
+Do not STOP for an advisory metric crossing, a lint number, or a routine implementation defect.

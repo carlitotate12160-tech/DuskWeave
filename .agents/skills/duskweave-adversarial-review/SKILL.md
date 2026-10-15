@@ -117,10 +117,12 @@ and report the policy-publication mismatch; the portable skill does not override
    that invalidates earlier evidence; do not demand unrelated tests.
 
 Review packet feasibility as well as implementation: exact edit map versus
-read-only dependencies, real fixtures, supported platforms, and cumulative
-budget. A conforming LOC count cannot excuse an out-of-map edit or degraded
-readability. Trace state ownership and dependency direction; small files alone
-do not prove absence of a God Object or spaghetti dependencies.
+read-only dependencies, real fixtures, supported platforms, and metrics.
+Engineering metrics (diff lines, file size, McCabe, function span) are advisory
+review reference points under QUALITY_BAR.md, not hard ceilings. A crossing produces
+an advisory warning and reviewer decision: retain with a concrete cohesion/readability
+reason, or refactor in the same PR. Trace state ownership and dependency direction;
+small files alone do not prove absence of a God Object or tangled dependencies.
 
 For recovery claims, locate the exact injected fault relative to the real
 commit/effect. Require pre-recovery durable-state assertions, fresh recovery
