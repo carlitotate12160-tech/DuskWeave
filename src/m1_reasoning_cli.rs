@@ -21,23 +21,23 @@ fn cognition_role(c: &mut Client) -> Res<()> {
     qualify(c, "dw_m1_cognition")
 }
 fn trajectory_role(c: &mut Client) -> Res<()> {
-    qualify(c, "dw_m1_trajectory")?;
-    let isolated: bool = c.query_one("SELECT NOT pg_has_role(session_user,'dw_runtime','MEMBER') AND NOT EXISTS(SELECT 1 FROM pg_roles r WHERE pg_has_role(session_user,r.oid,'SET') AND has_table_privilege(r.oid,(SELECT t.oid FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='mission' AND t.relname='missions'),'INSERT'))", &[]).map_err(|_|Fail::Config("inference_database_unqualified"))?.get(0);
-    if isolated {
-        Ok(())
-    } else {
-        Err(Fail::Config("inference_database_unqualified"))
-    }
+    qualify(c, "dw_m1_trajectory")
 }
 fn qualify(c: &mut Client, role: &str) -> Res<()> {
     let ok: bool = c
         .query_one(
             "SELECT pg_has_role(session_user,$1,'MEMBER')
+         AND NOT EXISTS(SELECT 1 FROM unnest(ARRAY['dw_m1_broker','dw_m1_cognition','dw_m1_trajectory']) sibling
+          WHERE sibling<>$1 AND pg_has_role(session_user,sibling,'MEMBER'))
          AND current_setting('fsync')='on' AND current_setting('full_page_writes')='on'
          AND current_setting('synchronous_commit')='on'
          AND NOT EXISTS(SELECT 1 FROM pg_roles actor
           WHERE pg_has_role(session_user,actor.oid,'SET') AND (
            actor.rolsuper OR actor.rolbypassrls OR actor.rolcreaterole OR actor.rolcreatedb
+           OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+            WHERE has_function_privilege(actor.oid,p.oid,'EXECUTE') AND
+            ((n.nspname='cognition' AND p.proname='publish_reasoning' AND $1<>'dw_m1_cognition') OR
+             (n.nspname='execution' AND p.proname IN ('bind_inference_input','inference_reservation','inference_may_send','inference_call_state','close_inference') AND $1<>'dw_m1_broker')))
            OR EXISTS(SELECT 1 FROM pg_namespace n
             WHERE n.nspname IN ('mission','trajectory','execution','cognition')
             AND (has_schema_privilege(actor.oid,n.oid,'CREATE')
@@ -45,7 +45,11 @@ fn qualify(c: &mut Client, role: &str) -> Res<()> {
            OR EXISTS(SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
             WHERE n.nspname IN ('mission','trajectory','execution','cognition') AND t.relkind='r'
             AND (pg_has_role(actor.oid,t.relowner,'MEMBER')
-             OR has_table_privilege(actor.oid,t.oid,'UPDATE,DELETE,TRUNCATE,TRIGGER')))))",
+             OR has_table_privilege(actor.oid,t.oid,'UPDATE,DELETE,TRUNCATE,TRIGGER')
+             OR has_any_column_privilege(actor.oid,t.oid,'UPDATE')
+             OR (has_any_column_privilege(actor.oid,t.oid,'INSERT') AND NOT
+              (($1='dw_m1_trajectory' AND n.nspname='trajectory' AND t.relname='reasoning_history') OR
+               ($1='dw_runtime' AND n.nspname IN ('mission','trajectory') AND t.relname<>'reasoning_history')))))))",
             &[&role],
         )
         .map_err(|_| Fail::Config("inference_database_unqualified"))?
@@ -55,6 +59,11 @@ fn qualify(c: &mut Client, role: &str) -> Res<()> {
     } else {
         Err(Fail::Config("inference_database_unqualified"))
     }
+}
+fn core_connection() -> Res<Client> {
+    let mut c = super::connect()?;
+    qualify(&mut c, "dw_runtime")?;
+    Ok(c)
 }
 fn broker_connection() -> Res<Client> {
     super::database_wait::connect_owner(
@@ -126,7 +135,7 @@ fn read_input(args: &[String]) -> Res<(ContextRequest, String)> {
 }
 fn allocate(operation: &str) -> Res<Uuid> {
     if operation == "new" {
-        PgAllocator::new(super::connect()?).allocate()
+        PgAllocator::new(core_connection()?).allocate()
     } else {
         Uuid::parse_str(operation).map_err(|_| Fail::Input("invalid_operation"))
     }
@@ -144,12 +153,10 @@ fn scope(q: &ContextRequest, decision: Uuid) -> Res<Scope> {
         permission: q.mission.permission_id,
     })
 }
-fn known_identity(c: &mut Client, s: &Scope, q: &ContextRequest, input_hash: &str) -> Res<bool> {
-    let known: bool = c.query_one("SELECT EXISTS(SELECT 1 FROM execution.inference_reservations WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3) OR EXISTS(SELECT 1 FROM cognition.reasoning_decisions WHERE e=$1 AND c=$2 AND d=$3)", &[&s.engagement,&s.campaign,&s.decision]).map_err(|_|Fail::Store("inference_inspect_unavailable"))?.get(0);
+fn known_identity(c: &mut Client, s: &Scope, input_hash: &str) -> Res<bool> {
+    let known: bool = c.query_one("SELECT EXISTS(SELECT 1 FROM execution.native_input_bindings WHERE e=$1 AND c=$2 AND d=$3) OR EXISTS(SELECT 1 FROM execution.inference_reservations WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3) OR EXISTS(SELECT 1 FROM cognition.reasoning_decisions WHERE e=$1 AND c=$2 AND d=$3)", &[&s.engagement,&s.campaign,&s.decision]).map_err(|_|Fail::Store("inference_inspect_unavailable"))?.get(0);
     if known {
-        let mission =
-            serde_json::to_value(&q.mission).map_err(|_| Fail::Input("inference_input_invalid"))?;
-        let same: bool = c.query_one("SELECT NOT EXISTS(SELECT 1 FROM execution.inference_reservations r WHERE (r.engagement_id,r.campaign_id,r.operation_id)=($1,$2,$3) AND r.record_revision=1 AND r.request IS DISTINCT FROM $4) AND NOT EXISTS(SELECT 1 FROM cognition.reasoning_decisions z WHERE (z.e,z.c,z.d)=($1,$2,$3) AND z.input_hash IS DISTINCT FROM $5)", &[&s.engagement,&s.campaign,&s.decision,&mission,&input_hash]).map_err(|_|Fail::Store("inference_identity_unavailable"))?.get(0);
+        let same: bool = c.query_one("SELECT EXISTS(SELECT 1 FROM execution.native_input_bindings i WHERE (i.e,i.c,i.d)=($1,$2,$3) AND i.input_hash=$4 AND i.writer_oid=(SELECT oid FROM pg_roles WHERE rolname=session_user)) AND NOT EXISTS(SELECT 1 FROM cognition.reasoning_decisions z WHERE (z.e,z.c,z.d)=($1,$2,$3) AND z.input_hash IS DISTINCT FROM $4)", &[&s.engagement,&s.campaign,&s.decision,&input_hash]).map_err(|_|Fail::Store("inference_identity_unavailable"))?.get(0);
         if !same {
             return Err(Fail::Conflict("inference_identity_conflict"));
         }
@@ -170,7 +177,7 @@ fn owners(
     Ok(Owners {
         broker: reasoning::postgres::PgBroker {
             client: c,
-            mission: PgMissionStore::new(super::connect()?),
+            mission: PgMissionStore::new(core_connection()?),
             reservations: PgInferenceReservationStore::new(broker_connection()?),
             request: q.mission.clone(),
             deadline,
@@ -187,17 +194,28 @@ fn execute<P: inference::Provider>(
     provider: impl FnOnce() -> P,
 ) -> Res<inference::Receipt> {
     let (mut c, store) = open_stores(&q)?;
-    let known = continuation(&mut c, &s, &q, &store.input_hash, fresh)?;
-    if fresh {
-        println!(
-            "{}",
-            serde_json::json!({"kind":"m1_inference_identity_v1","decision":s.decision,"dispatch_granted":false})
-        );
-    }
+    let known = continuation(&mut c, &s, &store.input_hash, fresh)?;
     let new_inference = command == "m1-infer" && !known;
     let deadline = decision_deadline(&mut c, &s, new_inference)?;
     let mut owners = owners(c, &q, deadline, store)?;
     run(command, new_inference, &q, &s, &mut owners, provider)
+}
+fn bind_input(c: &mut Client, s: &Scope, hash: &str) -> Res<()> {
+    println!(
+        "{}",
+        serde_json::json!({"kind":"m1_inference_identity_v1","decision":s.decision,"dispatch_granted":false})
+    );
+    let mut tx = c
+        .transaction()
+        .map_err(|_| Fail::Store("inference_input_binding_unknown"))?;
+    tx.execute(
+        "SELECT execution.bind_inference_input($1,$2,$3,$4)",
+        &[&s.engagement, &s.campaign, &s.decision, &hash],
+    )
+    .map_err(|_| Fail::Store("inference_input_binding_unknown"))?;
+    tx.commit()
+        .map_err(|_| Fail::Store("inference_input_binding_unknown"))?;
+    Ok(())
 }
 fn emit_receipt(receipt: &inference::Receipt) -> Res<()> {
     println!(
@@ -215,16 +233,13 @@ fn open_stores(q: &ContextRequest) -> Res<(Client, reasoning::postgres::PgDecisi
         },
     ))
 }
-fn continuation(
-    c: &mut Client,
-    s: &Scope,
-    q: &ContextRequest,
-    input_hash: &str,
-    fresh: bool,
-) -> Res<bool> {
-    let known = known_identity(c, s, q, input_hash)?;
+fn continuation(c: &mut Client, s: &Scope, input_hash: &str, fresh: bool) -> Res<bool> {
+    let known = known_identity(c, s, input_hash)?;
     if !fresh && !known {
         return Err(Fail::State("inference_original_identity_unavailable"));
+    }
+    if fresh {
+        bind_input(c, s, input_hash)?;
     }
     Ok(known)
 }
@@ -293,7 +308,7 @@ fn inference_input<'a>(
     Ok(inference::InferenceInput {
         scope: s,
         pack,
-        event_id: PgAllocator::new(super::connect()?).allocate()?,
+        event_id: PgAllocator::new(core_connection()?).allocate()?,
         occurred_at_ms: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| Fail::State("clock_unavailable"))?

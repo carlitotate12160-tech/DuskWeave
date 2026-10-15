@@ -47,15 +47,16 @@ Current engineering state:
 
 PR #54 context preparation is merged at
 `e91d5f9fe4c9dda868152e11f8586bbdb49550f4` (exact-master CI 38424031754 SUCCESS).
-Current candidate: `DW-IMPLEMENT-M1-NATIVE-INFERENCE` on
-`feat/m1-native-inference`, pinned to `d2b34e5`. Complexity gate converged to
-0 violations of cap 7 (all business functions <= 7, reviewed `main::run` dispatch
-allowance granted). Coverage gate passed with 96.59% total line coverage and
-97.45% on `postgres.rs` (exceeding all quality bar thresholds). Full native
-cargo test suite passed cleanly. Live provider qualification against DeepSeek API
-completed successfully (1 live HTTP call, valid schema proposal, 0 repair calls,
-persisted to Cognition and Trajectory, `dispatch_granted = false` preserved,
-and zero-replay fresh-process inspect and recovery verified). Ready for PR/review.
+Current candidate: `DW-IMPLEMENT-M1-NATIVE-INFERENCE`, existing OPEN
+[PR #60](https://github.com/carlitotate12160-tech/DuskWeave/pull/60), on
+`feat/m1-native-inference`, pinned to cumulative base `d2b34e5`.
+The first batched FIX corrects credential provisioning, v2 profile admission,
+full-input identity, owner/writer isolation, verified anomalies and dependent
+continuation. Preserve launch-under-campaign-lock release and uncertain charging.
+Historical coverage/live results do not qualify this correction; current local,
+exact-head CI/native CodeQL, distinct delta review and fresh bounded live evidence
+are reconciled in the PR and external fix-review01 report. No acceptance,
+merge, deployment or M1 seal is claimed. `dispatch_granted=false` remains fixed.
 The prior workflow-only candidate remains historical; no merge is inferred.
 See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance),
 the [context prepare runbook](RUN_M1_CONTEXT_PREPARE.md)

@@ -15,6 +15,38 @@ CREATE TABLE execution.inference_calls (
  usage jsonb,UNIQUE(e,c,d,binding)
 );
 CREATE TABLE execution.inference_closures(e uuid,c uuid,d uuid,PRIMARY KEY(e,c,d),recorded_at timestamptz NOT NULL DEFAULT clock_timestamp());
+CREATE TABLE execution.native_input_bindings (
+ e uuid,c uuid,d uuid,input_hash text NOT NULL CHECK(input_hash ~ '^[0-9a-f]{64}$'),
+ writer_oid oid NOT NULL,PRIMARY KEY(e,c,d)
+);
+GRANT SELECT ON execution.native_input_bindings TO dw_m1_broker,dw_m1_cognition;
+-- Native Broker retains required reader access without Core's writer membership.
+GRANT USAGE ON SCHEMA mission,trajectory TO dw_m1_broker;
+GRANT SELECT ON mission.missions,mission.registration_outbox,mission.planning_assessments,
+ mission.withdrawals,execution.session_fences,
+ execution.inference_reservations TO dw_m1_broker;
+CREATE FUNCTION execution.bind_inference_input(e uuid,c uuid,d uuid,h text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+#variable_conflict use_variable
+DECLARE prior execution.native_input_bindings;actor oid:=(SELECT oid FROM pg_roles WHERE rolname=session_user);
+BEGIN
+ IF NOT pg_has_role(session_user,'dw_m1_broker','MEMBER') OR h IS NULL OR h !~ '^[0-9a-f]{64}$'
+ OR e IS NULL OR c IS NULL OR d IS NULL OR '00000000-0000-0000-0000-000000000000'::uuid IN (e,c,d)
+ THEN RAISE EXCEPTION 'inference_input_refused'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(e::text||':'||c::text,0));
+ SELECT * INTO prior FROM execution.native_input_bindings b WHERE (b.e,b.c,b.d)=(e,c,d);
+ IF FOUND THEN
+  IF prior.input_hash<>h OR prior.writer_oid<>actor THEN RAISE EXCEPTION 'inference_identity_conflict'; END IF;
+  RETURN;
+ END IF;
+ IF mission.current_inference_publication(e,c,d) IS NULL
+ OR EXISTS(SELECT 1 FROM execution.inference_reservations r WHERE (r.engagement_id,r.campaign_id,r.operation_id)=(e,c,d))
+ OR EXISTS(SELECT 1 FROM cognition.reasoning_decisions x WHERE (x.e,x.c,x.d)=(e,c,d))
+ THEN RAISE EXCEPTION 'inference_input_refused'; END IF;
+ INSERT INTO execution.native_input_bindings VALUES(e,c,d,h,actor);
+END $$;
+REVOKE ALL ON FUNCTION execution.bind_inference_input(uuid,uuid,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION execution.bind_inference_input(uuid,uuid,uuid,text) TO dw_m1_broker;
 CREATE TABLE cognition.reasoning_decisions (
  e uuid NOT NULL,c uuid NOT NULL,d uuid NOT NULL,event uuid NOT NULL UNIQUE,
  input_hash text NOT NULL,payload jsonb NOT NULL,PRIMARY KEY(e,c,d),recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()
@@ -70,12 +102,15 @@ BEGIN
  SELECT * INTO r FROM execution.inference_reservations x
  WHERE (x.engagement_id,x.campaign_id,x.operation_id)=(e,c,d) AND x.record_revision=1;
  IF r.operation_id IS NULL OR r.writer_oid<>(SELECT oid FROM pg_roles WHERE rolname=session_user)
+ OR NOT EXISTS(SELECT 1 FROM execution.native_input_bindings i WHERE (i.e,i.c,i.d,i.writer_oid)=(e,c,d,r.writer_oid))
  OR k NOT IN (r.generation_call_id,r.repair_call_id)
  OR EXISTS(SELECT 1 FROM execution.inference_reservations x
  WHERE (x.engagement_id,x.campaign_id,x.operation_id)=(e,c,d) AND x.record_revision=2)
  THEN
  RAISE EXCEPTION 'inference_reservation_refused'; END IF;
  s:=mission.current_inference_publication(e,c,d);perm:=s->'fields'->'m1_inference_permission';
+ PERFORM execution.inference_window_ms(e,c,d);
+ IF NOT coalesce(perm->'field_classes' ? 'admitted_repair_fields_codes',false) THEN RAISE EXCEPTION 'inference_consent_refused'; END IF;
  now_s:=floor(extract(epoch FROM clock_timestamp()))::bigint;
  IF s IS NULL OR perm->>'permission_id' IS DISTINCT FROM r.request->>'permission_id'
  OR now_s<(s->'fields'->>'starts_at')::bigint OR now_s>=(s->'fields'->>'ends_at')::bigint
@@ -104,7 +139,14 @@ CREATE FUNCTION execution.inference_call_state(k uuid,wanted text,u jsonb) RETUR
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 #variable_conflict use_variable
 
+DECLARE owner_call execution.inference_calls;
 BEGIN
+ SELECT * INTO owner_call FROM execution.inference_calls x WHERE x.call=k;
+ IF NOT EXISTS(SELECT 1 FROM execution.inference_reservations r WHERE
+ (r.engagement_id,r.campaign_id,r.operation_id)=(owner_call.e,owner_call.c,owner_call.d)
+ AND r.record_revision=1 AND r.writer_oid=(SELECT oid FROM pg_roles WHERE rolname=session_user))
+ THEN RAISE EXCEPTION 'inference_state_refused'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(owner_call.e::text||':'||owner_call.c::text,0));
  IF NOT pg_has_role(session_user,'dw_m1_broker','MEMBER') OR wanted NOT IN
  ('sent_awaiting_result','completed','cancelled_uncertain','failed_never_released','usage_unknown')
  THEN RAISE EXCEPTION 'inference_state_refused'; END IF;
@@ -195,6 +237,9 @@ BEGIN
  ELSE
   IF jsonb_typeof(x->'proposal') IS DISTINCT FROM 'null' THEN RAISE EXCEPTION 'inference_source_refused'; END IF;
  END IF;
+ IF NOT EXISTS(SELECT 1 FROM execution.native_input_bindings i WHERE
+ (i.e,i.c,i.d)=((x->>'engagement')::uuid,(x->>'campaign')::uuid,(x->>'decision')::uuid)
+ AND i.input_hash=publish_reasoning.input_hash) THEN RAISE EXCEPTION 'inference_input_refused'; END IF;
  SELECT payload INTO existing FROM cognition.reasoning_decisions z WHERE
  (z.e,z.c,z.d)=((x->>'engagement')::uuid,(x->>'campaign')::uuid,(x->>'decision')::uuid);
  IF FOUND THEN
@@ -214,7 +259,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE existing jsonb;s jsonb;r execution.inference_reservations;e uuid;c uuid;d uuid;
 BEGIN
 
- SELECT payload INTO s FROM cognition.reasoning_decisions z JOIN cognition.reasoning_outbox o USING(event) WHERE z.event=k;
+ SELECT payload INTO s FROM cognition.reasoning_decisions z JOIN cognition.reasoning_outbox o USING(event)
+ JOIN execution.native_input_bindings i ON (i.e,i.c,i.d,i.input_hash)=(z.e,z.c,z.d,z.input_hash) WHERE z.event=k;
  IF s IS NULL OR s IS DISTINCT FROM x THEN RAISE EXCEPTION 'inference_source_unavailable'; END IF;
  IF s->>'kind' IS DISTINCT FROM 'reasoning_decision' OR s->>'source_mode' NOT IN ('blind','defender_informed') OR jsonb_typeof(s->'occurred_at_ms') IS DISTINCT FROM 'number' OR jsonb_typeof(s->'recorded_at_ms') IS DISTINCT FROM 'number' OR jsonb_typeof(s->'provenance') NOT IN ('array','null') THEN RAISE EXCEPTION 'inference_binding_conflict';END IF;
  IF jsonb_typeof(s) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'inference_binding_conflict'; END IF;
@@ -294,12 +340,24 @@ GRANT EXECUTE ON FUNCTION cognition.reasoning_source_matches(uuid,jsonb) TO dw_m
 -- The history login cannot bypass the committed-source consumer with raw SQL.
 CREATE FUNCTION trajectory.guard_reasoning_source() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+DECLARE source jsonb;
 BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended(NEW.engagement_id::text||':'||NEW.campaign_id::text,0));
+ SELECT payload INTO source FROM cognition.reasoning_decisions z
+ WHERE (z.e,z.c,z.d,z.event)=(NEW.engagement_id,NEW.campaign_id,NEW.operation_id,NEW.event_id);
+ IF source IS NULL OR NOT cognition.reasoning_source_matches(NEW.event_id,source)
+ THEN RAISE EXCEPTION 'inference_source_refused'; END IF;
  IF NEW.status='accepted' THEN
   IF (NEW.contract->>'engagement',NEW.contract->>'campaign',NEW.contract->>'decision',NEW.contract->>'event')
    IS DISTINCT FROM (NEW.engagement_id::text,NEW.campaign_id::text,NEW.operation_id::text,NEW.event_id::text)
    OR NOT cognition.reasoning_source_matches(NEW.event_id,NEW.contract)
   THEN RAISE EXCEPTION 'inference_source_refused'; END IF;
+ ELSE
+  IF NOT EXISTS(SELECT 1 FROM trajectory.reasoning_history h
+   WHERE (h.engagement_id,h.campaign_id)=(NEW.engagement_id,NEW.campaign_id) AND h.status='accepted'
+   AND (h.event_id=NEW.event_id OR h.operation_id=NEW.operation_id)
+   AND (h.event_id,h.operation_id,h.contract) IS DISTINCT FROM (NEW.event_id,NEW.operation_id,source))
+  THEN RAISE EXCEPTION 'inference_conflict_unverified'; END IF;
  END IF;
  RETURN NEW;
 END $$;

@@ -143,7 +143,8 @@ impl InferencePermission {
         if self.permission_id.is_nil() || self.provider_terms_ref.is_nil() {
             return Err(Fail::Input("nil_reference"));
         }
-        self.check_field_classes()
+        self.check_field_classes()?;
+        self.validate_native_profile()
     }
 
     fn check_field_classes(&self) -> Res<()> {
@@ -183,6 +184,31 @@ impl InferencePermission {
         }
         self.campaign_limits.validate()?;
         self.operation_limits.validate(self.envelope_depth())
+    }
+
+    fn validate_native_profile(&self) -> Res<()> {
+        if self.version != "m1_inference_permission_v2" {
+            return Ok(());
+        }
+        let o = &self.operation_limits;
+        let fixed = [
+            (o.json_depth, 32),
+            (o.collection_entries, 64),
+            (o.response_bytes, 65536),
+            (o.proposal_bytes, 8192),
+            (o.text_field_bytes, 1024),
+            (o.repair_bytes, 2048),
+            (o.repair_error_codes, 8),
+            (o.connect_time_ms, 5000),
+        ];
+        if !self
+            .field_classes
+            .contains(&SafeFieldClass::AdmittedRepairFieldsCodes)
+            || fixed.iter().any(|(actual, required)| actual != required)
+        {
+            return Err(Fail::Input("inference_unsupported_profile"));
+        }
+        Ok(())
     }
 
     fn envelope_depth(&self) -> i64 {

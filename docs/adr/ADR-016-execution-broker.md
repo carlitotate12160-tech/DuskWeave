@@ -207,6 +207,14 @@ consumption, refill, provider qualification or send.
 | Local JSON parsing | At most 8 nesting levels (depth 32 for response envelope under `deepseek-responses-envelope32-v1`) and 64 entries per collection; bounds checked before growth |
 | Inference concurrency | 1 live decision/call per campaign; no parallel repair or concurrent session owner |
 
+Native v2 registration requires `admitted_repair_fields_codes` and the exact supported
+fixed values: envelope depth32, collection64, response65536, proposal8192, text1024,
+repair2048, repair-error-codes8, connect5000ms, calls2, output4096 and concurrency1.
+Unsupported narrower fixed settings are rejected at consent registration and SQL
+admission. Smaller positive ContextPack/candidate/request/configuration limits remain
+supported; shared duration decreases with Mission/consent expiry. Historical v1 semantics
+remain unchanged and existing consent is never silently widened or upgraded.
+
 Response counting includes HTTP headers and entity bytes before parsing, counts leading
 blank lines, and rejects compression rather than permitting unbounded decompression.
 Request accounting measures the complete JSON entity, not TLS framing or the API key;

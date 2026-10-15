@@ -7,7 +7,7 @@ mod native;
 mod permission;
 use serde_json::{Value, json};
 
-fn cli(command: &str, input: &std::path::Path, operation: &str) -> Vec<Value> {
+fn cli_output(command: &str, input: &std::path::Path, operation: &str) -> (bool, Vec<Value>) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_duskweave"));
     child
         .env_clear()
@@ -36,19 +36,31 @@ fn cli(command: &str, input: &std::path::Path, operation: &str) -> Vec<Value> {
         .output()
         .unwrap();
     assert!(output.stderr.is_empty());
+    let ok = output.status.success();
+    if !ok {
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("inference_authority_unavailable"),
+            "expected bounded continuation refusal"
+        );
+    }
     let receipts: Vec<Value> = output
         .stdout
         .split(|b| *b == b'\n')
         .filter(|line| !line.iter().all(u8::is_ascii_whitespace))
+        .filter(|line| ok || line.first() == Some(&b'{'))
         .map(|line| serde_json::from_slice(line).expect("safe JSON receipt"))
         .collect();
-    assert!(output.status.success(), "safe receipts: {receipts:?}");
+    (ok, receipts)
+}
+fn cli(command: &str, input: &std::path::Path, operation: &str) -> Vec<Value> {
+    let (ok, receipts) = cli_output(command, input, operation);
+    assert!(ok, "safe receipts: {receipts:?}");
     receipts
 }
 
 #[test]
 fn native_missing_key_publishes_and_fresh_recovery_never_generates() {
-    let _guard = db_support::db();
+    let _guard = native::db();
     native::setup();
     let (e, c) = db_support::scope(0x9701);
     let mut raw = permission::registration(e, c);
@@ -148,8 +160,53 @@ fn native_commands_are_registered_and_validate_input_before_database_access() {
 }
 
 #[test]
+fn native_core_connection_rejects_direct_foreign_insert_grants() {
+    let _guard = native::db();
+    let (_, q) = native::registered(0x9703);
+    let path = std::env::temp_dir().join(format!("dw-native-core-{}.json", std::process::id()));
+    std::fs::write(&path, serde_json::to_vec(&q).unwrap()).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_duskweave"));
+    child
+        .env_clear()
+        .env(
+            "SystemRoot",
+            std::env::var_os("SystemRoot").unwrap_or_default(),
+        )
+        .env("DW_DATABASE_CONFIG_MODE", "env-local")
+        .env(
+            "DW_DATABASE_URL",
+            std::env::var("DW_NATIVE_COREBAD_DATABASE_URL").unwrap(),
+        )
+        .args([
+            "m1-infer",
+            "--input",
+            path.to_str().unwrap(),
+            "--operation",
+            "new",
+        ]);
+    for variable in [
+        "DW_INFERENCE_BROKER_DATABASE_URL",
+        "DW_COGNITION_DATABASE_URL",
+        "DW_TRAJECTORY_DATABASE_URL",
+        "LLVM_PROFILE_FILE",
+    ] {
+        if let Some(value) = std::env::var_os(variable) {
+            child.env(variable, value);
+        }
+    }
+    let result = child.output().unwrap();
+    assert!(
+        !result.status.success(),
+        "Core with native foreign INSERT must be rejected before operation allocation"
+    );
+    assert!(String::from_utf8_lossy(&result.stdout).contains("inference_database_unqualified"));
+    assert!(result.stderr.is_empty());
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn native_continuation_and_anomaly_dominance() {
-    let _guard = db_support::db();
+    let _guard = native::db();
     native::setup();
     let (e, c) = db_support::scope(0x9702);
     let mut raw = permission::registration(e, c);
@@ -220,15 +277,35 @@ fn native_continuation_and_anomaly_dominance() {
     assert_eq!(snapshot2["active_holds"], 0);
     assert_eq!(snapshot2["charged"]["calls"], 4);
 
-    // Introduce anomaly on decision2
+    // Fault-inject conflicting accepted content; the immutable Cognition source
+    // remains unchanged. Only its genuine redelivery may record the conflict.
     let mut admin = native::admin();
     admin
         .execute(
-            "INSERT INTO trajectory.reasoning_history(engagement_id,campaign_id,operation_id,event_id,status,contract,anomaly_category,completed_at)
-             VALUES($1,$2,$3,gen_random_uuid(),'anomaly',NULL,'conflicting_identity',NULL)",
+            "UPDATE trajectory.reasoning_history SET contract=jsonb_set(contract,'{occurred_at_ms}','1') WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 AND status='accepted'",
             &[&e.0, &c.0, &decision2],
         )
         .unwrap();
+    let conflict = cli("m1-infer-recover", &path, &decision2.to_string());
+    assert_eq!(conflict.last().unwrap()["history"], "anomaly");
+    admin.execute("UPDATE trajectory.reasoning_history h SET contract=q.payload FROM cognition.reasoning_decisions q WHERE h.operation_id=q.d AND q.d=$1 AND h.status='accepted'",&[&decision2]).unwrap();
+    let before: i64 = admin.query_one("SELECT count(*) FROM execution.inference_reservations WHERE engagement_id=$1 AND campaign_id=$2",&[&e.0,&c.0]).unwrap().get(0);
+    let (ok, _) = cli_output("m1-infer", &path, "new");
+    assert!(
+        !ok,
+        "late verified conflict invalidates dependent continuation despite the stored closure"
+    );
+    assert_eq!(admin.query_one("SELECT count(*) FROM execution.inference_reservations WHERE engagement_id=$1 AND campaign_id=$2",&[&e.0,&c.0]).unwrap().get::<_,i64>(0),before);
+    assert_eq!(
+        admin
+            .query_one(
+                "SELECT count(*) FROM execution.inference_calls WHERE e=$1 AND c=$2",
+                &[&e.0, &c.0]
+            )
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
 
     // Closing decision2 must be refused due to anomaly dominance
     let close_err = broker.execute(

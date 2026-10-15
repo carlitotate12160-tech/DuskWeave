@@ -140,6 +140,9 @@ fn attempt(
     basis: &mut dyn ProposalBasis,
     cancelled: &std::sync::atomic::AtomicBool,
 ) -> Res<Received> {
+    if !transport_current(until, cancelled, basis) {
+        return Err("provider_cancelled_uncertain");
+    }
     let raw = RefCell::new(Vec::new());
     let oversized = Cell::new(false);
     let start = Instant::now();
@@ -160,28 +163,49 @@ fn attempt(
             }
         })
         .map_err(|_| "inference_transport_unavailable")?;
-        t.progress_function(|_, _, _, _| {
-            until > Instant::now()
-                && !cancelled.load(std::sync::atomic::Ordering::Acquire)
-                && basis.current_authority_and_premises().is_ok()
-        })
-        .map_err(|_| "inference_transport_unavailable")?;
+        t.progress_function(|_, _, _, _| transport_current(until, cancelled, basis))
+            .map_err(|_| "inference_transport_unavailable")?;
         t.perform()
     };
-    if oversized.get() {
+    finish_transfer(
+        result,
+        raw.into_inner(),
+        oversized.get(),
+        &key,
+        start.elapsed(),
+        basis,
+    )
+}
+fn finish_transfer(
+    result: Result<(), curl::Error>,
+    raw: Vec<u8>,
+    oversized: bool,
+    key: &str,
+    elapsed: Duration,
+    basis: &mut dyn ProposalBasis,
+) -> Res<Received> {
+    if oversized {
         return Err("provider_response_limit");
     }
     if result.is_err() {
         return Err("provider_transport_unknown");
     }
-    let raw = raw.into_inner();
     if raw.windows(key.len()).any(|v| v == key.as_bytes()) {
         return Err("provider_unsafe_response");
     }
     let mut diagnostic = ProviderDiagnostic::default();
-    super::response::admit_http(&raw, start.elapsed(), basis, &mut diagnostic)
+    super::response::admit_http(&raw, elapsed, basis, &mut diagnostic)
 }
 
+fn transport_current(
+    until: Instant,
+    cancelled: &std::sync::atomic::AtomicBool,
+    basis: &mut dyn ProposalBasis,
+) -> bool {
+    until > Instant::now()
+        && !cancelled.load(std::sync::atomic::Ordering::Acquire)
+        && basis.current_authority_and_premises().is_ok()
+}
 fn post(h: &mut Easy, b: &BoundCall, key: &str) -> Result<(), curl::Error> {
     h.url("https://api.deepseek.com/responses")?;
     h.post_fields_copy(&b.body)?;

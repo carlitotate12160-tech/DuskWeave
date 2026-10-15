@@ -234,8 +234,8 @@ never a CognitiveManager, GlobalContext, new operational model or sibling mutabl
 version (`v1`/`v2`), engagement/campaign, operator/authority references, resulting current
 Mission revision, goal/purpose reference, exercise mode, approved recipient, profile version
 (`deepseek-responses-v1` or `deepseek-responses-envelope32-v1`), safe field classes, valid UTC window,
-finite campaign/per-operation limits under ADR-016, and provider term approval. Version `v2` requires profile
-`deepseek-responses-envelope32-v1` and envelope depth 32 (ContextPack and proposal depth stay at 8).
+finite campaign/per-operation limits and provider term approval. Native `v2` requires the fixed ADR-016
+profile, envelope depth 32, and `admitted_repair_fields_codes`; ContextPack/proposal depth stays 8.
 INITIAL-CONSENT co-creates this on new registration (absent Mission revision 0 -> 1); later amendments
 require their own lane. Existing campaigns are not silently upgraded. Missing attachment disables inference;
 existing crt.sh disclosure grants no inference rights. Consent is not an API key or dispatch authority;

@@ -44,6 +44,10 @@ New native campaigns require explicit consent:
 - **Bounds**: Envelope JSON depth 32; ContextPack and proposal JSON depth 8.
 - **Provider Target**: Fixed endpoint `https://api.deepseek.com/responses`, model `deepseek-flash`, `stream=false`, `reasoning={"effort":"high"}`, `tools=[]`.
 - **Budgets**: At most 2 provider calls per decision (1 generation + at most 1 conditional schema repair).
+- **Repair disclosure**: `admitted_repair_fields_codes` is mandatory for native v2.
+- **Fixed settings**: Envelope32, collection64, response65536, proposal8192, text1024,
+  repair2048, repair-code-count8, connect5000ms, calls2, output4096 and concurrency1.
+  Smaller positive context/candidate/request/configuration settings remain supported.
 
 Historical `m1_inference_permission_v1` campaigns are preserved and never silently upgraded.
 
@@ -82,6 +86,11 @@ duskweave m1-infer-recover --input /path/to/request.json --operation <DECISION_U
 Recovery completes pending Trajectory obligations or reconstructs terminal state.
 Recovery never re-generates proposals or initiates provider calls.
 
+The complete validated input, including candidates, is bound immutably to the
+core-allocated decision before reservation. Keep that identity after a binding
+acknowledgment failure. Inspect/recover compares the complete input hash even when
+only the binding exists; it cannot retrofit a binding onto a historical reservation.
+
 ## Hold Lifecycle & Anomaly Dominance
 
 1. **Automatic Closure**: Terminal decision completion automatically closes the exclusive
@@ -91,3 +100,18 @@ Recovery never re-generates proposals or initiates provider calls.
 3. **Anomaly Dominance**: Conflicting identity or content produces durable anomaly records in
    `trajectory.reasoning_history`. Under anomaly dominance, hold closure is refused, blocking
    further unprincipled use of disputed identities.
+
+A late verified conflict also invalidates dependent continuation despite a prior
+stored closure. Historical charges remain; no recovery refunds uncertain consumption.
+
+## Native fixture qualification
+
+Use `tests/support/m1_native_bootstrap.py` before launching Rust tests. It qualifies
+the retained owned PostgreSQL service and creates the named disposable FIX database
+with unique random-password logins via `createuser --pwprompt`. Credentials remain
+in the bootstrap/child process boundary. Login or database collisions fail closed;
+no retained role password is reset. Rust fixtures require explicit native DSNs and
+cannot synthesize credentials or mutate the process environment.
+
+Run focused native tests locally. CI runs the complete suite and coverage on its
+isolated disposable service; legacy cluster-role bootstrap is not authorized locally.

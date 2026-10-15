@@ -68,13 +68,6 @@ fn append_source(
     d: &Decision,
     r: &JournalRecord,
 ) -> Result<&'static str, &'static str> {
-    let previous = journal::existing(tx, JournalTable::Reasoning, r, record)
-        .map_err(|_| "inference_history_integrity")?;
-    if matches!(previous, Some(Delivered::Anomaly)) {
-        journal::append_anomaly(tx, JournalTable::Reasoning, r)
-            .map_err(|_| "inference_history_unknown")?;
-        return Ok("anomaly");
-    }
     let matched: bool = tx
         .query_one(
             "SELECT cognition.reasoning_source_matches($1,$2)",
@@ -84,6 +77,13 @@ fn append_source(
         .get(0);
     if !matched {
         return Err("inference_source_unavailable");
+    }
+    let previous = journal::existing(tx, JournalTable::Reasoning, r, record)
+        .map_err(|_| "inference_history_integrity")?;
+    if matches!(previous, Some(Delivered::Anomaly)) {
+        journal::append_anomaly(tx, JournalTable::Reasoning, r)
+            .map_err(|_| "inference_history_unknown")?;
+        return Ok("anomaly");
     }
     if previous.is_none() {
         return journal::append_accepted(tx, JournalTable::Reasoning, r)

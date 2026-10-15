@@ -3,7 +3,7 @@ use duskweave::m1_reasoning::{
         Broker, Decision, DecisionStore, Provider, Received, ReleaseFailure, Reservation, Scope,
         Usage,
     },
-    postgres::{Basis, PgBroker, PgDecisionStore, decode},
+    postgres::{Basis, PgDecisionStore, decode},
     proposal::{Admission, Proposal, ProposalBasis},
     request,
 };
@@ -20,7 +20,7 @@ mod permission;
 
 #[test]
 fn postgres_basis_eligibility_and_safe_explanation() {
-    let _guard = db_support::db();
+    let _guard = native::db();
     native::setup();
     let (e, c) = db_support::scope(0x9730);
     let d = Uuid::from_u128(0x9730_000d);
@@ -286,70 +286,19 @@ impl Provider for MockFailProvider {
 
 #[test]
 fn postgres_broker_and_store_direct_lifecycle() {
-    let _guard = db_support::db();
+    let _guard = native::db();
     native::setup();
-    let (e, c) = db_support::scope(0x9735);
-    let mut raw = permission::registration(e, c);
-    let now: i64 = native::admin()
-        .query_one(
-            "SELECT floor(extract(epoch FROM clock_timestamp()))::bigint",
-            &[],
-        )
-        .unwrap()
-        .get(0);
-    raw["starts_at"] = json!(now - 60);
-    raw["ends_at"] = json!(now + 3600);
-    let p = &mut raw["m1_inference_permission"];
-    p["version"] = json!("m1_inference_permission_v2");
-    p["profile"] = json!("deepseek-responses-envelope32-v1");
-    p["starts_at"] = json!(now - 30);
-    p["ends_at"] = json!(now + 1800);
-    p["operation_limits"]["json_depth"] = json!(32);
-    p["field_classes"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!("admitted_repair_fields_codes"));
-    let input = duskweave::input::parse_register(&serde_json::to_vec(&raw).unwrap()).unwrap();
-    let (mut allocator, mut mission, mut history) = db_support::ports();
-    let op = duskweave::registration::prepare_operation(&mut allocator).unwrap();
-    duskweave::registration::register(&mut allocator, &mut mission, &mut history, op, &input)
-        .unwrap();
-
-    let decision = duskweave::registration::prepare_operation(&mut allocator)
-        .unwrap()
-        .0;
-    let s = Scope {
-        engagement: e.0,
-        campaign: c.0,
-        decision,
-        mission_revision: 1,
-        permission: Uuid::from_u128(0x31),
-    };
-
-    let req: duskweave::m1_inference_budget::ReservationRequest = serde_json::from_value(json!({
-        "version": "m1_inference_reservation_request_v1",
-        "engagement_id": e,
-        "campaign_id": c,
-        "operator_ref": raw["operator_ref"],
-        "expected_mission_revision": 1,
-        "permission_id": Uuid::from_u128(0x31),
-        "goal_ref": raw["goal_ref"],
-        "exercise_mode": "blind",
-    }))
-    .unwrap();
-
-    let mut broker = PgBroker {
-        client: native::client("DW_INFERENCE_BROKER_DATABASE_URL"),
-        mission: duskweave::postgres_mission::PgMissionStore::new(native::client(
-            "DW_TEST_DATABASE_URL",
-        )),
-        reservations: duskweave::postgres_inference_budget::PgInferenceReservationStore::new(
-            native::client("DW_INFERENCE_BROKER_DATABASE_URL"),
-        ),
-        request: req,
-        deadline: Instant::now() + Duration::from_secs(60),
-    };
-
+    let case = native::decision(0x9735);
+    let s = case.scope;
+    let decision = s.decision;
+    let (e, c) = (
+        duskweave::mission::EngagementId(s.engagement),
+        duskweave::mission::CampaignId(s.campaign),
+    );
+    let mut broker = case.broker;
+    let input_hash = case.store.input_hash;
+    let mut allocator =
+        duskweave::postgres_mission::PgAllocator::new(native::client("DW_TEST_DATABASE_URL"));
     let pack = br#"{"references":[{"id":"ref-1"}]}"#;
     let reservation = broker.reserve(&s, pack).unwrap();
     assert_eq!(reservation.generation, 1);
@@ -446,7 +395,7 @@ fn postgres_broker_and_store_direct_lifecycle() {
 
     let mut store = PgDecisionStore {
         client: native::client("DW_COGNITION_DATABASE_URL"),
-        input_hash: "direct_lifecycle_hash".into(),
+        input_hash,
     };
     assert!(store.inspect(&s).unwrap().is_none());
 
@@ -469,7 +418,7 @@ fn postgres_broker_and_store_direct_lifecycle() {
         producer: "cognition",
         version: 1,
         mission_revision: 1,
-        permission: Uuid::from_u128(0x31),
+        permission: s.permission,
         call_ids: vec![reservation.generation_call, reservation.repair_call],
         bindings: vec![bound.digest, bound_repair.digest],
         proposal,

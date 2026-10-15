@@ -33,6 +33,13 @@ governed by explicit mission consent:
 For operator guidance, environment setup, and role configurations, see the
 [M1 Native Inference Runbook](docs/RUN_M1_NATIVE_INFERENCE.md).
 
+PR #60 remains open for review. Native operations bind the complete validated
+input before reserving capacity; inspection/recovery never guesses a binding or
+replays a provider call. A verified late history conflict blocks dependent
+continuation despite an earlier closure. Fixture credentials come from the bounded
+bootstrap before test launch, with no fallback password or retained-login rotation.
+Current qualification and limitations are recorded with the corrected candidate.
+
 ## Documentation & Standards
 
 - [Engineering State](docs/ENGINEERING_STATE.md) — Current delivery tracking and milestone status

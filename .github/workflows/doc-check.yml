@@ -122,13 +122,10 @@ jobs:
         run: |
           set -e
           ADMIN_PW="ci-$(openssl rand -hex 16)"
-          RT_PW="ci-$(openssl rand -hex 16)"
           echo "::add-mask::$ADMIN_PW"
-          echo "::add-mask::$RT_PW"
           echo "ADMIN_PW=$ADMIN_PW" >> "$GITHUB_ENV"
-          echo "RT_PW=$RT_PW" >> "$GITHUB_ENV"
-          docker run -d --name dwpg \
-            -e POSTGRES_PASSWORD="$ADMIN_PW" \
+          POSTGRES_PASSWORD="$ADMIN_PW" docker run -d --name dwpg \
+            -e POSTGRES_PASSWORD \
             -p 127.0.0.1:5432:5432 \
             postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
 
@@ -141,13 +138,13 @@ jobs:
             [ "$i" = 30 ] && { echo "postgres did not become ready"; exit 1; }
             sleep 1
           done
-          {
-            echo "CREATE DATABASE dw_test;"
-            echo "CREATE ROLE dw_test_runtime LOGIN PASSWORD '$RT_PW';"
-          } | docker exec -i dwpg psql -U postgres -v ON_ERROR_STOP=1 >/dev/null
+          echo "CREATE DATABASE dw_test;" | docker exec -i dwpg psql -U postgres -v ON_ERROR_STOP=1 >/dev/null
 
       - name: Rust toolchain 1.94.1
         run: rustup toolchain install 1.94.1 --profile minimal --component clippy,rustfmt,llvm-tools-preview
+
+      - name: Native TLS and local transport test prerequisites
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev pkg-config openssl python3
 
       - name: Install pinned cargo-llvm-cov 0.9.1
         run: |
@@ -167,12 +164,13 @@ jobs:
       - name: Full test suite under coverage instrumentation (real PostgreSQL 17)
         env:
           DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
-          DW_TEST_DATABASE_URL: postgres://dw_test_runtime:${{ env.RT_PW }}@127.0.0.1:5432/dw_test
         run: |
           set -e
           cargo llvm-cov clean --workspace
           mkdir -p target/llvm-cov
-          cargo llvm-cov --locked --all-targets --json --output-path target/llvm-cov/m0a-coverage.json
+          python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
+            --report "$RUNNER_TEMP/native-fix60" -- \
+            cargo llvm-cov --locked --all-targets --json --output-path target/llvm-cov/m0a-coverage.json -- --test-threads=1
           cargo llvm-cov report --text --output-path target/llvm-cov/m0a-coverage.txt
           cat target/llvm-cov/m0a-coverage.txt
 

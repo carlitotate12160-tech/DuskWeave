@@ -44,6 +44,8 @@ fn envelope() -> Vec<u8> {
 struct Server {
     url: String,
     calls: Arc<AtomicUsize>,
+    received_body: Arc<std::sync::Mutex<Vec<u8>>>,
+    arrived: std::sync::mpsc::Receiver<()>,
     worker: Option<std::thread::JoinHandle<()>>,
 }
 impl Server {
@@ -58,11 +60,15 @@ impl Server {
         .into_bytes();
         let calls = Arc::new(AtomicUsize::new(0));
         let observed = calls.clone();
+        let received_body = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = received_body.clone();
+        let (delivered, arrived) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || {
             let end = Instant::now() + Duration::from_secs(3);
             while Instant::now() < end {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
                         observed.fetch_add(1, Ordering::SeqCst);
                         stream.set_nonblocking(false).unwrap();
                         stream
@@ -90,11 +96,10 @@ impl Server {
                                 }
                             }
                         }
-                        assert!(
-                            bytes.starts_with(b"POST /responses HTTP/1.1\r\n"),
-                            "bytes was: {:?}",
-                            String::from_utf8_lossy(&bytes)
-                        );
+                        assert!(bytes.starts_with(b"POST /responses HTTP/1.1\r\n"));
+                        let offset = bytes.windows(4).position(|v| v == b"\r\n\r\n").unwrap() + 4;
+                        *captured.lock().unwrap() = bytes[offset..].to_vec();
+                        let _ = delivered.send(());
                         let _ = stream.write_all(&response);
                         let _ = stream.write_all(&body);
                         return;
@@ -109,6 +114,8 @@ impl Server {
         Self {
             url,
             calls,
+            received_body,
+            arrived,
             worker: Some(worker),
         }
     }
@@ -151,6 +158,7 @@ fn concrete_transport_posts_bound_body_and_admits_response() {
     assert_eq!(result.usage.output_tokens, Some(23));
     assert_eq!(released, 1);
     assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(*server.received_body.lock().unwrap(), call.body);
     assert!(
         p.call(
             &call,
@@ -244,6 +252,131 @@ fn aggregate_limit_includes_headers_and_never_extends_on_overflow() {
 }
 
 #[test]
+fn unlock_failure_after_owned_launch_can_follow_one_real_http_send() {
+    let server = Server::start("200 OK", "", envelope());
+    let call = request::bind(br#"{"references":[{"id":"ref-1"}]}"#, None).unwrap();
+    let result = provider(&server, &call).call(
+        &call,
+        Instant::now() + Duration::from_secs(3),
+        &mut Basis(true),
+        &mut || {
+            server
+                .arrived
+                .recv_timeout(Duration::from_secs(2))
+                .expect("actual received request before unlock failure");
+            Err("inference_release_unknown")
+        },
+    );
+    assert!(matches!(result, Err("inference_release_unknown")));
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(*server.received_body.lock().unwrap(), call.body);
+}
+
+#[test]
+fn concrete_transport_worker_child() {
+    let Some(url) = std::env::var_os("DW_NATIVE_TRANSPORT_TEST_URL") else {
+        return;
+    };
+    let call = request::bind(br#"{"references":[{"id":"ref-1"}]}"#, None).unwrap();
+    let mut h = configure(&call, "synthetic-fixture-token", Duration::from_secs(2)).unwrap();
+    h.url(url.to_str().unwrap()).unwrap();
+    let mut p = DeepSeekProvider {
+        prepared: Some((h, "synthetic-fixture-token".into(), call.digest.clone())),
+    };
+    let result = p.call(
+        &call,
+        Instant::now() + Duration::from_secs(2),
+        &mut Basis(true),
+        &mut || Ok(()),
+    );
+    assert!(
+        result.is_err(),
+        "stalled fixture never completes a proposal"
+    );
+}
+
+#[test]
+fn parent_loss_and_tls_stall_leave_no_owned_transport_worker() {
+    for terminate in [true, false] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let (arrived, received) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let end = Instant::now() + Duration::from_secs(5);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < end =>
+                    {
+                        std::thread::sleep(Duration::from_millis(5))
+                    }
+                    _ => panic!("owned transport connection missing"),
+                }
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_secs(4)))
+                .unwrap();
+            stream.set_nonblocking(false).unwrap();
+            let mut bytes = [0; 4096];
+            assert!(stream.read(&mut bytes).unwrap() > 0);
+            arrived.send(()).unwrap();
+            loop {
+                match stream.read(&mut bytes) {
+                    Ok(0) => return,
+                    Ok(_) => {}
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::ConnectionReset
+                                | std::io::ErrorKind::ConnectionAborted
+                                | std::io::ErrorKind::BrokenPipe
+                                | std::io::ErrorKind::UnexpectedEof
+                        ) =>
+                    {
+                        return;
+                    }
+                    Err(e) => panic!(
+                        "owned transport close: kind={:?} os={:?} terminate={terminate}",
+                        e.kind(),
+                        e.raw_os_error()
+                    ),
+                }
+            }
+        });
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "m1_reasoning::transport::tests::concrete_transport_worker_child",
+                "--nocapture",
+            ])
+            .env(
+                "DW_NATIVE_TRANSPORT_TEST_URL",
+                format!(
+                    "{}://{address}/responses",
+                    if terminate { "http" } else { "https" }
+                ),
+            )
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        received
+            .recv_timeout(Duration::from_secs(3))
+            .expect("actual HTTP/TLS bytes from child worker");
+        let start = Instant::now();
+        if terminate {
+            child.kill().unwrap();
+        }
+        let status = child.wait().unwrap();
+        assert!(terminate || status.success() || status.code() == Some(124));
+        assert!(start.elapsed() < Duration::from_secs(4));
+        server.join().unwrap();
+    }
+}
+
+#[test]
 fn concrete_tls_verifies_certificate_and_hostname() {
     use std::io::BufRead;
     use std::process::{Command, Stdio};
@@ -261,11 +394,7 @@ fn concrete_tls_verifies_certificate_and_hostname() {
     let key = dir.join("key.pem");
     let body = dir.join("response.json");
     std::fs::write(&body, envelope()).unwrap();
-    let openssl = if cfg!(windows) {
-        "C:/Program Files/Git/usr/bin/openssl.exe"
-    } else {
-        "openssl"
-    };
+    let openssl = std::env::var_os("DW_TEST_OPENSSL").unwrap_or_else(|| "openssl".into());
     let output = Command::new(openssl)
         .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout"])
         .arg(&key)
@@ -285,11 +414,13 @@ fn concrete_tls_verifies_certificate_and_hostname() {
         output.status.success(),
         "synthetic TLS fixture generation failed"
     );
-    let python = if cfg!(windows) {
-        "C:/Users/ekoku/AppData/Local/Programs/Python/Python312/python.exe"
-    } else {
-        "python3"
-    };
+    let python = std::env::var_os("DW_TEST_PYTHON").unwrap_or_else(|| {
+        if cfg!(windows) {
+            "python".into()
+        } else {
+            "python3".into()
+        }
+    });
     let server = r#"
 import socket,ssl,sys,pathlib
 ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -321,7 +452,7 @@ with socket.socket() as listener:
         (false, "localhost", false),
         (true, "127.0.0.1", false),
     ] {
-        let mut child = Command::new(python)
+        let mut child = Command::new(&python)
             .arg("-u")
             .arg("-c")
             .arg(server)

@@ -77,6 +77,12 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='inference_authority_unavailable';
     END IF;
     consent := source->'fields'->'m1_inference_permission';
+    IF consent->>'version'='m1_inference_permission_v2' THEN
+        IF NOT coalesce(consent->'field_classes' ? 'admitted_repair_fields_codes',false)
+        OR NOT EXISTS(SELECT 1 FROM execution.native_input_bindings i WHERE (i.e,i.c,i.d,i.writer_oid)=(e,c,op,actor))
+        THEN RAISE EXCEPTION 'inference_input_or_consent_refused'; END IF;
+        PERFORM execution.inference_window_ms(e,c,op);
+    END IF;
     now_s := floor(extract(epoch FROM clock_timestamp()))::bigint;
     IF q IS DISTINCT FROM jsonb_build_object('version','m1_inference_reservation_request_v1',
        'engagement_id',e,'campaign_id',c,'operator_ref',source->'fields'->'operator_ref',
@@ -191,13 +197,21 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE s jsonb;p jsonb;n bigint;l jsonb;
 BEGIN
  s:=mission.current_inference_publication(e,c,d);p:=s->'fields'->'m1_inference_permission';l:=p->'operation_limits';
+ IF EXISTS(SELECT 1 FROM execution.inference_closures z LEFT JOIN cognition.reasoning_decisions q
+ ON (q.e,q.c,q.d)=(z.e,z.c,z.d) WHERE (z.e,z.c)=(e,c) AND (
+ q.event IS NULL OR NOT EXISTS(SELECT 1 FROM trajectory.reasoning_history h
+ WHERE (h.engagement_id,h.campaign_id,h.operation_id,h.event_id,h.status,h.contract)=(z.e,z.c,z.d,q.event,'accepted',q.payload))
+ OR EXISTS(SELECT 1 FROM trajectory.reasoning_history h WHERE (h.engagement_id,h.campaign_id)=(z.e,z.c)
+ AND (h.operation_id=z.d OR h.event_id=q.event) AND h.status='anomaly')))
+ THEN RAISE EXCEPTION 'inference_prior_history_unqualified'; END IF;
  n:=floor(extract(epoch FROM clock_timestamp())*1000)::bigint;
  IF s IS NULL OR p->>'version' IS DISTINCT FROM 'm1_inference_permission_v2'
  OR p->>'profile' IS DISTINCT FROM 'deepseek-responses-envelope32-v1'
  OR p->>'recipient' IS DISTINCT FROM 'https://api.deepseek.com/responses'
  OR p->'provider_terms_approved' IS DISTINCT FROM 'true'::jsonb
+ OR NOT coalesce(p->'field_classes' ? 'admitted_repair_fields_codes',false)
  OR n<(s->'fields'->>'starts_at')::bigint*1000 OR n<(p->>'starts_at')::bigint*1000
- OR EXISTS(SELECT 1 FROM (VALUES ('json_depth',32),('collection_entries',64),('response_bytes',65536),('proposal_bytes',8192),('text_field_bytes',1024),('repair_bytes',2048),('repair_error_codes',8),('connect_time_ms',5000)) b(k,v) WHERE l->b.k IS DISTINCT FROM to_jsonb(b.v))
+ OR EXISTS(SELECT 1 FROM (VALUES ('json_depth',32),('collection_entries',64),('response_bytes',65536),('proposal_bytes',8192),('text_field_bytes',1024),('repair_bytes',2048),('repair_error_codes',8),('connect_time_ms',5000),('calls_per_decision',2),('output_tokens_per_call',4096),('concurrency',1)) b(k,v) WHERE l->b.k IS DISTINCT FROM to_jsonb(b.v))
  THEN RAISE EXCEPTION 'inference_authority_unavailable'; END IF;
  RETURN least(20000,(l->>'decision_wall_time_ms')::bigint,(s->'fields'->>'ends_at')::bigint*1000-n,(p->>'ends_at')::bigint*1000-n);
 END $$;
