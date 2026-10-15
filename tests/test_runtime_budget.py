@@ -37,7 +37,8 @@ def load_checker():
     return mod
 
 
-def run_budget_inproc(repo: Path, base: str, head: str, pinned: str | None = None):
+def run_budget_inproc(repo: Path, base: str, head: str, pinned: str | None = None,
+                     native_pinned: str | None = None):
     """Runs the checker in-process; `pinned` substitutes M0A_BASE so a fixture
     base SHA can stand in for the real pinned EXPECTED_BASE_SHA."""
     import contextlib
@@ -46,6 +47,8 @@ def run_budget_inproc(repo: Path, base: str, head: str, pinned: str | None = Non
     mod = load_checker()
     if pinned:
         mod.M0A_BASE = pinned
+    if native_pinned:
+        mod.NATIVE_BASE = native_pinned
     buf = io.StringIO()
     argv = sys.argv
     sys.argv = ["check", "--base", base, "--head", head, "--repo", str(repo)]
@@ -293,6 +296,101 @@ class BudgetTests(unittest.TestCase):
             rc, out = run_budget_inproc(fx.repo, fx.base, head, pinned=fx.base)
             self.assertEqual(rc, 1)  # 650 total vs default 600
             self.assertIn("policy=default", out)
+
+
+NATIVE_RECORD = (
+    "M1_NATIVE_INFERENCE_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M1-NATIVE-INFERENCE; "
+    "base=d2b34e5fdcb6cc774b12388d928cd7cd5954fb94; cap=3200; initial-only"
+)
+
+
+class NativeBudgetTests(unittest.TestCase):
+    def make(self):
+        tmp = tempfile.TemporaryDirectory()
+        return tmp, Fixture(Path(tmp.name))
+
+    def write_candidate(self, fx, lines, record=NATIVE_RECORD):
+        fx.write("QUALITY_BAR.md", record + "\n")
+        fx.write("src/main.rs", "// native\n" * (lines // 2))
+        fx.write("src/m1_reasoning/request.rs", "// native\n" * (lines - lines // 2))
+
+    def check(self, fx, head, base=None):
+        return run_budget_inproc(fx.repo, base or fx.base, head,
+                                 native_pinned=fx.base)
+
+    def test_initial_3200_passes_3201_fails(self):
+        tmp, fx = self.make()
+        with tmp:
+            self.write_candidate(fx, 3200)
+            rc, out = self.check(fx, fx.commit_all())
+            self.assertEqual(rc, 0, out)
+            self.assertIn("policy=m1_native_inference_exception cap=3200", out)
+            self.write_candidate(fx, 3201)
+            rc, out = self.check(fx, fx.commit_all())
+            self.assertEqual(rc, 1, out)
+            self.assertIn("total runtime changed lines: 3201", out)
+
+    def test_native_wrong_base_remains_default(self):
+        tmp, fx = self.make()
+        with tmp:
+            self.write_candidate(fx, 1)
+            wrong_base = fx.commit_all()
+            self.write_candidate(fx, 1500)
+            rc, out = self.check(fx, fx.commit_all(), base=wrong_base)
+            self.assertEqual(rc, 1, out)
+            self.assertIn("policy=default cap=600", out)
+
+    def test_native_missing_duplicate_or_altered_record_cannot_qualify(self):
+        records = ["", NATIVE_RECORD + "\n" + NATIVE_RECORD,
+                   NATIVE_RECORD.replace("cap=3200", "cap=3201"),
+                   NATIVE_RECORD.replace("initial-only", "recurring"),
+                   NATIVE_RECORD.replace("d2b34e5", "0000000")]
+        tmp, fx = self.make()
+        with tmp:
+            for record in records:
+                with self.subTest(record=record):
+                    self.write_candidate(fx, 1000, record)
+                    rc, out = self.check(fx, fx.commit_all())
+                    self.assertEqual(rc, 1, out)
+                    self.assertIn("policy=default cap=600", out)
+
+    def test_native_record_must_be_in_candidate_index_or_commit(self):
+        tmp, fx = self.make()
+        with tmp:
+            self.write_candidate(fx, 1000)
+            run_git(fx.repo, "add", "src/main.rs", "src/m1_reasoning/request.rs")
+            rc, out = self.check(fx, "INDEX")
+            self.assertEqual(rc, 1, out)
+            run_git(fx.repo, "add", "QUALITY_BAR.md")
+            rc, out = self.check(fx, "INDEX")
+            self.assertEqual(rc, 0, out)
+            self.assertIn("policy=m1_native_inference_exception", out)
+            fx.write("QUALITY_BAR.md", "dirty replacement\n")
+            rc, out = self.check(fx, "INDEX")
+            self.assertEqual(rc, 0, out)
+            head = fx.commit_all()
+            fx.write("QUALITY_BAR.md", NATIVE_RECORD + "\n")
+            rc, out = self.check(fx, head)
+            self.assertEqual(rc, 1, out)
+            self.assertIn("policy=default cap=600", out)
+
+    def test_native_extra_runtime_path_disqualifies_entire_exception(self):
+        tmp, fx = self.make()
+        with tmp:
+            self.write_candidate(fx, 1000)
+            fx.write("src/unapproved.rs", "// extra\n")
+            rc, out = self.check(fx, fx.commit_all())
+            self.assertEqual(rc, 1, out)
+            self.assertIn("policy=default cap=600", out)
+
+    def test_native_binary_runtime_still_fails(self):
+        tmp, fx = self.make()
+        with tmp:
+            self.write_candidate(fx, 1000)
+            (fx.repo / "src/main.rs").write_bytes(b"\x00\x01")
+            rc, out = self.check(fx, fx.commit_all())
+            self.assertEqual(rc, 2, out)
+            self.assertIn("binary production change", out)
 
 
 if __name__ == "__main__":

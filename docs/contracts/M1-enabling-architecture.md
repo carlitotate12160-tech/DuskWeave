@@ -230,20 +230,16 @@ Cognition owns safe context assembly, proposal validation and decision publicati
 Trajectory owns accepted history/inspection/recovery. Use narrow public views/ports,
 never a CognitiveManager, GlobalContext, new operational model or sibling mutable import.
 
-**Mission attachment — `m1_inference_permission_v1`.** Required fields: attachment identity
-and version; engagement/campaign; operator/authority references; the resulting current
-Mission revision to which consent applies; mission-purpose/goal reference and exercise
-mode; exact approved recipient; inference profile version; permitted safe field classes;
-valid-from/inclusive and valid-until/exclusive UTC times; explicit finite campaign and
-per-operation limits under ADR-016; approval of engagement-compatible provider use/retention
-terms. INITIAL-CONSENT co-creates this independently of crt.sh on new registration
-(absent Mission revision 0 -> 1). Later amendment needs its own expected-revision lane;
-existing campaigns cannot gain/revise consent by rewriting registration. Revision requires
-explicitly rebound consent; no historical attachment is silently carried forward as current.
-Missing attachment disables inference. Existing crt.sh disclosure and legacy registrations
-keep their original meanings and grant no inference permission. Consent is neither an API
-key nor target-contact/dispatch authority; an environment value, model answer, caller JSON,
-name-policy match or prepared-session receipt cannot substitute for the Mission owner view.
+**Mission attachment — `m1_inference_permission_v1` and `v2`.** Required fields: attachment identity,
+version (`v1`/`v2`), engagement/campaign, operator/authority references, resulting current
+Mission revision, goal/purpose reference, exercise mode, approved recipient, profile version
+(`deepseek-responses-v1` or `deepseek-responses-envelope32-v1`), safe field classes, valid UTC window,
+finite campaign/per-operation limits under ADR-016, and provider term approval. Version `v2` requires profile
+`deepseek-responses-envelope32-v1` and envelope depth 32 (ContextPack and proposal depth stay at 8).
+INITIAL-CONSENT co-creates this on new registration (absent Mission revision 0 -> 1); later amendments
+require their own lane. Existing campaigns are not silently upgraded. Missing attachment disables inference;
+existing crt.sh disclosure grants no inference rights. Consent is not an API key or dispatch authority;
+environment values, caller JSON or prepared sessions cannot substitute for the Mission owner view.
 
 Safe field classes are closed: mission question/constraints; scoped opaque references;
 owner-qualified non-sensitive claim summaries with source/time/status; admitted operator
@@ -257,7 +253,7 @@ matching campaign/purpose/mode/recipient/profile, valid window, field eligibilit
 capacity. Withdrawal, expiry, unsupported profile or unavailable authority blocks the call;
 ADR-016 owns the send/stop race, reservation and cancellation semantics.
 
-**Provider — `deepseek-responses-v1`.** Select only HTTPS POST to
+**Provider — `deepseek-responses-v1` and `deepseek-responses-envelope32-v1`.** Select only HTTPS POST to
 `https://api.deepseek.com/responses`, model `deepseek-flash`, text-only non-streaming
 Responses (`stream=false`), `reasoning={"effort":"high"}`, no tools (`tools=[]`,
 `tool_choice="none"`), and `text.format={"type":"json_schema",

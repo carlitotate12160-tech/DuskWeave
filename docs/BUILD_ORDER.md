@@ -47,15 +47,21 @@ Current engineering state:
 
 PR #54 context preparation is merged at
 `e91d5f9fe4c9dda868152e11f8586bbdb49550f4` (exact-master CI 38424031754 SUCCESS).
-Current workflow-only candidate: `DW-FIX-MVP-DELIVERY-CADENCE` on
-`chore/mvp-delivery-cadence`; no runtime change or automatic merge.
-Next product priority: measure the complete connected initial-inference outcome
-before issuing a runtime IMPLEMENT packet; its budget fit is not yet verified.
+Current candidate: `DW-IMPLEMENT-M1-NATIVE-INFERENCE` on
+`feat/m1-native-inference`, pinned to `d2b34e5`. Complexity gate converged to
+0 violations of cap 7 (all business functions <= 7, reviewed `main::run` dispatch
+allowance granted). Coverage gate passed with 96.59% total line coverage and
+97.45% on `postgres.rs` (exceeding all quality bar thresholds). Full native
+cargo test suite passed cleanly. Live provider qualification against DeepSeek API
+completed successfully (1 live HTTP call, valid schema proposal, 0 repair calls,
+persisted to Cognition and Trajectory, `dispatch_granted = false` preserved,
+and zero-replay fresh-process inspect and recovery verified). Ready for PR/review.
+The prior workflow-only candidate remains historical; no merge is inferred.
 See the [inference contracts](contracts/M1-enabling-architecture.md#initial-inference-contracts-scoped-acceptance),
 the [context prepare runbook](RUN_M1_CONTEXT_PREPARE.md)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 for scoped owner acceptance, merged delivery evidence and next action.
-Current runtime prepares local inference context (future P) only; no provider call,
+Merged runtime prepares local inference context (future P) only; no provider call,
 proposal, dispatch, send path or durable cognition decision history exists.
 Later consent amendment/rebinding and actual inference remain required.
 Context preparation does not complete cognition, action feedback,

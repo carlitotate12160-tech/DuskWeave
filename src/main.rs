@@ -27,6 +27,7 @@ mod m1_context_cli;
 mod m1_inference_budget_cli;
 mod m1_policy_cli;
 mod m1_prepared_withdrawal_cli;
+mod m1_reasoning_cli;
 mod m1_session_cli;
 mod planning_cli;
 

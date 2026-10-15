@@ -4,23 +4,27 @@ use std::env;
 const LIMIT: usize = 16 * 1024;
 
 pub(super) fn runtime_config() -> Res<postgres::Config> {
+    owner_config("DW_DATABASE_URL", "DW_DATABASE_URL_FILE")
+}
+
+pub(super) fn owner_config(url: &str, file: &str) -> Res<postgres::Config> {
     let mode = match env::var("DW_DATABASE_CONFIG_MODE") {
         Ok(mode) => mode,
         Err(env::VarError::NotPresent) => "file".into(),
         Err(_) => return Err(Fail::Config("invalid_database_config_mode")),
     };
-    parse_config(&load_source(&mode)?)
+    parse_config(&load_source(&mode, url, file)?)
 }
 
-fn load_source(mode: &str) -> Res<String> {
+fn load_source(mode: &str, url: &str, file: &str) -> Res<String> {
     match mode {
         "file" => {
-            require_absent("DW_DATABASE_URL")?;
-            file_source()
+            require_absent(url)?;
+            file_source(file)
         }
         "env-local" => {
-            require_absent("DW_DATABASE_URL_FILE")?;
-            env::var("DW_DATABASE_URL")
+            require_absent(file)?;
+            env::var(url)
                 .ok()
                 .filter(|raw| !raw.trim().is_empty())
                 .ok_or(Fail::Config("missing_env"))
@@ -37,15 +41,15 @@ fn require_absent(name: &str) -> Res<()> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn file_source() -> Res<String> {
+fn file_source(_file: &str) -> Res<String> {
     Err(Fail::Config("database_file_platform_unqualified"))
 }
 
 #[cfg(target_os = "linux")]
-fn file_source() -> Res<String> {
+fn file_source(_file: &str) -> Res<String> {
     use rustix::fs::{CWD, Mode, OFlags, ResolveFlags, openat2};
     use std::io::Read;
-    let path = env::var_os("DW_DATABASE_URL_FILE")
+    let path = env::var_os(_file)
         .map(std::path::PathBuf::from)
         .ok_or(Fail::Config("missing_database_url_file"))?;
     if !path.is_absolute() {

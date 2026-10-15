@@ -1,0 +1,366 @@
+//! Broker and Cognition adapters over existing Mission/reservation ports.
+use super::inference::{
+    Broker, Decision, DecisionStore, Provider, Received, ReleaseFailure, Reservation, Scope, Usage,
+};
+use super::proposal::ProposalBasis;
+use super::request::BoundCall;
+use crate::m1_inference_budget::{self, ReservationAction, ReservationRequest};
+use crate::mission::OperationId;
+use crate::postgres_inference_budget::PgInferenceReservationStore;
+use crate::postgres_mission::PgMissionStore;
+use postgres::Client;
+use serde_json::Value;
+use std::time::Instant;
+use uuid::Uuid;
+type Res<T> = Result<T, &'static str>;
+pub struct PgBroker {
+    pub client: Client,
+    pub mission: PgMissionStore,
+    pub reservations: PgInferenceReservationStore,
+    pub request: ReservationRequest,
+    pub deadline: Instant,
+}
+impl PgBroker {
+    fn state(&mut self, id: Uuid, state: &str, usage: Option<&Usage>) -> Res<()> {
+        let u = serde_json::to_value(usage).map_err(|_| "inference_usage_encode")?;
+        self.client
+            .query_one(
+                "SELECT execution.inference_call_state($1,$2,$3)",
+                &[&id, &state, &u],
+            )
+            .map_err(|_| "inference_accounting_unknown")?;
+        Ok(())
+    }
+}
+impl Broker for PgBroker {
+    fn reserve(&mut self, s: &Scope, _: &[u8]) -> Res<Reservation> {
+        let r = m1_inference_budget::reservation(
+            &mut self.reservations,
+            Some(&mut self.mission),
+            ReservationAction::Reserve,
+            &self.request,
+            OperationId(s.decision),
+        )
+        .map_err(|_| "inference_reservation_unknown")?
+        .ok_or("inference_reservation_missing")?;
+        Ok(Reservation {
+            generation: r.generation as u64,
+            generation_call: r.generation_call_id,
+            repair_call: r.repair_call_id,
+            shared_deadline: self.deadline,
+        })
+    }
+    fn may_send(&mut self, s: &Scope, k: Uuid, b: &BoundCall) -> Res<()> {
+        let p = std::str::from_utf8(&b.pack).map_err(|_| "pack_utf8")?;
+        let c = std::str::from_utf8(&b.configuration).map_err(|_| "request_encode")?;
+        let body = std::str::from_utf8(&b.body).map_err(|_| "request_encode")?;
+        let mut tx = self
+            .client
+            .transaction()
+            .map_err(|_| "inference_marker_unknown")?;
+        tx.query_one(
+            "SELECT execution.inference_may_send($1,$2,$3,$4,$5,$6,$7,$8)",
+            &[
+                &s.engagement,
+                &s.campaign,
+                &s.decision,
+                &k,
+                &p,
+                &c,
+                &body,
+                &b.digest,
+            ],
+        )
+        .map_err(|_| "inference_marker_refused")?;
+        tx.commit().map_err(|_| "inference_marker_commit_unknown")
+    }
+    fn release_into(
+        &mut self,
+        s: &Scope,
+        r: &Reservation,
+        _: Uuid,
+        b: &BoundCall,
+        p: &mut dyn Provider,
+        basis: &mut dyn ProposalBasis,
+    ) -> Result<Received, ReleaseFailure> {
+        if Instant::now() >= r.shared_deadline {
+            return Err(ReleaseFailure::NeverReleased("inference_deadline"));
+        }
+        // Session lock spans the final SQL check and transport release, never a transaction.
+        self.client
+            .query_one(
+                "SELECT pg_advisory_lock(hashtextextended($1,0))",
+                &[&format!("{}:{}", s.engagement, s.campaign)],
+            )
+            .map_err(|_| ReleaseFailure::NeverReleased("current_authority_unavailable"))?;
+        let current = self.client.query_one(
+            "SELECT execution.inference_release_current($1,$2,$3)",
+            &[&s.engagement, &s.campaign, &s.decision],
+        );
+        if current.is_err() {
+            let _ = self
+                .client
+                .query_one("SELECT pg_advisory_unlock_all()", &[]);
+            return Err(ReleaseFailure::NeverReleased(
+                "current_authority_unavailable",
+            ));
+        }
+        let mut released = false;
+        let mut release = || {
+            self.client
+                .query_one("SELECT pg_advisory_unlock_all()", &[])
+                .map_err(|_| "inference_release_unknown")?;
+            released = true;
+            Ok(())
+        };
+        let result = p.call(b, r.shared_deadline, basis, &mut release);
+        // Drop/connection loss also releases the session lock. No replay on any ambiguity.
+        if !released {
+            let _ = self
+                .client
+                .query_one("SELECT pg_advisory_unlock_all()", &[]);
+        }
+        result.map_err(ReleaseFailure::MayHaveSent)
+    }
+    fn never_released(&mut self, _: &Scope, id: Uuid, _: &'static str) -> Res<()> {
+        self.state(id, "failed_never_released", None)
+    }
+    fn completed(&mut self, _: &Scope, id: Uuid, u: &Usage) -> Res<()> {
+        self.state(id, "completed", Some(u))
+    }
+    fn uncertain(&mut self, _: &Scope, id: Uuid, _: &'static str) -> Res<()> {
+        self.state(id, "usage_unknown", None)
+    }
+    fn close_unused_repair(&mut self, _: &Scope, _: &Reservation) -> Res<()> {
+        Ok(())
+    }
+    fn provenance(&mut self, s: &Scope) -> Res<Value> {
+        self.client.query_one("SELECT coalesce(jsonb_agg(jsonb_build_object('binding',binding,'requested',configuration::jsonb,'reported',usage,'state',state) ORDER BY call),'[]'::jsonb) FROM execution.inference_calls WHERE e=$1 AND c=$2 AND d=$3",&[&s.engagement,&s.campaign,&s.decision]).map(|r|r.get(0)).map_err(|_|"inference_inspect_unavailable")
+    }
+    fn finish(&mut self, s: &Scope) -> Res<()> {
+        self.client
+            .query_one(
+                "SELECT execution.close_inference($1,$2,$3)",
+                &[&s.engagement, &s.campaign, &s.decision],
+            )
+            .map_err(|_| "inference_completion_pending")?;
+        Ok(())
+    }
+    fn inspect(&mut self, s: &Scope) -> Res<&'static str> {
+        consumption(&mut self.client, s)
+    }
+}
+pub fn consumption(c: &mut Client, s: &Scope) -> Res<&'static str> {
+    let r = c
+        .query_one(
+            "SELECT execution.inference_consumption($1,$2,$3)",
+            &[&s.engagement, &s.campaign, &s.decision],
+        )
+        .map_err(|_| "inference_inspect_unavailable")?;
+    const STATES: &[&str] = &[
+        "uncertain_charged",
+        "completed_charged_unused_repair_reserved",
+        "failed_never_released_reserved",
+        "reserved_not_sent",
+        "absent_not_proof_of_no_send",
+    ];
+    STATES
+        .iter()
+        .copied()
+        .find(|state| *state == r.get::<_, &str>(0))
+        .ok_or("inference_decision_integrity")
+}
+
+pub struct PgDecisionStore {
+    pub client: Client,
+    pub input_hash: String,
+}
+impl DecisionStore for PgDecisionStore {
+    fn publish_atomic(&mut self, d: &Decision) -> Res<()> {
+        let v = serde_json::to_value(d).map_err(|_| "inference_decision_encode")?;
+        let mut tx = self
+            .client
+            .transaction()
+            .map_err(|_| "inference_decision_unknown")?;
+        tx.query_one(
+            "SELECT cognition.publish_reasoning($1,$2)",
+            &[&v, &self.input_hash],
+        )
+        .map_err(|_| "inference_decision_unknown")?;
+        tx.commit().map_err(|_| "inference_decision_commit_unknown")
+    }
+    fn inspect(&mut self, s: &Scope) -> Res<Option<Decision>> {
+        self.client
+            .query_opt(
+                "SELECT payload FROM cognition.reasoning_decisions WHERE e=$1 AND c=$2 AND d=$3",
+                &[&s.engagement, &s.campaign, &s.decision],
+            )
+            .map_err(|_| "inference_decision_unavailable")?
+            .map(|r| decode(r.get(0)))
+            .transpose()
+    }
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredDecision {
+    kind: String,
+    occurred_at_ms: u64,
+    recorded_at_ms: u64,
+    source_mode: String,
+    provenance: Value,
+    event: Uuid,
+    engagement: Uuid,
+    campaign: Uuid,
+    decision: Uuid,
+    producer: String,
+    version: u32,
+    mission_revision: u64,
+    permission: Uuid,
+    call_ids: Vec<Uuid>,
+    bindings: Vec<String>,
+    proposal: Option<super::proposal::Proposal>,
+    disposition: String,
+    publication_obligation: String,
+}
+const DISPOSITIONS: &[&str] = &[
+    "validated_proposal",
+    "schema_repair_exhausted",
+    "unsafe_explanation",
+    "unsupported_premise",
+    "reference_ineligible",
+    "manifest_ineligible",
+    "view_selector_ineligible",
+    "current_authority_unavailable",
+    "repair_code_ineligible",
+    "repair_code_limit",
+    "pack_size",
+    "pack_utf8",
+    "repair_encode",
+    "request_encode",
+    "request_size",
+    "inference_marker_commit_unknown",
+    "inference_marker_refused",
+    "inference_marker_unknown",
+    "inference_sql_ambiguous",
+    "inference_sql_privilege",
+    "inference_sql_function_missing",
+    "stopped_before_release",
+    "inference_stop_unknown",
+    "inference_authority_unavailable",
+    "inference_reservation_unknown",
+    "inference_reservation_missing",
+    "inference_deadline",
+    "inference_guard_missing",
+    "inference_platform_unqualified",
+    "inference_guard_busy",
+    "inference_fixture_endpoint_refused",
+    "live_key_missing",
+    "live_key_invalid",
+    "inference_curl_missing",
+    "inference_pack_encode",
+    "inference_config_encode",
+    "inference_body_encode",
+    "inference_usage_encode",
+    "inference_accounting_unknown",
+    "inference_database_config_missing",
+    "inference_database_config_invalid",
+    "inference_database_unavailable",
+    "provider_incomplete",
+    "provider_protocol",
+    "provider_unsafe_response",
+    "provider_response_limit",
+    "provider_transport_unknown",
+    "provider_cancelled_uncertain",
+    "accounting_unknown",
+    "inference_release_unknown",
+    "inference_transport_unavailable",
+    "inference_inspect_unavailable",
+];
+pub fn decode(v: Value) -> Res<Decision> {
+    let d: StoredDecision =
+        serde_json::from_value(v).map_err(|_| "inference_decision_integrity")?;
+    let metadata = [
+        d.kind == "reasoning_decision",
+        d.producer == "cognition",
+        d.version == 1,
+        d.publication_obligation == "trajectory.reasoning_history.v1",
+        ["blind", "defender_informed"].contains(&d.source_mode.as_str()),
+    ];
+    if !metadata.into_iter().all(|valid| valid) {
+        return Err("inference_decision_integrity");
+    }
+    let disposition = DISPOSITIONS
+        .iter()
+        .copied()
+        .find(|code| *code == d.disposition)
+        .ok_or("inference_decision_integrity")?;
+    Ok(Decision {
+        kind: "reasoning_decision",
+        occurred_at_ms: d.occurred_at_ms,
+        recorded_at_ms: d.recorded_at_ms,
+        source_mode: d.source_mode,
+        provenance: d.provenance,
+        event: d.event,
+        engagement: d.engagement,
+        campaign: d.campaign,
+        decision: d.decision,
+        producer: "cognition",
+        version: 1,
+        mission_revision: d.mission_revision,
+        permission: d.permission,
+        call_ids: d.call_ids,
+        bindings: d.bindings,
+        proposal: d.proposal,
+        disposition,
+        publication_obligation: "trajectory.reasoning_history.v1",
+    })
+}
+
+// Cognition premise admission over its immutable safe ContextPack.
+pub struct Basis {
+    pub client: Client,
+    pub scope: Scope,
+    pub references: Vec<String>,
+    pub deadline: Instant,
+}
+impl ProposalBasis for Basis {
+    fn reference_eligible(&self, r: &str) -> bool {
+        self.references.iter().any(|v| v == r)
+    }
+    fn manifest_eligible(&self, _: &str) -> bool {
+        false
+    }
+    fn current_authority_and_premises(&mut self) -> Result<(), &'static str> {
+        if Instant::now() >= self.deadline {
+            return Err("inference_deadline");
+        }
+        self.client
+            .query_one(
+                "SELECT execution.inference_release_current($1,$2,$3)",
+                &[
+                    &self.scope.engagement,
+                    &self.scope.campaign,
+                    &self.scope.decision,
+                ],
+            )
+            .map_err(|_| "current_authority_unavailable")?;
+        Ok(())
+    }
+    fn safe_explanation(&self, text: &str) -> bool {
+        // The opaque generated ContextPack admits no real-client free text in this slice.
+        let lower = text.to_ascii_lowercase();
+        !text.chars().any(|c| c.is_control())
+            && ![
+                "sentinel",
+                "bearer ",
+                "password",
+                "api_key",
+                "private key",
+                "http://",
+                "https://",
+                "@",
+            ]
+            .iter()
+            .any(|s| lower.contains(s))
+    }
+}
