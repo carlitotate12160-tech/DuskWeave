@@ -29,6 +29,7 @@ mod m1_policy_cli;
 mod m1_prepared_withdrawal_cli;
 mod m1_reasoning_cli;
 mod m1_session_cli;
+mod m1_terrain_cli;
 mod planning_cli;
 
 fn category(f: Fail) -> &'static str {

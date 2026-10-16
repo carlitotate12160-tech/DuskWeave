@@ -147,6 +147,10 @@ pub struct PermissionSummary {
 }
 
 impl M1Permission {
+    pub(crate) fn dns_vantage(&self) -> (Uuid, Ipv4Addr) {
+        (self.vantage_ref, self.resolver_ipv4)
+    }
+
     pub(crate) fn query_reason(
         &self,
         purpose: &crate::m1_policy::NamePurpose,

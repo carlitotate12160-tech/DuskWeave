@@ -61,7 +61,7 @@ class Fixture:
         if self.sql(f"SELECT 1 FROM pg_database WHERE datname='{self.database}'", database="postgres").strip():
             raise RuntimeError("native_database_collision")
         suffix = secrets.token_hex(6)
-        owners = ["admin", "core", "broker", "cognition", "history"]
+        owners = ["admin", "core", "broker", "cognition", "history", "terrain"]
         if kind == "fixture":
             owners.append("otherbroker")
         self.roles = {name: identifier(f"dw_nf60_{suffix}_{name}") for name in owners}
@@ -78,19 +78,21 @@ class Fixture:
                          "--no-superuser", "--no-createdb", "--no-createrole", "--no-replication",
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
         self.sql(f"CREATE DATABASE {self.database} OWNER {self.roles['admin']}", database="postgres")
-        for group in ("dw_runtime", "dw_m1_broker", "dw_m1_cognition", "dw_m1_trajectory"):
+        for group in ("dw_runtime", "dw_m1_broker", "dw_m1_cognition", "dw_m1_trajectory", "dw_m1_terrain"):
             self.sql(f"DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='{group}') "
                      f"THEN CREATE ROLE {group} NOLOGIN NOSUPERUSER NOBYPASSRLS; END IF; END $$")
         self.migrate(initial=True)
         for name, groups in (("core", "dw_runtime"), ("broker", "dw_m1_broker"),
                              ("otherbroker", "dw_m1_broker"),
-                             ("cognition", "dw_m1_cognition"), ("history", "dw_m1_trajectory")):
+                             ("cognition", "dw_m1_cognition"), ("history", "dw_m1_trajectory"),
+                             ("terrain", "dw_m1_terrain")):
             if name not in self.roles:
                 continue
             self.sql(f"GRANT {groups} TO {self.roles[name]}")
         variables = {"admin": "DW_TEST_ADMIN_DATABASE_URL", "core": "DW_TEST_DATABASE_URL",
                      "broker": "DW_INFERENCE_BROKER_DATABASE_URL", "cognition": "DW_COGNITION_DATABASE_URL",
-                     "history": "DW_TRAJECTORY_DATABASE_URL", "otherbroker": "DW_NATIVE_OTHER_BROKER_DATABASE_URL"}
+                     "history": "DW_TRAJECTORY_DATABASE_URL", "terrain": "DW_TERRAIN_DATABASE_URL",
+                     "otherbroker": "DW_NATIVE_OTHER_BROKER_DATABASE_URL"}
         for owner, variable in variables.items():
             if owner not in self.roles:
                 continue
@@ -135,7 +137,7 @@ class Fixture:
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13) if initial else (12, 13)
+        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14) if initial else (12, 13, 14)
         for number in numbers:
             source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
             if not initial:

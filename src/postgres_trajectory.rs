@@ -26,6 +26,20 @@ impl PgTrajectory {
     pub fn new(client: Client) -> Self {
         Self { client }
     }
+
+    pub fn record_terrain(
+        &mut self,
+        event: &crate::m1_terrain::TerrainAcceptedEvent,
+    ) -> Res<crate::trajectory::HistoryStatus> {
+        crate::postgres_terrain_history::record_terrain_history(&mut self.client, event)
+    }
+
+    pub fn inspect_terrain(
+        &mut self,
+        event: &crate::m1_terrain::TerrainAcceptedEvent,
+    ) -> Res<&'static str> {
+        crate::postgres_terrain_history::inspect_terrain_history(&mut self.client, event)
+    }
 }
 
 /// Existing identity conflicts stay journal anomalies; first v3 acceptance
