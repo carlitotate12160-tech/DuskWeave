@@ -107,11 +107,17 @@ def run(binary, report, env_file, database_name):
         goal_ref=goal, exercise_mode="blind"), candidates=[dict(asset_ref=asset, priority="high")])
     path = report / "live-request.json"
     path.write_text(json.dumps(request), encoding="utf-8")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    binary_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
     # This is the sole invocation allowed to construct/call the production provider.
-    status, text = command(binary, fixture, ["m1-infer", "--input", str(path), "--operation", "new"], key)
+    try:
+        status, text = command(binary, fixture, ["m1-infer", "--input", str(path), "--operation", "new"], key)
+    except subprocess.TimeoutExpired as exc:
+        # The provider-bound process started: keep its partial output and let
+        # the guarded section record LIVE_FAIL on the original identity.
+        status, text = 124, exc.stdout if isinstance(exc.stdout, str) else ""
     key = None
-    initial = receipts(text)
-    found = next((r["decision"] for r in initial if "decision" in r), None)
+    initial = []
     recovered = []
     counts = None
     failure = None
@@ -121,6 +127,8 @@ def run(binary, report, env_file, database_name):
     # identity and durable state; it is never a preflight block and is never
     # retried automatically.
     try:
+        initial = receipts(text)
+        found = next((r["decision"] for r in initial if "decision" in r), None)
         decision = str(uuid.UUID(found)) if found else None
         if decision is None:
             raise RuntimeError("native_live_identity_unavailable")
@@ -151,9 +159,8 @@ def run(binary, report, env_file, database_name):
                 counts = durable_counts(fixture, decision)
             except (RuntimeError, subprocess.SubprocessError, OSError, ValueError, KeyError):
                 counts = None
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
     result = dict(status="LIVE_PASS" if passed else "LIVE_FAIL", head=head,
-                  binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), decision=decision,
+                  binary_sha256=binary_sha, decision=decision,
                   counts=counts, initial=initial, fresh_inspect_and_two_recoveries=recovered,
                   extra_call_records=0, target_activity=False, automatic_retry=False)
     if failure is not None:
