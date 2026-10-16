@@ -10,7 +10,8 @@ import sys
 from urllib.parse import quote
 
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
-DATABASES = {"fixture": "dw_native_fix60_r1_fixture01", "live": "dw_native_fix60_r1_live01"}
+NAMESPACE = "dw_native_"
+KINDS = ("fixture", "live")
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -18,6 +19,14 @@ def identifier(value):
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", value):
         raise RuntimeError("native_identifier_refused")
     return value
+
+
+def database_name(kind, explicit=None):
+    """Validate or generate a unique database name in the dw_native_ namespace."""
+    name = explicit if explicit is not None else f"{NAMESPACE}{kind}_{secrets.token_hex(8)}"
+    if len(name) <= len(NAMESPACE) or not name.startswith(NAMESPACE):
+        raise RuntimeError("native_identifier_refused")
+    return identifier(name)
 
 
 def private_run(args, data=None):
@@ -28,14 +37,16 @@ def private_run(args, data=None):
 
 
 class Fixture:
-    def __init__(self, container, kind, ci=False):
+    def __init__(self, container, kind, ci=False, database=None):
         if container not in ("dwpg-r3", "dwpg"):
             raise RuntimeError("native_service_unqualified")
         if ci and container != "dwpg":
             raise RuntimeError("native_service_unqualified")
+        if kind not in KINDS:
+            raise RuntimeError("native_identifier_refused")
         self.container = container
         # Container names allow the existing owned dash spelling, never SQL use.
-        self.database = DATABASES[kind]
+        self.database = database_name(kind, database)
         self.env = dict(os.environ)
         self.env["PYTHONDONTWRITEBYTECODE"] = "1"
         self.secrets = []
@@ -156,14 +167,15 @@ class Fixture:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--container", default="dwpg-r3")
-    parser.add_argument("--database", choices=DATABASES, default="fixture")
+    parser.add_argument("--database", choices=KINDS, default="fixture")
+    parser.add_argument("--database-name", default=None)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--ci", action="store_true")
     parser.add_argument("--session", action="store_true")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     options = parser.parse_args()
     options.report.mkdir(parents=True, exist_ok=True)
-    fixture = Fixture(options.container, options.database, options.ci)
+    fixture = Fixture(options.container, options.database, options.ci, database=options.database_name)
     print(json.dumps({"fixture": fixture.database, "status": "ready"}), flush=True)
     if options.session:
         for line in sys.stdin:

@@ -107,11 +107,60 @@ stored closure. Historical charges remain; no recovery refunds uncertain consump
 ## Native fixture qualification
 
 Use `tests/support/m1_native_bootstrap.py` before launching Rust tests. It qualifies
-the retained owned PostgreSQL service and creates the named disposable FIX database
-with unique random-password logins via `createuser --pwprompt`. Credentials remain
-in the bootstrap/child process boundary. Login or database collisions fail closed;
-no retained role password is reset. Rust fixtures require explicit native DSNs and
-cannot synthesize credentials or mutate the process environment.
+the retained owned PostgreSQL service and creates a disposable database in the
+`dw_native_` test namespace with unique random-password logins via
+`createuser --pwprompt`. Credentials remain in the bootstrap/child process
+boundary. Login or database collisions fail closed; an existing database name is
+always refused — the helper never drops, overwrites or silently reuses one, and
+no retained role password is reset. Rust fixtures require explicit native DSNs,
+validate the `DW_NATIVE_FIXTURE_DATABASE` namespace, and cannot synthesize
+credentials or mutate the process environment.
+
+```bash
+# Provision a fresh generated fixture database, then run a focused native test:
+python tests/support/m1_native_bootstrap.py --container dwpg-r3 \
+  --report <report-dir> -- cargo test --test m1_native_cli -- --test-threads=1
+```
+
+- `--database fixture|live` selects the provisioning kind (the `fixture` kind adds
+  the negative-principal controls); the default is `fixture`.
+- `--database-name <name>` selects an explicit database name. When omitted a
+  unique name is generated (`dw_native_<kind>_<random>`). Every name must match
+  `dw_native_[a-z0-9_]+` within PostgreSQL's 63-byte identifier limit; validation
+  runs before any provisioning call.
+- The selected name is passed to Rust tests through `DW_NATIVE_FIXTURE_DATABASE`
+  in the child environment.
 
 Run focused native tests locally. CI runs the complete suite and coverage on its
 isolated disposable service; legacy cluster-role bootstrap is not authorized locally.
+
+## One bounded live episode
+
+```bash
+python tests/support/m1_native_live.py --binary <path-to-duskweave> \
+  --report <new-report-dir> [--env-file .env] [--database-name <dw_native_...>]
+```
+
+The helper provisions a fresh `live` database, registers one blind engagement,
+runs `m1-infer` once against the fixed DeepSeek profile (at most one generation
+plus one eligible schema repair), then runs fresh-process `m1-infer-inspect` and
+two `m1-infer-recover` invocations. There is no automatic retry, model change,
+fallback or target contact; `live_qualification.json` records `LIVE_PASS`,
+`LIVE_FAIL` or `LIVE_BLOCKED` for the committed binary under test. A failure
+after inference starts keeps the original decision identity and the durable
+call/decision/outbox/history/closure counts; it is never relabeled as a
+preflight block.
+
+### Helper `.env` loading vs direct CLI environment
+
+`--env-file` is a helper-only convenience: it reads exactly `DEEPSEEK_API_KEY`
+from the selected file (default this repository's `.env`), validates it before
+any provisioning, and passes it only to the `m1-infer` child process. Other
+lines are ignored, shell expressions are never executed, and there is no
+fallback to any other key source; inspect and recover children run without the
+key. The production `duskweave` binary itself reads only the process
+environment — it has no dotenv loader. When invoking `duskweave m1-infer`
+directly, export `DEEPSEEK_API_KEY` plus the four role DSNs
+(`DW_DATABASE_URL`, `DW_INFERENCE_BROKER_DATABASE_URL`,
+`DW_COGNITION_DATABASE_URL`, `DW_TRAJECTORY_DATABASE_URL`) in the calling shell
+yourself.

@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave-ci-complexity` (selected reusable M1 source worktree; verify actual branch/HEAD per packet)
-- **Current Phase**: Active delivery on `chore/simplify-delivery-policy` (simplify delivery policy and existing CI enforcement). Base `4c76b80ad0c932edf7b8358056c2f84606a653c0`. Predecessors #60, #59, #58, #56, #57 merged. Next work: repeatable native live testing with fresh DB name and clean environment loading, then real observation feeding LLM decision.
+- **Current Phase**: Active delivery on `fix/native-live-repeatability` (repeatable native live testing: fresh `dw_native_` database selection, explicit `--env-file` key loading, honest live outcomes). Base `b4be03ebd5a4165cb20f4dbe4dca048c754bf21f`. Predecessors #61, #60, #59, #58, #56, #57 merged. Next work: a sourced real observation feeding an LLM hypothesis/next decision through the owning model and existing history path.
 - **Active Seal**: `DW-FOUNDATION-001`; `DW-M0-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified); **M0 SEALED** (product-owner authorization, 2026-10-05)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -77,9 +77,10 @@ All interactions and plans are subject to:
 
 ## 6. Current slices and next action
 
-- **Active work / PR**: `chore/simplify-delivery-policy` — Simplify delivery policy and its existing CI enforcement. Base `4c76b80ad0c932edf7b8358056c2f84606a653c0`. Candidate head, CI and review status are tracked directly in Git and GitHub.
-- **Next action**: Review and merge `chore/simplify-delivery-policy`. Follow-up: make native live testing repeatable with a fresh database name and clear environment loading, then deliver real observation feeding the LLM decision.
+- **Active work / PR**: `fix/native-live-repeatability` — Make native live testing repeatable (fresh `dw_native_` database names, explicit `--env-file` key loading, honest `LIVE_*` outcomes) and execute one bounded live DeepSeek episode. Base `b4be03ebd5a4165cb20f4dbe4dca048c754bf21f`. Candidate head, CI and review status are tracked directly in Git and GitHub.
+- **Next action**: Review and merge this delivery. Follow-up: a sourced real observation for niagamas.com informs an LLM hypothesis/next decision, retained through the owning model and existing history path.
 - **Reconciled predecessor merges (GitHub master)**:
+  - [PR #61](https://github.com/carlitotate12160-tech/DuskWeave/pull/61) (`b4be03e`): chore: simplify delivery policy and advisory metrics enforcement
   - [PR #60](https://github.com/carlitotate12160-tech/DuskWeave/pull/60) (`304b809`): feat(m1): implement production-native inference and continuation
   - [PR #59](https://github.com/carlitotate12160-tech/DuskWeave/pull/59) (`1a0a4c3`): build(deps): bump actions/upload-artifact from 7.0.1 to 7.0.2
   - [PR #58](https://github.com/carlitotate12160-tech/DuskWeave/pull/58) (`dabb4c3`): build(deps): bump the codeql-action group across 1 directory with 2 updates
