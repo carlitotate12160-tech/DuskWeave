@@ -162,18 +162,30 @@ fn run_record(
     };
     let mut store = PgTerrainStore::new(tr);
     let mut traj = PgTrajectory::new(tj);
-    match store.record_dns(&mut mission, req, op)? {
-        Ok((ev, cur, now, auth_ok)) => {
+    let res = store.record_dns(&mut mission, req, op);
+    match res {
+        Ok(Ok((ev, cur, now, auth_ok))) => {
             let hist = hist_code(traj.record_terrain(&ev));
             Ok((
                 TerrainReceipt::from_event(&ev, &cur, hist, now, auth_ok),
                 None,
             ))
         }
-        Err(reason) => Ok((
+        Ok(Err(reason)) => Ok((
             TerrainReceipt::failure("refused", reason, Some(req), Some(op)),
             Some(Fail::State(reason)),
         )),
+        Err(f) => {
+            let (res, code, mapped) = if f == Fail::Unresolved("terrain_commit_unknown") {
+                ("unresolved", "terrain_commit_unknown", f)
+            } else {
+                map_fail(f)
+            };
+            Ok((
+                TerrainReceipt::failure(res, code, Some(req), Some(op)),
+                Some(mapped),
+            ))
+        }
     }
 }
 
@@ -197,7 +209,7 @@ fn run_inspect_or_recover(
     let hist = if command == "m1-terrain-recover" {
         hist_code(traj.record_terrain(&ev))
     } else {
-        traj.inspect_terrain(&ev).unwrap_or("pending")
+        traj.inspect_terrain(&ev)?
     };
     Ok((
         TerrainReceipt::from_event(&ev, &cur, hist, now, auth_ok),

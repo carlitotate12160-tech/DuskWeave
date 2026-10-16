@@ -148,3 +148,53 @@ fn physical_trajectory_commit_ack_loss_and_rolled_back_terrain_tx() {
     assert_eq!(r_rec["history"], "completed");
     assert_eq!(count_rows("trajectory.terrain_history", op), 1);
 }
+
+#[test]
+fn cli_record_lost_commit_ack_with_operation_new_emits_operation_id() {
+    let _g = db();
+    let (e, c, _reg, now) = register_m1_campaign(0x8203);
+    let raw = dns_request_json(e, c, now - 10);
+    let path = std::env::temp_dir().join(format!(
+        "dw-terrain-ack-new-{}.json",
+        Uuid::from_u128(0x8203)
+    ));
+    std::fs::write(&path, serde_json::to_vec(&raw).unwrap()).unwrap();
+
+    let relay = proxy::Relay::start("127.0.0.1:5432".parse().unwrap(), b"COMMIT");
+    let proxy_dsn = through_dsn("DW_TERRAIN_DATABASE_URL", relay.port());
+
+    let (ok, _, receipt) = std::thread::scope(|s| {
+        let runner = s.spawn(|| {
+            cli_run(
+                "m1-terrain-record",
+                &path,
+                "new",
+                &[("DW_TERRAIN_DATABASE_URL", &proxy_dsn)],
+            )
+        });
+        assert!(relay.observed(Duration::from_secs(10)));
+        assert!(relay.consumed(Duration::from_secs(10)));
+        drop(relay);
+        runner.join().unwrap()
+    });
+    assert!(!ok);
+    assert_eq!(receipt["result"], "unresolved");
+    assert_eq!(receipt["reason"], "terrain_commit_unknown");
+
+    let op_str = receipt["operation_id"]
+        .as_str()
+        .expect("allocated operation_id in unresolved receipt");
+    let op_uuid = Uuid::parse_str(op_str).expect("valid uuid");
+    assert!(!op_uuid.is_nil());
+    assert_eq!(count_rows("terrain.observations", OperationId(op_uuid)), 1);
+
+    let (ok_rec, _, r_rec) = cli_run("m1-terrain-recover", &path, op_str, &[]);
+    std::fs::remove_file(&path).unwrap();
+    assert!(ok_rec);
+    assert_eq!(r_rec["result"], "accepted");
+    assert_eq!(r_rec["history"], "completed");
+    assert_eq!(
+        count_rows("trajectory.terrain_history", OperationId(op_uuid)),
+        1
+    );
+}
