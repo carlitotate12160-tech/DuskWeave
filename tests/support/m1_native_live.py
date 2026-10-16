@@ -40,14 +40,21 @@ def command(binary, fixture, args, key=None):
 
 
 def receipts(text):
+    """Parse receipt lines incrementally; (validated items, saw malformed line)."""
     allowed = {"kind", "decision", "event", "call_ids", "proposal_disposition",
                "publication", "history", "consumption", "recovery_category", "dispatch_granted"}
     items = []
+    malformed = False
     for line in text.splitlines():
-        if line.startswith("{"):
+        if not line.startswith("{"):
+            continue
+        try:
             item = json.loads(line)
-            items.append({k: v for k, v in item.items() if k in allowed})
-    return items
+        except ValueError:
+            malformed = True
+            continue
+        items.append({k: v for k, v in item.items() if k in allowed})
+    return items, malformed
 
 
 def durable_counts(fixture, decision):
@@ -109,6 +116,7 @@ def run(binary, report, env_file, database_name):
     path.write_text(json.dumps(request), encoding="utf-8")
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
     binary_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
+    category = None
     # This is the sole invocation allowed to construct/call the production provider.
     try:
         status, text = command(binary, fixture, ["m1-infer", "--input", str(path), "--operation", "new"], key)
@@ -118,57 +126,77 @@ def run(binary, report, env_file, database_name):
         # and let the guarded section record LIVE_FAIL on the original identity.
         out = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode("utf-8", errors="replace")
         status, text = 124, out[: out.rfind("\n") + 1]
+        category = "native_live_inference_timeout"
     key = None
     initial = []
     recovered = []
     counts = None
-    failure = None
     passed = False
     decision = None
+    before = None
+    latest = None
     # Inference has started: any failure here keeps the original decision
     # identity and durable state; it is never a preflight block and is never
     # retried automatically.
     try:
-        initial = receipts(text)
+        initial, malformed = receipts(text)
+        if malformed:
+            category = category or "native_live_receipt_malformed"
         found = next((r["decision"] for r in initial if "decision" in r), None)
         decision = str(uuid.UUID(found)) if found else None
         if decision is None:
             raise RuntimeError("native_live_identity_unavailable")
+        if status != 0:
+            category = category or "native_live_inference_exit"
         event = initial[-1].get("event")
-        before = fixture.sql(f"SELECT count(*) FROM execution.inference_calls WHERE d='{decision}'").strip()
+        before = int(fixture.sql(f"SELECT count(*) FROM execution.inference_calls WHERE d='{decision}'").strip())
         for name in ("m1-infer-inspect", "m1-infer-recover", "m1-infer-recover"):
             code, safe = command(binary, fixture, [name, "--input", str(path), "--operation", decision])
-            records = receipts(safe)
+            records, malformed = receipts(safe)
+            if malformed:
+                category = category or "native_live_receipt_malformed"
             if code or not records or records[-1].get("recovery_category") != "no_provider_replay":
                 raise RuntimeError("native_live_recovery_failed")
-            if records[-1].get("decision") != decision or records[-1].get("event") != event:
+            if records[-1].get("decision") != decision:
+                raise RuntimeError("native_live_identity_changed")
+            if event is None:
+                event = records[-1].get("event")
+            elif records[-1].get("event") != event:
                 raise RuntimeError("native_live_identity_changed")
             recovered.append(records[-1])
-            if fixture.sql(f"SELECT count(*) FROM execution.inference_calls WHERE d='{decision}'").strip() != before:
+            latest = int(fixture.sql(f"SELECT count(*) FROM execution.inference_calls WHERE d='{decision}'").strip())
+            if latest != before:
                 raise RuntimeError("native_live_replay_detected")
         counts = durable_counts(fixture, decision)
+        latest = counts["calls"]
         final = initial[-1]
-        passed = status == 0 and final.get("proposal_disposition") == "validated_proposal" \
+        passed = status == 0 and category is None \
+            and final.get("proposal_disposition") == "validated_proposal" \
             and final.get("publication") == "committed" and final.get("history") == "completed"
         passed = passed and counts["generation"] == 1 and counts["repair"] <= 1 \
             and counts["calls"] == counts["generation"] + counts["repair"]
         passed = passed and all(counts[k] == 1 for k in ("decisions", "outbox", "history", "closures"))
         passed = passed and all(r.get("dispatch_granted") is False for r in [final, *recovered])
     except (RuntimeError, subprocess.SubprocessError, OSError, ValueError, KeyError) as exc:
-        failure = exc
+        passed = False
+        detail = str(exc.args[0]) if isinstance(exc, RuntimeError) and exc.args else type(exc).__name__
+        category = category or detail
         if counts is None and decision is not None:
             try:
                 counts = durable_counts(fixture, decision)
             except (RuntimeError, subprocess.SubprocessError, OSError, ValueError, KeyError):
                 counts = None
+    if not passed and category is None and initial:
+        category = initial[-1].get("proposal_disposition")
+    extra = latest - before if before is not None and latest is not None else None
     result = dict(status="LIVE_PASS" if passed else "LIVE_FAIL", head=head,
                   binary_sha256=binary_sha, decision=decision,
                   counts=counts, initial=initial, fresh_inspect_and_two_recoveries=recovered,
-                  extra_call_records=0, target_activity=False, automatic_retry=False)
-    if failure is not None:
-        result["failure"] = str(failure.args[0]) if failure.args else type(failure).__name__
+                  extra_call_records=extra, target_activity=False, automatic_retry=False)
+    if category is not None:
+        result["failure"] = category
     (report / "live_qualification.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(json.dumps({"status": result["status"], "calls": (counts or {}).get("calls"), "extra_calls": 0}))
+    print(json.dumps({"status": result["status"], "calls": (counts or {}).get("calls"), "extra_calls": extra}))
     return 0 if passed else 1
 
 
