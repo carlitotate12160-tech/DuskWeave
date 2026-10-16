@@ -47,6 +47,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 
 ## Genuine STOP Conditions
 Pause implementation only for:
+- Unsealed required dependencies (return SPLIT_REQUIRED)
 - Unresolved or ambiguous authority (missing PRD/ADR)
 - Violated architectural invariants (INV-001 through INV-007)
 - Material scope expansion beyond assigned outcome
