@@ -183,7 +183,7 @@ fn restricted_sql_rejects_unadmitted_requests_and_forged_events_atomically() {
     let (e, c, reg, now) = register_m1_campaign(0x8122);
     let req = parse_req(&dns_request_json(e, c, now - 10));
     let raw = serde_json::to_value(&req).unwrap();
-    for case in 0..29 {
+    for case in 0..30 {
         let op = allocate_op();
         let mut request = raw.clone();
         let mut event = serde_json::to_value(
@@ -225,7 +225,8 @@ fn restricted_sql_rejects_unadmitted_requests_and_forged_events_atomically() {
             25 => event["registration_event_id"] = json!(Uuid::from_u128(999)),
             26 => event["claim"]["claim_id"] = json!(Uuid::from_u128(999)),
             27 => event["request_hash"] = json!("f".repeat(64)),
-            _ => event["raw_packet"] = json!("SYNTHETIC_REJECTED_DNS_PAYLOAD"),
+            28 => event["raw_packet"] = json!("SYNTHETIC_REJECTED_DNS_PAYLOAD"),
+            _ => event["version"] = json!(1.0),
         }
         let mut client = terrain_client();
         let mut tx = client

@@ -279,7 +279,7 @@ BEGIN
     END IF;
     SELECT * INTO existing FROM terrain.outbox WHERE engagement_id=v_e AND campaign_id=v_c AND operation_id=v_op FOR UPDATE;
     IF FOUND THEN
-        IF existing.request_hash=v_hash AND existing.contract=p_event THEN RETURN existing.contract; END IF;
+        IF existing.request_hash=v_hash AND existing.contract::text=p_event::text THEN RETURN existing.contract; END IF;
         RAISE EXCEPTION 'terrain_identity_conflict';
     END IF;
     FOREACH tag IN ARRAY ARRAY['observation','material','evaluation','claim','event'] LOOP
@@ -343,7 +343,10 @@ BEGIN
         'engagement_id',v_e,'campaign_id',v_c,'operation_id',v_op,'event_id',v_ev,'correlation_id',r->'correlation_id',
         'registration_operation_id',reg->'operation_id','registration_event_id',reg->'event_id','mission_revision',1,'request_hash',v_hash,
         'observation',v_obs,'material',v_mat,'evaluation',v_eval,'claim',v_clm);
-    IF p_event IS DISTINCT FROM expected THEN RAISE EXCEPTION 'terrain_event_refused'; END IF;
+    -- JSONB numeric equality alone equates 1.0 with 1, unlike the closed Rust
+    -- integer contract. Require its canonical representation and store only the
+    -- independently reconstructed event.
+    IF p_event::text IS DISTINCT FROM expected::text THEN RAISE EXCEPTION 'terrain_event_refused'; END IF;
     INSERT INTO terrain.observations VALUES (
         v_e, v_c, v_op, v_obs_id, (p_event->>'correlation_id')::uuid, v_obs->>'source_kind',
         (v_obs->>'vantage_ref')::uuid, v_obs->>'resolver_ipv4', v_obs->>'subject_name',
@@ -377,8 +380,8 @@ BEGIN
         claim_status = EXCLUDED.claim_status, corroborated = EXCLUDED.corroborated,
         conflicted = EXCLUDED.conflicted, perceived_at = EXCLUDED.perceived_at,
         valid_until = EXCLUDED.valid_until, answers = EXCLUDED.answers, payload = EXCLUDED.payload;
-    INSERT INTO terrain.outbox VALUES (v_e, v_c, v_op, v_ev, v_obs_id, v_mat_id, v_eval_id, v_clm_id, v_rev, v_hash, p_event);
-    RETURN p_event;
+    INSERT INTO terrain.outbox VALUES (v_e, v_c, v_op, v_ev, v_obs_id, v_mat_id, v_eval_id, v_clm_id, v_rev, v_hash, expected);
+    RETURN expected;
 EXCEPTION WHEN data_exception THEN RAISE EXCEPTION 'terrain_event_refused';
 END; $$;
 
