@@ -357,5 +357,31 @@ class LiveEpisodeOutcomes(unittest.TestCase):
         self.assertEqual(stdout["extra_calls"], 1)
 
 
+    def test_unavailable_final_snapshot_never_reports_stale_extra_calls(self):
+        class FinalSnapshotUnavailable(FakeFixture):
+            def sql(self, statement, database=None):
+                if "json_build_object" in statement:
+                    raise RuntimeError("native_final_counts_unavailable")
+                return super().sql(statement, database)
+
+        cases = (
+            ([1, 1, RuntimeError("native_count_unavailable")], "native_count_unavailable"),
+            ([1, 1, 1, 1], "native_final_counts_unavailable"),
+            ([1, 2], "native_live_replay_detected"),
+        )
+        text = lines([identity(), receipt("inspect_original_identity")])
+        for calls, failure in cases:
+            with self.subTest(failure=failure):
+                fixture = FinalSnapshotUnavailable(calls=calls)
+                code, result, stdout = self.run_episode(fixture, self.routes((0, text)))
+                self.assertEqual((code, result["status"]), (1, "LIVE_FAIL"))
+                self.assertEqual(result["failure"], failure)
+                self.assertEqual(result["decision"], DECISION)
+                self.assertIsNone(result["counts"])
+                self.assertIsNone(result["extra_call_records"])
+                self.assertIsNone(stdout["extra_calls"])
+                self.assertFalse(result["automatic_retry"])
+
+
 if __name__ == "__main__":
     unittest.main()

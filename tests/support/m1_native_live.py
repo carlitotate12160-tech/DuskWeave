@@ -192,8 +192,7 @@ def run(binary, report, env_file, database_name):
                 counts = None
     # Finalize only after reconciling the last available durable snapshot:
     # zero means measured zero, never a stale measurement or a default.
-    if counts is not None:
-        latest = counts["calls"]
+    latest = counts["calls"] if counts is not None else None
     if not passed and category is None and initial:
         category = initial[-1].get("proposal_disposition")
     extra = latest - before if before is not None and latest is not None else None
