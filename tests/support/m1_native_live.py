@@ -113,9 +113,11 @@ def run(binary, report, env_file, database_name):
     try:
         status, text = command(binary, fixture, ["m1-infer", "--input", str(path), "--operation", "new"], key)
     except subprocess.TimeoutExpired as exc:
-        # The provider-bound process started: keep its partial output and let
-        # the guarded section record LIVE_FAIL on the original identity.
-        status, text = 124, exc.stdout if isinstance(exc.stdout, str) else ""
+        # The provider-bound process started: keep complete receipt lines from
+        # its partial output (captured output may be bytes despite text mode)
+        # and let the guarded section record LIVE_FAIL on the original identity.
+        out = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode("utf-8", errors="replace")
+        status, text = 124, out[: out.rfind("\n") + 1]
     key = None
     initial = []
     recovered = []
