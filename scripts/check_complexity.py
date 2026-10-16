@@ -156,7 +156,8 @@ def _eligible_runs(measurements):
 
 
 def resolve_run_allowance(measurements):
-    """Bind pure-dispatch reference point 10 to unique direct unit-child run in src/main.rs."""
+    """Automated reporting uses business-function reference point 7 for all functions.
+    Pure-dispatch classification (up to reference point 10) is evaluated by reviewers in PR review."""
     eligible = _eligible_runs(measurements)
     if not eligible:
         return {
@@ -170,11 +171,12 @@ def resolve_run_allowance(measurements):
             f"{DISPATCH_FILE}; none receive cap {CAP_REVIEWED_DISPATCH}",
         }
     node = eligible[0]
-    node["cap"] = CAP_REVIEWED_DISPATCH
-    node["allowance"] = "pure-dispatch"
+    # Retain CAP_DEFAULT (7) for automated reporting.
+    # Reviewer classifies pure-dispatch in PR review.
     return {
-        "status": "granted",
+        "status": "unclassified",
         "identity": node["identity"],
+        "detail": f"reported at reference {CAP_DEFAULT}; reviewer classifies pure dispatch (up to {CAP_REVIEWED_DISPATCH}) in PR review",
     }
 
 

@@ -161,8 +161,9 @@ class CliFixtures(unittest.TestCase):
             make_repo(td, {"src/main.rs": REVIEWED_RUN_SRC})
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout)
-            self.assertIn("cap=10 [pure-dispatch]", res.stdout)
-            self.assertEqual(summary_of(td)["run_allowance"]["status"], "granted")
+            self.assertIn("own=10 cap=7", res.stdout)
+            self.assertIn("Warning: 1 complexity warnings", res.stdout)
+            self.assertEqual(summary_of(td)["run_allowance"]["status"], "unclassified")
 
     def test_same_named_run_elsewhere_stays_7(self):
         with tempfile.TemporaryDirectory() as td:
@@ -321,14 +322,16 @@ class PolicyEvaluator(unittest.TestCase):
     def allowance(self, ms):
         return self.checker.resolve_run_allowance(ms)
 
-    def test_dispatch_cap_10_passes_11_fails(self):
-        ms = [mk(name="run", own=10)]
-        self.assertEqual(self.allowance(ms)["status"], "granted")
-        self.assertEqual(ms[0]["cap"], 10)
-        self.assertEqual(self.checker.evaluate(ms)[0], [])
-        ms = [mk(name="run", own=11)]
-        self.allowance(ms)
+    def test_dispatch_reports_reference_7_for_reviewer_classification(self):
+        ms = [mk(name="run", own=9)]
+        status = self.allowance(ms)
+        self.assertEqual(status["status"], "unclassified")
+        self.assertEqual(ms[0]["cap"], 7)
         self.assertEqual(len(self.checker.evaluate(ms)[0]), 1)
+        ms_ok = [mk(name="run", own=7)]
+        self.allowance(ms_ok)
+        self.assertEqual(ms_ok[0]["cap"], 7)
+        self.assertEqual(self.checker.evaluate(ms_ok)[0], [])
 
     def test_dispatch_identity_not_name_alone(self):
         for field in ({"depth": 2}, {"file": "src/other.rs"}):

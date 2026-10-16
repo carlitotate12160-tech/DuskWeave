@@ -198,7 +198,7 @@ Production/tooling file review reference point:
 ```
 
 Large modules should be split by cohesive responsibility. Test/benchmark files
-have a 500-line reference point; Markdown has a separate 600-line cap, subordinate to any
+have a 500-line reference point; Markdown has a separate 600-line reference point, subordinate to any
 narrower document-specific rule. See QUALITY_BAR.md for canonical policy.
 
 Runtime diff and file size are advisory metrics informing review, not hard ceilings.

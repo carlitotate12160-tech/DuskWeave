@@ -37,7 +37,7 @@
 - [x] **Authority hierarchy documented**: Established hierarchically in `AGENTS.md` and `docs/BUILD_ORDER.md` (PRD > ADR > Domain Contract > Quality Bar > AGENTS.md > SKILL.md > Implementation).
 - [x] **Build order documented**: `docs/BUILD_ORDER.md` is the canonical index; the details of the 22 stages are split into bounded packets under `docs/build-order/*.md`.
 - [x] **God-object rules documented**: INV-001 and the prohibition on monolithic managers are documented in `AGENTS.md` and `QUALITY_BAR.md`.
-- [x] **Module-size rules documented**: The `< 300 LOC` ideal bound, the `400 LOC` hard cap, and the responsibility-based split rules are documented in `QUALITY_BAR.md`.
+- [x] **Module-size rules documented**: The `< 300 LOC` ideal bound, the `400 LOC` review reference point (historically hard-capped), and the responsibility-based split rules are documented in `QUALITY_BAR.md`.
 - [x] **ADR/PRD conventions documented**: Format, content constraints, and governance are described in `docs/prd/README.md` and `docs/adr/README.md`.
 
 ---
