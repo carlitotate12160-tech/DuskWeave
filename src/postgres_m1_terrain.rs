@@ -15,7 +15,7 @@ use serde_json::Value;
 const QUALIFY_TERRAIN_SQL: &str = "SELECT pg_has_role(session_user,'dw_m1_terrain','MEMBER') \
 AND NOT EXISTS(SELECT 1 FROM pg_roles r WHERE pg_has_role(session_user,r.oid,'SET') AND (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole)) \
 AND NOT EXISTS(SELECT 1 FROM unnest(ARRAY['dw_runtime','dw_m1_broker','dw_m1_cognition','dw_m1_trajectory']) g WHERE pg_has_role(session_user,g,'MEMBER')) \
-AND NOT EXISTS(SELECT 1 FROM pg_roles a WHERE pg_has_role(session_user,a.oid,'SET') AND (EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname IN ('mission','execution','cognition','trajectory','terrain') AND (has_schema_privilege(a.oid,n.oid,'CREATE') OR pg_has_role(a.oid,n.nspowner,'MEMBER'))) OR EXISTS(SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace WHERE t.relkind='r' AND ((n.nspname IN ('mission','execution','cognition','trajectory') AND (pg_has_role(a.oid,t.relowner,'MEMBER') OR has_table_privilege(a.oid,t.oid,'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER') OR has_any_column_privilege(a.oid,t.oid,'INSERT,UPDATE'))) OR (n.nspname='terrain' AND (pg_has_role(a.oid,t.relowner,'MEMBER') OR has_table_privilege(a.oid,t.oid,'DELETE,TRUNCATE,TRIGGER') OR (t.relname<>'current_claims' AND (has_table_privilege(a.oid,t.oid,'UPDATE') OR has_any_column_privilege(a.oid,t.oid,'UPDATE'))))))))) \
+AND NOT EXISTS(SELECT 1 FROM pg_roles a WHERE pg_has_role(session_user,a.oid,'SET') AND (EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname IN ('mission','execution','cognition','trajectory','terrain') AND (has_schema_privilege(a.oid,n.oid,'CREATE') OR pg_has_role(a.oid,n.nspowner,'MEMBER'))) OR EXISTS(SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace WHERE t.relkind='r' AND n.nspname IN ('mission','execution','cognition','trajectory','terrain') AND (pg_has_role(a.oid,t.relowner,'MEMBER') OR has_table_privilege(a.oid,t.oid,'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER') OR has_any_column_privilege(a.oid,t.oid,'INSERT,UPDATE'))))) \
 AND current_setting('fsync')='on' AND current_setting('full_page_writes')='on' AND current_setting('synchronous_commit')='on'";
 
 const READ_EXISTING_SQL: &str = "SELECT o.request_hash, o.contract, cc.payload, \
@@ -141,7 +141,7 @@ impl PgTerrainStore {
                  FROM terrain.current_claims cc JOIN terrain.outbox o \
                    ON o.engagement_id=cc.engagement_id AND o.campaign_id=cc.campaign_id AND o.operation_id=cc.operation_id \
                  WHERE cc.engagement_id=$1 AND cc.campaign_id=$2 \
-                 AND cc.subject_name=$3 AND cc.claim_kind=$4 AND cc.vantage_ref=$5 AND cc.resolver_ipv4=$6 FOR UPDATE OF cc",
+                 AND cc.subject_name=$3 AND cc.claim_kind=$4 AND cc.vantage_ref=$5 AND cc.resolver_ipv4=$6",
                 &[
                     &req.engagement_id.0,
                     &req.campaign_id.0,
@@ -185,6 +185,7 @@ impl PgTerrainStore {
             return Err(Fail::Input("operation_id"));
         }
         let hash = req.request_hash()?;
+        let request = serde_json::to_value(req).map_err(|_| Fail::Store("contract_encode"))?;
         let perm = verify_mission_permission(mission, req)?;
         let mut tx = self
             .client
@@ -197,13 +198,17 @@ impl PgTerrainStore {
         {
             if ev.request_hash != hash {
                 if perm.is_ok() {
-                    let frontier = ev.claim.temporal_frontier.max(req.perceived_at);
-                    let blocks_use = integrity_conflict_applies(req, &ev);
-                    tx.execute("INSERT INTO terrain.integrity_conflicts \
-                        (engagement_id,campaign_id,operation_id,claim_id,temporal_frontier,blocks_use,reason) \
-                        VALUES ($1,$2,$3,$4,$5,$6,'input_mismatch') ON CONFLICT DO NOTHING",
-                        &[&ev.engagement_id.0, &ev.campaign_id.0, &op.0, &ev.claim.claim_id, &frontier, &blocks_use])
+                    let row = tx
+                        .query_one(
+                            "SELECT terrain.record_dns_integrity_conflict($1,$2)",
+                            &[&request, &op.0],
+                        )
                         .map_err(|e| map_pg_err(&e))?;
+                    let blocks_use: bool =
+                        row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
+                    if blocks_use != integrity_conflict_applies(req, &ev) {
+                        return Err(Fail::Store("contract_decode"));
+                    }
                     tx.commit()
                         .map_err(|_| Fail::Unresolved("terrain_commit_unknown"))?;
                 }
@@ -221,8 +226,11 @@ impl PgTerrainStore {
         let ids = TerrainIds::derive(req.engagement_id, req.campaign_id, op)?;
         let event = evaluate_dns_observation(req, prior.as_ref(), ids, reg)?;
         let payload = serde_json::to_value(&event).map_err(|_| Fail::Store("contract_encode"))?;
-        tx.query_one("SELECT terrain.accept_dns_observation($1)", &[&payload])
-            .map_err(|e| map_pg_err(&e))?;
+        tx.query_one(
+            "SELECT terrain.accept_dns_observation($1,$2)",
+            &[&request, &payload],
+        )
+        .map_err(|e| map_pg_err(&e))?;
         tx.commit()
             .map_err(|_| Fail::Unresolved("terrain_commit_unknown"))?;
         Ok(Ok((event.clone(), event.claim, reg.2, true)))

@@ -136,6 +136,18 @@ pub fn parse_req(val: &Value) -> TerrainDnsRequest {
     parse_terrain_dns_request(&serde_json::to_vec(val).unwrap()).expect("valid terrain dns request")
 }
 
+/// Exercise the deployed SQL boundary itself, without Rust permission admission.
+pub fn sql_accept(
+    tx: &mut postgres::Transaction<'_>,
+    request: &Value,
+    event: &Value,
+) -> Result<postgres::Row, postgres::Error> {
+    tx.query_one(
+        "SELECT terrain.accept_dns_observation($1,$2)",
+        &[request, event],
+    )
+}
+
 pub fn cli_run(
     command: &str,
     input: &Path,

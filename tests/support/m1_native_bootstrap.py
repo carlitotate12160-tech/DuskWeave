@@ -114,7 +114,8 @@ class Fixture:
     def negative_owners(self):
         """Fresh hostile-principal controls; no retained principal is widened."""
         suffix = secrets.token_hex(6)
-        names = {kind: identifier(f"dw_nf60_{suffix}_{kind}") for kind in ("sibling", "foreign", "setonly", "column", "corebad")}
+        names = {kind: identifier(f"dw_nf60_{suffix}_{kind}") for kind in (
+            "sibling", "foreign", "setonly", "column", "corebad", "terraincolumn", "terrainsetonly")}
         for kind, role in names.items():
             if self.sql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'", database="postgres").strip():
                 raise RuntimeError("native_login_collision")
@@ -123,7 +124,8 @@ class Fixture:
             private_run(["docker", "exec", "-i", self.container, "createuser", "-U", "postgres",
                          "--no-superuser", "--no-createdb", "--no-createrole", "--no-replication",
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
-            groups = {"sibling": "dw_m1_broker,dw_m1_cognition", "column": "dw_m1_broker", "corebad": "dw_runtime"}.get(kind, "dw_m1_cognition")
+            groups = {"sibling": "dw_m1_broker,dw_m1_cognition", "column": "dw_m1_broker", "corebad": "dw_runtime",
+                      "terraincolumn": "dw_m1_terrain", "terrainsetonly": "dw_m1_terrain"}.get(kind, "dw_m1_cognition")
             self.sql(f"GRANT {groups} TO {role}")
             variable = f"DW_NATIVE_{kind.upper()}_DATABASE_URL"
             self.env[variable] = f"postgresql://{role}:{quote(password, safe='')}@127.0.0.1:5432/{self.database}?sslmode=disable"
@@ -131,6 +133,8 @@ class Fixture:
         self.sql(f"GRANT USAGE ON SCHEMA mission TO {names['foreign']}; GRANT INSERT ON mission.missions TO {names['foreign']}")
         self.sql(f"GRANT {names['foreign']} TO {names['setonly']} WITH INHERIT FALSE, SET TRUE")
         self.sql(f"GRANT UPDATE(ends_at) ON mission.missions TO {names['column']}; GRANT INSERT ON cognition.reasoning_decisions,trajectory.reasoning_history TO {names['corebad']}")
+        self.sql(f"GRANT UPDATE(valid_until) ON terrain.current_claims TO {names['terraincolumn']}; "
+                 f"GRANT {names['terraincolumn']} TO {names['terrainsetonly']} WITH INHERIT FALSE, SET TRUE")
 
     def sql(self, statement, database=None):
         return private_run(["docker", "exec", "-i", self.container, "psql", "-X", "-U", "postgres",

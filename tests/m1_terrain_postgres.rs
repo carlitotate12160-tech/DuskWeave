@@ -26,6 +26,430 @@ fn table_count(table: &str, op: OperationId) -> i64 {
 }
 
 #[test]
+fn restricted_sql_valid_acceptance_matches_domain_revisions_and_replay() {
+    let _g = db();
+    let (e, c, reg, now) = register_m1_campaign(0x8121);
+    let mut req = parse_req(&dns_request_json(e, c, now - 20));
+    let mut prior = None;
+    for revision in 0..2 {
+        req.expected_claim_revision = revision;
+        req.perceived_at += 5;
+        let op = allocate_op();
+        let ev = duskweave::m1_terrain::evaluate_dns_observation(
+            &req,
+            prior.as_ref(),
+            duskweave::m1_terrain_input::TerrainIds::derive(e, c, op).unwrap(),
+            (reg.operation_id, reg.event_id, now),
+        )
+        .unwrap();
+        let mut client = terrain_client();
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .start()
+            .unwrap();
+        let row = sql_accept(
+            &mut tx,
+            &serde_json::to_value(&req).unwrap(),
+            &serde_json::to_value(&ev).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            row.get::<_, serde_json::Value>(0),
+            serde_json::to_value(&ev).unwrap()
+        );
+        tx.commit().unwrap();
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .start()
+            .unwrap();
+        let again = sql_accept(
+            &mut tx,
+            &serde_json::to_value(&req).unwrap(),
+            &serde_json::to_value(&ev).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            again.get::<_, serde_json::Value>(0),
+            serde_json::to_value(&ev).unwrap()
+        );
+        tx.commit().unwrap();
+        let (mut mission, mut store, mut history) = stores();
+        let (replayed, current, at, auth) =
+            store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+        assert_eq!(replayed, ev);
+        assert!(current.view_with_authority(at, auth).routing_usable);
+        assert_eq!(
+            history.record_terrain(&ev).unwrap(),
+            HistoryStatus::Completed
+        );
+        assert_eq!(table_count("terrain.outbox", op), 1);
+        prior = Some(ev);
+    }
+}
+
+#[test]
+fn restricted_terrain_direct_dml_and_column_bypasses_are_denied() {
+    let _g = db();
+    let mut client = terrain_client();
+    for table in [
+        "observations",
+        "materials",
+        "evaluations",
+        "claim_revisions",
+        "current_claims",
+        "outbox",
+        "integrity_conflicts",
+    ] {
+        for sql in [
+            format!("INSERT INTO terrain.{table} SELECT * FROM terrain.{table} WHERE false"),
+            format!("UPDATE terrain.{table} SET operation_id=operation_id WHERE false"),
+            format!("INSERT INTO terrain.{table}(operation_id) SELECT NULL::uuid WHERE false"),
+        ] {
+            let result = client.execute(&sql, &[]);
+            assert_eq!(
+                result.err().and_then(|e| e.code().cloned()),
+                Some(postgres::error::SqlState::INSUFFICIENT_PRIVILEGE),
+                "direct DML must be denied: {table}"
+            );
+        }
+    }
+}
+
+#[test]
+fn terrain_qualification_rejects_column_writes_and_set_only_escalation() {
+    let _g = db();
+    for variable in [
+        "DW_NATIVE_TERRAINCOLUMN_DATABASE_URL",
+        "DW_NATIVE_TERRAINSETONLY_DATABASE_URL",
+    ] {
+        assert_eq!(
+            qualify_terrain(&mut native::client(variable)),
+            Err(Fail::Config("unqualified_terrain_role"))
+        );
+    }
+}
+
+#[test]
+fn restricted_sql_acceptance_rejects_an_excluded_name_without_effects() {
+    let _g = db();
+    let (e, c, reg, now) = register_m1_campaign(0x8120);
+    let mut raw = dns_request_json(e, c, now - 10);
+    raw["asset_ref"] = json!(null);
+    raw["subject_name"] = json!("api.excluded.example.invalid");
+    let req = parse_req(&raw);
+    let op = allocate_op();
+    let event = duskweave::m1_terrain::evaluate_dns_observation(
+        &req,
+        None,
+        duskweave::m1_terrain_input::TerrainIds::derive(e, c, op).unwrap(),
+        (reg.operation_id, reg.event_id, now),
+    )
+    .unwrap();
+    let mut client = terrain_client();
+    let mut tx = client
+        .build_transaction()
+        .isolation_level(postgres::IsolationLevel::Serializable)
+        .start()
+        .unwrap();
+    let rejected = sql_accept(
+        &mut tx,
+        &serde_json::to_value(&req).unwrap(),
+        &serde_json::to_value(event).unwrap(),
+    )
+    .is_err();
+    tx.rollback().unwrap();
+    assert!(
+        rejected,
+        "SQL must independently reject a purpose-excluded name"
+    );
+    for table in [
+        "observations",
+        "materials",
+        "evaluations",
+        "claim_revisions",
+        "current_claims",
+        "outbox",
+        "integrity_conflicts",
+    ] {
+        assert_eq!(table_count(&format!("terrain.{table}"), op), 0);
+    }
+}
+
+#[test]
+fn restricted_sql_rejects_unadmitted_requests_and_forged_events_atomically() {
+    let _g = db();
+    let (e, c, reg, now) = register_m1_campaign(0x8122);
+    let req = parse_req(&dns_request_json(e, c, now - 10));
+    let raw = serde_json::to_value(&req).unwrap();
+    for case in 0..29 {
+        let op = allocate_op();
+        let mut request = raw.clone();
+        let mut event = serde_json::to_value(
+            duskweave::m1_terrain::evaluate_dns_observation(
+                &req,
+                None,
+                duskweave::m1_terrain_input::TerrainIds::derive(e, c, op).unwrap(),
+                (reg.operation_id, reg.event_id, now),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        match case {
+            0 => request["operator_ref"] = json!(Uuid::from_u128(999)),
+            1 => request["goal_ref"] = json!(Uuid::from_u128(999)),
+            2 => request["exercise_mode"] = json!("defender_informed"),
+            3 => request["expected_mission_revision"] = json!(2),
+            4 => request["vantage_ref"] = json!(Uuid::from_u128(999)),
+            5 => request["resolver_ipv4"] = json!("192.0.2.99"),
+            6 => request["asset_ref"] = json!(Uuid::from_u128(999)),
+            7 => request["perceived_at"] = json!(now + 7201),
+            8 => request["source_kind"] = json!("privileged_defender"),
+            9 => request["raw_packet"] = json!("SYNTHETIC_REJECTED_DNS_PAYLOAD"),
+            10 => request["answers"][0]["extra"] = json!(true),
+            11 => request["answers"][0]["ttl_seconds"] = json!(86401),
+            12 => request["subject_name"] = json!("example.invalid.attacker.invalid"),
+            13 => request["answers"][0]["ipv4"] = json!("198.051.100.10"),
+            14 => request["uncertainty_seconds"] = json!(301),
+            15 => request["qtype"] = json!("TXT"),
+            16 => request["answers"] = json!([raw["answers"][0], raw["answers"][0]]),
+            17 => event["observation"]["subject_name"] = json!("api.example.invalid"),
+            18 => event["material"]["answers"][0]["ttl_seconds"] = json!(121),
+            19 => event["claim"]["valid_until"] = json!(now + 9999),
+            20 => event["evaluation"]["lowest_ttl_seconds"] = json!(9999),
+            21 => event["claim"]["conflicted"] = json!(true),
+            22 => event["claim"]["temporal_frontier"] = json!(now + 1),
+            23 => event["evaluation"]["usable_routing_premise"] = json!(false),
+            24 => event["claim"]["claim_revision"] = json!(9),
+            25 => event["registration_event_id"] = json!(Uuid::from_u128(999)),
+            26 => event["claim"]["claim_id"] = json!(Uuid::from_u128(999)),
+            27 => event["request_hash"] = json!("f".repeat(64)),
+            _ => event["raw_packet"] = json!("SYNTHETIC_REJECTED_DNS_PAYLOAD"),
+        }
+        let mut client = terrain_client();
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .start()
+            .unwrap();
+        let error = sql_accept(&mut tx, &request, &event)
+            .expect_err("SQL must refuse the forged request/event");
+        assert_eq!(
+            error.code(),
+            Some(&postgres::error::SqlState::RAISE_EXCEPTION),
+            "case {case}"
+        );
+        assert!(!error.to_string().contains("SYNTHETIC_REJECTED_DNS_PAYLOAD"));
+        if let Some(db) = error.as_db_error() {
+            for surface in [Some(db.message()), db.detail(), db.hint(), db.where_()] {
+                assert!(
+                    !surface
+                        .unwrap_or("")
+                        .contains("SYNTHETIC_REJECTED_DNS_PAYLOAD")
+                );
+            }
+        }
+        tx.rollback().unwrap();
+        for table in [
+            "observations",
+            "materials",
+            "evaluations",
+            "claim_revisions",
+            "current_claims",
+            "outbox",
+            "integrity_conflicts",
+        ] {
+            assert_eq!(
+                table_count(&format!("terrain.{table}"), op),
+                0,
+                "case {case}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sql_writers_have_fixed_owner_and_narrow_execute_privileges() {
+    let _g = db();
+    let mut client = terrain_client();
+    for signature in [
+        "terrain.accept_dns_observation(jsonb,jsonb)",
+        "terrain.record_dns_integrity_conflict(jsonb,uuid)",
+    ] {
+        let row=client.query_one("SELECT p.prosecdef, p.proconfig=ARRAY['search_path=pg_catalog'], NOT pg_has_role(session_user,p.proowner,'MEMBER'), r.rolname NOT IN ('dw_runtime','dw_m1_broker','dw_m1_cognition','dw_m1_trajectory','dw_m1_terrain') AND NOT EXISTS(SELECT 1 FROM pg_auth_members am JOIN pg_roles g ON g.oid=am.roleid WHERE am.member=p.proowner AND g.rolname IN ('dw_runtime','dw_m1_broker','dw_m1_cognition','dw_m1_trajectory','dw_m1_terrain')), has_function_privilege(session_user,p.oid,'EXECUTE') FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid=$1::text::regprocedure", &[&signature]).unwrap();
+        for index in 0..5 {
+            assert!(row.get::<_, bool>(index));
+        }
+    }
+    let private_denied:bool=client.query_one("SELECT NOT has_function_privilege(session_user,'terrain.admit_dns_request(jsonb)','EXECUTE') AND to_regprocedure('terrain.accept_dns_observation(jsonb)') IS NULL",&[]).unwrap().get(0);
+    assert!(private_denied);
+    for mut other in [
+        runtime_client(),
+        broker_client(),
+        cognition_client(),
+        trajectory_client(),
+    ] {
+        for sql in [
+            "SELECT terrain.accept_dns_observation('{}','{}')",
+            "SELECT terrain.record_dns_integrity_conflict('{}','00000000-0000-0000-0000-000000000001')",
+        ] {
+            assert_eq!(
+                other
+                    .query_one(sql, &[])
+                    .err()
+                    .and_then(|e| e.code().cloned()),
+                Some(postgres::error::SqlState::INSUFFICIENT_PRIVILEGE)
+            );
+        }
+    }
+}
+
+#[test]
+fn restricted_sql_cannot_promote_withheld_or_conflicted_material() {
+    let _g = db();
+    let (e, c, reg, now) = register_m1_campaign(0x8123);
+    let (mut mission, mut store, _) = stores();
+    let first = parse_req(&dns_request_json(e, c, now - 20));
+    let (prior, _, _, _) = store
+        .record_dns(&mut mission, &first, allocate_op())
+        .unwrap()
+        .unwrap();
+    for case in 0..7 {
+        let mut raw = dns_request_json(e, c, now - 10);
+        raw["expected_claim_revision"] = json!(1);
+        match case {
+            0 => raw["limitations"] = json!(["partial_alias_chain"]),
+            1 => raw["truncated"] = json!(true),
+            2 => raw["completeness"] = json!("timeout"),
+            3 => raw["rcode"] = json!("nxdomain"),
+            4 => raw["answers"] = json!([]),
+            5 => raw["answers"][0]["ttl_seconds"] = json!(0),
+            _ => {
+                raw["perceived_at"] = json!(first.perceived_at);
+                raw["answers"][0]["ipv4"] = json!("198.51.100.250");
+            }
+        }
+        let req = parse_req(&raw);
+        let op = allocate_op();
+        let ev = duskweave::m1_terrain::evaluate_dns_observation(
+            &req,
+            Some(&prior),
+            duskweave::m1_terrain_input::TerrainIds::derive(e, c, op).unwrap(),
+            (reg.operation_id, reg.event_id, now),
+        )
+        .unwrap();
+        assert!(!ev.evaluation.usable_routing_premise);
+        let mut forged = serde_json::to_value(&ev).unwrap();
+        forged["evaluation"]["outcome"] = json!("qualified_dns_claim");
+        forged["evaluation"]["usable_routing_premise"] = json!(true);
+        forged["evaluation"]["lowest_ttl_seconds"] = json!(120);
+        forged["evaluation"]["valid_until"] = json!(req.perceived_at + 60);
+        forged["claim"]["valid_until"] = json!(req.perceived_at + 60);
+        forged["claim"]["claim_status"] = json!("observed");
+        forged["claim"]["conflicted"] = json!(false);
+        let mut client = terrain_client();
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .start()
+            .unwrap();
+        let rejected = sql_accept(&mut tx, &serde_json::to_value(&req).unwrap(), &forged).is_err();
+        tx.rollback().unwrap();
+        assert!(rejected, "caller cannot promote case {case}");
+        assert_eq!(table_count("terrain.outbox", op), 0);
+        // The correctly qualified historical result is still accepted by the same SQL gate.
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .start()
+            .unwrap();
+        assert!(
+            sql_accept(
+                &mut tx,
+                &serde_json::to_value(&req).unwrap(),
+                &serde_json::to_value(&ev).unwrap()
+            )
+            .is_ok()
+        );
+        tx.rollback().unwrap();
+    }
+}
+
+#[test]
+fn restricted_conflict_command_derives_scope_and_refuses_forged_authority() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8124);
+    let req = parse_req(&dns_request_json(e, c, now - 20));
+    let (mut mission, mut store, mut history) = stores();
+    let op = allocate_op();
+    let (original, _, _, _) = store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+    history.record_terrain(&original).unwrap();
+    let mut variant = req.clone();
+    variant.answers[0].ipv4 = "198.51.100.250".into();
+    for case in 0..6 {
+        let mut raw = serde_json::to_value(&variant).unwrap();
+        let mut target = op.0;
+        match case {
+            0 => raw["operator_ref"] = json!(Uuid::from_u128(999)),
+            1 => raw["claim_id"] = json!(original.claim.claim_id),
+            2 => raw["temporal_frontier"] = json!(now + 999),
+            3 => raw["blocks_use"] = json!(true),
+            4 => target = allocate_op().0,
+            _ => {
+                raw["asset_ref"] = json!(null);
+                raw["subject_name"] = json!("api.excluded.example.invalid");
+            }
+        }
+        let mut client = terrain_client();
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .start()
+            .unwrap();
+        assert!(
+            tx.query_one(
+                "SELECT terrain.record_dns_integrity_conflict($1,$2)",
+                &[&raw, &target]
+            )
+            .is_err()
+        );
+        tx.rollback().unwrap();
+        assert_eq!(table_count("terrain.integrity_conflicts", op), 0);
+    }
+    let mut client = terrain_client();
+    let mut tx = client
+        .build_transaction()
+        .isolation_level(postgres::IsolationLevel::Serializable)
+        .start()
+        .unwrap();
+    let blocks: bool = tx
+        .query_one(
+            "SELECT terrain.record_dns_integrity_conflict($1,$2)",
+            &[&serde_json::to_value(&variant).unwrap(), &op.0],
+        )
+        .unwrap()
+        .get(0);
+    assert!(blocks);
+    tx.commit().unwrap();
+    let row=client.query_one("SELECT claim_id,temporal_frontier FROM terrain.integrity_conflicts WHERE operation_id=$1",&[&op.0]).unwrap();
+    assert_eq!(row.get::<_, Uuid>(0), original.claim.claim_id);
+    assert_eq!(row.get::<_, i64>(1), req.perceived_at);
+    let (unchanged, current, at, auth) =
+        store.inspect_dns(&mut mission, &req, op).unwrap().unwrap();
+    assert_eq!(unchanged, original);
+    assert!(!current.view_with_authority(at, auth).routing_usable);
+    assert_eq!(history.inspect_terrain(&original).unwrap(), "anomaly");
+    variant.perceived_at += 10;
+    variant.expected_claim_revision = 1;
+    let (_, clean, at, auth) = store
+        .record_dns(&mut mission, &variant, allocate_op())
+        .unwrap()
+        .unwrap();
+    assert!(clean.view_with_authority(at, auth).routing_usable);
+}
+
+#[test]
 fn regression_restricted_sql_anomalies_never_retain_rejected_bytes() {
     let _g = db();
     let sentinel = "Bearer SYNTHETIC_UNSAFE_TERRAIN_VALUE";
@@ -440,6 +864,35 @@ fn postgres_enforces_mission_policy_and_withdrawal_blocks_acceptance_and_current
     // Withdraw Mission authority for (e, c).
     let marker = policy_support::marker(&reg);
     policy_support::insert_marker(&mut runtime_client(), &marker);
+
+    // Bypassing the Rust permission reader cannot bypass the committed withdrawal.
+    let direct_op = allocate_op();
+    let mut direct_request = base.clone();
+    direct_request.expected_claim_revision = 1;
+    direct_request.perceived_at += 5;
+    let direct_event = duskweave::m1_terrain::evaluate_dns_observation(
+        &direct_request,
+        Some(&ev1),
+        duskweave::m1_terrain_input::TerrainIds::derive(e, c, direct_op).unwrap(),
+        (reg.operation_id, reg.event_id, now),
+    )
+    .unwrap();
+    let mut direct = terrain_client();
+    let mut tx = direct
+        .build_transaction()
+        .isolation_level(postgres::IsolationLevel::Serializable)
+        .start()
+        .unwrap();
+    assert!(
+        sql_accept(
+            &mut tx,
+            &serde_json::to_value(&direct_request).unwrap(),
+            &serde_json::to_value(&direct_event).unwrap()
+        )
+        .is_err()
+    );
+    tx.rollback().unwrap();
+    assert_eq!(table_count("terrain.outbox", direct_op), 0);
 
     // New record after withdrawal is refused.
     let op2 = allocate_op();

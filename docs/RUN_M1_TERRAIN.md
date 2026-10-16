@@ -136,11 +136,37 @@ duskweave m1-terrain-recover --input /path/to/dns_observation.json --operation <
 
 Recovery is strictly database-only: it verifies the committed `terrain.*` source rows through Trajectory's narrow port, records the accepted history row once, and allocates no replacement operation identity.
 
-## Open SQL Privilege Hardening Finding
+## Restricted SQL Admission Boundary
 
-The Terrain login currently has direct `INSERT` rights on its owned append-only tables and `UPDATE` rights on `current_claims`. `accept_dns_observation` runs as invoker. Consequently, a client holding that login can bypass the function's Mission/revision checks with direct DML; the Rust admission path is not an exclusive SQL security boundary. The six-finding correction does not qualify resistance to this alternate SQL path.
+The Terrain login has read rights and restricted `EXECUTE` on two intent-specific
+writers: `terrain.accept_dns_observation(request, event)` and
+`terrain.record_dns_integrity_conflict(request, operation_id)`. Both are
+`SECURITY DEFINER`, owned by the non-runtime migration owner, with fixed
+`search_path = pg_catalog`, qualified object references and caller-role checks.
+Direct table and column `INSERT`/`UPDATE` privileges are revoked, including on
+the current projection and integrity-conflict records. Role qualification rejects
+additional write rights, including column grants reachable through `SET ROLE`.
 
-Current review records this additional finding separately. Removing the direct grants requires a cohesive SQL admission boundary, including restricted acceptance and integrity-conflict writes, safe typed payload checks and current Mission eligibility. Changing only the function to `SECURITY DEFINER` would still expose its insufficiently validated JSON input, and removing `UPDATE` also affects the adapter's current `SELECT FOR UPDATE`. Keep PR #63 open pending a bounded disposition; no stronger database-admission claim is made here.
+The adapter passes the existing closed `TerrainDnsRequest` with its evaluated
+event. SQL independently admits the request's fields, bounds, source, current
+Mission/operator/goal/mode/vantage/resolver/asset/window bindings and label-aware
+purpose rules with exclusions. A private admission function is unavailable to
+runtime callers. Only admitted fields enter the existing request digest.
+Acceptance reconstructs deterministic identities, observation/material links,
+expected revision, conflict/frontier, status and TTL from committed state and
+requires the entire event to match. Caller-supplied usability is never authority.
+The conflict command derives affected references and use eligibility from the
+verified request and original committed source; it accepts no claim ID, frontier
+or `blocks_use` argument. Original source and accepted history remain immutable.
+
+Both commands require a durable `SERIALIZABLE` transaction. Mission/current/source
+row locking occurs inside the privileged boundary; adapter reads need no table
+`UPDATE` permission. Expected revisions, atomic state/outbox publication and
+database-only COMMIT-ACK reconciliation remain unchanged. Direct SQL regressions
+exercise the actual restricted login, including valid acceptance and rejection
+without durable effects. These controls qualify this operator-reviewed intake
+lane; the reviewed source label does not attest external DNS truth or establish
+live acquisition, deployment qualification, ContextPack integration or an M1 seal.
 
 ## Running Focused Native Tests
 
