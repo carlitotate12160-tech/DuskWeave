@@ -192,7 +192,10 @@ class FakeFixture:
         if "count(*) FROM execution.inference_calls" in statement:
             if self.count_error:
                 raise RuntimeError("native_count_unavailable")
-            return f"{next(self.calls)}\n"
+            value = next(self.calls)
+            if isinstance(value, BaseException):
+                raise value
+            return f"{value}\n"
         return ""
 
 
@@ -309,6 +312,30 @@ class LiveEpisodeOutcomes(unittest.TestCase):
         code, result, _ = self.run_episode(fixture, self.routes((0, lines([identity()]))))
         self.assertEqual((code, result["status"]), (1, "LIVE_FAIL"))
         self.assertEqual(result["decision"], DECISION)
+
+    def test_final_durable_count_growth_fails_and_reports_extra(self):
+        counts = dict(FakeFixture.COUNTS, calls=2, repair=1)
+        fixture = FakeFixture(calls=[1, 1, 1, 1], counts=counts)
+        text = lines([identity(), receipt("inspect_original_identity")])
+        code, result, stdout = self.run_episode(fixture, self.routes((0, text)))
+        self.assertEqual((code, result["status"]), (1, "LIVE_FAIL"))
+        self.assertEqual(result["failure"], "native_live_replay_detected")
+        self.assertEqual(result["decision"], DECISION)
+        self.assertEqual(result["extra_call_records"], 1)
+        self.assertEqual(stdout["extra_calls"], 1)
+
+    def test_later_count_failure_uses_final_durable_snapshot(self):
+        calls = [1, 1, RuntimeError("native_count_unavailable")]
+        counts = dict(FakeFixture.COUNTS, calls=2)
+        fixture = FakeFixture(calls=calls, counts=counts)
+        text = lines([identity(), receipt("inspect_original_identity")])
+        code, result, stdout = self.run_episode(fixture, self.routes((0, text)))
+        self.assertEqual((code, result["status"]), (1, "LIVE_FAIL"))
+        self.assertEqual(result["failure"], "native_count_unavailable")
+        self.assertEqual(result["decision"], DECISION)
+        self.assertEqual(result["counts"]["calls"], 2)
+        self.assertEqual(result["extra_call_records"], 1)
+        self.assertEqual(stdout["extra_calls"], 1)
 
 
 if __name__ == "__main__":

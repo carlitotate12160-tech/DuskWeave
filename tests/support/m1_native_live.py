@@ -168,7 +168,6 @@ def run(binary, report, env_file, database_name):
             if latest != before:
                 raise RuntimeError("native_live_replay_detected")
         counts = durable_counts(fixture, decision)
-        latest = counts["calls"]
         final = initial[-1]
         passed = status == 0 and category is None \
             and final.get("proposal_disposition") == "validated_proposal" \
@@ -186,9 +185,16 @@ def run(binary, report, env_file, database_name):
                 counts = durable_counts(fixture, decision)
             except (RuntimeError, subprocess.SubprocessError, OSError, ValueError, KeyError):
                 counts = None
+    # Finalize only after reconciling the last available durable snapshot:
+    # zero means measured zero, never a stale measurement or a default.
+    if counts is not None:
+        latest = counts["calls"]
     if not passed and category is None and initial:
         category = initial[-1].get("proposal_disposition")
     extra = latest - before if before is not None and latest is not None else None
+    if passed and extra != 0:
+        category = "native_live_replay_detected"
+        passed = False
     result = dict(status="LIVE_PASS" if passed else "LIVE_FAIL", head=head,
                   binary_sha256=binary_sha, decision=decision,
                   counts=counts, initial=initial, fresh_inspect_and_two_recoveries=recovered,
