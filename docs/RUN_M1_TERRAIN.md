@@ -136,6 +136,12 @@ duskweave m1-terrain-recover --input /path/to/dns_observation.json --operation <
 
 Recovery is strictly database-only: it verifies the committed `terrain.*` source rows through Trajectory's narrow port, records the accepted history row once, and allocates no replacement operation identity.
 
+## Open SQL Privilege Hardening Finding
+
+The Terrain login currently has direct `INSERT` rights on its owned append-only tables and `UPDATE` rights on `current_claims`. `accept_dns_observation` runs as invoker. Consequently, a client holding that login can bypass the function's Mission/revision checks with direct DML; the Rust admission path is not an exclusive SQL security boundary. The six-finding correction does not qualify resistance to this alternate SQL path.
+
+Current review records this additional finding separately. Removing the direct grants requires a cohesive SQL admission boundary, including restricted acceptance and integrity-conflict writes, safe typed payload checks and current Mission eligibility. Changing only the function to `SECURITY DEFINER` would still expose its insufficiently validated JSON input, and removing `UPDATE` also affects the adapter's current `SELECT FOR UPDATE`. Keep PR #63 open pending a bounded disposition; no stronger database-admission claim is made here.
+
 ## Running Focused Native Tests
 
 Provision a fresh disposable `dw_native_fixture_<random>` database on the owned `dwpg-r3` service and run the four Terrain test suites:

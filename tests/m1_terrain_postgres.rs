@@ -223,6 +223,13 @@ fn regression_identity_conflict_frontier_blocks_an_intermediate_observation() {
         store.record_dns(&mut mission, &variant, op),
         Err(Fail::Conflict("input_mismatch"))
     );
+    let (_, held, _, _) = store.inspect_dns(&mut mission, &req, op).unwrap().unwrap();
+    assert_eq!(
+        held.temporal_frontier, variant.perceived_at,
+        "inspection must expose the same hold frontier used for subsequent acceptance"
+    );
+    let (_, replayed, _, _) = store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+    assert_eq!(replayed.temporal_frontier, variant.perceived_at);
     req.perceived_at = now - 20;
     req.expected_claim_revision = 1;
     let (between, _, _, _) = store

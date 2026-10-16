@@ -30,7 +30,7 @@ floor(extract(epoch FROM statement_timestamp()))::bigint, \
   AND r.campaign_id = o.campaign_id AND r.operation_id = (o.contract->>'registration_operation_id')::uuid \
   AND r.event_id = (o.contract->>'registration_event_id')::uuid) \
  AND NOT EXISTS(SELECT 1 FROM mission.withdrawals w WHERE w.engagement_id = o.engagement_id AND w.campaign_id = o.campaign_id)), \
-EXISTS(SELECT 1 FROM terrain.claim_integrity_holds h WHERE h.engagement_id=cc.engagement_id \
+(SELECT max(h.temporal_frontier) FROM terrain.claim_integrity_holds h WHERE h.engagement_id=cc.engagement_id \
  AND h.campaign_id=cc.campaign_id AND h.subject_name=cc.subject_name AND h.claim_kind=cc.claim_kind \
  AND h.vantage_ref=cc.vantage_ref AND h.resolver_ipv4=cc.resolver_ipv4 \
  AND h.temporal_frontier >= (cc.payload->>'temporal_frontier')::bigint) \
@@ -113,10 +113,12 @@ impl PgTerrainStore {
         if stored_hash != ev.request_hash {
             return Err(Fail::Store("contract_decode"));
         }
-        let held: bool = row.try_get(6).map_err(|_| Fail::Store("contract_decode"))?;
-        if held {
+        let held_frontier: Option<i64> =
+            row.try_get(6).map_err(|_| Fail::Store("contract_decode"))?;
+        if let Some(frontier) = held_frontier {
             cur.conflicted = true;
             cur.claim_status = crate::m1_terrain::TerrainClaimStatus::Conflicted;
+            cur.temporal_frontier = frontier;
         }
         Ok(Some((ev, cur, now, auth_db)))
     }
