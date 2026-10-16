@@ -1,5 +1,6 @@
 //! CLI boundary for M1 Terrain DNS observation record, inspect, and recover.
-use duskweave::m1_terrain::{TerrainReceipt, verify_mission_permission};
+use duskweave::m1_terrain::TerrainReceipt;
+use duskweave::m1_terrain::verify_mission_permission;
 use duskweave::m1_terrain_input::{TerrainDnsRequest, read_terrain_dns_file};
 use duskweave::mission::OperationId;
 use duskweave::postgres_m1_terrain::{PgTerrainStore, qualify_terrain};
@@ -238,10 +239,14 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
         Ok(pair) => pair,
         Err(f) => {
             let (res, code, mapped) = map_fail(f);
-            (
-                TerrainReceipt::failure(res, code, req_captured.as_ref(), op_captured),
-                Some(mapped),
-            )
+            let mut receipt =
+                TerrainReceipt::failure(res, code, req_captured.as_ref(), op_captured);
+            if command != "m1-terrain-record" && op_captured.is_some() {
+                // A failed read establishes neither rollback nor absence of history.
+                receipt.publication = "unknown".to_string();
+                receipt.history = "unknown".to_string();
+            }
+            (receipt, Some(mapped))
         }
     };
     let json = serde_json::to_string(&receipt).map_err(|_| Fail::State("receipt_encode"))?;

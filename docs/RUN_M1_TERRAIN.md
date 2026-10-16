@@ -82,15 +82,17 @@ Input files must be valid UTF-8 JSON (`<= 16384` bytes, nesting depth `<= 8`) wi
 1. **Meaning**: A supported claim (`dns_hostname_ipv4_resolution`) means only that the declared `operator_reviewed_dns` source reported this `subject_name -> IPv4` binding from `(vantage_ref, resolver_ipv4)` at `perceived_at`. It proves no ownership, origin discovery, backend identity, reachability, foothold, vulnerability, or execution permission.
 2. **Distinct identities**: `observation_id`, `material_id`, `evaluation_id`, `claim_id`, and `event_id` are deterministically derived and distinct per `(engagement_id, campaign_id, operation_id)`.
 3. **Trust tier & status**:
-   - Complete `noerror` material with non-empty answers and `lowest_ttl_seconds > 0` yields `trust_tier = "tier_1"`, `claim_status = "observed"`, `corroborated = false`.
-   - Incomplete, truncated, non-`noerror`, empty-answer, or `ttl_seconds = 0` material is recorded with `claim_status = "withheld"` and `usable_routing_premise = false`.
+   - Complete `noerror` material with non-empty answers, `lowest_ttl_seconds > 0`, and no `partial_alias_chain` limitation yields `trust_tier = "tier_1"`, `claim_status = "observed"`, `corroborated = false`.
+   - Incomplete, truncated, partial-alias, non-`noerror`, empty-answer, or `ttl_seconds = 0` material is recorded with `claim_status = "withheld"` and `usable_routing_premise = false`. Safe historical material retains its explicit limitations.
 4. **Read-time freshness**:
    - `valid_until = perceived_at + min(lowest_ttl_seconds, 60)` when `lowest_ttl_seconds > 0`.
    - `ttl_seconds = 0` sets `valid_until = perceived_at` (`freshness = "expired"`, `routing_usable = false`): valid historical material, never usable for later routing/contact.
    - `routing_usable` is computed at read/use time from current Mission authority (`authority_active`) and `perceived_at <= evaluated_at < valid_until`; there is no background timer or expiry writer.
 5. **Rotation vs. conflict**:
-   - A strictly later observation (`perceived_at > prior.perceived_at`) with matching `expected_claim_revision` advances `claim_revision` normally (normal RRset rotation).
-   - An observation at the same or earlier `perceived_at` for the same applicability scope, or on top of an already conflicted claim, transitions the claim to `claim_status = "conflicted"` (`outcome = "applicability_conflict"`, `routing_usable = false`) without silently picking a winner by arrival order.
+   - Every revision retains a monotonic `temporal_frontier`: the highest accepted perception time, including any affected integrity hold. Late conflicting material cannot lower it.
+   - A strictly later observation (`perceived_at > prior.temporal_frontier`) with matching `expected_claim_revision` may establish new applicability. Routing still requires qualified material and current freshness/authority. This allows normal RRset rotation and later qualified recovery without erasing historical conflicts.
+   - A duplicate at the frontier must match the full material semantics (transport, query, RCODE, truncation, completeness, limitations and answers/TTLs), asset and time uncertainty, and have an unconflicted predecessor. Repeating a disputed variant under a new operation cannot select a winner. Earlier material, or incompatible material at the frontier, remains `conflicted` with `routing_usable = false`.
+   - Accepted revisions retain their original identities and predecessor revision. Integrity holds are separate append-only references; fresh current views overlay holds without rewriting accepted source records. A superseded historical claim cannot be used as the current routing premise.
 
 ## Operator CLI Commands
 
@@ -108,7 +110,11 @@ or with a pre-allocated operation UUID:
 duskweave m1-terrain-record --input /path/to/dns_observation.json --operation <OPERATION_UUID>
 ```
 
-Idempotent redelivery of the exact same request under the same `<OPERATION_UUID>` returns the durable acceptance without creating duplicate revisions or history rows. Conflicting content under an existing `<OPERATION_UUID>` is refused with `reason = "input_mismatch"`.
+Idempotent redelivery of the exact same request under the same `<OPERATION_UUID>` returns the durable acceptance without creating duplicate revisions or history rows. Conflicting admitted content under an existing `<OPERATION_UUID>` is refused with `reason = "input_mismatch"`, preserving the original committed identity. An eligible variant in the affected applicability durably holds its dependent use. Unattributed, ineligible or different-applicability variants cannot hold unrelated routing premises. Independent later qualified applicability remains eligible.
+
+Trajectory verifies the committed Terrain source through its restricted role. Mismatched or unsafe variants never enter anomaly contracts: those contain only a static category and the committed affected claim reference. Anomalies dominate replay, inspection and recovery of the affected history; accepted history stays immutable.
+
+If the COMMIT acknowledgment is lost, the initial receipt reports `result = "unresolved"`, `publication = "unknown"`, `history = "unknown"`, and preserves the allocated `operation_id`, including with `--operation new`. It does not claim rollback. Reconcile that same operation through inspect/recover; do not allocate a replacement. A verified pre-commit refusal reports `publication = "not_committed"`. Failed inspection reports uncertainty, never a verified absence.
 
 ### 2. Inspect an Existing Terrain Operation
 

@@ -1,7 +1,7 @@
 //! Strict bounded intake parser and observation/material types for M1 Terrain DNS.
 use crate::m1_permission::validate_query_name;
 use crate::mission::{
-    AssetRef, CampaignId, EngagementId, ExerciseMode, GoalRef, OperationId, OperatorRef,
+    AssetRef, CampaignId, EngagementId, EventId, ExerciseMode, GoalRef, OperationId, OperatorRef,
 };
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
@@ -166,6 +166,46 @@ pub struct TerrainDnsMaterial {
     #[serde(default)]
     pub limitations: Vec<DnsLimitation>,
     pub answers: Vec<DnsAnswer>,
+}
+
+impl TerrainObservation {
+    pub(crate) fn validate_basis(&self) -> Res<()> {
+        validate_dns_hostname(&self.subject_name)?;
+        canonical_ipv4(&self.resolver_ipv4)?;
+        let ok = [
+            self.perceived_at > 0,
+            self.recorded_at >= self.perceived_at,
+            self.uncertainty_seconds <= MAX_UNCERTAINTY_SECONDS,
+        ];
+        ok.into_iter()
+            .all(|b| b)
+            .then_some(())
+            .ok_or(Fail::Input("invalid_bounds"))
+    }
+}
+
+impl TerrainDnsMaterial {
+    pub(crate) fn validate_basis(&self) -> Res<()> {
+        validate_answers(&self.answers)?;
+        validate_limitations(&self.limitations)
+    }
+
+    pub(crate) fn matches_request(&self, req: &TerrainDnsRequest) -> bool {
+        [
+            self.transport == req.transport,
+            self.qtype == req.qtype,
+            self.qclass == req.qclass,
+            self.rcode == req.rcode,
+            self.truncated == req.truncated,
+            self.completeness == req.completeness,
+            self.limitations.len() == req.limitations.len(),
+            self.limitations.iter().all(|v| req.limitations.contains(v)),
+            self.answers.len() == req.answers.len(),
+            self.answers.iter().all(|v| req.answers.contains(v)),
+        ]
+        .into_iter()
+        .all(|b| b)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -341,4 +381,66 @@ pub fn read_terrain_dns_file(path: &std::path::Path) -> Res<TerrainDnsRequest> {
         .read_to_end(&mut raw)
         .map_err(|_| Fail::Input("unreadable_input"))?;
     parse_terrain_dns_request(&raw)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerrainIds {
+    pub operation_id: OperationId,
+    pub observation_id: Uuid,
+    pub material_id: Uuid,
+    pub evaluation_id: Uuid,
+    pub claim_id: Uuid,
+    pub event_id: EventId,
+}
+
+fn scoped_uuid(e: EngagementId, c: CampaignId, op: OperationId, tag: &str) -> Uuid {
+    let mut h = Sha256::new();
+    for part in [
+        b"dw-terrain-id-v1\0".as_slice(),
+        e.0.as_bytes(),
+        c.0.as_bytes(),
+        op.0.as_bytes(),
+        tag.as_bytes(),
+    ] {
+        h.update(part);
+    }
+    let d = h.finalize();
+    let mut b = [0u8; 16];
+    b.copy_from_slice(&d[..16]);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(b)
+}
+
+impl TerrainIds {
+    pub fn derive(e: EngagementId, c: CampaignId, operation_id: OperationId) -> Res<Self> {
+        let ids = Self {
+            operation_id,
+            observation_id: scoped_uuid(e, c, operation_id, "observation"),
+            material_id: scoped_uuid(e, c, operation_id, "material"),
+            evaluation_id: scoped_uuid(e, c, operation_id, "evaluation"),
+            claim_id: scoped_uuid(e, c, operation_id, "claim"),
+            event_id: EventId(scoped_uuid(e, c, operation_id, "event")),
+        };
+        ids.validate()?;
+        Ok(ids)
+    }
+
+    pub fn validate(&self) -> Res<()> {
+        let all = [
+            self.operation_id.0,
+            self.observation_id,
+            self.material_id,
+            self.evaluation_id,
+            self.claim_id,
+            self.event_id.0,
+        ];
+        for (i, id) in all.iter().enumerate() {
+            let bad = [id.is_nil(), all[..i].contains(id)];
+            if bad.into_iter().any(|b| b) {
+                return Err(Fail::State("terrain_identity_invalid"));
+            }
+        }
+        Ok(())
+    }
 }

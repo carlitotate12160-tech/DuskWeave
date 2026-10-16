@@ -95,6 +95,28 @@ CREATE UNIQUE INDEX terrain_history_accepted_idx
 CREATE UNIQUE INDEX terrain_history_event_accepted_idx
     ON trajectory.terrain_history (event_id) WHERE status = 'accepted';
 
+-- Only admitted request conflicts enter here; rejected bytes are never retained.
+CREATE TABLE terrain.integrity_conflicts (
+    engagement_id UUID NOT NULL, campaign_id UUID NOT NULL, operation_id UUID NOT NULL,
+    claim_id UUID NOT NULL REFERENCES terrain.claim_revisions(claim_id),
+    temporal_frontier BIGINT NOT NULL,
+    blocks_use BOOLEAN NOT NULL,
+    reason TEXT NOT NULL CHECK (reason = 'input_mismatch'),
+    PRIMARY KEY (engagement_id, campaign_id, operation_id, temporal_frontier, blocks_use));
+
+-- Derive affected applicability from immutable source references, never caller labels.
+CREATE VIEW terrain.claim_integrity_holds AS
+    SELECT cr.engagement_id, cr.campaign_id, cr.subject_name, cr.claim_kind,
+           cr.vantage_ref, cr.resolver_ipv4, i.temporal_frontier
+    FROM terrain.integrity_conflicts i JOIN terrain.claim_revisions cr ON cr.claim_id=i.claim_id
+    WHERE i.blocks_use
+    UNION ALL
+    SELECT cr.engagement_id, cr.campaign_id, cr.subject_name, cr.claim_kind,
+           cr.vantage_ref, cr.resolver_ipv4, (cr.payload->>'temporal_frontier')::bigint
+    FROM trajectory.terrain_history h JOIN terrain.claim_revisions cr
+      ON cr.engagement_id=h.engagement_id AND cr.campaign_id=h.campaign_id AND cr.operation_id=h.operation_id
+    WHERE h.status='anomaly';
+
 CREATE FUNCTION terrain.accept_dns_observation(p_event jsonb)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog AS $$
 DECLARE
@@ -171,71 +193,87 @@ END; $$;
 CREATE FUNCTION trajectory.record_terrain_history(p_event jsonb)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
 DECLARE
-    v_e uuid := (p_event->>'engagement_id')::uuid; v_c uuid := (p_event->>'campaign_id')::uuid;
-    v_op uuid := (p_event->>'operation_id')::uuid; v_ev uuid := (p_event->>'event_id')::uuid;
-    v_obs_id uuid := (p_event->'observation'->>'observation_id')::uuid;
-    v_mat_id uuid := (p_event->'material'->>'material_id')::uuid;
-    v_eval_id uuid := (p_event->'evaluation'->>'evaluation_id')::uuid;
-    v_clm_id uuid := (p_event->'claim'->>'claim_id')::uuid;
-    v_rev integer := (p_event->'claim'->>'claim_revision')::integer;
-    v_reg_op uuid := (p_event->>'registration_operation_id')::uuid;
-    v_reg_ev uuid := (p_event->>'registration_event_id')::uuid;
-    v_hash text := p_event->>'request_hash';
+    v_e uuid; v_c uuid; v_op uuid;
+    v_source terrain.outbox%ROWTYPE; v_hist trajectory.terrain_history%ROWTYPE;
+    v_source_ok boolean; v_reason text;
     v_now bigint := floor(extract(epoch FROM statement_timestamp()))::bigint;
-    v_source_ok boolean; v_hist record;
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_trajectory', 'MEMBER')
        OR EXISTS (SELECT 1 FROM unnest(ARRAY['dw_runtime','dw_m1_broker','dw_m1_cognition','dw_m1_terrain']) g WHERE pg_has_role(session_user, g, 'MEMBER')) THEN
         RAISE EXCEPTION 'unqualified_trajectory_writer' USING ERRCODE = '42501';
     END IF;
+    -- Parse only lookup references. Never expose cast errors containing rejected values.
+    BEGIN
+        v_e := (p_event->>'engagement_id')::uuid;
+        v_c := (p_event->>'campaign_id')::uuid;
+        v_op := (p_event->>'operation_id')::uuid;
+    EXCEPTION WHEN invalid_text_representation THEN
+        RETURN 'uncommitted';
+    END;
+    SELECT * INTO v_source FROM terrain.outbox
+    WHERE engagement_id=v_e AND campaign_id=v_c AND operation_id=v_op;
+    IF NOT FOUND THEN RETURN 'uncommitted'; END IF;
+    IF EXISTS (SELECT 1 FROM trajectory.terrain_history
+               WHERE engagement_id=v_e AND campaign_id=v_c AND operation_id=v_op AND status='anomaly')
+       OR EXISTS (SELECT 1 FROM terrain.integrity_conflicts
+                  WHERE engagement_id=v_e AND campaign_id=v_c AND operation_id=v_op AND blocks_use) THEN
+        RETURN 'anomaly';
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM mission.registration_outbox r JOIN trajectory.registration_history h
-          ON h.engagement_id = r.engagement_id AND h.campaign_id = r.campaign_id
-         AND h.operation_id = r.operation_id AND h.event_id = r.event_id AND h.status = 'accepted'
-        WHERE r.engagement_id = v_e AND r.campaign_id = v_c AND r.operation_id = v_reg_op AND r.event_id = v_reg_ev
-    ) OR EXISTS (SELECT 1 FROM trajectory.registration_history WHERE engagement_id = v_e AND campaign_id = v_c AND status = 'anomaly') THEN
+          ON h.engagement_id=r.engagement_id AND h.campaign_id=r.campaign_id
+         AND h.operation_id=r.operation_id AND h.event_id=r.event_id AND h.status='accepted'
+        WHERE r.engagement_id=v_e AND r.campaign_id=v_c
+          AND r.operation_id=(v_source.contract->>'registration_operation_id')::uuid
+          AND r.event_id=(v_source.contract->>'registration_event_id')::uuid
+    ) OR EXISTS (SELECT 1 FROM trajectory.registration_history
+                 WHERE engagement_id=v_e AND campaign_id=v_c AND status='anomaly') THEN
         RETURN 'pending';
     END IF;
-    IF EXISTS (SELECT 1 FROM trajectory.terrain_history WHERE ((engagement_id = v_e AND campaign_id = v_c AND operation_id = v_op) OR event_id = v_ev) AND status = 'anomaly') THEN
-        RETURN 'anomaly';
-    END IF;
     SELECT EXISTS (
-        SELECT 1 FROM terrain.outbox o
-        JOIN terrain.observations ob ON ob.engagement_id = o.engagement_id AND ob.campaign_id = o.campaign_id AND ob.operation_id = o.operation_id
-        JOIN terrain.materials m ON m.engagement_id = o.engagement_id AND m.campaign_id = o.campaign_id AND m.operation_id = o.operation_id
-        JOIN terrain.evaluations ev ON ev.engagement_id = o.engagement_id AND ev.campaign_id = o.campaign_id AND ev.operation_id = o.operation_id
-        JOIN terrain.claim_revisions cr ON cr.engagement_id = o.engagement_id AND cr.campaign_id = o.campaign_id AND cr.operation_id = o.operation_id
-        WHERE o.engagement_id = v_e AND o.campaign_id = v_c AND o.operation_id = v_op
-          AND o.event_id = v_ev AND o.observation_id = v_obs_id AND o.material_id = v_mat_id
-          AND o.evaluation_id = v_eval_id AND o.claim_id = v_clm_id AND o.claim_revision = v_rev
-          AND o.request_hash = v_hash AND o.contract = p_event
-          AND ob.observation_id = v_obs_id AND ob.request_hash = v_hash AND ob.payload = (p_event->'observation')
-          AND m.material_id = v_mat_id AND m.observation_id = v_obs_id AND m.payload = (p_event->'material')
-          AND ev.evaluation_id = v_eval_id AND ev.claim_id = v_clm_id AND ev.payload = (p_event->'evaluation')
-          AND cr.claim_id = v_clm_id AND cr.claim_revision = v_rev AND cr.payload = (p_event->'claim')
+        SELECT 1 FROM terrain.observations ob
+        JOIN terrain.materials m USING (engagement_id,campaign_id,operation_id)
+        JOIN terrain.evaluations ev USING (engagement_id,campaign_id,operation_id)
+        JOIN terrain.claim_revisions cr USING (engagement_id,campaign_id,operation_id)
+        WHERE ob.engagement_id=v_e AND ob.campaign_id=v_c AND ob.operation_id=v_op
+          AND v_source.contract=p_event
+          AND ob.observation_id=v_source.observation_id AND ob.request_hash=v_source.request_hash
+          AND ob.payload=(v_source.contract->'observation')
+          AND m.material_id=v_source.material_id AND m.observation_id=ob.observation_id
+          AND m.payload=(v_source.contract->'material')
+          AND ev.evaluation_id=v_source.evaluation_id AND ev.claim_id=v_source.claim_id
+          AND ev.payload=(v_source.contract->'evaluation')
+          AND cr.claim_id=v_source.claim_id AND cr.claim_revision=v_source.claim_revision
+          AND cr.payload=(v_source.contract->'claim')
+          AND v_source.event_id=(v_source.contract->>'event_id')::uuid
     ) INTO v_source_ok;
     SELECT * INTO v_hist FROM trajectory.terrain_history
-    WHERE ((engagement_id = v_e AND campaign_id = v_c AND operation_id = v_op) OR event_id = v_ev) AND status = 'accepted' LIMIT 1;
+    WHERE ((engagement_id=v_e AND campaign_id=v_c AND operation_id=v_op)
+           OR event_id=v_source.event_id) AND status='accepted' LIMIT 1;
     IF FOUND THEN
-        IF v_source_ok AND v_hist.engagement_id = v_e AND v_hist.campaign_id = v_c AND v_hist.operation_id = v_op
-           AND v_hist.event_id = v_ev AND v_hist.observation_id = v_obs_id AND v_hist.material_id = v_mat_id
-           AND v_hist.evaluation_id = v_eval_id AND v_hist.claim_id = v_clm_id AND v_hist.contract = p_event THEN
+        IF v_source_ok AND v_hist.contract=v_source.contract
+           AND v_hist.engagement_id=v_e AND v_hist.campaign_id=v_c AND v_hist.operation_id=v_op
+           AND v_hist.event_id=v_source.event_id AND v_hist.observation_id=v_source.observation_id
+           AND v_hist.material_id=v_source.material_id AND v_hist.evaluation_id=v_source.evaluation_id
+           AND v_hist.claim_id=v_source.claim_id THEN
             RETURN 'completed';
         END IF;
-        INSERT INTO trajectory.terrain_history (engagement_id, campaign_id, operation_id, event_id, observation_id, material_id, evaluation_id, claim_id, status, reason, contract, recorded_at)
-        VALUES (v_e, v_c, v_op, v_ev, v_obs_id, v_mat_id, v_eval_id, v_clm_id, 'anomaly', 'contract_conflict', p_event, v_now);
+        v_reason := 'contract_conflict';
+    ELSIF NOT v_source_ok THEN
+        v_reason := 'source_conflict';
+    END IF;
+    IF v_reason IS NOT NULL THEN
+        INSERT INTO trajectory.terrain_history
+            (engagement_id,campaign_id,operation_id,event_id,observation_id,material_id,evaluation_id,claim_id,status,reason,contract,recorded_at)
+        VALUES (v_e,v_c,v_op,v_source.event_id,v_source.observation_id,v_source.material_id,
+                v_source.evaluation_id,v_source.claim_id,'anomaly',v_reason,
+                jsonb_build_object('category',v_reason,'affected_claim_id',v_source.claim_id),v_now);
         RETURN 'anomaly';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM terrain.outbox WHERE engagement_id = v_e AND campaign_id = v_c AND operation_id = v_op) THEN
-        RETURN 'uncommitted';
-    END IF;
-    IF NOT v_source_ok THEN
-        INSERT INTO trajectory.terrain_history (engagement_id, campaign_id, operation_id, event_id, observation_id, material_id, evaluation_id, claim_id, status, reason, contract, recorded_at)
-        VALUES (v_e, v_c, v_op, v_ev, v_obs_id, v_mat_id, v_eval_id, v_clm_id, 'anomaly', 'source_conflict', p_event, v_now);
-        RETURN 'anomaly';
-    END IF;
-    INSERT INTO trajectory.terrain_history (engagement_id, campaign_id, operation_id, event_id, observation_id, material_id, evaluation_id, claim_id, status, reason, contract, recorded_at)
-    VALUES (v_e, v_c, v_op, v_ev, v_obs_id, v_mat_id, v_eval_id, v_clm_id, 'accepted', NULL, p_event, v_now);
+    INSERT INTO trajectory.terrain_history
+        (engagement_id,campaign_id,operation_id,event_id,observation_id,material_id,evaluation_id,claim_id,status,reason,contract,recorded_at)
+    VALUES (v_e,v_c,v_op,v_source.event_id,v_source.observation_id,v_source.material_id,
+            v_source.evaluation_id,v_source.claim_id,'accepted',NULL,v_source.contract,v_now);
     RETURN 'completed';
 END; $$;
 
@@ -247,7 +285,7 @@ REVOKE ALL ON SEQUENCE trajectory.terrain_history_history_seq_seq FROM PUBLIC, d
 REVOKE ALL ON FUNCTION trajectory.record_terrain_history(jsonb) FROM PUBLIC, dw_runtime, dw_m1_broker, dw_m1_cognition, dw_m1_trajectory, dw_m1_terrain;
 
 GRANT USAGE ON SCHEMA terrain TO dw_m1_terrain, dw_m1_trajectory;
-GRANT SELECT, INSERT ON terrain.observations, terrain.materials, terrain.evaluations, terrain.claim_revisions, terrain.outbox TO dw_m1_terrain;
+GRANT SELECT, INSERT ON terrain.observations, terrain.materials, terrain.evaluations, terrain.claim_revisions, terrain.outbox, terrain.integrity_conflicts TO dw_m1_terrain;
 GRANT SELECT, INSERT, UPDATE ON terrain.current_claims TO dw_m1_terrain;
 GRANT EXECUTE ON FUNCTION terrain.accept_dns_observation(jsonb) TO dw_m1_terrain;
 GRANT SELECT ON terrain.observations, terrain.materials, terrain.evaluations, terrain.claim_revisions, terrain.current_claims, terrain.outbox TO dw_m1_trajectory;
@@ -255,3 +293,5 @@ GRANT SELECT ON TABLE trajectory.terrain_history TO dw_m1_trajectory, dw_m1_terr
 GRANT EXECUTE ON FUNCTION trajectory.record_terrain_history(jsonb) TO dw_m1_trajectory;
 GRANT USAGE ON SCHEMA mission, trajectory TO dw_m1_terrain;
 GRANT SELECT ON mission.missions, mission.planning_assessments, mission.registration_outbox, mission.withdrawals TO dw_m1_terrain;
+
+GRANT SELECT ON terrain.integrity_conflicts, terrain.claim_integrity_holds TO dw_m1_terrain, dw_m1_trajectory;

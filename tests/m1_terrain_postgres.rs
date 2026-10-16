@@ -5,7 +5,8 @@ mod db_support;
 mod terrain_support;
 
 use duskweave::Fail;
-use duskweave::m1_terrain::{EvaluationOutcome, TerrainClaimStatus, verify_mission_permission};
+use duskweave::m1_terrain::verify_mission_permission;
+use duskweave::m1_terrain::{EvaluationOutcome, TerrainClaimStatus};
 use duskweave::mission::{AssetRef, ExerciseMode, GoalRef, OperationId, OperatorRef};
 use duskweave::postgres_m1_terrain::qualify_terrain;
 use duskweave::postgres_terrain_history::qualify_terrain_trajectory;
@@ -22,6 +23,227 @@ fn table_count(table: &str, op: OperationId) -> i64 {
         )
         .unwrap()
         .get(0)
+}
+
+#[test]
+fn regression_restricted_sql_anomalies_never_retain_rejected_bytes() {
+    let _g = db();
+    let sentinel = "Bearer SYNTHETIC_UNSAFE_TERRAIN_VALUE";
+    for (slot, accepted_first) in [(0x8110, false), (0x8111, true)] {
+        let (e, c, _, now) = register_m1_campaign(slot);
+        let (mut mission, mut store, mut traj) = stores();
+        let req = parse_req(&dns_request_json(e, c, now - 10));
+        let op = allocate_op();
+        let (ev, _, _, _) = store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+        let mut unsafe_event = ev.clone();
+        unsafe_event.material.answers[0].ipv4 = sentinel.into();
+        let rejected = traj.record_terrain(&unsafe_event);
+        assert_eq!(rejected, Err(Fail::Store("contract_decode")));
+        assert!(!format!("{rejected:?}").contains(sentinel));
+        if accepted_first {
+            assert_eq!(traj.record_terrain(&ev).unwrap(), HistoryStatus::Completed);
+        }
+        let mut bad = serde_json::to_value(&ev).unwrap();
+        bad["material"]["answers"][0]["ipv4"] = json!(sentinel);
+        bad["raw_packet"] = json!(sentinel);
+        let result =
+            trajectory_client().query_one("SELECT trajectory.record_terrain_history($1)", &[&bad]);
+        assert!(result.is_ok(), "SQL must return a static disposition");
+        assert_eq!(result.unwrap().get::<_, String>(0), "anomaly");
+        let retained: bool = trajectory_client().query_one(
+            "SELECT EXISTS(SELECT 1 FROM trajectory.terrain_history WHERE operation_id=$1 AND position($2 in contract::text)>0)",
+            &[&op.0, &sentinel],
+        ).unwrap().get(0);
+        assert!(
+            !retained,
+            "rejected bytes must be absent from durable contracts"
+        );
+        assert_eq!(traj.record_terrain(&ev).unwrap(), HistoryStatus::Anomaly);
+        let accepted: i64 = trajectory_client().query_one(
+            "SELECT count(*) FROM trajectory.terrain_history WHERE operation_id=$1 AND status='accepted' AND contract=$2",
+            &[&op.0, &serde_json::to_value(&ev).unwrap()],
+        ).unwrap().get(0);
+        assert_eq!(accepted, i64::from(accepted_first));
+        let path = std::env::temp_dir().join(format!("dw-terrain-sentinel-{}.json", op.0));
+        std::fs::write(&path, serde_json::to_vec(&req).unwrap()).unwrap();
+        let (ok, stdout, receipt) = cli_run("m1-terrain-inspect", &path, &op.0.to_string(), &[]);
+        assert!(ok);
+        assert!(!stdout.contains(sentinel));
+        assert!(!serde_json::to_string(&receipt).unwrap().contains(sentinel));
+        assert_eq!(receipt["history"], "anomaly");
+        assert_eq!(receipt["claim"]["routing_usable"], false);
+        std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[test]
+fn regression_admitted_identity_conflict_invalidates_fresh_reads_but_not_later_use() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8112);
+    let (mut mission, mut store, mut traj) = stores();
+    let req = parse_req(&dns_request_json(e, c, now - 20));
+    let op = allocate_op();
+    let (ev, _, _, _) = store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+    assert_eq!(traj.record_terrain(&ev).unwrap(), HistoryStatus::Completed);
+    let mut bad = req.clone();
+    bad.answers[0].ipv4 = "198.51.100.250".into();
+    assert_eq!(
+        store.record_dns(&mut mission, &bad, op),
+        Err(Fail::Conflict("input_mismatch"))
+    );
+    let (_, current, at, auth) = store.inspect_dns(&mut mission, &req, op).unwrap().unwrap();
+    assert!(
+        !current.view_with_authority(at, auth).routing_usable,
+        "admitted identity conflict must durably block current use"
+    );
+    assert_eq!(traj.inspect_terrain(&ev).unwrap(), "anomaly");
+    let mut later = req.clone();
+    later.expected_claim_revision = 1;
+    later.perceived_at += 10;
+    let later_op = allocate_op();
+    let (clean, cur, at, auth) = store
+        .record_dns(&mut mission, &later, later_op)
+        .unwrap()
+        .unwrap();
+    assert!(cur.view_with_authority(at, auth).routing_usable);
+    assert_eq!(
+        traj.record_terrain(&clean).unwrap(),
+        HistoryStatus::Completed
+    );
+    assert_eq!(traj.inspect_terrain(&ev).unwrap(), "anomaly");
+}
+
+#[test]
+fn regression_ineligible_or_unattributed_variants_do_not_hold_other_applicability() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8113);
+    let (mut mission, mut store, mut traj) = stores();
+    let req = parse_req(&dns_request_json(e, c, now - 20));
+    let op = allocate_op();
+    let (ev, _, _, _) = store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+    traj.record_terrain(&ev).unwrap();
+    for case in 0..4 {
+        let mut bad = req.clone();
+        match case {
+            0 => bad.operator_ref = OperatorRef(Uuid::from_u128(0x999)),
+            1 => bad
+                .limitations
+                .push(duskweave::m1_terrain_input::DnsLimitation::PartialAliasChain),
+            2 => bad.answers[0].ttl_seconds = 0,
+            _ => {
+                bad.asset_ref = None;
+                bad.subject_name = "api.example.invalid".into();
+            }
+        }
+        assert_eq!(
+            store.record_dns(&mut mission, &bad, op),
+            Err(Fail::Conflict("input_mismatch"))
+        );
+        let (original, cur, at, auth) = store.inspect_dns(&mut mission, &req, op).unwrap().unwrap();
+        assert_eq!(original, ev);
+        assert!(cur.view_with_authority(at, auth).routing_usable);
+        assert_eq!(traj.inspect_terrain(&ev).unwrap(), "completed");
+    }
+    let mut later = req.clone();
+    later.perceived_at += 10;
+    later.expected_claim_revision = 1;
+    let op2 = allocate_op();
+    let (clean, _, _, _) = store
+        .record_dns(&mut mission, &later, op2)
+        .unwrap()
+        .unwrap();
+    traj.record_terrain(&clean).unwrap();
+    let mut disputed = req.clone();
+    disputed.answers[0].ipv4 = "198.51.100.250".into();
+    assert_eq!(
+        store.record_dns(&mut mission, &disputed, op),
+        Err(Fail::Conflict("input_mismatch"))
+    );
+    let (_, current, at, auth) = store
+        .inspect_dns(&mut mission, &later, op2)
+        .unwrap()
+        .unwrap();
+    assert!(
+        current.view_with_authority(at, auth).routing_usable,
+        "historical identity conflict must not poison independent later applicability"
+    );
+    assert_eq!(traj.inspect_terrain(&clean).unwrap(), "completed");
+}
+
+#[test]
+fn regression_postgres_late_conflict_repeat_and_later_qualified_recovery() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8114);
+    let (mut mission, mut store, mut traj) = stores();
+    let mut req = parse_req(&dns_request_json(e, c, now - 15));
+    let mut events = Vec::new();
+    for (revision, offset, usable) in [
+        (0, -15, true),
+        (1, -25, false),
+        (2, -20, false),
+        (3, -10, true),
+    ] {
+        req.expected_claim_revision = revision;
+        req.perceived_at = now + offset;
+        let op = allocate_op();
+        let (event, current, at, auth) = store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+        assert_eq!(current.view_with_authority(at, auth).routing_usable, usable);
+        assert_eq!(event.claim.previous_claim_revision, revision);
+        assert_eq!(
+            traj.record_terrain(&event).unwrap(),
+            HistoryStatus::Completed
+        );
+        events.push((req.clone(), event));
+    }
+    for (request, accepted) in &events {
+        let (historical, current, at, auth) = store
+            .inspect_dns(&mut mission, request, accepted.operation_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(&historical, accepted);
+        assert!(current.view_with_authority(at, auth).routing_usable);
+    }
+    assert!(events[1].1.claim.conflicted);
+    assert!(events[2].1.claim.conflicted);
+}
+
+#[test]
+fn regression_identity_conflict_frontier_blocks_an_intermediate_observation() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8115);
+    let (mut mission, mut store, mut traj) = stores();
+    let mut req = parse_req(&dns_request_json(e, c, now - 30));
+    let op = allocate_op();
+    let (original, _, _, _) = store.record_dns(&mut mission, &req, op).unwrap().unwrap();
+    traj.record_terrain(&original).unwrap();
+    let mut variant = req.clone();
+    variant.perceived_at = now - 10;
+    variant.answers[0].ipv4 = "198.51.100.250".into();
+    assert_eq!(
+        store.record_dns(&mut mission, &variant, op),
+        Err(Fail::Conflict("input_mismatch"))
+    );
+    req.perceived_at = now - 20;
+    req.expected_claim_revision = 1;
+    let (between, _, _, _) = store
+        .record_dns(&mut mission, &req, allocate_op())
+        .unwrap()
+        .unwrap();
+    assert!(between.claim.conflicted);
+    assert_eq!(between.claim.temporal_frontier, now - 10);
+    req.perceived_at = now - 5;
+    req.expected_claim_revision = 2;
+    let (later, current, at, auth) = store
+        .record_dns(&mut mission, &req, allocate_op())
+        .unwrap()
+        .unwrap();
+    assert_eq!(later.claim.previous_claim_revision, 2);
+    assert!(current.view_with_authority(at, auth).routing_usable);
+    assert_eq!(
+        traj.record_terrain(&later).unwrap(),
+        HistoryStatus::Completed
+    );
+    assert_eq!(traj.inspect_terrain(&original).unwrap(), "anomaly");
 }
 
 #[test]

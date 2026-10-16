@@ -49,7 +49,7 @@ fn lineage() -> (OperationId, EventId, i64) {
     (
         OperationId(Uuid::from_u128(0x801)),
         EventId(Uuid::from_u128(0x802)),
-        1_700_000_005,
+        1_700_000_100,
     )
 }
 
@@ -336,6 +336,132 @@ fn initial_eval(op_byte: u128) -> (TerrainAcceptedEvent, TerrainDnsRequest) {
     (ev, req)
 }
 
+fn next_eval(
+    req: &TerrainDnsRequest,
+    prior: &TerrainAcceptedEvent,
+    op: u128,
+) -> TerrainAcceptedEvent {
+    evaluate_dns_observation(
+        req,
+        Some(prior),
+        TerrainIds::derive(
+            req.engagement_id,
+            req.campaign_id,
+            OperationId(Uuid::from_u128(op)),
+        )
+        .unwrap(),
+        lineage(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn regression_disputed_repeat_and_late_arrivals_cannot_restore_use() {
+    for late in [false, true] {
+        let (first, mut req) = initial_eval(0x900);
+        req.expected_claim_revision = 1;
+        req.answers[0].ipv4 = "198.51.100.200".into();
+        if late {
+            req.perceived_at -= 10;
+        }
+        let conflict = next_eval(&req, &first, 0x901);
+        assert!(conflict.claim.conflicted);
+        req.expected_claim_revision = 2;
+        if late {
+            req.perceived_at += 5;
+        }
+        let repeat = next_eval(&req, &conflict, 0x902);
+        assert!(
+            !repeat.claim.view_at(1_700_000_005).routing_usable,
+            "disputed repeat or arrival below known frontier must remain unusable"
+        );
+        assert!(repeat.claim.conflicted);
+        req.expected_claim_revision = 3;
+        req.perceived_at = 1_700_000_004;
+        let later = next_eval(&req, &repeat, 0x903);
+        assert!(later.claim.view_at(1_700_000_005).routing_usable);
+        assert_eq!(
+            later.claim.previous_claim_revision,
+            repeat.claim.claim_revision
+        );
+        assert!(conflict.claim.conflicted);
+    }
+}
+
+#[test]
+fn regression_late_conflict_does_not_lower_the_known_frontier() {
+    let (first, mut req) = initial_eval(0x950);
+    req.expected_claim_revision = 1;
+    req.perceived_at -= 10;
+    let late = next_eval(&req, &first, 0x951);
+    assert!(late.claim.conflicted);
+    req.expected_claim_revision = 2;
+    req.perceived_at += 5;
+    let still_late = next_eval(&req, &late, 0x952);
+    assert!(
+        !still_late.claim.view_at(1_700_000_005).routing_usable,
+        "T-5 cannot become current after the accepted T frontier"
+    );
+}
+
+#[test]
+fn regression_changed_material_semantics_at_same_time_is_not_a_duplicate() {
+    let (first, mut req) = initial_eval(0x910);
+    req.expected_claim_revision = 1;
+    req.completeness = duskweave::m1_terrain_input::DnsCompleteness::Incomplete;
+    let withheld = next_eval(&req, &first, 0x911);
+    req.expected_claim_revision = 2;
+    req.completeness = duskweave::m1_terrain_input::DnsCompleteness::Complete;
+    let repeated = next_eval(&req, &withheld, 0x912);
+    assert!(!repeated.claim.view_at(1_700_000_005).routing_usable);
+}
+
+#[test]
+fn regression_partial_alias_and_anomaly_never_grant_routing() {
+    let (first, mut req) = initial_eval(0x920);
+    req.limitations
+        .push(duskweave::m1_terrain_input::DnsLimitation::PartialAliasChain);
+    let ids = TerrainIds::derive(
+        req.engagement_id,
+        req.campaign_id,
+        OperationId(Uuid::from_u128(0x921)),
+    )
+    .unwrap();
+    let partial = evaluate_dns_observation(&req, None, ids, lineage()).unwrap();
+    assert!(!partial.claim.view_at(1_700_000_005).routing_usable);
+    let receipt = TerrainReceipt::from_event(&first, &first.claim, "anomaly", 1_700_000_005, true);
+    assert!(!receipt.claim.unwrap().routing_usable);
+    assert!(!receipt.current_claim.unwrap().routing_usable);
+}
+
+#[test]
+fn regression_anomaly_receipt_and_unknown_commit_are_honest() {
+    let (ev, req) = initial_eval(0x930);
+    let receipt = TerrainReceipt::from_event(&ev, &ev.claim, "anomaly", 1_700_000_005, true);
+    assert!(!receipt.claim.unwrap().routing_usable);
+    let receipt = TerrainReceipt::failure(
+        "unresolved",
+        "terrain_commit_unknown",
+        Some(&req),
+        Some(ev.operation_id),
+    );
+    assert_eq!(receipt.publication, "unknown");
+    assert_eq!(receipt.operation_id, Some(ev.operation_id));
+}
+
+#[test]
+fn regression_rust_history_boundary_rejects_unsafe_material_without_diagnostics() {
+    let (mut ev, _) = initial_eval(0x940);
+    let sentinel = "Bearer SYNTHETIC_UNSAFE_TERRAIN_VALUE";
+    ev.material.answers[0].ipv4 = sentinel.into();
+    let result = ev.validate();
+    assert!(
+        result.is_err(),
+        "unsafe material must fail before history encoding"
+    );
+    assert!(!format!("{result:?}").contains(sentinel));
+}
+
 #[test]
 fn evaluate_rejects_stale_expected_claim_revision() {
     let (ev1, req1) = initial_eval(0x701);
@@ -350,7 +476,7 @@ fn evaluate_rejects_stale_expected_claim_revision() {
     )
     .unwrap();
     assert_eq!(
-        evaluate_dns_observation(&stale_req, Some(&ev1.claim), ids, lineage()),
+        evaluate_dns_observation(&stale_req, Some(&ev1), ids, lineage()),
         Err(Fail::Conflict("claim_revision_mismatch"))
     );
 }
@@ -369,7 +495,7 @@ fn evaluate_accepts_rrset_rotation_at_later_perception_time() {
         OperationId(Uuid::from_u128(0x704)),
     )
     .unwrap();
-    let ev2 = evaluate_dns_observation(&rot_req, Some(&ev1.claim), ids, lineage()).unwrap();
+    let ev2 = evaluate_dns_observation(&rot_req, Some(&ev1), ids, lineage()).unwrap();
     assert_eq!(ev2.claim.claim_revision, 2);
     assert_eq!(ev2.claim.previous_claim_revision, 1);
     assert_eq!(ev2.claim.claim_status, TerrainClaimStatus::Observed);
@@ -397,7 +523,7 @@ fn evaluate_marks_conflicted_on_different_answers_at_same_perception_time() {
         OperationId(Uuid::from_u128(0x706)),
     )
     .unwrap();
-    let ev2 = evaluate_dns_observation(&conf_req, Some(&ev1.claim), ids, lineage()).unwrap();
+    let ev2 = evaluate_dns_observation(&conf_req, Some(&ev1), ids, lineage()).unwrap();
     assert_eq!(
         ev2.evaluation.outcome,
         EvaluationOutcome::ApplicabilityConflict
@@ -420,7 +546,7 @@ fn evaluate_duplicate_answers_at_same_perception_time_remain_observed() {
         OperationId(Uuid::from_u128(0x708)),
     )
     .unwrap();
-    let ev2 = evaluate_dns_observation(&dup_req, Some(&ev1.claim), ids, lineage()).unwrap();
+    let ev2 = evaluate_dns_observation(&dup_req, Some(&ev1), ids, lineage()).unwrap();
     assert_eq!(ev2.claim.claim_status, TerrainClaimStatus::Observed);
     assert!(!ev2.claim.conflicted);
 }
@@ -438,8 +564,7 @@ fn evaluate_clean_observation_recovers_from_prior_conflict() {
         OperationId(Uuid::from_u128(0x70a)),
     )
     .unwrap();
-    let ev_conf =
-        evaluate_dns_observation(&conf_req, Some(&ev1.claim), ids_conf, lineage()).unwrap();
+    let ev_conf = evaluate_dns_observation(&conf_req, Some(&ev1), ids_conf, lineage()).unwrap();
     assert!(ev_conf.claim.conflicted);
 
     let mut rec_raw = base_json();
@@ -453,8 +578,7 @@ fn evaluate_clean_observation_recovers_from_prior_conflict() {
         OperationId(Uuid::from_u128(0x70b)),
     )
     .unwrap();
-    let ev_rec =
-        evaluate_dns_observation(&rec_req, Some(&ev_conf.claim), ids_rec, lineage()).unwrap();
+    let ev_rec = evaluate_dns_observation(&rec_req, Some(&ev_conf), ids_rec, lineage()).unwrap();
     assert_eq!(
         ev_rec.evaluation.outcome,
         EvaluationOutcome::QualifiedDnsClaim

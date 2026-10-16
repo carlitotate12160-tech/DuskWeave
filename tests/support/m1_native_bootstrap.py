@@ -145,6 +145,7 @@ class Fixture:
                 source = source.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")
                 source = source.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ")
                 source = source.replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION ")
+                source = source.replace("CREATE VIEW ", "CREATE OR REPLACE VIEW ")
                 source = re.sub(r"CREATE TRIGGER (\w+) (.*?);", lambda m:
                                 "DO $refresh$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='" + m[1] +
                                 "') THEN " + m[0] + " END IF; END $refresh$;", source, flags=re.S)

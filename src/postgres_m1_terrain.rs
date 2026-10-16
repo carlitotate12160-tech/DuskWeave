@@ -1,13 +1,12 @@
 //! PostgreSQL adapter and Mission permission verification for M1 Terrain DNS.
-use crate::m1_policy::{
-    M1PolicyQuery, M1PolicyReader, NamePurpose, PolicyReason, check_name_policy,
-};
+use crate::m1_policy::M1PolicyReader;
+use crate::m1_terrain::verify_mission_permission;
 use crate::m1_terrain::{
     CLAIM_KIND_DNS_IPV4, TerrainAcceptedEvent, TerrainClaimRevision, TerrainIds,
-    evaluate_dns_observation,
+    evaluate_dns_observation, integrity_conflict_applies,
 };
 use crate::m1_terrain_input::TerrainDnsRequest;
-use crate::mission::{CampaignId, EngagementId, EventId, MissionRegistered, OperationId};
+use crate::mission::{CampaignId, EngagementId, OperationId};
 use crate::registration::MissionStore;
 use crate::{Fail, Res};
 use postgres::{Client, IsolationLevel, Transaction};
@@ -30,7 +29,11 @@ floor(extract(epoch FROM statement_timestamp()))::bigint, \
 (EXISTS(SELECT 1 FROM mission.registration_outbox r WHERE r.engagement_id = o.engagement_id \
   AND r.campaign_id = o.campaign_id AND r.operation_id = (o.contract->>'registration_operation_id')::uuid \
   AND r.event_id = (o.contract->>'registration_event_id')::uuid) \
- AND NOT EXISTS(SELECT 1 FROM mission.withdrawals w WHERE w.engagement_id = o.engagement_id AND w.campaign_id = o.campaign_id)) \
+ AND NOT EXISTS(SELECT 1 FROM mission.withdrawals w WHERE w.engagement_id = o.engagement_id AND w.campaign_id = o.campaign_id)), \
+EXISTS(SELECT 1 FROM terrain.claim_integrity_holds h WHERE h.engagement_id=cc.engagement_id \
+ AND h.campaign_id=cc.campaign_id AND h.subject_name=cc.subject_name AND h.claim_kind=cc.claim_kind \
+ AND h.vantage_ref=cc.vantage_ref AND h.resolver_ipv4=cc.resolver_ipv4 \
+ AND h.temporal_frontier >= (cc.payload->>'temporal_frontier')::bigint) \
 FROM terrain.outbox o \
 LEFT JOIN terrain.observations ob ON ob.engagement_id = o.engagement_id AND ob.campaign_id = o.campaign_id AND ob.operation_id = o.operation_id \
 LEFT JOIN terrain.materials m ON m.engagement_id = o.engagement_id AND m.campaign_id = o.campaign_id AND m.operation_id = o.operation_id \
@@ -40,107 +43,6 @@ LEFT JOIN terrain.current_claims cc ON cc.engagement_id = o.engagement_id AND cc
   AND cc.subject_name = cr.subject_name AND cc.claim_kind = cr.claim_kind \
   AND cc.vantage_ref = cr.vantage_ref AND cc.resolver_ipv4 = cr.resolver_ipv4 \
 WHERE o.engagement_id = $1 AND o.campaign_id = $2 AND o.operation_id = $3";
-
-fn map_policy_reason(reason: PolicyReason) -> Result<(), &'static str> {
-    match reason {
-        PolicyReason::MatchesNamePolicy | PolicyReason::NameNotPermitted => Ok(()),
-        PolicyReason::MissionMissing => Err("mission_missing"),
-        PolicyReason::AuthorityWithdrawn => Err("authority_withdrawn"),
-        PolicyReason::StaleRevision => Err("stale_revision"),
-        PolicyReason::PurposeMismatch => Err("purpose_mismatch"),
-        PolicyReason::ModeMismatch => Err("mode_mismatch"),
-        PolicyReason::M1PolicyAbsent => Err("m1_policy_absent"),
-        PolicyReason::OutsideOperatingWindow => Err("outside_operating_window"),
-        _ => Err("name_not_permitted"),
-    }
-}
-
-fn check_m1_bindings(
-    reg: &MissionRegistered,
-    purpose: &NamePurpose,
-    req: &TerrainDnsRequest,
-    now: i64,
-    matched_name: bool,
-) -> Option<&'static str> {
-    if reg.fields.operator_ref != req.operator_ref {
-        return Some("purpose_mismatch");
-    }
-    let Some(perm) = reg.fields.m1_permission() else {
-        return Some("m1_policy_absent");
-    };
-    let (vantage, resolver) = perm.dns_vantage();
-    if vantage != req.vantage_ref {
-        return Some("vantage_mismatch");
-    }
-    if resolver.to_string() != req.resolver_ipv4 {
-        return Some("resolver_mismatch");
-    }
-    let asset_ok = req.asset_ref.is_none_or(|a| {
-        [
-            reg.fields.included_assets.contains(&a),
-            !reg.fields.excluded_assets.contains(&a),
-        ]
-        .into_iter()
-        .all(|b| b)
-    });
-    if !asset_ok {
-        return Some("asset_not_permitted");
-    }
-    if !matched_name {
-        return Some("name_not_permitted");
-    }
-    let win = [
-        req.perceived_at <= now,
-        (reg.fields.starts_at()..reg.fields.ends_at()).contains(&req.perceived_at),
-        perm.query_reason(purpose, req.perceived_at) == PolicyReason::MatchesNamePolicy,
-    ];
-    (!win.into_iter().all(|b| b)).then_some("outside_operating_window")
-}
-
-pub fn verify_mission_permission(
-    reader: &mut (impl M1PolicyReader + MissionStore),
-    req: &TerrainDnsRequest,
-) -> Res<Result<(OperationId, EventId, i64), &'static str>> {
-    req.validate()?;
-    let name = req.subject_name.clone();
-    let purpose = match req.asset_ref {
-        Some(asset_ref) => NamePurpose::Contact { name, asset_ref },
-        None => NamePurpose::DiscoveryDisclosure { name },
-    };
-    let query = M1PolicyQuery {
-        engagement_id: req.engagement_id,
-        campaign_id: req.campaign_id,
-        expected_mission_revision: u64::try_from(req.expected_mission_revision)
-            .map_err(|_| Fail::Input("invalid_bounds"))?,
-        goal_ref: req.goal_ref,
-        exercise_mode: req.exercise_mode,
-        purpose: purpose.clone(),
-    };
-    let res = check_name_policy(reader, &query)?;
-    if let Err(code) = map_policy_reason(res.reason) {
-        return Ok(Err(code));
-    }
-    let now = res.checked_at.ok_or(Fail::Store("contract_decode"))?;
-    let prov = res
-        .snapshot
-        .as_ref()
-        .ok_or(Fail::Store("contract_decode"))?;
-    let reg = reader
-        .outbox_event(
-            req.engagement_id,
-            req.campaign_id,
-            prov.registration_operation_id,
-        )?
-        .ok_or(Fail::Store("contract_decode"))?;
-    if reg.event_id != prov.registration_event_id {
-        return Err(Fail::Store("contract_decode"));
-    }
-    let matched = res.reason == PolicyReason::MatchesNamePolicy;
-    if let Some(code) = check_m1_bindings(&reg, &purpose, req, now, matched) {
-        return Ok(Err(code));
-    }
-    Ok(Ok((reg.operation_id, reg.event_id, now)))
-}
 
 pub fn qualify_terrain(client: &mut Client) -> Res<()> {
     let ok: bool = client
@@ -177,7 +79,6 @@ impl PgTerrainStore {
         e: EngagementId,
         c: CampaignId,
         op: OperationId,
-        hash: &str,
     ) -> Res<Option<TerrainDnsRecord>> {
         let Some(row) = tx
             .query_opt(READ_EXISTING_SQL, &[&e.0, &c.0, &op.0])
@@ -206,14 +107,16 @@ impl PgTerrainStore {
         let auth_db: bool = row.try_get(5).map_err(|_| Fail::Store("contract_decode"))?;
         let ev: TerrainAcceptedEvent =
             serde_json::from_value(raw_ev).map_err(|_| Fail::Store("contract_decode"))?;
-        let cur: TerrainClaimRevision =
+        let mut cur: TerrainClaimRevision =
             serde_json::from_value(raw_cur).map_err(|_| Fail::Store("contract_decode"))?;
         ev.validate()?;
-        let hash_ok = [stored_hash == hash, ev.request_hash == hash]
-            .into_iter()
-            .all(|b| b);
-        if !hash_ok {
-            return Err(Fail::Conflict("input_mismatch"));
+        if stored_hash != ev.request_hash {
+            return Err(Fail::Store("contract_decode"));
+        }
+        let held: bool = row.try_get(6).map_err(|_| Fail::Store("contract_decode"))?;
+        if held {
+            cur.conflicted = true;
+            cur.claim_status = crate::m1_terrain::TerrainClaimStatus::Conflicted;
         }
         Ok(Some((ev, cur, now, auth_db)))
     }
@@ -221,13 +124,22 @@ impl PgTerrainStore {
     fn read_current_claim(
         tx: &mut Transaction<'_>,
         req: &TerrainDnsRequest,
-    ) -> Res<Option<TerrainClaimRevision>> {
+    ) -> Res<Option<TerrainAcceptedEvent>> {
         let row = tx
             .query_opt(
-                "SELECT payload, (claim_id = (payload->>'claim_id')::uuid \
-                 AND claim_revision = (payload->>'claim_revision')::integer) \
-                 FROM terrain.current_claims WHERE engagement_id=$1 AND campaign_id=$2 \
-                 AND subject_name=$3 AND claim_kind=$4 AND vantage_ref=$5 AND resolver_ipv4=$6 FOR UPDATE",
+                "SELECT o.contract, (cc.claim_id = (cc.payload->>'claim_id')::uuid \
+                 AND cc.claim_revision = (cc.payload->>'claim_revision')::integer AND cc.payload=o.contract->'claim'), \
+                 EXISTS(SELECT 1 FROM terrain.claim_integrity_holds h WHERE h.engagement_id=cc.engagement_id \
+                  AND h.campaign_id=cc.campaign_id AND h.subject_name=cc.subject_name AND h.claim_kind=cc.claim_kind \
+                  AND h.vantage_ref=cc.vantage_ref AND h.resolver_ipv4=cc.resolver_ipv4 \
+                  AND h.temporal_frontier >= (cc.payload->>'temporal_frontier')::bigint), \
+                 (SELECT max(h.temporal_frontier) FROM terrain.claim_integrity_holds h WHERE h.engagement_id=cc.engagement_id \
+                  AND h.campaign_id=cc.campaign_id AND h.subject_name=cc.subject_name AND h.claim_kind=cc.claim_kind \
+                  AND h.vantage_ref=cc.vantage_ref AND h.resolver_ipv4=cc.resolver_ipv4) \
+                 FROM terrain.current_claims cc JOIN terrain.outbox o \
+                   ON o.engagement_id=cc.engagement_id AND o.campaign_id=cc.campaign_id AND o.operation_id=cc.operation_id \
+                 WHERE cc.engagement_id=$1 AND cc.campaign_id=$2 \
+                 AND cc.subject_name=$3 AND cc.claim_kind=$4 AND cc.vantage_ref=$5 AND cc.resolver_ipv4=$6 FOR UPDATE OF cc",
                 &[
                     &req.engagement_id.0,
                     &req.campaign_id.0,
@@ -246,9 +158,18 @@ impl PgTerrainStore {
             return Err(Fail::Store("contract_decode"));
         }
         let v: Value = r.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
-        serde_json::from_value(v)
-            .map(Some)
-            .map_err(|_| Fail::Store("contract_decode"))
+        let mut event: TerrainAcceptedEvent =
+            serde_json::from_value(v).map_err(|_| Fail::Store("contract_decode"))?;
+        event.validate()?;
+        let held: bool = r.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
+        let frontier: Option<i64> = r.try_get(3).map_err(|_| Fail::Store("contract_decode"))?;
+        // Ephemeral current-use overlay; the source event and historical evaluation stay immutable.
+        if held {
+            event.claim.conflicted = true;
+            event.claim.temporal_frontier =
+                event.claim.temporal_frontier.max(frontier.unwrap_or(0));
+        }
+        Ok(Some(event))
     }
 
     pub fn record_dns(
@@ -270,8 +191,22 @@ impl PgTerrainStore {
             .start()
             .map_err(|e| map_pg_err(&e))?;
         if let Some((ev, cur, now, auth_db)) =
-            Self::load_existing(&mut tx, req.engagement_id, req.campaign_id, op, &hash)?
+            Self::load_existing(&mut tx, req.engagement_id, req.campaign_id, op)?
         {
+            if ev.request_hash != hash {
+                if perm.is_ok() {
+                    let frontier = ev.claim.temporal_frontier.max(req.perceived_at);
+                    let blocks_use = integrity_conflict_applies(req, &ev);
+                    tx.execute("INSERT INTO terrain.integrity_conflicts \
+                        (engagement_id,campaign_id,operation_id,claim_id,temporal_frontier,blocks_use,reason) \
+                        VALUES ($1,$2,$3,$4,$5,$6,'input_mismatch') ON CONFLICT DO NOTHING",
+                        &[&ev.engagement_id.0, &ev.campaign_id.0, &op.0, &ev.claim.claim_id, &frontier, &blocks_use])
+                        .map_err(|e| map_pg_err(&e))?;
+                    tx.commit()
+                        .map_err(|_| Fail::Unresolved("terrain_commit_unknown"))?;
+                }
+                return Err(Fail::Conflict("input_mismatch"));
+            }
             tx.commit().map_err(|e| map_pg_err(&e))?;
             let auth_ok = [auth_db, perm.is_ok()].into_iter().all(|b| b);
             return Ok(Ok((ev, cur, now, auth_ok)));
@@ -310,11 +245,14 @@ impl PgTerrainStore {
             .start()
             .map_err(|e| map_pg_err(&e))?;
         let Some((ev, cur, now, auth_db)) =
-            Self::load_existing(&mut tx, req.engagement_id, req.campaign_id, op, &hash)?
+            Self::load_existing(&mut tx, req.engagement_id, req.campaign_id, op)?
         else {
             tx.commit().map_err(|e| map_pg_err(&e))?;
             return Ok(None);
         };
+        if ev.request_hash != hash {
+            return Err(Fail::Conflict("input_mismatch"));
+        }
         tx.commit().map_err(|e| map_pg_err(&e))?;
         let snap_ok = verify_mission_permission(mission, req).is_ok_and(|r| r.is_ok());
         let auth_ok = [auth_db, snap_ok].into_iter().all(|b| b);

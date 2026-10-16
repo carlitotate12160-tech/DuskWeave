@@ -18,6 +18,113 @@ fn write_temp_json(tag: &str, val: &Value) -> PathBuf {
 }
 
 #[test]
+fn regression_cli_partial_alias_is_withheld() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8310);
+    let mut raw = dns_request_json(e, c, now - 10);
+    raw["limitations"] = json!(["partial_alias_chain"]);
+    let path = write_temp_json("partial", &raw);
+    let (ok, _, receipt) = cli_run("m1-terrain-record", &path, "new", &[]);
+    assert!(ok);
+    assert_eq!(receipt["claim"]["routing_usable"], false);
+    assert_eq!(receipt["claim"]["claim_status"], "withheld");
+    let op = receipt["operation_id"].as_str().unwrap();
+    let stored: Value = trajectory_client()
+        .query_one(
+            "SELECT contract FROM trajectory.terrain_history WHERE operation_id=$1",
+            &[&Uuid::parse_str(op).unwrap()],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(stored["material"]["limitations"], raw["limitations"]);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn regression_cli_identity_conflict_blocks_replay_inspect_recover_then_later_use_recovers() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8311);
+    let raw = dns_request_json(e, c, now - 25);
+    let path = write_temp_json("identity-original", &raw);
+    let (ok, _, first) = cli_run("m1-terrain-record", &path, "new", &[]);
+    assert!(ok);
+    let op = first["operation_id"].as_str().unwrap();
+    let mut bad = raw.clone();
+    bad["answers"][0]["ipv4"] = json!("198.51.100.250");
+    let bad_path = write_temp_json("identity-variant", &bad);
+    let (ok, _, refusal) = cli_run("m1-terrain-record", &bad_path, op, &[]);
+    assert!(!ok);
+    assert_eq!(refusal["reason"], "input_mismatch");
+    for cmd in [
+        "m1-terrain-record",
+        "m1-terrain-inspect",
+        "m1-terrain-recover",
+    ] {
+        let (ok, _, receipt) = cli_run(cmd, &path, op, &[]);
+        assert!(ok);
+        assert_eq!(receipt["history"], "anomaly");
+        assert_eq!(receipt["claim"]["routing_usable"], false);
+        assert_eq!(receipt["current_claim"]["routing_usable"], false);
+        for field in [
+            "operation_id",
+            "event_id",
+            "observation_id",
+            "material_id",
+            "evaluation_id",
+            "claim_id",
+        ] {
+            assert_eq!(receipt[field], first[field]);
+        }
+    }
+    let mut later = raw.clone();
+    later["perceived_at"] = json!(now - 10);
+    later["expected_claim_revision"] = json!(1);
+    let later_path = write_temp_json("identity-later", &later);
+    let (ok, _, clean) = cli_run("m1-terrain-record", &later_path, "new", &[]);
+    assert!(ok);
+    assert_eq!(clean["claim"]["routing_usable"], true);
+    let (_, _, historical) = cli_run("m1-terrain-inspect", &path, op, &[]);
+    assert_eq!(historical["history"], "anomaly");
+    assert_eq!(historical["claim"]["routing_usable"], false);
+    assert_eq!(historical["current_claim"]["routing_usable"], true);
+    for path in [path, bad_path, later_path] {
+        std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[test]
+fn regression_cli_verified_precommit_refusal_and_failed_inspection_differ() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8312);
+    let mut raw = dns_request_json(e, c, now - 10);
+    raw["expected_claim_revision"] = json!(1);
+    let path = write_temp_json("precommit", &raw);
+    let op = allocate_op();
+    let (ok, _, receipt) = cli_run("m1-terrain-record", &path, &op.0.to_string(), &[]);
+    assert!(!ok);
+    assert_eq!(receipt["publication"], "not_committed");
+    assert_eq!(receipt["reason"], "claim_revision_mismatch");
+    let count: i64 = terrain_client()
+        .query_one(
+            "SELECT count(*) FROM terrain.outbox WHERE operation_id=$1",
+            &[&op.0],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 0);
+    let (ok, _, receipt) = cli_run(
+        "m1-terrain-inspect",
+        &path,
+        &op.0.to_string(),
+        &[("DW_TRAJECTORY_DATABASE_URL", "invalid")],
+    );
+    assert!(!ok);
+    assert_eq!(receipt["publication"], "unknown");
+    assert_eq!(receipt["history"], "unknown");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn cli_record_inspect_recover_and_idempotent_redelivery() {
     let _g = db();
     let (e, c, _reg, now) = register_m1_campaign(0x8301);
