@@ -61,6 +61,9 @@ jobs:
       - name: Coverage-gate regression tests
         run: python tests/check_coverage_gate.py --selftest
 
+      - name: Native helper unit tests
+        run: python -m unittest discover -s tests -p test_m1_native_helpers.py
+
   metrics:
     # Advisory metrics: complexity and runtime diff budget, excluded from ci-ok.needs.
     runs-on: ubuntu-latest

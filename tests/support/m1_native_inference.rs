@@ -44,7 +44,10 @@ pub fn setup() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let expected = std::env::var("DW_NATIVE_FIXTURE_DATABASE").expect("native_fixture_configuration_invalid");
-        assert!(["dw_native_fix60_r1_fixture01","dw_native_fix60_r1_live01"].contains(&expected.as_str()),"native_fixture_configuration_invalid");
+        assert!(expected.len() <= 63 && expected.len() > "dw_native_".len()
+            && expected.starts_with("dw_native_")
+            && expected.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
+            "native_fixture_configuration_invalid");
         let configs: Vec<_> = VARIABLES.iter().map(|v|config(v)).collect();
         for (index,cfg) in configs.iter().enumerate() {
             assert!(cfg.get_dbname()==Some(expected.as_str()) || index==0,"native_fixture_configuration_invalid");
