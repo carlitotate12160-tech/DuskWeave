@@ -2,12 +2,12 @@
 use duskweave::Fail;
 use duskweave::m1_terrain::{
     CLAIM_KIND_DNS_IPV4, ClaimFreshness, DnsAnswer, EVENT_KIND_TERRAIN_CHANGED, EvaluationOutcome,
-    OBLIGATION_TERRAIN_HISTORY, TerrainClaimStatus, TerrainIds, TerrainReceipt, TerrainSourceKind,
-    TrustTier, evaluate_dns_observation,
+    OBLIGATION_TERRAIN_HISTORY, TerrainAcceptedEvent, TerrainClaimStatus, TerrainIds,
+    TerrainReceipt, TerrainSourceKind, TrustTier, evaluate_dns_observation,
 };
 use duskweave::m1_terrain_input::{
-    MAX_INPUT_BYTES, canonical_ipv4, parse_terrain_dns_request, read_terrain_dns_file,
-    validate_dns_hostname,
+    MAX_INPUT_BYTES, TerrainDnsRequest, canonical_ipv4, parse_terrain_dns_request,
+    read_terrain_dns_file, validate_dns_hostname,
 };
 use duskweave::mission::{CampaignId, EngagementId, EventId, OperationId};
 use serde_json::{Value, json};
@@ -324,46 +324,52 @@ fn evaluate_withholds_incomplete_truncated_nxdomain_empty_and_ttl_zero_material(
     }
 }
 
-#[test]
-fn evaluate_distinguishes_rrset_rotation_from_same_applicability_conflict_and_stale_revision() {
-    let req1 = parse_terrain_dns_request(&serde_json::to_vec(&base_json()).unwrap()).unwrap();
-    let ids1 = TerrainIds::derive(
-        req1.engagement_id,
-        req1.campaign_id,
-        OperationId(Uuid::from_u128(0x701)),
+fn initial_eval(op_byte: u128) -> (TerrainAcceptedEvent, TerrainDnsRequest) {
+    let req = parse_terrain_dns_request(&serde_json::to_vec(&base_json()).unwrap()).unwrap();
+    let ids = TerrainIds::derive(
+        req.engagement_id,
+        req.campaign_id,
+        OperationId(Uuid::from_u128(op_byte)),
     )
     .unwrap();
-    let ev1 = evaluate_dns_observation(&req1, None, ids1, lineage()).unwrap();
+    let ev = evaluate_dns_observation(&req, None, ids, lineage()).unwrap();
+    (ev, req)
+}
 
-    // Stale expected_claim_revision (0 when prior is 1) is rejected.
+#[test]
+fn evaluate_rejects_stale_expected_claim_revision() {
+    let (ev1, req1) = initial_eval(0x701);
     let mut stale_raw = base_json();
     stale_raw["perceived_at"] = json!(1_700_000_010_i64);
     stale_raw["expected_claim_revision"] = json!(0);
     let stale_req = parse_terrain_dns_request(&serde_json::to_vec(&stale_raw).unwrap()).unwrap();
-    let ids_stale = TerrainIds::derive(
+    let ids = TerrainIds::derive(
         req1.engagement_id,
         req1.campaign_id,
         OperationId(Uuid::from_u128(0x702)),
     )
     .unwrap();
     assert_eq!(
-        evaluate_dns_observation(&stale_req, Some(&ev1.claim), ids_stale, lineage()),
+        evaluate_dns_observation(&stale_req, Some(&ev1.claim), ids, lineage()),
         Err(Fail::Conflict("claim_revision_mismatch"))
     );
+}
 
-    // Different RRset at later perception time (perceived_at > prior) with expected_claim_revision = 1 is normal rotation.
+#[test]
+fn evaluate_accepts_rrset_rotation_at_later_perception_time() {
+    let (ev1, req1) = initial_eval(0x703);
     let mut rot_raw = base_json();
     rot_raw["perceived_at"] = json!(1_700_000_020_i64);
     rot_raw["expected_claim_revision"] = json!(1);
     rot_raw["answers"] = json!([{"ipv4": "198.51.100.99", "ttl_seconds": 300}]);
     let rot_req = parse_terrain_dns_request(&serde_json::to_vec(&rot_raw).unwrap()).unwrap();
-    let ids2 = TerrainIds::derive(
+    let ids = TerrainIds::derive(
         req1.engagement_id,
         req1.campaign_id,
-        OperationId(Uuid::from_u128(0x703)),
+        OperationId(Uuid::from_u128(0x704)),
     )
     .unwrap();
-    let ev2 = evaluate_dns_observation(&rot_req, Some(&ev1.claim), ids2, lineage()).unwrap();
+    let ev2 = evaluate_dns_observation(&rot_req, Some(&ev1.claim), ids, lineage()).unwrap();
     assert_eq!(ev2.claim.claim_revision, 2);
     assert_eq!(ev2.claim.previous_claim_revision, 1);
     assert_eq!(ev2.claim.claim_status, TerrainClaimStatus::Observed);
@@ -375,27 +381,85 @@ fn evaluate_distinguishes_rrset_rotation_from_same_applicability_conflict_and_st
             ttl_seconds: 300
         }]
     );
-    // Capped at perceived_at + 60s even when TTL is 300s.
     assert_eq!(ev2.claim.valid_until, Some(1_700_000_080));
+}
 
-    // Same applicability (same perceived_at) with expected_claim_revision = 2 suspends use as Conflicted.
-    let mut conf_raw = rot_raw;
-    conf_raw["expected_claim_revision"] = json!(2);
+#[test]
+fn evaluate_marks_conflicted_on_different_answers_at_same_perception_time() {
+    let (ev1, req1) = initial_eval(0x705);
+    let mut conf_raw = base_json();
+    conf_raw["expected_claim_revision"] = json!(1);
     conf_raw["answers"] = json!([{"ipv4": "198.51.100.200", "ttl_seconds": 60}]);
     let conf_req = parse_terrain_dns_request(&serde_json::to_vec(&conf_raw).unwrap()).unwrap();
-    let ids3 = TerrainIds::derive(
+    let ids = TerrainIds::derive(
         req1.engagement_id,
         req1.campaign_id,
-        OperationId(Uuid::from_u128(0x704)),
+        OperationId(Uuid::from_u128(0x706)),
     )
     .unwrap();
-    let ev3 = evaluate_dns_observation(&conf_req, Some(&ev2.claim), ids3, lineage()).unwrap();
+    let ev2 = evaluate_dns_observation(&conf_req, Some(&ev1.claim), ids, lineage()).unwrap();
     assert_eq!(
-        ev3.evaluation.outcome,
+        ev2.evaluation.outcome,
         EvaluationOutcome::ApplicabilityConflict
     );
-    assert_eq!(ev3.claim.claim_status, TerrainClaimStatus::Conflicted);
-    assert!(ev3.claim.conflicted);
-    assert!(!ev3.evaluation.usable_routing_premise);
-    assert!(!ev3.claim.view_at(1_700_000_025).routing_usable);
+    assert_eq!(ev2.claim.claim_status, TerrainClaimStatus::Conflicted);
+    assert!(ev2.claim.conflicted);
+    assert!(!ev2.evaluation.usable_routing_premise);
+    assert!(!ev2.claim.view_at(1_700_000_025).routing_usable);
+}
+
+#[test]
+fn evaluate_duplicate_answers_at_same_perception_time_remain_observed() {
+    let (ev1, req1) = initial_eval(0x707);
+    let mut dup_raw = base_json();
+    dup_raw["expected_claim_revision"] = json!(1);
+    let dup_req = parse_terrain_dns_request(&serde_json::to_vec(&dup_raw).unwrap()).unwrap();
+    let ids = TerrainIds::derive(
+        req1.engagement_id,
+        req1.campaign_id,
+        OperationId(Uuid::from_u128(0x708)),
+    )
+    .unwrap();
+    let ev2 = evaluate_dns_observation(&dup_req, Some(&ev1.claim), ids, lineage()).unwrap();
+    assert_eq!(ev2.claim.claim_status, TerrainClaimStatus::Observed);
+    assert!(!ev2.claim.conflicted);
+}
+
+#[test]
+fn evaluate_clean_observation_recovers_from_prior_conflict() {
+    let (ev1, req1) = initial_eval(0x709);
+    let mut conf_raw = base_json();
+    conf_raw["expected_claim_revision"] = json!(1);
+    conf_raw["answers"] = json!([{"ipv4": "198.51.100.200", "ttl_seconds": 60}]);
+    let conf_req = parse_terrain_dns_request(&serde_json::to_vec(&conf_raw).unwrap()).unwrap();
+    let ids_conf = TerrainIds::derive(
+        req1.engagement_id,
+        req1.campaign_id,
+        OperationId(Uuid::from_u128(0x70a)),
+    )
+    .unwrap();
+    let ev_conf =
+        evaluate_dns_observation(&conf_req, Some(&ev1.claim), ids_conf, lineage()).unwrap();
+    assert!(ev_conf.claim.conflicted);
+
+    let mut rec_raw = base_json();
+    rec_raw["perceived_at"] = json!(1_700_000_030_i64);
+    rec_raw["expected_claim_revision"] = json!(2);
+    rec_raw["answers"] = json!([{"ipv4": "198.51.100.222", "ttl_seconds": 60}]);
+    let rec_req = parse_terrain_dns_request(&serde_json::to_vec(&rec_raw).unwrap()).unwrap();
+    let ids_rec = TerrainIds::derive(
+        req1.engagement_id,
+        req1.campaign_id,
+        OperationId(Uuid::from_u128(0x70b)),
+    )
+    .unwrap();
+    let ev_rec =
+        evaluate_dns_observation(&rec_req, Some(&ev_conf.claim), ids_rec, lineage()).unwrap();
+    assert_eq!(
+        ev_rec.evaluation.outcome,
+        EvaluationOutcome::QualifiedDnsClaim
+    );
+    assert_eq!(ev_rec.claim.claim_status, TerrainClaimStatus::Observed);
+    assert!(!ev_rec.claim.conflicted);
+    assert!(ev_rec.claim.view_at(1_700_000_035).routing_usable);
 }

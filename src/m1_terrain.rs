@@ -177,9 +177,8 @@ fn resolve_revision(
     if req.expected_claim_revision != cur.claim_revision {
         return Err(Fail::Conflict("claim_revision_mismatch"));
     }
-    let normal = [!cur.conflicted, req.perceived_at > cur.perceived_at]
-        .into_iter()
-        .all(|b| b);
+    let duplicate = req.perceived_at == cur.perceived_at && req.answers == cur.answers;
+    let normal = req.perceived_at > cur.perceived_at || duplicate;
     Ok((cur.claim_revision, cur.claim_revision + 1, !normal))
 }
 
