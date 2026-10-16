@@ -38,9 +38,9 @@ campaign-local feedback. Synthesis/evolution remains in the approved R2 M1 direc
 under fixed effect, build, qualification and admission boundaries; compile/test success
 alone proves neither mission success nor an unrestricted new effect.
 
-Each complete observable runtime outcome retains the 600-line ceiling and linear
-delivery; no fixed PR count, dormant framework or cap increase is selected. Profile
-details and current amendment acceptance/readiness are recorded in
+Each complete observable runtime outcome follows linear delivery and the canonical
+engineering policy in [QUALITY_BAR.md](../QUALITY_BAR.md); no fixed PR count or dormant
+framework is selected. Profile details and current amendment acceptance/readiness are recorded in
 [ENGINEERING_STATE.md](ENGINEERING_STATE.md), not inferred from this scope confirmation.
 
 ## 2. Deferred development candidates

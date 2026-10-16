@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""McCabe own-complexity gate for tracked DuskWeave Rust sources.
+"""McCabe own-complexity check for tracked DuskWeave Rust sources.
 
-CLI owner of the gate: pinned analyzer qualification, tracked src/**/*.rs
+CLI owner of the check: pinned analyzer qualification, tracked src/**/*.rs
 inventory via `git ls-files`, analyzer invocation
-(`-p src -m -O json -o <raw> -j 1 -w`), candidate provenance, fixed cap
-assignment and the reviewed dispatch binding. Report codec, validation and
+(`-p src -m -O json -o <raw> -j 1 -w`), candidate provenance, reference point
+assignment and pure-dispatch classification. Report codec, validation and
 projection live in sibling `complexity_reports.py`.
 
-Fixed caps (QUALITY_BAR.md): 7 business; the unique reviewed pure-dispatch
-`run` (direct unit child of src/main.rs bound to the reviewed source digest)
-keeps 10. Spans >50 emit REVIEW_TRIGGER without failing. Exit 0 = compliance,
-1 = cap violations, 2 = tool/report/input failure.
+Review reference points (QUALITY_BAR.md): 7 business; pure-dispatch
+`run` (direct unit child of src/main.rs) has 10. Spans >50 emit REVIEW_TRIGGER.
+Exit 0 = successful measurement (advisory warnings printed for crossings),
+2 = tool/report/input failure.
 """
 
 import argparse
-import hashlib
 import os
 import shutil
 import subprocess
@@ -30,9 +29,6 @@ TOOL_NAME = "rust-code-analysis-cli"
 REQUIRED_VERSION = "rust-code-analysis-cli 0.0.25"
 DISPATCH_FILE = "src/main.rs"
 DISPATCH_NAME = "run"
-REVIEWED_RUN_SHA256 = (
-    "921bc2f3407da4afa83462c940cd7748137e1dcc780680cee59fb7fc7cb5c20d"
-)
 
 
 def _subprocess_timeout():
@@ -149,23 +145,6 @@ def _measure_all(raw_dir, files):
     return measurements
 
 
-def body_digest(src_path, start, end):
-    try:
-        with open(src_path, "rb") as fh:
-            text = fh.read().decode("utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise reports.CheckError(
-            f"cannot read source for digest {src_path}: {exc}"
-        )
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    if end > len(lines):
-        raise reports.CheckError(
-            f"{src_path}: span {start}-{end} exceeds file length"
-        )
-    body = "\n".join(lines[start - 1 : end]) + "\n"
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
-
-
 def _eligible_runs(measurements):
     return [
         m
@@ -176,28 +155,9 @@ def _eligible_runs(measurements):
     ]
 
 
-def _bind_reviewed(node, digest_of):
-    digest = digest_of(node)
-    if digest == REVIEWED_RUN_SHA256:
-        node["cap"] = CAP_REVIEWED_DISPATCH
-        node["allowance"] = "reviewed-dispatch"
-        return {
-            "status": "granted",
-            "identity": node["identity"],
-            "sha256": digest,
-        }
-    node["allowance"] = "digest-mismatch"
-    return {
-        "status": "digest_mismatch",
-        "identity": node["identity"],
-        "expected": REVIEWED_RUN_SHA256,
-        "actual": digest,
-        "detail": "run body changed since review; cap stays 7",
-    }
-
-
-def resolve_run_allowance(measurements, digest_of):
-    """Bind cap 10 to the unique reviewed direct unit-child run only."""
+def resolve_run_allowance(measurements):
+    """Automated reporting uses business-function reference point 7 for all functions.
+    Pure-dispatch classification (up to reference point 10) is evaluated by reviewers in PR review."""
     eligible = _eligible_runs(measurements)
     if not eligible:
         return {
@@ -210,7 +170,14 @@ def resolve_run_allowance(measurements, digest_of):
             "detail": f"{len(eligible)} unit-child run candidates in "
             f"{DISPATCH_FILE}; none receive cap {CAP_REVIEWED_DISPATCH}",
         }
-    return _bind_reviewed(eligible[0], digest_of)
+    node = eligible[0]
+    # Retain CAP_DEFAULT (7) for automated reporting.
+    # Reviewer classifies pure-dispatch in PR review.
+    return {
+        "status": "unclassified",
+        "identity": node["identity"],
+        "detail": f"reported at reference {CAP_DEFAULT}; reviewer classifies pure dispatch (up to {CAP_REVIEWED_DISPATCH}) in PR review",
+    }
 
 
 def evaluate(measurements):
@@ -236,7 +203,7 @@ def _emit(version, sha, files, measurements, triggers, allowance):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="McCabe complexity gate")
+    parser = argparse.ArgumentParser(description="McCabe complexity check")
     parser.add_argument("--analyzer", required=True)
     parser.add_argument("--report-dir", required=True)
     args = parser.parse_args(argv)
@@ -249,10 +216,7 @@ def main(argv=None):
         raw_dir = os.path.join(args.report_dir, "raw")
         run_analyzer(args.analyzer, raw_dir, args.report_dir)
         measurements = _measure_all(raw_dir, files)
-        allowance = resolve_run_allowance(
-            measurements,
-            lambda m: body_digest(m["file"], m["start_line"], m["end_line"]),
-        )
+        allowance = resolve_run_allowance(measurements)
         violations, triggers = evaluate(measurements)
         _emit(version, sha, files, measurements, triggers, allowance)
         summary = reports.build_summary(
@@ -261,9 +225,9 @@ def main(argv=None):
         )
         reports.write_summaries(args.report_dir, summary)
         if violations:
-            print(f"Failed: {len(violations)} complexity violations.")
-            return 1
-        print("Success: 0 complexity violations.")
+            print(f"Warning: {len(violations)} complexity warnings (reference point exceeded).")
+            return 0
+        print("Success: 0 complexity warnings.")
         return 0
     except (reports.CheckError, OSError) as exc:
         print(f"complexity check failed: {exc}", file=sys.stderr)

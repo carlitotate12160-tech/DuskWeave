@@ -58,11 +58,24 @@ jobs:
       - name: Structure-checker regression tests
         run: python -m unittest discover -s tests -p test_structure.py
 
-      - name: Runtime-budget checker unit tests
-        run: python -m unittest discover -s tests -p test_runtime_budget.py
-
       - name: Coverage-gate regression tests
         run: python tests/check_coverage_gate.py --selftest
+
+  metrics:
+    # Advisory metrics: complexity and runtime diff budget, excluded from ci-ok.needs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Runtime-budget checker unit tests
+        run: python -m unittest discover -s tests -p test_runtime_budget.py
 
       - name: Install pinned rust-code-analysis-cli 0.0.25
         shell: bash
@@ -78,10 +91,18 @@ jobs:
           DW_COMPLEXITY_ANALYZER: ${{ runner.temp }}/rust-code-analysis-cli
         run: python -m unittest discover -s tests -p 'test_complexity*.py'
 
-      - name: Complexity policy enforcement
+      - name: Complexity measurement and reporting
         env:
           DW_COMPLEXITY_ANALYZER: ${{ runner.temp }}/rust-code-analysis-cli
-        run: python scripts/check_complexity.py --analyzer "$DW_COMPLEXITY_ANALYZER" --report-dir "${{ runner.temp }}/dw-complexity-${{ github.run_id }}-${{ github.run_attempt }}"
+          REPORT_DIR: ${{ runner.temp }}/dw-complexity-${{ github.run_id }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -e
+          python scripts/check_complexity.py --analyzer "$DW_COMPLEXITY_ANALYZER" --report-dir "$REPORT_DIR"
+          echo "### Complexity Metrics" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          cat "$REPORT_DIR/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload complexity report artifact
         if: always()
@@ -109,8 +130,14 @@ jobs:
           git rev-parse --verify "$BASE^{commit}"
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
-      - name: Runtime diff budget check
-        run: python scripts/check_runtime_budget.py --base "${{ steps.base.outputs.base }}" --head HEAD
+      - name: Runtime diff budget reporting
+        shell: bash
+        run: |
+          set -e
+          echo "### Runtime Diff Budget" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          python scripts/check_runtime_budget.py --base "${{ steps.base.outputs.base }}" --head HEAD | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   rust:
     runs-on: ubuntu-latest

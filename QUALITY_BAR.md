@@ -8,17 +8,17 @@ This document defines the software engineering quality standards, complexity thr
 
 ## 1. Module & File Size Budgets
 
-Readability, maintainability, and domain-responsibility isolation are enforced through file size limits:
+Readability, maintainability, and domain-responsibility isolation are informed by file size and complexity metrics as advisory review reference points, not hard ceilings:
 
-| Metric | Ideal Threshold | Hard Cap | Action When Exceeded |
+| Metric | Preferred Reference | Review Reference Point | Action When Exceeded |
 | :--- | :--- | :--- | :--- |
-| **Production/tooling file** | `< 300 LOC` | `400 LOC` | Split by cohesive responsibility. |
-| **Test/benchmark file** | Readable, cohesive tests | `500 LOC` | Split by scenario/responsibility. |
-| **Markdown document** | One purpose; navigable | `600 LOC` | Split by purpose; narrower document-specific limits still apply. |
-| **Runtime diff per PR/slice** | `< 300 LOC`; review trigger `> 400` | `600 LOC` | Above 400 requires explicit cohesion/ownership review; above 600 is *SPLIT_REQUIRED*. |
-| **Function length** | `<= 50` physical lines | Review trigger, not a universal cap | Above 50, record cohesion/readability disposition; split only by meaningful responsibility. |
-| **Business/other function McCabe** | `<= 7` | `7` | Refactor a measured violation by cohesive responsibility. |
-| **Pure dispatch McCabe** | `<= 7` preferred | `10`, only when qualified below | Review classification and reject business decisions hidden in dispatch. |
+| **Production/tooling file** | `< 300 LOC` | `400 LOC` | Advisory warning; review cohesion/readability. Retain with a concrete reason or refactor in the same PR. |
+| **Test/benchmark file** | Readable, cohesive tests | `500 LOC` | Advisory warning; review scenario cohesion. |
+| **Markdown document** | One purpose; navigable | `600 LOC` | Advisory warning; review document purpose. Narrower document-specific limits still apply. |
+| **Runtime diff per PR/slice** | `< 300 LOC`; review trigger `> 400` | `600 LOC` | Advisory warning; review cohesion and ownership. Retain with a concrete reason or refactor in the same PR. No separate exception or new packet required. |
+| **Function length** | `<= 50` physical lines | Review trigger, not a universal cap | Above 50, record cohesion/readability disposition; split only by meaningful responsibility without helper fragmentation. |
+| **Business/other function McCabe** | `<= 7` | `7` | Advisory review reference point; retain with a concrete cohesion reason or refactor by cohesive responsibility. |
+| **Pure dispatch McCabe** | `<= 7` preferred | `10` | Advisory review reference point for discriminator/handler forwarding without business decisions. |
 
 Counts are physical lines including comments and blanks. File size uses actual
 lines, with or without a final newline. Test files are under `tests/` or `benches/`
@@ -29,20 +29,13 @@ The runtime diff counts added plus deleted lines in production paths, SQL migrat
 and named manifests. Docs, `tests/`, lockfiles and CI-only tooling remain outside
 that diff; test modules placed under `src/` still count as source-path changes.
 
-The 600 runtime ceiling is an initial DuskWeave calibration, not an industry
-standard or a target to fill. A >400 result is a review trigger, not a budget
-exception. The existing distinct review must explicitly address one coherent
-behavior, owner boundaries, file footprint, failure/recovery tests and a safe
-system after merge. CI reports the trigger; green numerical checks do not resolve
-that review or grant acceptance. Source-module and McCabe caps remain independent.
-
-Recorded delivery-budget exceptions (scoped, non-recurring; duplicate records are invalid):
-
-M0A_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M0A; base=a9da047b2bf0bf4822536187ab3e1734ac56fc12; cap=1200; initial-only
-(History: originally pinned to base f52cfcc53c183f7c852fba191f9da14858c7ae5d; repointed to a9da047 after protected master advanced via documentation-only PR #6 containing no runtime changes.)
-
-M1_NATIVE_INFERENCE_RUNTIME_DIFF_EXCEPTION: DW-IMPLEMENT-M1-NATIVE-INFERENCE; base=d2b34e5fdcb6cc774b12388d928cd7cd5954fb94; cap=3200; initial-only
-(Product-owner authorization, 2026-10-15: one initial native-inference packet only; measured starting projection +2,622/-27 = 2,649. Applies cumulatively to its pinned base and exact 26-path production map in the issued packet, including corrections. Default 600, production-file 400, McCabe, test/coverage and all other gates remain unchanged. The existing checker must enforce this exact scope before runtime integration; no arbitrary override or recurring exception.)
+The 600 runtime diff and 400 file size values are advisory reference points,
+not hard ceilings. A crossing produces a warning and a reviewer decision:
+retain with a concrete cohesion/readability reason, or refactor in the same PR.
+Do not require a new packet, separate authorization, or budget exception ledger
+for a numerical crossing. Git history preserves earlier exception approvals.
+Architecture, ownership, dependency direction and readability still matter;
+an advisory metric does not excuse a God Object or tangled responsibilities.
 
 ### Function and dispatch classification
 
@@ -52,21 +45,22 @@ and documentation. Apply the 50-line review trigger to production/tooling
 functions and methods. Document a longer cohesive function or split a genuinely
 mixed responsibility; do not introduce forwarding helpers merely to lower counts.
 
-The 10 McCabe allowance applies only to a function that selects an already-owned
+The 10 McCabe reference point applies to a function that selects an already-owned
 handler from a discriminator and forwards its bounded input/result. It must not
 validate authority, decide business eligibility, mutate domain state, perform I/O,
 add retry/recovery policy, or hide those decisions in match guards. Uncertain or
-mixed classification uses 7. The called business handlers retain their own 7 cap;
+mixed classification uses 7. The called business handlers retain their own 7 reference point;
 review the complete call path so moving branches does not hide complexity.
+No source-digest allowance or hash-pinning is required.
 Do not equate match-arm count with McCabe or substitute cognitive complexity.
 Report the measurement method/tool/version, source span and exact candidate;
-unavailable measurement is UNVERIFIED, not a numerical PASS. Existing fmt/Clippy
-success is not proof that these metrics are measured. Analyzer selection and CI
-wiring require their own bounded implementation. Enforcement wiring:
-`scripts/check_complexity.py` measures the tracked `src/**/*.rs` inventory with
-the pinned rust-code-analysis-cli 0.0.25 binary inside the `structure` job of
-`.github/workflows/doc-check.yml`; the thresholds above are its enforced
-constants and the tool grants no new exception.
+unavailable measurement or analyzer failure is an error, not a numerical PASS.
+Enforcement wiring:
+`scripts/check_complexity.py` and `scripts/check_runtime_budget.py` report
+measurements and advisory warnings in the advisory `metrics` job of
+`.github/workflows/doc-check.yml`; successful measurement exits 0 even when
+thresholds are exceeded, while invalid input, missing analyzer, or malformed
+reports remain explicit errors.
 
 ### Code splitting rules:
 - Strictly forbidden to create dumping-ground files such as `utils.rs`, `helpers.rs`, `common.rs`, or `misc.rs`.
@@ -135,26 +129,29 @@ constants and the tool grants no new exception.
 - Preserve the authorized offensive outcome and PRD-000 invariants. A passive
   substitute or stub is not delivery of an accepted active capability.
 - Before issuing a runtime packet, inspect its current source, real consumers,
-  fixtures, CI, supported environments and cumulative budget. Resolve known
+  fixtures, CI, supported environments and scope. Resolve known
   infeasibility before coding; distinguish estimates from measured counts.
-  Each packet pins its cumulative ceiling at or below 600, an exact file map and
-  measured formatted starting/proposed size. Normally reserve 15-20% for corrections
-  before handoff; this is planning headroom, not a target to consume. Reassess tight
-  estimates before execution. >400 requires the review disposition in section 1,
-  not a routine exception. Any exception above the ceiling still needs explicit
-  scoped authorization; the executor cannot enlarge it.
-- Keep the applicable caps. Never shrink required behavior, remove explanatory comments,
-  compress formatting or perform unrelated/out-of-map cleanup to satisfy a counter.
-  Small files and low complexity are checks, not proof of sound ownership.
-- During execution, stop for material scope/ownership drift or the packet/hard
-  ceiling; crossing the 400 review trigger alone is not SPLIT_REQUIRED. Never add
-  a precursor solely to save a few counted lines. A refactor must be cohesive,
-  directly consumed and supported by behavior-preserving evidence.
-- Reassess this initial calibration after five runtime deliveries using measured
-  diff/footprint, review findings/rework and stopped slices. Tighten or widen only
-  from that evidence, without weakening owner, complexity or failure-test gates.
+  Each packet identifies its scope, exact file map and estimated diff. >400 is an
+  advisory review trigger; 600 is a reference point. Exceeding a reference point
+  produces a warning and reviewer decision: retain with a concrete cohesion/readability
+  reason, or refactor in the same PR. Do not require a new packet or separate
+  authorization for a numerical crossing.
+- Architecture, ownership, dependency direction and readability matter. Never shrink
+  required behavior, remove explanatory comments, compress formatting or perform
+  unrelated/out-of-map cleanup to satisfy a counter. Small files and low complexity
+  are checks, not proof of sound ownership.
+- During execution, stop for material scope/ownership drift, unresolved authority,
+  or a violated architectural invariant; crossing the 400 review trigger or 600 reference
+  point alone is not SPLIT_REQUIRED. Never add a precursor solely to save a few counted lines.
+  A refactor must be cohesive, directly consumed and supported by behavior-preserving evidence.
+- Git is candidate custody for ordinary repository changes: the actual base commit,
+  committed PR head, git diff and CI associated with that candidate identify the work.
+  Requirements for index-tree identities, patch hashes, projected source snapshots,
+  candidate manifests and duplicated source archives are removed. Retain external evidence
+  only where Git cannot reproduce the observation, such as a live provider result,
+  kept sanitized and identifying the tested commit.
 - Bind material acceptance criteria to requirement, owner, observable assertion,
-  failure boundary, environment and candidate SHA. Report actual commands/results;
+  failure boundary, environment and candidate commit. Report actual commands/results;
   distinguish static review, local execution and exact-candidate CI evidence.
 - Exercise real persistence/roles for transaction behavior. For lost acknowledgment,
   assert durable commit before caller failure, then scoped identity/effect count

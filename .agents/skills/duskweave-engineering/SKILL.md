@@ -179,16 +179,13 @@ For a behavior fix require a genuine failing assertion; for a refactor of
 already-correct behavior require honest passing-baseline characterization,
 not fabricated RED history or an introduced defect.
 Before issuing a ready packet, inspect current source, consumers, test fixtures,
-CI and supported environments. Establish budget feasibility after formatting,
-including migrations/config and cumulative PR changes. Resolve known file-map,
-environment, dependency and budget conflicts here; do not knowingly send an
-impossible packet and use the executor's STOP as its expected outcome. Record
-estimates as estimates; any exception must be scoped and authorized in policy.
-Separate the cost of new behavior from existing behavior/fixtures reused by it.
-Identify the formatted size evidence and its exact base; a historical probe or
-estimate is not a verified candidate. Resolve a doubtful fit before handoff,
-then require an early executor budget check before polishing tests/docs.
-Do not remove behavior, explanatory comments or readable formatting to fit LOC.
+CI and supported environments. Engineering metrics (diff lines, file size, McCabe,
+function length) are advisory review reference points under QUALITY_BAR.md, not
+hard failure ceilings or reasons for new packets. Resolve known file-map,
+environment, and dependency conflicts here; do not knowingly send an impossible packet.
+Record estimates as estimates. Separate the cost of new behavior from existing
+behavior/fixtures reused by it. Do not remove behavior, explanatory comments or
+readable formatting to lower counted lines.
 List exact editable files separately from read-only caller/consumer references.
 For runtime packets, trace the real entrypoint and consumer and require a test
 through that path. An unchanged caller need not be editable.

@@ -14,8 +14,8 @@ Target:
 
 ```text
 runtime diff preferably < 300 LOC
-> 400 LOC: explicit cohesion/ownership review
-> 600 LOC: SPLIT_REQUIRED
+> 400 LOC: advisory review trigger (cohesion/ownership review)
+600 LOC: reference point (retain with concrete reason or refactor in same PR)
 ```
 
 Do not intentionally grow a slice merely to hit a minimum.
@@ -30,7 +30,7 @@ Preferred:
 < 300 LOC/module
 ```
 
-Hard review threshold:
+Review reference point:
 
 ```text
 400 LOC/module
@@ -48,16 +48,18 @@ not:
 move functions randomly to helpers.py
 ```
 
-The 400 file cap applies to production/tooling; test/benchmark files have 500,
+The 400 file threshold is an advisory review reference point for production/tooling; test/benchmark files have 500,
 Markdown has 600 unless a narrower document-specific rule applies. Physical
 comments/blanks count. File size is independent of the cumulative runtime diff.
+See QUALITY_BAR.md for canonical engineering policy.
 
-Before issuing a packet, measure the formatted cumulative diff against its exact
-base, declare a ceiling no higher than 600, and normally retain 15-20% planning
-room for corrections. Crossing 400 requires an explicit disposition in the
-existing distinct review; CI green alone does not resolve that disposition.
-Do not add a low-value precursor or remove failure behavior merely to fit 400.
-Split for responsibility, material scope drift or a hard/packet ceiling.
+Crossing 400 or the 600 runtime diff reference point produces an advisory
+warning and a reviewer decision: retain with a concrete cohesion/readability
+reason, or refactor in the same PR. Do not require a new packet, separate
+authorization, or budget exception ledger for a numerical crossing. Do not add
+a low-value precursor or remove failure behavior merely to lower a count.
+Split for responsibility, unresolved authority, or material scope drift;
+numerical crossings alone do not require SPLIT_REQUIRED.
 
 ---
 

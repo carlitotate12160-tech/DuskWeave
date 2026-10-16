@@ -191,21 +191,21 @@ Preferred source module:
 < 300 LOC
 ```
 
-Production/tooling file hard cap:
+Production/tooling file review reference point:
 
 ```text
 400 LOC
 ```
 
-Large modules must be split by cohesive responsibility. Test/benchmark files
-have a 500-line cap; Markdown has a separate 600-line cap, subordinate to any
-narrower document-specific rule. See QUALITY_BAR.md for classification/counting.
+Large modules should be split by cohesive responsibility. Test/benchmark files
+have a 500-line reference point; Markdown has a separate 600-line reference point, subordinate to any
+narrower document-specific rule. See QUALITY_BAR.md for canonical policy.
 
-Runtime diff and file size are independent. Prefer runtime diffs below 300;
-above 400 requires explicit cohesion/ownership review in the existing distinct
-review; 600 is the cumulative hard ceiling. Each packet declares its own ceiling
-and measured formatted size with room for corrections. Crossings of the 400
-review trigger alone do not require an exception or SPLIT_REQUIRED.
+Runtime diff and file size are advisory metrics informing review, not hard ceilings.
+Prefer runtime diffs below 300; above 400 is an advisory review trigger; 600 is a
+reference point. A crossing produces a warning and a reviewer decision: retain with
+a concrete cohesion/readability reason, or refactor in the same PR. Numerical
+crossings alone do not require an exception, a new packet, or SPLIT_REQUIRED.
 
 ---
 
@@ -284,18 +284,22 @@ AUTHORITY CHECK
 
 Before interpreting repository state, inspect `git worktree list` and verify
 repository identity, the actual worktree, its branch and HEAD against the
-packet's expected base. A path recorded in docs/ENGINEERING_STATE.md, an old
-prompt, or a dirty or stale main folder is not proof of the active candidate;
-the packet's verified worktree is.
+packet's expected base.
 
-Every issued packet names repository identity, actual worktree, branch and
-exact base; every delivery report also names the candidate head.
+For ordinary repository changes, Git is candidate custody: the actual base
+commit, committed PR head, git diff and CI associated with that candidate
+identify the work. Requirements for index-tree identities, patch hashes,
+projected source snapshots, candidate manifests and duplicated source archives
+are removed. Retain external evidence only where Git cannot reproduce the
+observation, such as a live provider result, kept sanitized and identifying
+the tested commit. Local checks on uncommitted changes are local evidence;
+they do not qualify a later committed candidate automatically.
 
 Preserve unrelated work: unless a packet explicitly assigns the cleanup, do
 not clean, reset, stash, stage, promote or delete drafts or worktrees. A
-healthy clean worktree may be reused for
-sequential delivery after its branch and base are reverified; creating a new
-folder for every slice is not itself a quality requirement.
+healthy clean worktree may be reused for sequential delivery after its branch
+and base are reverified; creating a new folder for every slice is not itself
+a quality requirement.
 
 Local machine configuration such as `.cargo/config.toml` belongs to its own
 worktree. Do not read, print, copy, stage, delete or overwrite it, and do not
@@ -309,25 +313,24 @@ Delivery is not complete until repository tracking is reconciled. At
 preflight, compare docs/ENGINEERING_STATE.md with live delivery and merge
 evidence; historical narrative remains historical.
 
+Maintain docs/ENGINEERING_STATE.md as a short pointer:
+- active work or PR;
+- next action;
+- links to governing accepted decisions and milestone evidence.
+
+Preserve accepted Foundation/M0 seal facts and referenced anchors. Do not
+store the active candidate's own HEAD SHA inside its commit; read head, CI
+and OPEN/MERGED/CLOSED state from GitHub. Do not manually label unmerged delivery
+COMPLETED.
+
 Every packet declares an explicit tracking disposition: UPDATE with the exact
 files and effects, or NO_CHANGE with a concrete reason. Include
 docs/ENGINEERING_STATE.md in the editable map when active delivery status or
 the next action changes; include docs/BUILD_ORDER.md only when current
 navigation changes. Correct factual lag only inside the packet's editable
 map; acceptance, seal and other authority changes remain separately
-authorized. A review-only task reports required tracking corrections without
-acquiring edit permission; an unchanged status records NO_CHANGE rather than
-meaningless churn. If a required correction needs a path omitted from the
-map, return SPLIT_REQUIRED with the exact map defect instead of expanding
-scope silently. Do not issue a ready packet while a required predecessor
-merge is still open.
-
-A candidate commit does not record its own merge: a delivered PR is distinct
-from merged source, and the final candidate SHA belongs to the external
-delivery report, not to a file inside the same commit. The actual predecessor
-merge is reconciled at the next packet's preflight. Before handoff, review
-consistency between the current-phase summary, the next action and build
-navigation.
+authorized. A candidate commit does not record its own merge: a delivered PR
+is distinct from merged source.
 
 ---
 

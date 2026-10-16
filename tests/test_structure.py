@@ -28,15 +28,16 @@ def check_files(files):
 class StructureTests(unittest.TestCase):
     def assert_boundary(self, path, cap):
         for final_newline in (False, True):
-            for size, expected in ((cap, 0), (cap + 1, 1)):
+            for size in (cap, cap + 1):
                 with self.subTest(path=path, size=size, newline=final_newline):
                     text = "\n".join("// bounded" for _ in range(size))
                     if final_newline:
                         text += "\n"
                     code, out = check_files({path: text})
-                    self.assertEqual(code, expected, out)
-                    if expected:
+                    self.assertEqual(code, 0, out)
+                    if size > cap:
                         self.assertIn(f"{size} lines > {cap}", out)
+                        self.assertIn("WARN", out)
 
     def test_production_cap_stays_400(self):
         self.assert_boundary("src/domain.rs", 400)
@@ -55,7 +56,7 @@ class StructureTests(unittest.TestCase):
 
     def test_comments_and_blanks_still_count(self):
         code, out = check_files({"src/domain.rs": "// comment\n" * 200 + "\n" * 201})
-        self.assertEqual(code, 1, out)
+        self.assertEqual(code, 0, out)
         self.assertIn("401 lines > 400", out)
 
     def test_forbidden_paths_still_fail(self):

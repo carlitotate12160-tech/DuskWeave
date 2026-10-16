@@ -118,14 +118,15 @@ requirements remain undelivered and merged changes need separate disposition.
 Identify governing requirement, bounded context, assumptions, and drift first.
 Name repository identity, actual worktree, branch, base and candidate in each
 packet and report; a recorded path is not proof of the active worktree, and
-unrelated worktrees are preserved. Declare a tracking disposition (UPDATE
-with exact files/effects or NO_CHANGE with reason); a delivered PR is not
-merged until verified, and actual predecessor merges reconcile at the next
-packet's preflight. Resolve concrete artifact/coverage/report paths and cache
-ownership per packet; reused artifacts and owned local services never
-substitute for current-candidate evidence, and a refactor of correct behavior
-reports its passing baseline honestly rather than a fabricated RED history.
-These are professional engineering controls, not enterprise certification.
+unrelated worktrees are preserved. Git is candidate custody for ordinary changes:
+base commit, committed PR head, git diff and CI associated with that candidate.
+Declare a tracking disposition (UPDATE with exact files/effects or NO_CHANGE with reason);
+a delivered PR is not merged until verified, and actual predecessor merges reconcile
+at the next packet's preflight. Do not store the candidate's own HEAD SHA in its commit.
+Resolve concrete artifact/coverage/report paths and cache ownership per packet;
+reused artifacts and owned local services never substitute for current-candidate evidence,
+and a refactor of correct behavior reports its passing baseline honestly rather than
+a fabricated RED history. These are professional engineering controls, not enterprise certification.
 Write one direct IDE prompt per cohesive, reviewable outcome, with all necessary
 files and checks in scope; avoid per-module prompts and unnecessary scaffolding.
 Own the architecture choice here; the IDE implements accepted decisions and the
@@ -133,10 +134,11 @@ packet, then returns evidence. It may choose local mechanics within authority.
 Prefer the smallest complete vertical behavior that preserves required invariants.
 Packets must include preconditions, exact allowed files, STOP conditions,
 expected verification, review gates, and exact completion criteria.
-Check file-map, fixture, environment, dependency and cumulative-budget feasibility
-before issuing the packet. Resolve known conflicts before handing work to the IDE.
+Check file-map, fixture, environment, dependency and scope feasibility before issuing
+the packet; engineering metrics are advisory review reference points under QUALITY_BAR.md.
+Resolve known conflicts before handing work to the IDE.
 Separate editable paths from read-only authority/caller/consumer references.
-Tie quality claims to actual assertions, candidate SHA and tested environment;
+Tie quality claims to actual assertions, candidate commit and tested environment;
 verify CI enforcement and distinguish executed checks from static reasoning.
 Do not promise enterprise/military certification from instructions alone.
 Review architectural fit before style; distinguish valid findings, false positives,

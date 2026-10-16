@@ -560,8 +560,8 @@ Their exact order follows real dependencies and measurement, not a compulsory to
 sequence or fixed PR count. Each IMPLEMENT packet needs its own accepted base and
 complete observable entrypoint/consumer map.
 
-The 600-line ceiling is unchanged. Each later packet requires a measured complete path
-and exact map with correction room; full provider-chain fit/deployment remain UNVERIFIED.
+Engineering delivery follows the canonical policy in [QUALITY_BAR.md](../../QUALITY_BAR.md). Each later packet requires a measured complete path
+and exact map; full provider-chain fit/deployment remain UNVERIFIED.
 No fixed PR count, cognitive MVP completion, provider call or seal is granted here.
 
 ### Required future inference qualification
