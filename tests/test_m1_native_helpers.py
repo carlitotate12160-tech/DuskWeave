@@ -313,6 +313,25 @@ class LiveEpisodeOutcomes(unittest.TestCase):
         self.assertEqual((code, result["status"]), (1, "LIVE_FAIL"))
         self.assertEqual(result["decision"], DECISION)
 
+    def test_non_uuid_decision_fails_without_losing_report(self):
+        for bad in ({"decision": 17, "receipt": "m1_inference_identity_v1"},
+                    {"decision": "not-a-uuid", "receipt": "m1_inference_identity_v1"},
+                    {"decision": None, "receipt": "m1_inference_identity_v1"}):
+            fixture = FakeFixture()
+            code, result, _ = self.run_episode(fixture, self.routes((0, lines([bad]))))
+            self.assertEqual((code, result["status"]), (1, "LIVE_FAIL"))
+            self.assertEqual(result["failure"], "native_live_identity_unavailable")
+            self.assertIsNone(result["decision"])
+
+    def test_successful_inference_without_event_fails(self):
+        final = receipt("inspect_original_identity")
+        del final["event"]
+        fixture = FakeFixture()
+        code, result, _ = self.run_episode(fixture, self.routes((0, lines([identity(), final]))))
+        self.assertEqual((code, result["status"]), (1, "LIVE_FAIL"))
+        self.assertEqual(result["failure"], "native_live_event_absent")
+        self.assertEqual(result["decision"], DECISION)
+
     def test_final_durable_count_growth_fails_and_reports_extra(self):
         counts = dict(FakeFixture.COUNTS, calls=2, repair=1)
         fixture = FakeFixture(calls=[1, 1, 1, 1], counts=counts)

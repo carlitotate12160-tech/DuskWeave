@@ -143,12 +143,17 @@ def run(binary, report, env_file, database_name):
         if malformed:
             category = category or "native_live_receipt_malformed"
         found = next((r["decision"] for r in initial if "decision" in r), None)
-        decision = str(uuid.UUID(found)) if found else None
+        try:
+            decision = str(uuid.UUID(found)) if isinstance(found, str) else None
+        except ValueError:
+            decision = None
         if decision is None:
             raise RuntimeError("native_live_identity_unavailable")
         if status != 0:
             category = category or "native_live_inference_exit"
         event = initial[-1].get("event")
+        if status == 0 and event is None and category is None:
+            raise RuntimeError("native_live_event_absent")
         before = int(fixture.sql(f"SELECT count(*) FROM execution.inference_calls WHERE d='{decision}'").strip())
         for name in ("m1-infer-inspect", "m1-infer-recover", "m1-infer-recover"):
             code, safe = command(binary, fixture, [name, "--input", str(path), "--operation", decision])
