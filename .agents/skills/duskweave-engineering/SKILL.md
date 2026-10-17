@@ -179,9 +179,12 @@ For a behavior fix require a genuine failing assertion; for a refactor of
 already-correct behavior require honest passing-baseline characterization,
 not fabricated RED history or an introduced defect.
 Before issuing a ready packet, inspect current source, consumers, test fixtures,
-CI and supported environments. Engineering metrics (diff lines, file size, McCabe,
-function length) are advisory review reference points under QUALITY_BAR.md, not
-hard failure ceilings or reasons for new packets. Resolve known file-map,
+CI and supported environments. Runtime diff, file size and function span are
+advisory review reference points under QUALITY_BAR.md, not hard failure ceilings
+or reasons for new packets; McCabe is an enforced per-function ratchet
+(QUALITY_BAR.md canonical), so a packet that must introduce or worsen an
+over-threshold function names the function, reason and smallest remedy instead
+of a bypass. Resolve known file-map,
 environment, and dependency conflicts here; do not knowingly send an impossible packet.
 Record estimates as estimates. Separate the cost of new behavior from existing
 behavior/fixtures reused by it. Do not remove behavior, explanatory comments or

@@ -78,6 +78,7 @@ def load_module(name):
 
 def load_checker():
     load_module("complexity_reports")
+    load_module("complexity_ratchet")
     return load_module("check_complexity")
 
 
@@ -101,22 +102,20 @@ def commit(td):
     git(td, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "f")
 
 
-def run_checker(td, analyzer=None, report_dir=None):
+def run_checker(td, analyzer=None, report_dir=None, base="HEAD"):
     analyzer = ANALYZER if analyzer is None else analyzer
     rd = report_dir or os.path.join(td, "report-out")
-    return subprocess.run(
-        [
-            sys.executable,
-            str(CHECKER),
-            "--analyzer",
-            analyzer,
-            "--report-dir",
-            os.path.abspath(rd),
-        ],
-        cwd=td,
-        capture_output=True,
-        text=True,
-    )
+    argv = [
+        sys.executable,
+        str(CHECKER),
+        "--analyzer",
+        analyzer,
+        "--report-dir",
+        os.path.abspath(rd),
+    ]
+    if base is not None:
+        argv += ["--base", base]
+    return subprocess.run(argv, cwd=td, capture_output=True, text=True)
 
 
 def summary_of(td, report_dir=None):
@@ -148,31 +147,35 @@ class CliFixtures(unittest.TestCase):
     def test_cap_boundary_7_passes_8_fails(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/a.rs": OK_RS})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             make_repo(td, {"src/a.rs": OK_RS, "src/b.rs": OVER_RS})
             res = run_checker(td)
-            self.assertEqual(res.returncode, 0, res.stdout)
+            self.assertEqual(res.returncode, 1, res.stdout)
             self.assertIn("own=8 cap=7", res.stdout)
-            self.assertIn("Warning: 1 complexity warnings", res.stdout)
+            self.assertIn("FAIL NEW", res.stdout)
+            self.assertIn("Gate FAIL: 1 complexity regressions", res.stdout)
 
     def test_real_reviewed_dispatch_passes_at_10(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/main.rs": REVIEWED_RUN_SRC})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout)
-            self.assertIn("own=10 cap=7", res.stdout)
-            self.assertIn("Warning: 1 complexity warnings", res.stdout)
-            self.assertEqual(summary_of(td)["run_allowance"]["status"], "unclassified")
+            self.assertIn("own=10 cap=10", res.stdout)
+            self.assertIn("Gate PASS", res.stdout)
+            self.assertEqual(summary_of(td)["run_allowance"]["status"], "granted")
 
     def test_same_named_run_elsewhere_stays_7(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/other.rs": REVIEWED_RUN_SRC})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout)
             self.assertIn("src/other.rs", res.stdout)
             self.assertIn("own=10 cap=7", res.stdout)
-            self.assertIn("Warning: 1 complexity warnings", res.stdout)
+            self.assertIn("DEBT RETAINED", res.stdout)
 
     def test_nested_run_in_main_stays_7(self):
         nested = "fn wrapper() -> Res<()> {\n" + "".join(
@@ -180,6 +183,7 @@ class CliFixtures(unittest.TestCase):
         ) + "}\n"
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/main.rs": nested})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout)
             self.assertIn("run allowance: absent", res.stdout)
@@ -188,14 +192,23 @@ class CliFixtures(unittest.TestCase):
         two = OVER_RS.replace("gate", "run") + OVER_RS.replace("gate", "run")
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/main.rs": two})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout)
             self.assertIn("ambiguous", res.stdout)
-            self.assertEqual(summary_of(td)["violation_count"], 2)
+            s = summary_of(td)
+            self.assertEqual(s["violation_count"], 2)
+            self.assertTrue(
+                all(m["cap"] == 7 for m in s["measurements"])
+            )
+            self.assertEqual(
+                s["run_allowance"]["status"], "ambiguous"
+            )
 
     def test_missing_dispatch_is_absent_not_granted(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/main.rs": "fn main() {}\n"})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout)
             self.assertEqual(summary_of(td)["run_allowance"]["status"], "absent")
@@ -203,6 +216,7 @@ class CliFixtures(unittest.TestCase):
     def test_nested_functions_measured_independently(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/nested.rs": NESTED_RS})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             s = summary_of(td)
@@ -218,6 +232,7 @@ class CliFixtures(unittest.TestCase):
     def test_same_line_closures_are_distinct(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/s.rs": SAME_LINE_RS})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             s = summary_of(td)
@@ -230,6 +245,7 @@ class CliFixtures(unittest.TestCase):
     def test_declarations_only_file_passes(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/decl.rs": DECL_RS})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             self.assertEqual(summary_of(td)["functions"], 0)
@@ -239,6 +255,7 @@ class CliFixtures(unittest.TestCase):
         # schema qualification must reject it rather than measure it.
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/bad.rs": UNPARSED_RS})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
             self.assertIn("root kind", res.stderr)
@@ -246,6 +263,7 @@ class CliFixtures(unittest.TestCase):
     def test_long_span_review_trigger_passes(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/long.rs": LONG_RS})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout)
             self.assertIn("REVIEW_TRIGGER", res.stdout)
@@ -260,15 +278,19 @@ class CliFixtures(unittest.TestCase):
             self.assertIn(git(td, "rev-parse", "HEAD"), res.stdout)
             s = summary_of(td)
             self.assertEqual(s["candidate_sha"], git(td, "rev-parse", "HEAD"))
+            self.assertEqual(s["base_sha"], git(td, "rev-parse", "HEAD"))
             self.assertEqual(s["tool"], "rust-code-analysis-cli")
             self.assertTrue(os.path.exists(os.path.join(
                 td, "report-out", "summary.txt")))
             self.assertTrue(os.path.exists(os.path.join(
-                td, "report-out", "analyzer.stderr.log")))
+                td, "report-out", "analyzer-head.stderr.log")))
+            self.assertTrue(os.path.exists(os.path.join(
+                td, "report-out", "analyzer-base.stderr.log")))
 
     def test_untracked_source_is_unexpected_report(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/a.rs": OK_RS})
+            commit(td)
             extra = os.path.join(td, "src", "extra.rs")
             with open(extra, "w", encoding="utf-8") as fh:
                 fh.write(OK_RS)
@@ -279,6 +301,7 @@ class CliFixtures(unittest.TestCase):
     def test_empty_inventory_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"README.md": "x\n"})
+            commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
             self.assertIn("empty tracked", res.stderr)
@@ -292,6 +315,7 @@ class CliFixtures(unittest.TestCase):
     def test_bad_analyzer_inputs_fail_closed(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/a.rs": OK_RS})
+            commit(td)
             for bad in (
                 os.path.join(td, "missing-analyzer"),
                 td,
@@ -303,14 +327,15 @@ class CliFixtures(unittest.TestCase):
     def test_relative_args_fail_closed(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/a.rs": OK_RS})
+            commit(td)
             res = subprocess.run(
                 [sys.executable, str(CHECKER), "--analyzer", "rel/an",
-                 "--report-dir", os.path.join(td, "r")],
+                 "--report-dir", os.path.join(td, "r"), "--base", "HEAD"],
                 cwd=td, capture_output=True, text=True)
             self.assertEqual(res.returncode, 2)
             res = subprocess.run(
                 [sys.executable, str(CHECKER), "--analyzer", ANALYZER,
-                 "--report-dir", "rel/dir"],
+                 "--report-dir", "rel/dir", "--base", "HEAD"],
                 cwd=td, capture_output=True, text=True)
             self.assertEqual(res.returncode, 2)
 
@@ -322,16 +347,16 @@ class PolicyEvaluator(unittest.TestCase):
     def allowance(self, ms):
         return self.checker.resolve_run_allowance(ms)
 
-    def test_dispatch_reports_reference_7_for_reviewer_classification(self):
+    def test_reviewed_dispatch_granted_cap_10(self):
         ms = [mk(name="run", own=9)]
         status = self.allowance(ms)
-        self.assertEqual(status["status"], "unclassified")
-        self.assertEqual(ms[0]["cap"], 7)
-        self.assertEqual(len(self.checker.evaluate(ms)[0]), 1)
-        ms_ok = [mk(name="run", own=7)]
-        self.allowance(ms_ok)
-        self.assertEqual(ms_ok[0]["cap"], 7)
-        self.assertEqual(self.checker.evaluate(ms_ok)[0], [])
+        self.assertEqual(status["status"], "granted")
+        self.assertEqual(ms[0]["cap"], 10)
+        self.assertEqual(ms[0]["allowance"], "reviewed-dispatch")
+        self.assertEqual(self.checker.evaluate(ms)[0], [])
+        ms_over = [mk(name="run", own=11)]
+        self.allowance(ms_over)
+        self.assertEqual(len(self.checker.evaluate(ms_over)[0]), 1)
 
     def test_dispatch_identity_not_name_alone(self):
         for field in ({"depth": 2}, {"file": "src/other.rs"}):
@@ -400,7 +425,9 @@ class SubprocessTimeout(unittest.TestCase):
         self.with_env("301")
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/a.rs": OK_RS})
-            res = run_checker(td, analyzer=ANALYZER or sys.executable)
+            res = run_checker(
+                td, analyzer=ANALYZER or sys.executable, base="HEAD"
+            )
             self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
             self.assertIn("DW_COMPLEXITY_TIMEOUT", res.stderr)
 

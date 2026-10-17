@@ -45,11 +45,10 @@ Current seal:
 
 Current engineering state:
 
-Active delivery: `feat/m1-terrain-dns-intake` — Operator-reviewed safe DNS
-observation intake, narrow Tier-1 Terrain claim evaluation/freshness, and
-Trajectory history inspection/recovery. Base
-`cd7e482c905440bb9bf61bc5e04eb34b4060980d`. Predecessors #62, #61, #60, #59,
-#58, #56, #57 merged. See
+Active delivery: `fix/quality-complexity-ratchet` — enforced McCabe ratchet
+and required metrics CI (engineering policy/tooling only; no runtime product
+change). Base `10051c20c67130362326cd787cb84c639ffe008d`. Predecessors #63,
+#62, #61, #60, #59, #58, #56, #57 merged. See
 [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 for active work, reconciled merges, and governing milestone evidence.
 

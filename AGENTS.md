@@ -207,6 +207,13 @@ reference point. A crossing produces a warning and a reviewer decision: retain w
 a concrete cohesion/readability reason, or refactor in the same PR. Numerical
 crossings alone do not require an exception, a new packet, or SPLIT_REQUIRED.
 
+McCabe complexity is different: it is an enforced per-function ratchet, not an
+advisory metric. New functions above threshold 7 fail the required CI gate,
+previously compliant functions crossing above 7 fail, and retained debt may
+stay or decrease but never increase. The single reviewed pure-dispatch
+`src/main.rs::run` holds cap 10. QUALITY_BAR.md is canonical for the ratchet
+rules; do not raise a threshold to make a PR green.
+
 ---
 
 ## Wiring and reachability for every IDE delivery

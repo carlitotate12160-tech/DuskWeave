@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""McCabe own-complexity check for tracked DuskWeave Rust sources.
+"""McCabe own-complexity ratchet for tracked DuskWeave Rust sources.
 
-CLI owner of the check: pinned analyzer qualification, tracked src/**/*.rs
-inventory via `git ls-files`, analyzer invocation
-(`-p src -m -O json -o <raw> -j 1 -w`), candidate provenance, reference point
-assignment and pure-dispatch classification. Report codec, validation and
-projection live in sibling `complexity_reports.py`.
+CLI owner of the gate: pinned analyzer qualification, tracked src/**/*.rs
+inventory (``git ls-files`` candidate worktree; ``git ls-tree`` at the
+validated ``--base`` commit), analyzer invocation
+(``-p src -m -O json -o <raw> -j 1 -w``), provenance, reference point
+assignment, reviewed pure-dispatch classification, and the base-to-candidate
+ratchet verdict delegated to ``complexity_ratchet.py``. Report codec,
+validation and projection live in sibling ``complexity_reports.py``.
 
-Review reference points (QUALITY_BAR.md): 7 business; pure-dispatch
-`run` (direct unit child of src/main.rs) has 10. Spans >50 emit REVIEW_TRIGGER.
-Exit 0 = successful measurement (advisory warnings printed for crossings),
-2 = tool/report/input failure.
+Gate (QUALITY_BAR.md): threshold 7 per function/closure; the reviewed
+pure-dispatch ``src/main.rs::run`` direct unit child has 10. A new function
+above threshold fails, a previously compliant function crossing above it
+fails, and retained debt must not increase. Spans >50 emit REVIEW_TRIGGER.
+Exit 0 = gate pass (debt reported), 1 = McCabe regression,
+2 = tool/input/report/base failure.
 """
 
 import argparse
@@ -18,7 +22,9 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
+import complexity_ratchet as ratchet
 import complexity_reports as reports
 
 CAP_DEFAULT = 7
@@ -50,10 +56,10 @@ def _subprocess_timeout():
     return value
 
 
-def _run(argv):
+def _run(argv, cwd=None):
     try:
         return subprocess.run(
-            argv, capture_output=True, timeout=_subprocess_timeout()
+            argv, capture_output=True, timeout=_subprocess_timeout(), cwd=cwd
         )
     except subprocess.TimeoutExpired as exc:
         raise reports.CheckError(
@@ -113,32 +119,35 @@ def candidate_sha():
     return proc.stdout.decode("ascii", "replace").strip() or None
 
 
-def run_analyzer(analyzer, raw_dir, diag_dir):
+def run_analyzer(analyzer, raw_dir, diag_dir, cwd=None, tag="head"):
     if os.path.exists(raw_dir):
         shutil.rmtree(raw_dir)
     os.makedirs(raw_dir)
     proc = _run(
-        [analyzer, "-p", "src", "-m", "-O", "json", "-o", raw_dir, "-j", "1", "-w"]
+        [analyzer, "-p", "src", "-m", "-O", "json", "-o", raw_dir, "-j", "1", "-w"],
+        cwd=cwd,
     )
     for name, data in (
-        ("analyzer.stdout.log", proc.stdout),
-        ("analyzer.stderr.log", proc.stderr),
+        (f"analyzer-{tag}.stdout.log", proc.stdout),
+        (f"analyzer-{tag}.stderr.log", proc.stderr),
     ):
         with open(os.path.join(diag_dir, name), "wb") as fh:
             fh.write(data)
     if proc.returncode != 0:
         tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
         raise reports.CheckError(
-            f"analyzer exited {proc.returncode}: {tail[-1] if tail else 'no stderr'}"
+            f"analyzer ({tag}) exited {proc.returncode}: "
+            f"{tail[-1] if tail else 'no stderr'}"
         )
 
 
-def _measure_all(raw_dir, files):
+def _measure_all(raw_dir, files, src_root=None):
     report_paths = reports.reconcile_reports(raw_dir, files)
     measurements = []
     for rel in files:
         report = reports.load_report(report_paths[rel])
-        for m in reports.measure_report(report, rel, rel):
+        source = os.path.join(src_root, *rel.split("/")) if src_root else rel
+        for m in reports.measure_report(report, rel, source):
             m["cap"] = CAP_DEFAULT
             m["allowance"] = None
             measurements.append(m)
@@ -156,8 +165,15 @@ def _eligible_runs(measurements):
 
 
 def resolve_run_allowance(measurements):
-    """Automated reporting uses business-function reference point 7 for all functions.
-    Pure-dispatch classification (up to reference point 10) is evaluated by reviewers in PR review."""
+    """Grant cap 10 only to the unique reviewed pure-dispatch run.
+
+    Only a single direct unit-child ``run`` in src/main.rs receives the
+    reviewed-dispatch reference point. Its location is verified here; its
+    semantic purity (discriminator -> owned handler forwarding, no
+    authority, eligibility, mutation, I/O or retry decisions) is re-proven
+    in review whenever the function changes. A nested, wrong-file or
+    duplicated ``run`` keeps cap 7.
+    """
     eligible = _eligible_runs(measurements)
     if not eligible:
         return {
@@ -171,25 +187,31 @@ def resolve_run_allowance(measurements):
             f"{DISPATCH_FILE}; none receive cap {CAP_REVIEWED_DISPATCH}",
         }
     node = eligible[0]
-    # Retain CAP_DEFAULT (7) for automated reporting.
-    # Reviewer classifies pure-dispatch in PR review.
+    node["cap"] = CAP_REVIEWED_DISPATCH
+    node["allowance"] = "reviewed-dispatch"
     return {
-        "status": "unclassified",
+        "status": "granted",
         "identity": node["identity"],
-        "detail": f"reported at reference {CAP_DEFAULT}; reviewer classifies pure dispatch (up to {CAP_REVIEWED_DISPATCH}) in PR review",
+        "detail": f"src/main.rs::run cap {CAP_REVIEWED_DISPATCH}; "
+        "reviewer re-proves pure routing when the function changes",
     }
 
 
 def evaluate(measurements):
-    violations = [m for m in measurements if m["own"] > m["cap"]]
+    over_cap = [m for m in measurements if m["own"] > m["cap"]]
     triggers = [m for m in measurements if m["span"] > REVIEW_TRIGGER_SPAN]
-    return violations, triggers
+    return over_cap, triggers
 
 
-def _emit(version, sha, files, measurements, triggers, allowance):
+def _emit(
+    version, sha, base_sha, files, base_files, measurements, base_count,
+    triggers, allowance, verdict,
+):
     print(
-        f"tool={version} candidate={sha or 'unknown'} "
-        f"files={len(files)} functions={len(measurements)}"
+        f"tool={version} candidate={sha or 'unknown'} base={base_sha} "
+        f"candidate_source=worktree files={len(files)} "
+        f"functions={len(measurements)} base_files={len(base_files)} "
+        f"base_functions={base_count}"
     )
     for line in reports.measurement_lines(measurements):
         print(line)
@@ -200,34 +222,87 @@ def _emit(version, sha, files, measurements, triggers, allowance):
         )
     detail = allowance.get("detail", "")
     print(f"run allowance: {allowance['status']} {detail}".rstrip())
+    c = verdict["counts"]
+    print(
+        f"ratchet new={c['new']} regressed={c['regressed']} "
+        f"retained={c['retained']} improved={c['improved']} "
+        f"resolved={c['resolved']} removed={c['removed']} "
+        f"ambiguous={c['ambiguous']} compliant={c['compliant']}"
+    )
+    for m in verdict["failures"]:
+        print(
+            f"FAIL {m['status'].upper()} {m['identity']} own={m['own']} "
+            f"cap={m['cap']} base_own={m.get('base_own') or '-'}"
+        )
+    for g in verdict["ambiguous_groups"]:
+        tag = "FAIL" if g["regressed"] else "DEBT"
+        print(
+            f"{tag} AMBIGUOUS {g['identity']} members={g['members']} "
+            f"head_over={g['head_over']} base_over={g['base_over']}"
+        )
+    for m in verdict["debt"]:
+        print(
+            f"DEBT {m['status'].upper()} {m['identity']} own={m['own']} "
+            f"cap={m['cap']} base_own={m.get('base_own') or '-'}"
+        )
+    for m in verdict["resolved"]:
+        print(
+            f"RESOLVED {m['identity']} own={m['own']} "
+            f"base_own={m.get('base_own') or '-'}"
+        )
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="McCabe complexity check")
+    parser = argparse.ArgumentParser(description="McCabe complexity ratchet")
     parser.add_argument("--analyzer", required=True)
     parser.add_argument("--report-dir", required=True)
+    parser.add_argument("--base", required=True)
     args = parser.parse_args(argv)
     try:
         _require_absolute(args.report_dir, "--report-dir")
         version = check_analyzer(args.analyzer)
+        base_sha = ratchet.resolve_base(_git, args.base)
         files = inventory()
         sha = candidate_sha()
         os.makedirs(args.report_dir, exist_ok=True)
-        raw_dir = os.path.join(args.report_dir, "raw")
-        run_analyzer(args.analyzer, raw_dir, args.report_dir)
-        measurements = _measure_all(raw_dir, files)
-        allowance = resolve_run_allowance(measurements)
-        violations, triggers = evaluate(measurements)
-        _emit(version, sha, files, measurements, triggers, allowance)
+        head_raw = os.path.join(args.report_dir, "raw-head")
+        run_analyzer(args.analyzer, head_raw, args.report_dir, tag="head")
+        head_ms = _measure_all(head_raw, files)
+        allowance = resolve_run_allowance(head_ms)
+        with tempfile.TemporaryDirectory(prefix="dw-ratchet-base-") as root:
+            base_files = ratchet.base_inventory(_git, base_sha)
+            ratchet.extract_base(_git, base_sha, base_files, root)
+            base_raw = os.path.join(args.report_dir, "raw-base")
+            run_analyzer(
+                args.analyzer, base_raw, args.report_dir, cwd=root, tag="base"
+            )
+            base_ms = _measure_all(base_raw, base_files, src_root=root)
+        resolve_run_allowance(base_ms)
+        verdict = ratchet.classify(base_ms, head_ms)
+        over_cap, triggers = evaluate(head_ms)
+        _emit(
+            version, sha, base_sha, files, base_files, head_ms,
+            len(base_ms), triggers, allowance, verdict,
+        )
         summary = reports.build_summary(
-            TOOL_NAME, "0.0.25", sha, files, measurements,
-            violations, triggers, allowance,
+            TOOL_NAME, "0.0.25", sha, base_sha, files, base_files, head_ms,
+            len(base_ms), over_cap, triggers, allowance, verdict,
         )
         reports.write_summaries(args.report_dir, summary)
-        if violations:
-            print(f"Warning: {len(violations)} complexity warnings (reference point exceeded).")
-            return 0
-        print("Success: 0 complexity warnings.")
+        group_failures = sum(
+            1 for g in verdict["ambiguous_groups"] if g["regressed"]
+        )
+        if verdict["failures"] or group_failures:
+            print(
+                f"Gate FAIL: {len(verdict['failures']) + group_failures} "
+                "complexity regressions (exit 1)."
+            )
+            return 1
+        c = verdict["counts"]
+        print(
+            f"Gate PASS: {c['retained']} retained, {c['improved']} "
+            f"improved, {c['resolved']} resolved debt items (exit 0)."
+        )
         return 0
     except (reports.CheckError, OSError) as exc:
         print(f"complexity check failed: {exc}", file=sys.stderr)

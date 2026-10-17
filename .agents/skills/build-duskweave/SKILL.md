@@ -123,10 +123,13 @@ Batch independent preflight/read operations. Record loaded authority and check
 provenance briefly in the session; reread changed/newly affected boundaries only.
 Start with focused contract tests. As soon as the complete production path exists,
 format and measure the actual cumulative metrics against the packet base, before
-polishing tests/docs. Engineering metrics (runtime diff, file size, McCabe, function span)
-are advisory review reference points under QUALITY_BAR.md, not hard ceilings. A crossing
-produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor
-in the same PR. Numerical crossings alone do not require an exception, new packet, or STOP.
+polishing tests/docs. Runtime diff, file size and function span are advisory review
+reference points under QUALITY_BAR.md, not hard ceilings; a crossing produces a warning
+and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR.
+Numerical crossings alone do not require an exception, new packet, or STOP.
+McCabe is different: an enforced per-function ratchet (QUALITY_BAR.md canonical) —
+new or worsened violations above 7 fail the required metrics job; the reviewed
+`src/main.rs::run` dispatch holds 10. Do not raise a threshold to make a PR green.
 
 Reuse Cargo build artifacts during normal iterations; do not routinely cargo clean.
 Follow the AGENTS.md artifact convention: set the packet's concrete

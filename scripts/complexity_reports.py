@@ -174,7 +174,9 @@ def _integral_sum(node, at):
     return _as_count(value, f"{at} metrics.cyclomatic.sum")
 
 
-def _record_function(node, ident, rel_src, start, end, depth, children, out, seen):
+def _record_function(
+    node, ident, rel_src, start, end, depth, children, scope, out, seen
+):
     at = f"{rel_src} {ident}"
     child_sum = sum(
         _integral_sum(k, f"{at} child@{i}") for i, k in enumerate(children)
@@ -197,16 +199,22 @@ def _record_function(node, ident, rel_src, start, end, depth, children, out, see
             "span": end - start + 1,
             "own": own,
             "depth": depth,
+            "scope": list(scope),
         }
     )
 
 
 def measure_report(report, rel_src, source_path):
-    """One unit report -> measured function nodes with own complexity."""
+    """One unit report -> measured function nodes with own complexity.
+
+    Each measurement records ``scope``: the ancestor node names owning the
+    function lexically (impl/type, enclosing function, closure), without
+    sibling indices, for cross-revision matching.
+    """
     root_span, total, nlines = _qualify_root(report, rel_src, source_path)
     results, seen = [], set()
 
-    def visit(node, ancestry, index, depth, parent_span):
+    def visit(node, ancestry, index, depth, parent_span, chain):
         at = f"{rel_src} node depth={depth} index={index}"
         if depth > 200:
             raise CheckError(f"{at}: nesting depth exceeds 200")
@@ -216,13 +224,14 @@ def measure_report(report, rel_src, source_path):
         ident = f"{ancestry}::{name}@{index}"
         if kind == "function":
             _record_function(
-                node, ident, rel_src, start, end, depth, children, results, seen
+                node, ident, rel_src, start, end, depth, children,
+                chain, results, seen
             )
         for idx, kid in enumerate(children):
-            visit(kid, ident, idx, depth + 1, (start, end))
+            visit(kid, ident, idx, depth + 1, (start, end), chain + (name,))
 
     for idx, top in enumerate(report["spaces"]):
-        visit(top, f"{rel_src}@0", idx, 1, root_span)
+        visit(top, f"{rel_src}@0", idx, 1, root_span, ())
     if len(results) != total:
         raise CheckError(
             f"{rel_src}: counted {len(results)} function nodes but "
@@ -232,26 +241,51 @@ def measure_report(report, rel_src, source_path):
 
 
 def brief(m):
-    return {
+    out = {
         "identity": m["identity"],
         "start_line": m["start_line"],
         "end_line": m["end_line"],
         "own": m["own"],
         "cap": m["cap"],
     }
+    if "status" in m:
+        out["status"] = m["status"]
+        out["base_own"] = m.get("base_own")
+        out["base_cap"] = m.get("base_cap")
+    return out
 
 
-def build_summary(tool, version, sha, files, measurements, violations, triggers, allowance):
+def build_summary(
+    tool, version, sha, base_sha, files, base_files, measurements,
+    base_functions, violations, triggers, allowance, verdict,
+):
+    c = verdict["counts"]
+    group_failures = [
+        g for g in verdict["ambiguous_groups"] if g["regressed"]
+    ]
     return {
         "tool": tool,
         "tool_version": version,
         "candidate_sha": sha,
+        "candidate_source": "worktree",
+        "base_sha": base_sha,
         "files": len(files),
+        "base_files": len(base_files),
         "functions": len(measurements),
+        "base_functions": base_functions,
         "violation_count": len(violations),
+        "failure_count": len(verdict["failures"]) + len(group_failures),
         "review_trigger_count": len(triggers),
         "violations": [brief(m) for m in violations],
         "review_triggers": [brief(m) for m in triggers],
+        "ratchet": {
+            "counts": c,
+            "failures": [brief(m) for m in verdict["failures"]],
+            "debt": [brief(m) for m in verdict["debt"]],
+            "resolved": [brief(m) for m in verdict["resolved"]],
+            "removed": [brief(m) for m in verdict["removed"]],
+            "ambiguous_groups": verdict["ambiguous_groups"],
+        },
         "run_allowance": allowance,
         "measurements": measurements,
     }
@@ -260,22 +294,59 @@ def build_summary(tool, version, sha, files, measurements, violations, triggers,
 def measurement_lines(measurements):
     for m in measurements:
         tag = " VIOLATION" if m["own"] > m["cap"] else ""
-        note = f" [{m['allowance']}]" if m["allowance"] else ""
+        note = f" [{m['allowance']}]" if m.get("allowance") else ""
+        status = f" status={m['status']}" if m.get("status") else ""
         yield (
             f"{m['identity']} (lines {m['start_line']}-{m['end_line']}): "
-            f"own={m['own']} cap={m['cap']}{note}{tag}"
+            f"own={m['own']} cap={m['cap']}{note}{tag}{status}"
         )
 
 
 def _txt_lines(summary):
-    yield f"tool={summary['tool']} {summary['tool_version']} candidate={summary['candidate_sha'] or 'unknown'}\n"
-    yield f"files={summary['files']} functions={summary['functions']}\n"
-    yield f"violations={summary['violation_count']}\n"
-    for m in summary["violations"]:
+    yield (
+        f"tool={summary['tool']} {summary['tool_version']} "
+        f"candidate={summary['candidate_sha'] or 'unknown'} "
+        f"base={summary['base_sha']}\n"
+    )
+    yield (
+        f"candidate_source={summary['candidate_source']} "
+        f"files={summary['files']} base_files={summary['base_files']} "
+        f"functions={summary['functions']} "
+        f"base_functions={summary['base_functions']}\n"
+    )
+    c = summary["ratchet"]["counts"]
+    yield (
+        f"ratchet new={c['new']} regressed={c['regressed']} "
+        f"retained={c['retained']} improved={c['improved']} "
+        f"resolved={c['resolved']} removed={c['removed']} "
+        f"ambiguous={c['ambiguous']} compliant={c['compliant']}\n"
+    )
+    for m in summary["ratchet"]["failures"]:
         yield (
-            f"VIOLATION {m['identity']} lines {m['start_line']}-"
-            f"{m['end_line']} own={m['own']} cap={m['cap']}\n"
+            f"FAIL {m['status'].upper()} {m['identity']} lines "
+            f"{m['start_line']}-{m['end_line']} own={m['own']} "
+            f"cap={m['cap']} base_own={m.get('base_own') or '-'}\n"
         )
+    for g in summary["ratchet"]["ambiguous_groups"]:
+        tag = "FAIL" if g["regressed"] else "DEBT"
+        yield (
+            f"{tag} AMBIGUOUS {g['identity']} members={g['members']} "
+            f"head_over={g['head_over']} base_over={g['base_over']}\n"
+        )
+    for m in summary["ratchet"]["debt"]:
+        yield (
+            f"DEBT {m['status'].upper()} {m['identity']} lines "
+            f"{m['start_line']}-{m['end_line']} own={m['own']} "
+            f"cap={m['cap']} base_own={m.get('base_own') or '-'}\n"
+        )
+    for m in summary["ratchet"]["resolved"]:
+        yield (
+            f"RESOLVED {m['identity']} own={m['own']} "
+            f"base_own={m.get('base_own') or '-'}\n"
+        )
+    for m in summary["ratchet"]["removed"]:
+        yield f"REMOVED {m['identity']} own={m['own']}\n"
+    yield f"violations_over_cap={summary['violation_count']}\n"
     yield f"review_triggers={summary['review_trigger_count']}\n"
     for m in summary["review_triggers"]:
         yield f"REVIEW_TRIGGER {m['identity']} span {m['end_line'] - m['start_line'] + 1}\n"

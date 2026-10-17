@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave-ci-complexity` (selected reusable M1 source worktree; verify actual branch/HEAD per packet)
-- **Current Phase**: Active delivery on `feat/m1-terrain-dns-intake` (operator-submitted safe DNS observation intake, narrow Tier-1 Terrain claim evaluation/freshness, and Trajectory history inspection/recovery). Base `cd7e482c905440bb9bf61bc5e04eb34b4060980d`. Predecessors #62, #61, #60, #59, #58, #56, #57 merged. Next work: Terrain's eligible bounded view feeds ContextPack, and changed evidence produces an appropriate LLM decision or explicit uncertainty disposition.
+- **Current Phase**: Active delivery on `fix/quality-complexity-ratchet` (enforced McCabe ratchet for new/worsening debt plus required metrics CI; engineering policy/tooling only, no runtime product change). Base `10051c20c67130362326cd787cb84c639ffe008d`. Predecessors #63, #62, #61, #60, #59, #58, #56, #57 merged. Next work: bounded review of retained McCabe hotspots, then Terrain's eligible bounded view feeds ContextPack, and changed evidence produces an appropriate LLM decision or explicit uncertainty disposition.
 - **Active Seal**: `DW-FOUNDATION-001`; `DW-M0-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified); **M0 SEALED** (product-owner authorization, 2026-10-05)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -77,9 +77,10 @@ All interactions and plans are subject to:
 
 ## 6. Current slices and next action
 
-- **Active work / PR**: `feat/m1-terrain-dns-intake` — Operator-reviewed safe DNS observation intake (`operator_reviewed_dns`), narrow Tier-1 `CyberTerrain` claim evaluation and read-time freshness (`min(perception + lowest_ttl, perception + 60s)`), and narrow `CampaignTrajectory` history inspection and post-commit recovery ([runbook](RUN_M1_TERRAIN.md)). Base `cd7e482c905440bb9bf61bc5e04eb34b4060980d`. Candidate head, CI and review status are tracked directly in Git and GitHub.
-- **Next action**: Review the final bounded FIX + TEST correction of [PR #63](https://github.com/carlitotate12160-tech/DuskWeave/pull/63), including the [restricted SQL admission boundary](RUN_M1_TERRAIN.md#restricted-sql-admission-boundary) and retained six-finding regressions. Keep the PR open and unmerged for owner acceptance; candidate CI and review disposition remain on GitHub. Synthetic/native PostgreSQL evidence grants no acquisition qualification or M1 seal. ContextPack integration remains subsequent work after acceptance/merge.
+- **Active work / PR**: `fix/quality-complexity-ratchet` — enforced McCabe ratchet (`check_complexity.py --base <commit>`): new functions above 7 fail, previously compliant crossings fail, retained debt cannot increase, ambiguous closure groups are compared groupwise and reported explicitly, the reviewed `src/main.rs::run` pure dispatch holds cap 10; the `metrics` job is required through `ci-ok`. Base `10051c20c67130362326cd787cb84c639ffe008d`. Candidate head, CI and review status are tracked directly in Git and GitHub.
+- **Next action**: Review this policy/tooling PR, then run the bounded review of the 13 retained named McCabe hotspots and the one ambiguous closure group before ContextPack integration. Terrain runtime behavior is unchanged by this delivery.
 - **Reconciled predecessor merges (GitHub master)**:
+  - [PR #63](https://github.com/carlitotate12160-tech/DuskWeave/pull/63) (`10051c2`): feat(m1): implement safe DNS observation intake, Terrain claim qualification, and Trajectory history
   - [PR #62](https://github.com/carlitotate12160-tech/DuskWeave/pull/62) (`cd7e482`): fix(m1): repeatable native live testing + one bounded live episode
   - [PR #61](https://github.com/carlitotate12160-tech/DuskWeave/pull/61) (`b4be03e`): chore: simplify delivery policy and advisory metrics enforcement
   - [PR #60](https://github.com/carlitotate12160-tech/DuskWeave/pull/60) (`304b809`): feat(m1): implement production-native inference and continuation

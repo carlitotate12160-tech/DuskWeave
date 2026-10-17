@@ -31,7 +31,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 
 ## Decisions to Implement
 - Concrete architectural and implementation decisions captured by accepted PRDs/ADRs and packet.
-- Engineering metrics (runtime diff, file LOC, McCabe, function span) are advisory review reference points under QUALITY_BAR.md, not hard ceilings. A crossing produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR.
+- Runtime diff, file LOC and function span are advisory review reference points under QUALITY_BAR.md, not hard ceilings; a crossing produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR. McCabe is an enforced per-function ratchet (QUALITY_BAR.md canonical): a packet that must add or worsen an over-threshold function names the function, reason and smallest remedy.
 - No budget exception ledgers, separate authorization packets, or pure-dispatch digest allowances are required for numerical crossings.
 
 ## Acceptance Criteria
@@ -42,7 +42,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 ## Relevant Checks & Validation
 - DESIGN: document conventions, authority references, links, invariants; runtime wiring is N/A.
 - IMPLEMENT/FIX: unit, integration, and scenario tests; conflict markers, hygiene, formatting, and Clippy.
-- Advisory metrics reported in `metrics` job; successful measurement exits 0 even if thresholds are exceeded.
+- McCabe ratchet is enforced in the required `metrics` job (exit 1 on regression); LOC/diff metrics remain advisory reports.
 - Material failures (broken tests, compiler errors, hygiene violations, invalid input) must be corrected before merge in the same PR.
 
 ## Genuine STOP Conditions
