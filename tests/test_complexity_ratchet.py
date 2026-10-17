@@ -521,6 +521,18 @@ class RatchetGate(unittest.TestCase):
                 ratchet._span_lines(td, m)
             self.assertIn("source unavailable", str(ctx.exception))
 
+    def test_owner_span_splits_on_lf_only(self):
+        """Owner-proof line indices must match the analyzer's \\n-based
+        spans: str.splitlines() would also split on \\u2028/\\u2029/VT/FF
+        and misalign the compared slice."""
+        with tempfile.TemporaryDirectory() as td:
+            write(td, "src/c.rs", "fn f() {\n// a\u2028b\n}\n")
+            m = {"file": "src/c.rs", "start_line": 1, "end_line": 3}
+            self.assertEqual(
+                ratchet._span_lines(td, m),
+                ["fn f() {", "// a\u2028b", "}"],
+            )
+
     def test_ambiguous_overcap_moved_between_bindings_fails(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/c.rs": SWAP_BASE})

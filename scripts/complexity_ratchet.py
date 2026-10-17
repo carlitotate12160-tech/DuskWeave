@@ -128,11 +128,14 @@ def _source_lines(root, rel):
             f"source unavailable for owner proof: {rel}: {exc}"
         ) from exc
     try:
-        return data.decode("utf-8").splitlines()
+        text = data.decode("utf-8").replace("\r\n", "\n")
     except UnicodeDecodeError as exc:
         raise reports.CheckError(
             f"source not decodable UTF-8 for owner proof: {rel}: {exc}"
         ) from exc
+    if text.endswith("\n"):
+        text = text[:-1]
+    return text.split("\n") if text else []
 
 
 def _span_lines(root, m):
