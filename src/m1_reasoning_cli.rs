@@ -24,41 +24,7 @@ fn trajectory_role(c: &mut Client) -> Res<()> {
     qualify(c, "dw_m1_trajectory")
 }
 fn qualify(c: &mut Client, role: &str) -> Res<()> {
-    let ok: bool = c
-        .query_one(
-            "SELECT pg_has_role(session_user,$1,'MEMBER')
-         AND NOT EXISTS(SELECT 1 FROM unnest(ARRAY['dw_m1_broker','dw_m1_cognition','dw_m1_trajectory']) sibling
-          WHERE sibling<>$1 AND pg_has_role(session_user,sibling,'MEMBER'))
-         AND current_setting('fsync')='on' AND current_setting('full_page_writes')='on'
-         AND current_setting('synchronous_commit')='on'
-         AND NOT EXISTS(SELECT 1 FROM pg_roles actor
-          WHERE pg_has_role(session_user,actor.oid,'SET') AND (
-           actor.rolsuper OR actor.rolbypassrls OR actor.rolcreaterole OR actor.rolcreatedb
-           OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-            WHERE has_function_privilege(actor.oid,p.oid,'EXECUTE') AND
-            ((n.nspname='cognition' AND p.proname='publish_reasoning' AND $1<>'dw_m1_cognition') OR
-             (n.nspname='execution' AND p.proname IN ('bind_inference_input','inference_reservation','inference_may_send','inference_call_state','close_inference') AND $1<>'dw_m1_broker')))
-           OR EXISTS(SELECT 1 FROM pg_namespace n
-            WHERE n.nspname IN ('mission','trajectory','execution','cognition')
-            AND (has_schema_privilege(actor.oid,n.oid,'CREATE')
-             OR pg_has_role(actor.oid,n.nspowner,'MEMBER')))
-           OR EXISTS(SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
-            WHERE n.nspname IN ('mission','trajectory','execution','cognition') AND t.relkind='r'
-            AND (pg_has_role(actor.oid,t.relowner,'MEMBER')
-             OR has_table_privilege(actor.oid,t.oid,'UPDATE,DELETE,TRUNCATE,TRIGGER')
-             OR has_any_column_privilege(actor.oid,t.oid,'UPDATE')
-             OR (has_any_column_privilege(actor.oid,t.oid,'INSERT') AND NOT
-              (($1='dw_m1_trajectory' AND n.nspname='trajectory' AND t.relname='reasoning_history') OR
-               ($1='dw_runtime' AND n.nspname IN ('mission','trajectory') AND t.relname<>'reasoning_history')))))))",
-            &[&role],
-        )
-        .map_err(|_| Fail::Config("inference_database_unqualified"))?
-        .get(0);
-    if ok {
-        Ok(())
-    } else {
-        Err(Fail::Config("inference_database_unqualified"))
-    }
+    reasoning::postgres::qualify_owner(c, role).map_err(Fail::Config)
 }
 fn core_connection() -> Res<Client> {
     let mut c = super::connect()?;
@@ -282,11 +248,15 @@ fn new_inference<P: inference::Provider>(
         q,
         OperationId(s.decision),
     )?;
-    let mut basis = Basis {
-        client: broker_connection()?,
-        scope: s.clone(),
-        references: reasoning::request::reference_ids(p.utf8().as_bytes()).map_err(Fail::Input)?,
-        deadline: o.broker.deadline,
+    let mut basis = reasoning::postgres_terrain::TerrainBasis {
+        mission: Basis {
+            client: broker_connection()?,
+            scope: s.clone(),
+            references: reasoning::request::reference_ids(p.utf8().as_bytes())
+                .map_err(Fail::Input)?,
+            deadline: o.broker.deadline,
+        },
+        dependencies: p.terrain_dependencies().to_vec(),
     };
     let input = inference_input(q, s, p.utf8().as_bytes())?;
     Ok(inference::infer(

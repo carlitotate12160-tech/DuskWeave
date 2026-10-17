@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Proposal {
     pub version: String,
@@ -15,7 +15,7 @@ pub struct Proposal {
     pub next_intent: Intent,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Intent {
     pub category: Category,
@@ -26,7 +26,7 @@ pub struct Intent {
     pub view_request: Option<ViewRequest>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Category {
     Validate,
@@ -37,14 +37,14 @@ pub enum Category {
     Stop,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ViewRequest {
     pub owner: ViewOwner,
     pub selectors: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ViewOwner {
     CyberTerrain,
@@ -65,6 +65,15 @@ pub trait ProposalBasis: Send {
     fn reference_eligible(&self, reference: &str) -> bool;
     fn manifest_eligible(&self, reference: &str) -> bool;
     fn current_authority_and_premises(&mut self) -> Result<(), &'static str>;
+    fn before_provider_release(&mut self) -> Result<(), &'static str> {
+        self.current_authority_and_premises()
+    }
+    fn current_authority_for_references(
+        &mut self,
+        _references: &[String],
+    ) -> Result<(), &'static str> {
+        self.current_authority_and_premises()
+    }
     fn safe_explanation(&self, text: &str) -> bool;
 }
 
@@ -126,6 +135,26 @@ fn references(p: &Proposal, basis: &dyn ProposalBasis) -> Result<(), &'static st
     Ok(())
 }
 
+fn cited_references(p: &Proposal) -> Vec<String> {
+    let mut out = Vec::new();
+    let selectors = p
+        .next_intent
+        .view_request
+        .iter()
+        .flat_map(|v| v.selectors.iter());
+    for r in p
+        .references
+        .iter()
+        .chain(&p.next_intent.references)
+        .chain(selectors)
+    {
+        if !out.contains(r) {
+            out.push(r.clone());
+        }
+    }
+    out
+}
+
 pub fn admit(raw: &[u8], basis: &mut dyn ProposalBasis) -> Admission {
     let p = match crate::m1_reasoning::bounded_json::parse(raw, 8192, 1024).and_then(structural) {
         Ok(p) => p,
@@ -137,7 +166,8 @@ pub fn admit(raw: &[u8], basis: &mut dyn ProposalBasis) -> Admission {
     if let Err(code) = references(&p, basis) {
         return Admission::Rejected(code);
     }
-    if let Err(code) = basis.current_authority_and_premises() {
+    let cited = cited_references(&p);
+    if let Err(code) = basis.current_authority_for_references(&cited) {
         return Admission::Rejected(code);
     }
     Admission::Accepted(Box::new(p))

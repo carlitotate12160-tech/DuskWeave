@@ -46,5 +46,7 @@ pub mod m1_context_capacity;
 pub mod m1_context_input;
 pub mod m1_terrain;
 pub mod m1_terrain_input;
+pub mod m1_terrain_view;
 pub mod postgres_m1_terrain;
 pub mod postgres_terrain_history;
+pub mod postgres_terrain_view;

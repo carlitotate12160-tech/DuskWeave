@@ -68,11 +68,16 @@ Rules:
 
 ## Database and role requirements
 
-- Uses a single read-only Repeatable Read transaction.
+- Uses a single read-only Repeatable Read transaction across Mission publication,
+  Broker capacity snapshot, and the restricted Terrain public DNS owner view.
 - Connects using the configured database connection (env-local or file mode).
-- The connecting role must be a member of `dw_m1_broker` to execute
-  `execution.inference_capacity_snapshot(uuid, uuid)`.
-- Requires migration 0011 (`0011_m1_context_capacity.sql`).
+- The connecting role must be a member of `dw_m1_broker` (and free of sibling
+  `dw_m1_cognition`, `dw_m1_trajectory`, or `dw_m1_terrain` memberships and
+  private Terrain table grants) to execute
+  `execution.inference_capacity_snapshot(uuid, uuid)` and
+  `terrain.current_dns_context_view(jsonb)`.
+- Requires migrations 0011 (`0011_m1_context_capacity.sql`) and 0015
+  (`0015_m1_terrain_context_view.sql`).
 
 ## ContextPack assembly
 
@@ -83,13 +88,37 @@ Cognition compiles the accepted M1 mission question:
 > and which routing or response premise still needs observation, a different
 > candidate, or deferral?"
 
-- **Views**: Mission view is available with its publication lineage and revision;
-  environmental views (`cyber_terrain`, `foothold_graph`, `attack_path_view`,
-  `objective_state`, `campaign_trajectory`) are explicitly marked unavailable
-  with reason `"not_loaded_by_this_profile"`.
-- **Candidates**: displayed up to the consent candidates limit and byte bounds
-  (ceiling 4096 bytes). Prefixes shrink to fit without truncating JSON or metadata;
-  excess candidates are omitted with visible omission counts.
+- **Views**:
+  - `mission`: available with its publication lineage and revision.
+  - `cyber_terrain`: controlled by `owner_qualified_summaries` disclosure and
+    selected candidate assets (at most 8 included, non-excluded assets under the
+    consent candidate limit):
+    - When `owner_qualified_summaries` is absent from `field_classes`, records
+      `availability: "unavailable"` with `reason: "disclosure_not_permitted"` and
+      performs no Terrain query.
+    - When `owner_qualified_summaries` is disclosed but no candidate assets are
+      selected, records `availability: "unavailable"` with `reason: "not_requested"`.
+    - When queried inside a bounded savepoint (`SAVEPOINT terrain_context_view`),
+      returns `availability: "available"` with `shown_claims` and `omissions`
+      (`stale_expired`, `withheld`, `held_or_conflicted`, `omitted_by_claim_limit`,
+      `omitted_by_byte_bound`), or degrades on port/lineage failure to
+      `availability: "unavailable"` with `reason: "incompatible_lineage"` or
+      `"owner_view_unavailable"`.
+  - Remaining environmental views (`foothold_graph`, `attack_path_view`,
+    `objective_state`, `campaign_trajectory`) remain explicitly marked
+    `unavailable` with `reason: "not_loaded_by_this_profile"`.
+- **Terrain references and safe projection**: only current, unheld, fresh
+  `observed` claims (`operator_reviewed_dns`, `dns_hostname_ipv4_resolution`,
+  `tier1`, `corroborated: false`, `routing_usable: true`) become active
+  `references` (`terrain_0..terrain_7`) and are linked in the corresponding
+  candidate's `terrain_references` array. Hostnames, resolver/answer IPv4
+  addresses, and raw DNS packets are never projected into `ContextPack`.
+- **Candidates and byte fitting**: displayed up to the consent candidates limit
+  and byte bounds (ceiling 4096 bytes, JSON depth ≤8). Complete claim entries and
+  metadata are never truncated; if the full view exceeds `context_bytes`, the
+  assembly shrinks `shown_claims` (recording `omitted_by_byte_bound`) or drops
+  an optional operator-only candidate before dropping the sole eligible Terrain
+  premise for an included asset.
 - **Capacity**: informational snapshot of remaining capacity across all five
   dimensions, fence epoch, and full-decision requirements.
 

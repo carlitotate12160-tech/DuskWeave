@@ -8,7 +8,7 @@ pub struct BoundCall {
     pub digest: String,
 }
 
-const INSTRUCTIONS: &str = "DuskWeave initial inference v2: reason over labeled evidence toward the authorized mission objective. APT41, Lazarus and Volt Typhoon are behavioral lenses for hypothesis testing, alternatives, adaptation, continuity and restrained footprint, not playbooks or permission. Missing views stay unavailable. Propose one bounded hypothesis, alternative, expected and falsifying observation and next intent. Reference fields and view selectors must use exact references[].id strings from this immutable pack only, preserving their bytes. Entity UUIDs, lineage/publication/permission/goal IDs, owner names, field names and JSON paths are not reference IDs. Empty references may support defer/stop when appropriate; other categories still require supported premises. The manifest catalog is unavailable in this lane: manifest_reference must be null. Do not invent facts, access, manifests, endpoints or authority. Defer or request a bounded safe view when support is missing. Return concise decision explanation, never private reasoning, secrets or client content. Output grants no dispatch.";
+const INSTRUCTIONS: &str = "DuskWeave initial inference v3: reason over labeled evidence and owner-qualified Terrain DNS summaries toward the authorized mission objective. APT41, Lazarus and Volt Typhoon are behavioral lenses for hypothesis testing, alternatives, adaptation, continuity and restrained footprint, not playbooks or permission. Missing views stay unavailable; stale, withheld, held or conflicted Terrain summaries are not active routing premises. Propose one bounded hypothesis, alternative, expected and falsifying observation and next intent. Reference fields and view selectors must use exact references[].id strings from this immutable pack only, preserving their bytes. Entity UUIDs, lineage/publication/permission/goal IDs, owner names, field names and JSON paths are not reference IDs. Empty references may support defer/stop when appropriate; other categories still require supported premises. The manifest catalog is unavailable in this lane: manifest_reference must be null. Do not invent facts, access, manifests, endpoints or authority. Defer or request a bounded safe view when support is missing. Return concise decision explanation, never private reasoning, secrets or client content. Output grants no dispatch.";
 
 fn object(properties: Map<String, Value>) -> Value {
     let required: Vec<_> = properties.keys().cloned().collect();
@@ -137,7 +137,7 @@ pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'s
         &json!({"recipient":"https://api.deepseek.com/responses",
         "method":"POST","content_type":"application/json","profile":"deepseek-responses-envelope32-v1",
         "schema_version":"m1_inference_proposal_v1","schema":schema,"instructions":INSTRUCTIONS,
-        "template_version":"m1-initial-inference-v2","adapter_release":"native-libcurl-v1",
+        "template_version":"m1-initial-inference-v3","adapter_release":"native-libcurl-v1",
         "requested_settings":settings,"omissions":["temperature","top_p"],
         "transport":{"redirects":false,"retries":false,"proxy":false,"compression":false,
         "normal_certificate_hostname_validation":true,
@@ -151,19 +151,54 @@ pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'s
         16384,
     )?;
     let body = bytes(&request, 16384)?;
-    let mut h = Sha256::new();
-    h.update(b"dw-inference-binding-v1\0");
-    for raw in [pack, configuration.as_slice(), body.as_slice()] {
-        h.update((raw.len() as u64).to_be_bytes());
-        h.update(raw);
-    }
-    let digest = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    let digest = compute_binding(pack, &configuration, &body);
     Ok(BoundCall {
         pack: pack.to_vec(),
         configuration,
         body,
         digest,
     })
+}
+
+pub fn compute_binding(pack: &[u8], configuration: &[u8], body: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(b"dw-inference-binding-v1\0");
+    for raw in [pack, configuration, body] {
+        h.update((raw.len() as u64).to_be_bytes());
+        h.update(raw);
+    }
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+pub fn verify_binding(
+    pack: &str,
+    configuration: &str,
+    body: &str,
+    expected_binding: &str,
+    expected_repair: bool,
+) -> Result<(), &'static str> {
+    if pack.len() > 4096 || configuration.len() > 16384 || body.len() > 16384 {
+        return Err("inference_decision_integrity");
+    }
+    reference_ids(pack.as_bytes()).map_err(|_| "inference_decision_integrity")?;
+    if compute_binding(pack.as_bytes(), configuration.as_bytes(), body.as_bytes())
+        != expected_binding
+    {
+        return Err("inference_decision_integrity");
+    }
+    verify_body_pack(pack, body, expected_repair)
+}
+
+fn verify_body_pack(pack: &str, body: &str, expected_repair: bool) -> Result<(), &'static str> {
+    let v: Value = serde_json::from_str(body).map_err(|_| "inference_decision_integrity")?;
+    let ok = if expected_repair {
+        v.get("input").and_then(Value::as_array).is_some_and(|arr| {
+            arr.len() == 2 && arr[0].get("content").and_then(Value::as_str) == Some(pack)
+        })
+    } else {
+        v.get("input").and_then(Value::as_str) == Some(pack)
+    };
+    ok.then_some(()).ok_or("inference_decision_integrity")
 }
 
 fn input(pack: &str, codes: Option<&[&str]>) -> Result<Value, &'static str> {
