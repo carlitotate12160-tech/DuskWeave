@@ -242,6 +242,8 @@ def _emit(
         )
         print(
             f"{tag} AMBIGUOUS {g['identity']} members={g['members']} "
+            f"ambiguity={g['ambiguity']} "
+            f"ancestor={g['ancestor'] or '-'} "
             f"head_over={g['head_over']} base_over={g['base_over']} "
             f"disposition={g['disposition']} "
             f"owner={g['owner'] or '-'} "

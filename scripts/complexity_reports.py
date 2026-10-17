@@ -175,7 +175,8 @@ def _integral_sum(node, at):
 
 
 def _record_function(
-    node, ident, rel_src, start, end, depth, children, scope, out, seen
+    node, ident, rel_src, start, end, depth, children,
+    scope, scope_kinds, out, seen
 ):
     at = f"{rel_src} {ident}"
     child_sum = sum(
@@ -200,6 +201,7 @@ def _record_function(
             "own": own,
             "depth": depth,
             "scope": list(scope),
+            "scope_kinds": list(scope_kinds),
         }
     )
 
@@ -209,12 +211,14 @@ def measure_report(report, rel_src, source_path):
 
     Each measurement records ``scope``: the ancestor node names owning the
     function lexically (impl/type, enclosing function, closure), without
-    sibling indices, for cross-revision matching.
+    sibling indices, for cross-revision matching. ``scope_kinds`` is the
+    parallel list of ancestor node kinds so enclosing functions can be
+    distinguished from non-function impl/trait segments.
     """
     root_span, total, nlines = _qualify_root(report, rel_src, source_path)
     results, seen = [], set()
 
-    def visit(node, ancestry, index, depth, parent_span, chain):
+    def visit(node, ancestry, index, depth, parent_span, chain, kinds):
         at = f"{rel_src} node depth={depth} index={index}"
         if depth > 200:
             raise CheckError(f"{at}: nesting depth exceeds 200")
@@ -225,13 +229,16 @@ def measure_report(report, rel_src, source_path):
         if kind == "function":
             _record_function(
                 node, ident, rel_src, start, end, depth, children,
-                chain, results, seen
+                chain, kinds, results, seen
             )
         for idx, kid in enumerate(children):
-            visit(kid, ident, idx, depth + 1, (start, end), chain + (name,))
+            visit(
+                kid, ident, idx, depth + 1, (start, end),
+                chain + (name,), kinds + (kind,)
+            )
 
     for idx, top in enumerate(report["spaces"]):
-        visit(top, f"{rel_src}@0", idx, 1, root_span, ())
+        visit(top, f"{rel_src}@0", idx, 1, root_span, (), ())
     if len(results) != total:
         raise CheckError(
             f"{rel_src}: counted {len(results)} function nodes but "

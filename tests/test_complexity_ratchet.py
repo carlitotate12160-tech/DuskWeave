@@ -106,6 +106,79 @@ fn wrap() {
 }
 """
 
+
+def _moved_nested(inner):
+    """parent() with outer closures a and b; *inner* is the body that
+    carries the nested debt plus its call, moved between a and b."""
+    base = (
+        "fn parent() {\n"
+        "    let a = || {\n" + inner + "    };\n"
+        "    let b = || {};\n"
+        "    a();\n    b();\n}\n"
+    )
+    head = (
+        "fn parent() {\n"
+        "    let a = || {};\n"
+        "    let b = || {\n" + inner + "    };\n"
+        "    a();\n    b();\n}\n"
+    )
+    return base, head
+
+
+MOVED_CLOSURE_BASE, MOVED_CLOSURE_HEAD = _moved_nested(
+    "        let high = || {\n"
+    + "            if true {}\n" * 19
+    + "        };\n        high();\n"
+)
+
+MOVED_HELPER_BASE, MOVED_HELPER_HEAD = _moved_nested(
+    "        fn helper() {\n"
+    + "            if true {}\n" * 19
+    + "        }\n"
+    + "        helper();\n"
+)
+
+MOVED_LOW_BASE, MOVED_LOW_HEAD = _moved_nested(
+    "        let high = || {\n"
+    + "            if true {}\n" * 3
+    + "        };\n        high();\n"
+)
+
+NEWLY_AMBIGUOUS_BASE = (
+    "fn parent() {\n"
+    "    let a = || {\n"
+    "        let high = || {\n"
+    + "            if true {}\n" * 19
+    + "        };\n        high();\n"
+    "    };\n"
+    "    a();\n"
+    "}\n"
+)
+NEWLY_AMBIGUOUS_HEAD = NEWLY_AMBIGUOUS_BASE.replace(
+    "    a();\n", "    a();\n    let b = || {};\n    b();\n"
+)
+
+NESTED_AMBIGUITY = (
+    "fn outer() {\n"
+    "    let p = || {\n"
+    "        let a = || {\n"
+    "            let high = || {\n"
+    + "                if true {}\n" * 19
+    + "            };\n"
+    "            high();\n"
+    "        };\n"
+    "        let b = || {};\n"
+    "        a();\n        b();\n"
+    "    };\n"
+    "    let q = || {\n"
+    "        let a = || {};\n"
+    "        let b = || {};\n"
+    "        a();\n        b();\n"
+    "    };\n"
+    "    p();\n    q();\n"
+    "}\n"
+)
+
 SCOPE_PAIR = """struct A;
 struct B;
 impl A {
@@ -495,6 +568,132 @@ class RatchetGate(unittest.TestCase):
             st = statuses(summary_of(td))
             self.assertEqual(len(st["retained"]), 1)
             self.assertEqual(st["retained"][0]["name"], "<anonymous>")
+
+    def test_nested_closure_moved_between_ambiguous_parents_blocked(self):
+        """Repro 1: a unique-keyed over-cap closure nested under an
+        ambiguous ancestor must inherit the ambiguity; moving it between
+        ambiguous parents is blocked even though its own body is unchanged."""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": MOVED_CLOSURE_BASE})
+            base = commit(td)
+            write(td, "src/c.rs", MOVED_CLOSURE_HEAD)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+            s = summary_of(td)
+            grp = [
+                g for g in s["ratchet"]["ambiguous_groups"]
+                if len(g["scope"]) == 2
+            ][0]
+            self.assertEqual(grp["disposition"], "blocked")
+            self.assertEqual(grp["ambiguity"], "inherited")
+            self.assertIn("::<anonymous>", grp["ancestor"])
+
+    def test_named_helper_moved_between_ambiguous_parents_blocked(self):
+        """Repro 2: a uniquely-named fn under an ambiguous ancestor cannot
+        serve as a trustworthy unchanged-owner anchor merely because its own
+        body is unchanged."""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": MOVED_HELPER_BASE})
+            base = commit(td)
+            write(td, "src/c.rs", MOVED_HELPER_HEAD)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+            s = summary_of(td)
+            st = statuses(s)
+            self.assertEqual(
+                [m["name"] for m in st["ambiguous"] if m["name"] == "helper"],
+                ["helper"],
+            )
+            grp = [
+                g for g in s["ratchet"]["ambiguous_groups"]
+                if g["name"] == "helper"
+            ][0]
+            self.assertEqual(grp["disposition"], "blocked")
+            self.assertEqual(grp["ambiguity"], "inherited")
+
+    def test_unchanged_parent_proves_inherited_ambiguous_debt(self):
+        """When the entire ambiguous enclosing parent is unchanged, the
+        nested inherited-ambiguous over-cap member is retained via the
+        safe owner proof and the gate passes."""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": MOVED_CLOSURE_BASE})
+            commit(td)
+            res = run_checker(td)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            s = summary_of(td)
+            grp = [
+                g for g in s["ratchet"]["ambiguous_groups"]
+                if len(g["scope"]) == 2
+            ][0]
+            self.assertEqual(grp["disposition"], "retained")
+            self.assertEqual(grp["ambiguity"], "inherited")
+
+    def test_inherited_ambiguity_unchanged_parent_with_sibling_edit(self):
+        """Unrelated sibling edits and insertion before the safe owner do
+        not invalidate the owner proof for inherited ambiguity."""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": MOVED_CLOSURE_BASE + "\nfn tiny() {}\n"})
+            base = commit(td)
+            write(
+                td, "src/c.rs",
+                "\n// comment\n" + MOVED_CLOSURE_BASE + "\nfn tiny() {}\nfn other() {}\n",
+            )
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+    def test_inherited_ambiguity_under_cap_leaf_passes(self):
+        """A changed parent does not block when every inherited-ambiguous
+        member is at or below its cap — no over-cap debt is inherited."""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": MOVED_LOW_BASE})
+            base = commit(td)
+            write(td, "src/c.rs", MOVED_LOW_HEAD)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+    def test_newly_ambiguous_ancestry_blocks(self):
+        """An ancestry that becomes ambiguous only in the candidate still
+        blocks an over-cap descendant when the safe owner changed."""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": NEWLY_AMBIGUOUS_BASE})
+            base = commit(td)
+            write(td, "src/c.rs", NEWLY_AMBIGUOUS_HEAD)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+
+    def test_nested_ambiguous_ancestry_blocked_when_owner_changes(self):
+        """Ambiguity at two enclosing levels propagates; the innermost
+        ambiguous ancestor is reported and the outermost safe named owner
+        governs the proof."""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": NESTED_AMBIGUITY})
+            base = commit(td)
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            s = summary_of(td)
+            grp = [
+                g for g in s["ratchet"]["ambiguous_groups"]
+                if len(g["scope"]) == 3
+            ][0]
+            self.assertEqual(grp["disposition"], "retained")
+            self.assertEqual(grp["ambiguity"], "inherited")
+            self.assertEqual(grp["owner"], "src/c.rs outer")
+            self.assertEqual(
+                grp["ancestor"],
+                "src/c.rs outer::<anonymous>::<anonymous>",
+            )
+            write(
+                td, "src/c.rs",
+                NESTED_AMBIGUITY.replace("    p();", "    p(); // touch"),
+            )
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
 
     def test_dispatch_run_threshold_10_passes_11_fails(self):
         with tempfile.TemporaryDirectory() as td:

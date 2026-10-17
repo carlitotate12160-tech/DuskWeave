@@ -9,16 +9,21 @@ by the same pinned analyzer invocation as the candidate.
 
 Functions match across revisions by (file, lexical owning scope, function
 name); line numbers and sibling indices are never cross-revision identity.
-A rename or move that cannot be matched is a new function, not laundered
-debt. Ambiguous keys (for example several anonymous closures under one
-lexical parent) receive no individual allowance: an ambiguous member at or
-below its threshold passes, while an ambiguous over-threshold member is
-permitted only when the nearest enclosing named function/method whose own
-cross-revision key is unique in both revisions has byte-identical source
-span content (line endings normalized). An unchanged owner proves the
-whole ambiguous group is retained debt; a changed owner, an absent or
-non-unique owner, or an unavailable proof is blocked ambiguity and fails
-the gate. Multiset dominance never proves individual members unchanged.
+A match is unambiguous only when the function's own key and every
+enclosing function/closure key are unique in both revisions; ambiguity
+propagates to descendants, so a unique leaf under an ambiguous ancestor
+cannot inherit retained debt individually. A rename or move that cannot
+be matched is a new function, not laundered debt. Ambiguous members
+(direct or inherited) receive no individual allowance: a member at or
+below its threshold passes, while an over-threshold member is permitted
+only when the nearest enclosing named function/method that is itself
+unambiguous — unique key and safe ancestry in both revisions — has
+byte-identical source span content (line endings normalized). Named
+owners below ambiguous function ancestry are skipped and the search
+continues outward. An unchanged safe owner proves the ambiguous group is
+retained debt; a changed owner, an absent or non-safe owner, or an
+unavailable proof is blocked ambiguity and fails the gate. Multiset
+dominance never proves individual members unchanged.
 
 Statuses: NEW, REGRESSED, RETAINED, IMPROVED, RESOLVED, REMOVED, plus
 AMBIGUOUS group reporting. CheckError marks input/base/report failures;
@@ -142,21 +147,72 @@ def _span_lines(root, m):
     return lines[start - 1 : end]
 
 
-def _owner_key(k, base_groups, head_groups):
-    """Innermost named scope ancestor whose own key is unique in both
-    revisions; None when no named ancestor or none is uniquely matched.
+def _ambiguous_ancestor(m, base_groups, head_groups):
+    """Innermost enclosing function/closure key that is not unique in both
+    revisions; None when the complete function ancestry is unambiguous.
 
-    Non-function ancestors (impls, traits) are never measurement keys, so
-    they fail the uniqueness check and the search continues outward.
+    Only scope segments whose node kind is ``function`` produce ancestor
+    measurements; impl/trait segments are never function keys. A function
+    ancestor key absent from either revision means the lexical context
+    changed kind or was not measured there — conservatively ambiguous.
+    """
+    bad = None
+    file, scope = m["file"], m["scope"]
+    for i, name in enumerate(scope):
+        if m["scope_kinds"][i] != "function":
+            continue
+        ak = (file, tuple(scope[:i]), name)
+        if (
+            len(head_groups.get(ak, ())) != 1
+            or len(base_groups.get(ak, ())) != 1
+        ):
+            bad = ak
+    return bad
+
+
+def _member_ambiguous(h, b, base_groups, head_groups):
+    """True when the matched member cannot be proven to carry identity.
+
+    Direct ambiguity: the member's own key is duplicated in either
+    revision. Inherited ambiguity: an enclosing function/closure key is
+    duplicated or one-sided, so the leaf's unique key does not establish
+    which ancestor binding it belongs to.
+    """
+    k = match_key(h)
+    if len(head_groups[k]) != 1 or len(base_groups[k]) != 1:
+        return True
+    return (
+        _ambiguous_ancestor(h, base_groups, head_groups) is not None
+        or _ambiguous_ancestor(b, base_groups, head_groups) is not None
+    )
+
+
+def _owner_key(k, h0, b0, base_groups, head_groups):
+    """Innermost safe named function owner for an ambiguous group.
+
+    A safe owner is a named enclosing function whose own key is unique in
+    both revisions and whose own function ancestry is unambiguous there;
+    named owners below ambiguous function ancestry are skipped and the
+    search continues outward. Non-function scope segments (impls/traits)
+    can never be owners, and a segment that is a function on only one
+    side of the revision boundary is skipped.
     """
     file, scope, _ = k
     for i in range(len(scope) - 1, -1, -1):
-        if scope[i] == "<anonymous>":
+        if (
+            scope[i] == "<anonymous>"
+            or h0["scope_kinds"][i] != "function"
+            or b0["scope_kinds"][i] != "function"
+        ):
             continue
         ok = (file, scope[:i], scope[i])
+        bs = base_groups.get(ok, ())
+        hs = head_groups.get(ok, ())
         if (
-            len(base_groups.get(ok, ())) == 1
-            and len(head_groups.get(ok, ())) == 1
+            len(bs) == 1
+            and len(hs) == 1
+            and _ambiguous_ancestor(bs[0], base_groups, head_groups) is None
+            and _ambiguous_ancestor(hs[0], base_groups, head_groups) is None
         ):
             return ok
     return None
@@ -165,12 +221,15 @@ def _owner_key(k, base_groups, head_groups):
 def classify(base, head, base_root, head_root):
     """Annotate each head measurement with status/base fields.
 
-    Unique keys match 1:1. Duplicated keys never match individually: a
-    group with no over-cap head member is compliant, and a group with
-    over-cap head members is retained debt only when the enclosing named
-    owner's source span is unchanged between revisions; otherwise it is
-    blocked ambiguity and fails the gate. Returns the verdict consumed by
-    the CLI and the summary projection.
+    A key matches 1:1 only when its own key and every enclosing
+    function/closure key are unique in both revisions; ambiguous ancestry
+    makes the member ambiguous even when its own key is unique. Ambiguous
+    members never match individually: a group with no over-cap head member
+    is compliant, and a group with over-cap head members is retained debt
+    only when a safe enclosing named owner — itself unambiguous in both
+    revisions — has unchanged source span content; otherwise it is blocked
+    ambiguity and fails the gate. Returns the verdict consumed by the CLI
+    and the summary projection.
     """
     base_groups = _group(base)
     head_groups = _group(head)
@@ -184,7 +243,7 @@ def classify(base, head, base_root, head_root):
         bg = base_groups.get(k)
         if bg is None:
             status = NEW
-        elif len(head_groups[k]) > 1 or len(bg) > 1:
+        elif _member_ambiguous(h, bg[0], base_groups, head_groups):
             status = AMBIGUOUS
         else:
             b = bg[0]
@@ -222,7 +281,13 @@ def classify(base, head, base_root, head_root):
             removed.extend(bg)
             counts[REMOVED] += len(bg)
             continue
-        if len(bg) == 1 and len(hg) == 1:
+        direct = len(bg) > 1 or len(hg) > 1
+        ancestor = _ambiguous_ancestor(hg[0], base_groups, head_groups)
+        if ancestor is None:
+            ancestor = _ambiguous_ancestor(
+                bg[0], base_groups, head_groups
+            )
+        if not direct and ancestor is None:
             continue
         head_over = _over_caps(hg)
         entry = {
@@ -233,6 +298,8 @@ def classify(base, head, base_root, head_root):
             "members": len(hg),
             "head_over": head_over,
             "base_over": _over_caps(bg),
+            "ambiguity": "direct" if direct else "inherited",
+            "ancestor": _key_identity(ancestor) if ancestor else None,
             "owner": None,
             "owner_base_span": None,
             "owner_head_span": None,
@@ -245,7 +312,9 @@ def classify(base, head, base_root, head_root):
                 "without owner proof",
             )
         else:
-            owner = _owner_key(k, base_groups, head_groups)
+            owner = _owner_key(
+                k, hg[0], bg[0], base_groups, head_groups
+            )
             if owner is not None:
                 b_owner = base_groups[owner][0]
                 h_owner = head_groups[owner][0]

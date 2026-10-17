@@ -74,12 +74,17 @@ and the validated base commit with the same pinned analyzer
 function/closure. Base sources and inventory come from Git into an isolated
 temporary tree; the worktree is never checked out and user-authored baseline
 reports are never trusted. Matching uses file + lexical owning scope +
-function name — never line numbers or sibling indices. Ambiguous matches
-(duplicated keys, for example several anonymous closures under one parent)
+function name — never line numbers or sibling indices. A cross-revision
+match is unambiguous only when the function's own key and every enclosing
+function/closure key are unique in both revisions; ambiguity propagates to
+descendants, so a unique leaf key under an ambiguous ancestor is still
+ambiguous. Ambiguous matches (duplicated keys, for example several
+anonymous closures under one parent, or members below such ancestry)
 inherit no individual allowance. An ambiguous member at or below its
 threshold passes. An ambiguous over-threshold member is retained debt only
-when its nearest enclosing named function/method — whose own key is unique
-in both revisions — has unchanged source span content between base and
+when its nearest enclosing named function/method that is itself
+unambiguous in both revisions — named owners below ambiguous function
+ancestry are skipped — has unchanged source span content between base and
 candidate (line endings normalized, positions ignored); a changed, absent
 or non-unique owner, or an unavailable proof, is blocked ambiguity and
 fails the gate. Totals, maxima or sorted-value comparisons never prove
