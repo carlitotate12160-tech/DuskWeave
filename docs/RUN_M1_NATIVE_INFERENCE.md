@@ -91,6 +91,52 @@ core-allocated decision before reservation. Keep that identity after a binding
 acknowledgment failure. Inspect/recover compares the complete input hash even when
 only the binding exists; it cannot retrofit a binding onto a historical reservation.
 
+## Terrain Evidence Premises, Current-Use Rechecks & Historical Inspection
+
+1. **Exact Pack-Local References (`m1-initial-inference-v3`)**:
+   - When `owner_qualified_summaries` is disclosed and eligible fresh Terrain DNS
+     claims exist for selected candidate assets, `ContextPack` assigns deterministic
+     pack-local IDs (`terrain_0..terrain_7`) alongside `mission` and `asset_0..`.
+   - Every `terrain_*` entry represents narrow `OBSERVED` (`Tier1`,
+     `corroborated = false`) evidence from `operator_reviewed_dns`
+     (`dns_hostname_ipv4_resolution`), never corroborated fact or target permission.
+   - Proposals must cite exact pack-local IDs (`mission`, `asset_*`, `terrain_*`);
+     substituting raw UUIDs, JSON paths, or omitted/unknown IDs is rejected.
+2. **Pre-Release vs Cited-Reference Current-Use Validation (`TerrainBasis`)**:
+   - **Before provider release (`before_provider_release`)**: inside
+     `PgBroker::release_into` (under the session advisory lock, before network I/O),
+     the Broker verifies current Mission authority, `owner_qualified_summaries`
+     disclosure, and every serialized `TerrainDependency` in the `ContextPack` via
+     `terrain.current_dns_context_view` filtered by exact `claim_ids`. If any
+     serialized dependency was superseded, expired, held, conflicted, or withdrawn
+     before release, release returns `NeverReleased` (`reference_ineligible` or
+     `current_authority_unavailable`) and zero provider calls are sent.
+   - **During transfer (`current_authority_and_premises`)**: progress callbacks check
+     current Mission authority and the operation deadline without re-querying all
+     Terrain dependencies, so an uncited independent claim changing mid-flight does
+     not cancel an in-flight call.
+   - **After response (`current_authority_for_references`)**: `proposal::admit`
+     rechecks current Mission authority and only the exact cited `terrain_*`
+     dependencies (union of `proposal.references`, `next_intent.references`, and
+     `view_selectors`). If a cited Terrain premise became stale, superseded, held,
+     or conflicted during transfer, admission rejects the proposal with durable
+     `reference_ineligible` (non-repairable); if only an uncited premise changed,
+     the supported proposal is admitted.
+3. **Historical Pack & Proposal Inspection (`pack_state`, `pack_utf8`, `proposal`)**:
+   - Every `m1_inference_receipt_v1` reports `pack_state` (`"available"`,
+     `"not_bound"`, or `"unavailable"`), `pack_utf8` (the exact original UTF-8
+     `ContextPack` bytes when durably bound in `execution.inference_calls`), and
+     `proposal` (the admitted stored `Proposal` when present).
+   - `PgBroker::inspect_pack` reads at most the two original call rows for the
+     decision, verifies each row's stored `context_pack` / `configuration` / `body`
+     against its `binding` via `request::verify_binding`, enforces byte-for-byte
+     equality between generation and repair `context_pack` payloads, and checks
+     that any committed decision's `bindings` match the call bindings. Tampered or
+     mismatched bytes fail closed (`inference_decision_integrity`).
+   - `m1-infer-inspect`, `m1-infer-recover`, and repeated `m1-infer` for a known
+     decision identity never construct a provider, query current Terrain state, or
+     re-serialize `ContextPack` bytes.
+
 ## Hold Lifecycle & Anomaly Dominance
 
 1. **Automatic Closure**: Terminal decision completion automatically closes the exclusive

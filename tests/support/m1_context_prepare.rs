@@ -19,17 +19,7 @@ pub struct MockReader {
 impl ContextReader for MockReader {
     fn read(&mut self, _q: &ContextRequest, _op: OperationId) -> Res<ContextBasis> {
         match &self.basis {
-            Ok(b) => Ok(ContextBasis {
-                mission: b.mission.clone(),
-                capacity: ContextCapacity {
-                    version: b.capacity.version.clone(),
-                    epoch: b.capacity.epoch,
-                    session_claimed: b.capacity.session_claimed,
-                    active_holds: b.capacity.active_holds,
-                    charged: b.capacity.charged.clone(),
-                },
-                evaluated_at: b.evaluated_at,
-            }),
+            Ok(b) => Ok(clone_basis(b)),
             Err(e) => Err(*e),
         }
     }
@@ -126,6 +116,7 @@ pub fn sample_basis(now: i64, e: Uuid, c: Uuid, with_premises: bool) -> (Context
             mission,
             capacity,
             evaluated_at: now,
+            terrain: duskweave::m1_context::TerrainContextState::NotLoaded,
         },
         raw,
     )
@@ -142,6 +133,7 @@ pub fn clone_basis(b: &ContextBasis) -> ContextBasis {
             charged: b.capacity.charged.clone(),
         },
         evaluated_at: b.evaluated_at,
+        terrain: b.terrain.clone(),
     }
 }
 
@@ -187,6 +179,7 @@ pub fn build_basis(
         mission,
         capacity: cap,
         evaluated_at: now,
+        terrain: duskweave::m1_context::TerrainContextState::NotLoaded,
     }
 }
 

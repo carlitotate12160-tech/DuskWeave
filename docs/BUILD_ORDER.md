@@ -45,10 +45,12 @@ Current seal:
 
 Current engineering state:
 
-Active delivery: `fix/quality-complexity-ratchet` — enforced McCabe ratchet
-and required metrics CI (engineering policy/tooling only; no runtime product
-change). Base `10051c20c67130362326cd787cb84c639ffe008d`. Predecessors #63,
-#62, #61, #60, #59, #58, #56, #57 merged. See
+Active delivery: `feat/m1-terrain-context` (`DW-IMPLEMENT-M1-TERRAIN-CONTEXT` —
+restricted Terrain DNS public view feeding immutable `ContextPack` and native
+inference with pre-release/cited-reference current-use rechecks and historical
+pack/proposal inspection/recovery; `dispatch_granted = false`). Base
+`4d938e72873400683c12338867e7136d19a31e94`. Predecessors #64, #63, #62, #61,
+#60, #59, #58, #56, #57 merged. See
 [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 for active work, reconciled merges, and governing milestone evidence.
 

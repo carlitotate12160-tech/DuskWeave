@@ -378,10 +378,15 @@ fn cli_exact_byte_carrier_matches_reconstructed_core_output() {
             wall_time_ms: 0,
         },
     };
+    assert_eq!(
+        parsed_pack["owner_views"][1]["reason"],
+        "disclosure_not_permitted"
+    );
     let reconstructed_basis = duskweave::m1_context::ContextBasis {
         mission: source,
         capacity,
         evaluated_at,
+        terrain: duskweave::m1_context::TerrainContextState::DisclosureNotPermitted,
     };
     let q = ContextRequest {
         version: "m1_context_prepare_request_v1".into(),
