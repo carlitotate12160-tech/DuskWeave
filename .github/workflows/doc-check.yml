@@ -65,7 +65,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_m1_native_helpers.py
 
   metrics:
-    # Advisory metrics: complexity and runtime diff budget, excluded from ci-ok.needs.
+    # Required metrics gate: McCabe ratchet enforced (exit 1 on regression);
+    # runtime diff budget and LOC remain advisory reporting.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -76,6 +77,35 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Resolve diff base
+        id: base
+        shell: bash
+        run: |
+          set -e
+          EVENT="${{ github.event_name }}"
+          CHECKOUT="$(git rev-parse HEAD)"
+          BASE=""
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          elif [ "$EVENT" = "push" ]; then
+            BASE="${{ github.event.before }}"
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            # push with zero/absent before, or schedule (no before): HEAD^ is
+            # the only honest base and must itself resolve to a commit.
+            if [ "$EVENT" = "push" ] || [ "$EVENT" = "schedule" ]; then
+              BASE="$(git rev-parse --verify HEAD^)" || {
+                echo "base unresolvable for event $EVENT"; exit 1; }
+            fi
+          fi
+          if [ -z "$BASE" ]; then
+            echo "no resolvable base for event $EVENT"
+            exit 1
+          fi
+          git rev-parse --verify "$BASE^{commit}"
+          echo "event=$EVENT checkout=$CHECKOUT github_sha=${{ github.sha }} base=$BASE"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: Runtime-budget checker unit tests
         run: python -m unittest discover -s tests -p test_runtime_budget.py
@@ -94,18 +124,25 @@ jobs:
           DW_COMPLEXITY_ANALYZER: ${{ runner.temp }}/rust-code-analysis-cli
         run: python -m unittest discover -s tests -p 'test_complexity*.py'
 
-      - name: Complexity measurement and reporting
+      - name: Complexity ratchet measurement and reporting
         env:
           DW_COMPLEXITY_ANALYZER: ${{ runner.temp }}/rust-code-analysis-cli
           REPORT_DIR: ${{ runner.temp }}/dw-complexity-${{ github.run_id }}-${{ github.run_attempt }}
         shell: bash
         run: |
+          set +e
+          python scripts/check_complexity.py --analyzer "$DW_COMPLEXITY_ANALYZER" --report-dir "$REPORT_DIR" --base "${{ steps.base.outputs.base }}"
+          rc=$?
           set -e
-          python scripts/check_complexity.py --analyzer "$DW_COMPLEXITY_ANALYZER" --report-dir "$REPORT_DIR"
-          echo "### Complexity Metrics" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Complexity Ratchet (McCabe)" >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          cat "$REPORT_DIR/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$REPORT_DIR/summary.txt" ]; then
+            cat "$REPORT_DIR/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "no summary: measurement failure before report" >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
 
       - name: Upload complexity report artifact
         if: always()
@@ -115,23 +152,6 @@ jobs:
           path: ${{ runner.temp }}/dw-complexity-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Resolve diff base
-        id: base
-        shell: bash
-        run: |
-          set -e
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE="${{ github.event.before }}"
-          fi
-          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            git fetch --no-tags --depth=50 origin master
-            BASE="$(git merge-base FETCH_HEAD HEAD)"
-          fi
-          git rev-parse --verify "$BASE^{commit}"
-          echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: Runtime diff budget reporting
         shell: bash
@@ -338,7 +358,7 @@ jobs:
 
   ci-ok:
     name: ci-ok
-    needs: [links, structure, rust, codeql, dependencies]
+    needs: [links, structure, metrics, rust, codeql, dependencies]
     if: always()
     runs-on: ubuntu-latest
     steps:

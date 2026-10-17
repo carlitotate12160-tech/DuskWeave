@@ -54,6 +54,15 @@ class StructureTests(unittest.TestCase):
         for path in ("docs/contract.md", "AGENTS.md", "tests/README.md"):
             self.assert_boundary(path, 600)
 
+    def test_sql_gets_400_reference_not_600(self):
+        self.assert_boundary("migrations/0001_init.sql", 400)
+
+    def test_sql_conflict_markers_still_fail(self):
+        for marker in ("<<<<<<< HEAD\n", ">>>>>>> branch\n", "=======\n"):
+            code, out = check_files({"migrations/0001_init.sql": marker})
+            self.assertEqual(code, 1, marker)
+            self.assertIn("Conflict markers: 1", out)
+
     def test_comments_and_blanks_still_count(self):
         code, out = check_files({"src/domain.rs": "// comment\n" * 200 + "\n" * 201})
         self.assertEqual(code, 0, out)

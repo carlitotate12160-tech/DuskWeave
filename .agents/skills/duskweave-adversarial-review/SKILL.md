@@ -118,10 +118,13 @@ and report the policy-publication mismatch; the portable skill does not override
 
 Review packet feasibility as well as implementation: exact edit map versus
 read-only dependencies, real fixtures, supported platforms, and metrics.
-Engineering metrics (diff lines, file size, McCabe, function span) are advisory
-review reference points under QUALITY_BAR.md, not hard ceilings. A crossing produces
-an advisory warning and reviewer decision: retain with a concrete cohesion/readability
-reason, or refactor in the same PR. Trace state ownership and dependency direction;
+Runtime diff, file size and function span are advisory review reference points
+under QUALITY_BAR.md, not hard ceilings; a crossing produces an advisory warning
+and reviewer decision: retain with a concrete cohesion/readability reason, or
+refactor in the same PR. McCabe is an enforced per-function ratchet (QUALITY_BAR.md
+canonical): challenge ratchet bypass, wrong baselines, false-positive matching,
+debt laundering through rename/move/closure ambiguity, and threshold inflation
+that only greens a PR. Trace state ownership and dependency direction;
 small files alone do not prove absence of a God Object or tangled dependencies.
 
 For recovery claims, locate the exact injected fault relative to the real

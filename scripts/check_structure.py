@@ -2,8 +2,10 @@
 """DuskWeave repository structure and hygiene check.
 
 Enforces the file-level parts of QUALITY_BAR.md and AGENTS.md:
-- category LOC reference points (advisory): production/tooling <=400,
-  test/benchmark files <=500, Markdown <=600;
+- category LOC reference points (advisory): production/tooling <=400
+  (migrations and other .sql files count physical lines like any file and
+  get the 400 review reference), test/benchmark files <=500,
+  Markdown <=600;
 - no generic dumping-ground paths (utils/, helpers/, common/, misc/,
   managers/ directories or same-named files) [FAIL];
 - no unresolved merge conflict markers in checked text files [FAIL];
@@ -22,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_DIRS = {".git", "node_modules", "target", ".venv", "venv", "dist", "build"}
 CHECKED_EXTS = {
     ".md", ".rs", ".go", ".zig", ".c", ".h", ".cc", ".cpp", ".hpp",
-    ".py", ".sh", ".toml", ".yml", ".yaml",
+    ".py", ".sh", ".sql", ".toml", ".yml", ".yaml",
 }
 SKIP_FILES = {
     "cargo.lock", "go.sum", "go.mod", "package-lock.json", "yarn.lock",

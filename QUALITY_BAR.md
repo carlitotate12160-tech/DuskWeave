@@ -8,7 +8,7 @@ This document defines the software engineering quality standards, complexity thr
 
 ## 1. Module & File Size Budgets
 
-Readability, maintainability, and domain-responsibility isolation are informed by file size and complexity metrics as advisory review reference points, not hard ceilings:
+Readability, maintainability, and domain-responsibility isolation are informed by file size and complexity metrics. File-size, span and diff values are advisory review reference points, not hard ceilings; the per-function McCabe threshold is the one enforced numerical rule and is governed by the ratchet below:
 
 | Metric | Preferred Reference | Review Reference Point | Action When Exceeded |
 | :--- | :--- | :--- | :--- |
@@ -17,11 +17,14 @@ Readability, maintainability, and domain-responsibility isolation are informed b
 | **Markdown document** | One purpose; navigable | `600 LOC` | Advisory warning; review document purpose. Narrower document-specific limits still apply. |
 | **Runtime diff per PR/slice** | `< 300 LOC`; review trigger `> 400` | `600 LOC` | Advisory warning; review cohesion and ownership. Retain with a concrete reason or refactor in the same PR. No separate exception or new packet required. |
 | **Function length** | `<= 50` physical lines | Review trigger, not a universal cap | Above 50, record cohesion/readability disposition; split only by meaningful responsibility without helper fragmentation. |
-| **Business/other function McCabe** | `<= 7` | `7` | Advisory review reference point; retain with a concrete cohesion reason or refactor by cohesive responsibility. |
-| **Pure dispatch McCabe** | `<= 7` preferred | `10` | Advisory review reference point for discriminator/handler forwarding without business decisions. |
+| **Business/other function McCabe** | `<= 7` | `7` | **Enforced ratchet.** A new function above 7 fails the required gate; a previously compliant function crossing above 7 fails; retained debt may stay or decrease but never increase (24->25 fails, 24->23 passes and stays reported). |
+| **Pure dispatch McCabe** | `<= 7` preferred | `10` | Enforced ratchet at cap 10 for the single reviewed `src/main.rs::run` direct unit child only; every other function keeps 7. |
 
 Counts are physical lines including comments and blanks. File size uses actual
-lines, with or without a final newline. Test files are under `tests/` or `benches/`
+lines, with or without a final newline. `.sql` files are in the structure
+inventory and take the production/tooling reference point (migrations: 400);
+historical migrations are not split for the number alone. Test files are under
+`tests/` or `benches/`
 or named `tests.rs`; this classification does not grant a new Rust-hygiene exemption.
 The test allowance is for test-only code. Naming or placing production code as
 a test to evade its cap is forbidden; review verifies actual compilation/wiring.
@@ -36,6 +39,10 @@ Do not require a new packet, separate authorization, or budget exception ledger
 for a numerical crossing. Git history preserves earlier exception approvals.
 Architecture, ownership, dependency direction and readability still matter;
 an advisory metric does not excuse a God Object or tangled responsibilities.
+LOC, function-span and diff budgets are advisory review triggers; McCabe is
+the one enforced numerical threshold and is governed by the ratchet below —
+do not extract merely to move branches into forwarding helpers, and do not
+delete comments, blanks or formatting to satisfy a number.
 
 ### Function and dispatch classification
 
@@ -51,16 +58,54 @@ validate authority, decide business eligibility, mutate domain state, perform I/
 add retry/recovery policy, or hide those decisions in match guards. Uncertain or
 mixed classification uses 7. The called business handlers retain their own 7 reference point;
 review the complete call path so moving branches does not hide complexity.
+Only the reviewed `src/main.rs::run` direct unit child currently holds the
+dispatch cap; a same-named or nested `run` elsewhere keeps 7, and when the
+function changes the review must re-prove pure routing before the cap counts.
 No source-digest allowance or hash-pinning is required.
 Do not equate match-arm count with McCabe or substitute cognitive complexity.
 Report the measurement method/tool/version, source span and exact candidate;
 unavailable measurement or analyzer failure is an error, not a numerical PASS.
+
+### McCabe ratchet enforcement
+
+`scripts/check_complexity.py --base <commit>` measures the candidate worktree
+and the validated base commit with the same pinned analyzer
+(`rust-code-analysis-cli 0.0.25`, checksum-verified in CI) and ratchets per
+function/closure. Base sources and inventory come from Git into an isolated
+temporary tree; the worktree is never checked out and user-authored baseline
+reports are never trusted. Matching uses file + lexical owning scope +
+function name — never line numbers or sibling indices. A cross-revision
+match is unambiguous only when the function's own key and every enclosing
+function/closure key are unique in both revisions; ambiguity propagates to
+descendants, so a unique leaf key under an ambiguous ancestor is still
+ambiguous. Ambiguous matches (duplicated keys, for example several
+anonymous closures under one parent, or members below such ancestry)
+inherit no individual allowance. An ambiguous member at or below its
+threshold passes. An ambiguous over-threshold member is retained debt only
+when its nearest enclosing named function/method that is itself
+unambiguous in both revisions — named owners below ambiguous function
+ancestry are skipped — has unchanged source span content between base and
+candidate (line endings normalized, positions ignored); a changed, absent
+or non-unique owner, or an unavailable proof, is blocked ambiguity and
+fails the gate. Totals, maxima or sorted-value comparisons never prove
+individual members unchanged. Rename/move that cannot be matched is new
+code. The gate exits 0 on pass, 1 on regression (new over-cap function,
+previously-compliant crossing, increased retained debt, or blocked
+ambiguity), and 2 on any input, analyzer, report, or base failure. All retained and improved debt is
+still reported for mandatory review, and reviewers must not let an old
+allowance justify new responsibility in a hotspot.
+
+A candidate needing a fresh business exception goes back to Work with the
+function, reason and smallest remedy; the executor must not raise a
+threshold to make its own PR green.
+
 Enforcement wiring:
-`scripts/check_complexity.py` and `scripts/check_runtime_budget.py` report
-measurements and advisory warnings in the advisory `metrics` job of
-`.github/workflows/doc-check.yml`; successful measurement exits 0 even when
-thresholds are exceeded, while invalid input, missing analyzer, or malformed
-reports remain explicit errors.
+`scripts/check_complexity.py` (ratchet, exit 0/1/2) and
+`scripts/check_runtime_budget.py` (advisory, exit 0 on measurement) run in
+the `metrics` job of `.github/workflows/doc-check.yml`, which is required
+through `ci-ok`. CI resolves the ratchet base before measurement — PR:
+`pull_request.base.sha`; push: `before`; schedule or zero/absent push base:
+`HEAD^` when it resolves — and fails explicitly when no base resolves.
 
 ### Code splitting rules:
 - Strictly forbidden to create dumping-ground files such as `utils.rs`, `helpers.rs`, `common.rs`, or `misc.rs`.

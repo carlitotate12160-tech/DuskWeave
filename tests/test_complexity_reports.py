@@ -302,20 +302,29 @@ class LoadReconcileProject(unittest.TestCase):
         m = {
             "file": "src/x.rs", "name": "f",
             "identity": "src/x.rs src/x.rs@0::f@0",
-            "start_line": 1, "end_line": 4, "span": 4, "own": 3,
-            "depth": 1, "cap": 7, "allowance": None,
+            "start_line": 1, "end_line": 4, "span": 4, "own": 9,
+            "depth": 1, "cap": 7, "allowance": None, "scope": [],
+            "status": "retained", "base_own": 9, "base_cap": 7,
+        }
+        verdict = {
+            "counts": {"new": 0, "regressed": 0, "retained": 1,
+                       "improved": 0, "resolved": 0, "compliant": 0,
+                       "ambiguous": 0, "removed": 0},
+            "failures": [], "debt": [m], "resolved": [], "removed": [],
+            "ambiguous_groups": [], "gate_fail": False,
         }
         summary = REPORTS.build_summary(
-            "tool", "0.0.25", "sha", ["src/x.rs"], [m], [m], [],
-            {"status": "absent"},
+            "tool", "0.0.25", "sha", "base", ["src/x.rs"], ["src/x.rs"],
+            [m], 1, [m], [], {"status": "absent"}, verdict,
         )
         self.assertEqual(summary["violation_count"], 1)
+        self.assertEqual(summary["ratchet"]["counts"]["retained"], 1)
         with tempfile.TemporaryDirectory() as td:
             REPORTS.write_summaries(td, summary)
             with open(os.path.join(td, "summary.json")) as fh:
                 self.assertEqual(json.load(fh)["functions"], 1)
             with open(os.path.join(td, "summary.txt")) as fh:
-                self.assertIn("VIOLATION", fh.read())
+                self.assertIn("DEBT RETAINED", fh.read())
 
 
 FAKE_ANALYZER_SH = """#!/bin/sh
@@ -358,6 +367,7 @@ def _load(name):
 
 
 _load("complexity_reports")
+_load("complexity_ratchet")
 checker = _load("check_complexity")
 real_run = subprocess.run
 
@@ -386,9 +396,9 @@ def crafted(mode, out_dir):
     return json.dumps(report)
 
 
-def boundary(argv):
+def boundary(argv, cwd=None):
     if argv[0] != analyzer:
-        return real_run(argv, capture_output=True)
+        return real_run(argv, capture_output=True, cwd=cwd)
     if "--version" in argv:
         return subprocess.CompletedProcess(
             argv, 0, b"rust-code-analysis-cli 0.0.25\\n", b""
@@ -404,7 +414,8 @@ def boundary(argv):
 
 
 checker._run = boundary
-sys.exit(checker.main(["--analyzer", analyzer, "--report-dir", report_dir]))
+sys.exit(checker.main(["--analyzer", analyzer, "--report-dir", report_dir,
+                       "--base", "HEAD"]))
 '''
 
 
@@ -421,6 +432,8 @@ class AnalyzerBoundary(unittest.TestCase):
         td = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, td, ignore_errors=True)
         make_repo(td, {"src/a.rs": "pub fn a() {}\n"})
+        git(td, "-c", "user.email=t@t", "-c", "user.name=t",
+            "commit", "-qm", "f")
         stub = os.path.join(td, "fake-analyzer")
         if os.name == "posix" and not force_harness:
             with open(stub, "w", encoding="utf-8", newline="\n") as fh:
@@ -429,7 +442,7 @@ class AnalyzerBoundary(unittest.TestCase):
             env = dict(os.environ, FAKE_MODE=mode)
             cmd = [
                 sys.executable, str(CHECKER), "--analyzer", stub,
-                "--report-dir", os.path.join(td, "out"),
+                "--report-dir", os.path.join(td, "out"), "--base", "HEAD",
             ]
             return subprocess.run(
                 cmd, cwd=td, capture_output=True, text=True, env=env
