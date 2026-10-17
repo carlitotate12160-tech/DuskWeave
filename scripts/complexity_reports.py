@@ -261,7 +261,7 @@ def build_summary(
 ):
     c = verdict["counts"]
     group_failures = [
-        g for g in verdict["ambiguous_groups"] if g["regressed"]
+        g for g in verdict["ambiguous_groups"] if g["blocked"]
     ]
     return {
         "tool": tool,
@@ -328,10 +328,16 @@ def _txt_lines(summary):
             f"cap={m['cap']} base_own={m.get('base_own') or '-'}\n"
         )
     for g in summary["ratchet"]["ambiguous_groups"]:
-        tag = "FAIL" if g["regressed"] else "DEBT"
+        tag = (
+            "FAIL" if g["blocked"]
+            else "DEBT" if g["disposition"] == "retained"
+            else "OK"
+        )
         yield (
             f"{tag} AMBIGUOUS {g['identity']} members={g['members']} "
-            f"head_over={g['head_over']} base_over={g['base_over']}\n"
+            f"head_over={g['head_over']} base_over={g['base_over']} "
+            f"disposition={g['disposition']} owner={g['owner'] or '-'} "
+            f"reason={g['reason']}\n"
         )
     for m in summary["ratchet"]["debt"]:
         yield (

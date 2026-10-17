@@ -235,10 +235,19 @@ def _emit(
             f"cap={m['cap']} base_own={m.get('base_own') or '-'}"
         )
     for g in verdict["ambiguous_groups"]:
-        tag = "FAIL" if g["regressed"] else "DEBT"
+        tag = (
+            "FAIL" if g["blocked"]
+            else "DEBT" if g["disposition"] == "retained"
+            else "OK"
+        )
         print(
             f"{tag} AMBIGUOUS {g['identity']} members={g['members']} "
-            f"head_over={g['head_over']} base_over={g['base_over']}"
+            f"head_over={g['head_over']} base_over={g['base_over']} "
+            f"disposition={g['disposition']} "
+            f"owner={g['owner'] or '-'} "
+            f"owner_base_span={g['owner_base_span'] or '-'} "
+            f"owner_head_span={g['owner_head_span'] or '-'} "
+            f"reason={g['reason']}"
         )
     for m in verdict["debt"]:
         print(
@@ -277,8 +286,10 @@ def main(argv=None):
                 args.analyzer, base_raw, args.report_dir, cwd=root, tag="base"
             )
             base_ms = _measure_all(base_raw, base_files, src_root=root)
-        resolve_run_allowance(base_ms)
-        verdict = ratchet.classify(base_ms, head_ms)
+            resolve_run_allowance(base_ms)
+            verdict = ratchet.classify(
+                base_ms, head_ms, base_root=root, head_root=None
+            )
         over_cap, triggers = evaluate(head_ms)
         _emit(
             version, sha, base_sha, files, base_files, head_ms,
@@ -290,7 +301,7 @@ def main(argv=None):
         )
         reports.write_summaries(args.report_dir, summary)
         group_failures = sum(
-            1 for g in verdict["ambiguous_groups"] if g["regressed"]
+            1 for g in verdict["ambiguous_groups"] if g["blocked"]
         )
         if verdict["failures"] or group_failures:
             print(

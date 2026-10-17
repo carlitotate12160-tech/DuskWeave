@@ -4,6 +4,7 @@ Exercises the real CLI on disposable Git histories with the pinned analyzer:
 exit 0 gate pass, 1 McCabe regression, 2 measurement/input/base failure.
 Statuses: NEW, REGRESSED, RETAINED, IMPROVED, RESOLVED, REMOVED, AMBIGUOUS.
 """
+import importlib.util
 import os
 import subprocess
 import sys
@@ -14,6 +15,20 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 CHECKER = SCRIPTS / "check_complexity.py"
 ANALYZER = os.environ.get("DW_COMPLEXITY_ANALYZER")
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(
+        name, SCRIPTS / f"{name}.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_load("complexity_reports")
+ratchet = _load("complexity_ratchet")
 
 
 def fn(name, ifs):
@@ -62,17 +77,32 @@ ONE_CLOSURE = """fn parent() {
 }
 """
 
-MIXED_CLOSURES = """fn parent() {
+def _closures(*binding_ifs):
+    out = ""
+    for var, ifs in binding_ifs:
+        out += (
+            f"    let _{var} = || {{\n"
+            + "        if true {}\n" * ifs
+            + "    };\n"
+        )
+    return "fn parent() {\n" + out + "}\n"
+
+
+MIXED_CLOSURES = _closures(("a", 19), ("b", 7))    # own {20, 8}
+KEPT_LARGER_CLOSURE = _closures(("a", 19))         # own {20}
+
+SWAP_BASE = _closures(("a", 19), ("b", 6))         # own {20, 7}
+SWAP_HEAD = _closures(("a", 6), ("b", 19))         # own {7, 20}
+TRANSFER_BASE = MIXED_CLOSURES                     # own {20, 8}
+TRANSFER_HEAD = _closures(("a", 7), ("b", 18))     # own {8, 19}
+
+DUP_OWNER = """fn wrap() {
     let _a = || {
-""" + "        if true {}\n" * 19 + """    };
-    let _b = || {
 """ + "        if true {}\n" * 7 + """    };
 }
-"""
-
-KEPT_LARGER_CLOSURE = """fn parent() {
-    let _a = || {
-""" + "        if true {}\n" * 19 + """    };
+fn wrap() {
+    let _b = || {
+""" + "        if true {}\n" * 7 + """    };
 }
 """
 
@@ -260,7 +290,7 @@ class RatchetGate(unittest.TestCase):
             st = statuses(s)
             self.assertEqual(st["new"][0]["name"], "renamed")
 
-    def test_ambiguous_closures_groupwise_not_individually_matched(self):
+    def test_ambiguous_closures_owner_proof_not_individually_matched(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/c.rs": TWO_CLOSURES})
             base = commit(td)
@@ -273,18 +303,179 @@ class RatchetGate(unittest.TestCase):
             res = run_checker(td, base=base)
             self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
 
-    def test_ambiguous_group_resolving_smaller_member_passes(self):
+    def test_unchanged_ambiguous_debt_passes_owner_proof(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": TWO_CLOSURES})
+            commit(td)
+            res = run_checker(td)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            grp = summary_of(td)["ratchet"]["ambiguous_groups"][0]
+            self.assertEqual(grp["disposition"], "retained")
+            self.assertIn("parent", grp["owner"])
+            self.assertEqual(
+                grp["owner_base_span"], grp["owner_head_span"]
+            )
+
+    def test_insertion_before_unchanged_owner_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": TWO_CLOSURES})
+            base = commit(td)
+            write(td, "src/c.rs", TINY + "// shifted comment\n" + TWO_CLOSURES)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            grp = summary_of(td)["ratchet"]["ambiguous_groups"][0]
+            self.assertEqual(grp["disposition"], "retained")
+            self.assertNotEqual(
+                grp["owner_base_span"], grp["owner_head_span"]
+            )
+
+    def test_sibling_edit_keeps_owner_proof(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": TINY + TWO_CLOSURES})
+            base = commit(td)
+            write(td, "src/c.rs", fn("tiny", 2) + TWO_CLOSURES)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            grp = summary_of(td)["ratchet"]["ambiguous_groups"][0]
+            self.assertEqual(grp["disposition"], "retained")
+
+    def test_changed_owner_equal_multiset_blocked(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": TWO_CLOSURES})
+            base = commit(td)
+            write(
+                td, "src/c.rs",
+                TWO_CLOSURES.replace(
+                    "fn parent() {\n", "fn parent() {\n    // touched\n"
+                ),
+            )
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+            grp = summary_of(td)["ratchet"]["ambiguous_groups"][0]
+            self.assertEqual(grp["head_over"], [8, 8])
+            self.assertEqual(grp["base_over"], [8, 8])
+            self.assertEqual(grp["disposition"], "blocked")
+
+    def test_changed_owner_all_members_under_cap_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": TWO_CLOSURES})
+            base = commit(td)
+            write(td, "src/c.rs", _closures(("a", 6), ("b", 6)))
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            grp = summary_of(td)["ratchet"]["ambiguous_groups"][0]
+            self.assertEqual(grp["head_over"], [])
+            self.assertEqual(grp["disposition"], "compliant")
+
+    def test_nonunique_owner_cannot_prove_group(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/d.rs": DUP_OWNER})
+            commit(td)
+            res = run_checker(td)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+            s = summary_of(td)
+            blocked = [
+                g for g in s["ratchet"]["ambiguous_groups"]
+                if g["disposition"] == "blocked"
+            ]
+            self.assertEqual(len(blocked), 1)
+            self.assertIsNone(blocked[0]["owner"])
+
+    def test_nested_closure_group_uses_nearest_named_owner(self):
+        nested = """fn parent() {
+    let _a = || {
+        let _x = || {
+""" + "            if true {}\n" * 7 + """        };
+        let _y = || {
+""" + "            if true {}\n" * 7 + """        };
+        if true {}
+    };
+}
+"""
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": nested})
+            base = commit(td)
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            worse = nested.replace("        };\n        if true {}",
+                                   "            if true {}\n        };\n        if true {}", 1)
+            write(td, "src/c.rs", worse)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+
+    def test_unchanged_owner_proof_cannot_be_borrowed(self):
+        two_owners = _closures(("a", 7), ("b", 7)) + _closures(
+            ("c", 7), ("d", 7)
+        ).replace("parent", "sibling")
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": two_owners})
+            base = commit(td)
+            write(
+                td, "src/c.rs",
+                two_owners.replace("let _d", "let _d_changed"),
+            )
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+            s = summary_of(td)
+            by_id = {
+                g["identity"]: g for g in s["ratchet"]["ambiguous_groups"]
+            }
+            self.assertEqual(
+                by_id["src/c.rs parent::<anonymous>"]["disposition"],
+                "retained",
+            )
+            self.assertEqual(
+                by_id["src/c.rs sibling::<anonymous>"]["disposition"],
+                "blocked",
+            )
+
+    def test_invalid_owner_span_is_integrity_failure(self):
+        err = ratchet.reports.CheckError
+        with tempfile.TemporaryDirectory() as td:
+            write(td, "src/c.rs", TINY)
+            m = {"file": "src/c.rs", "start_line": 1, "end_line": 99}
+            with self.assertRaises(err) as ctx:
+                ratchet._span_lines(td, m)
+            self.assertIn("invalid owner span", str(ctx.exception))
+            m = {"file": "src/absent.rs", "start_line": 1, "end_line": 1}
+            with self.assertRaises(err) as ctx:
+                ratchet._span_lines(td, m)
+            self.assertIn("source unavailable", str(ctx.exception))
+
+    def test_ambiguous_overcap_moved_between_bindings_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": SWAP_BASE})
+            base = commit(td)
+            write(td, "src/c.rs", SWAP_HEAD)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+
+    def test_ambiguous_improvement_cannot_pay_regression(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": TRANSFER_BASE})
+            base = commit(td)
+            write(td, "src/c.rs", TRANSFER_HEAD)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+
+    def test_ambiguous_member_removed_in_changed_owner_blocked(self):
         with tempfile.TemporaryDirectory() as td:
             make_repo(td, {"src/c.rs": MIXED_CLOSURES})
             base = commit(td)
             write(td, "src/c.rs", KEPT_LARGER_CLOSURE)
             git(td, "add", "src/c.rs")
             res = run_checker(td, base=base)
-            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
             grp = summary_of(td)["ratchet"]["ambiguous_groups"][0]
-            self.assertEqual(grp["base_over"], [8, 20])
-            self.assertEqual(grp["head_over"], [20])
-            self.assertFalse(grp["regressed"])
+            self.assertEqual(grp["disposition"], "blocked")
 
     def test_new_ambiguous_closure_violation_fails(self):
         with tempfile.TemporaryDirectory() as td:

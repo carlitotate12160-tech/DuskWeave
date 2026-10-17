@@ -8,7 +8,7 @@ This document defines the software engineering quality standards, complexity thr
 
 ## 1. Module & File Size Budgets
 
-Readability, maintainability, and domain-responsibility isolation are informed by file size and complexity metrics as advisory review reference points, not hard ceilings:
+Readability, maintainability, and domain-responsibility isolation are informed by file size and complexity metrics. File-size, span and diff values are advisory review reference points, not hard ceilings; the per-function McCabe threshold is the one enforced numerical rule and is governed by the ratchet below:
 
 | Metric | Preferred Reference | Review Reference Point | Action When Exceeded |
 | :--- | :--- | :--- | :--- |
@@ -76,11 +76,17 @@ temporary tree; the worktree is never checked out and user-authored baseline
 reports are never trusted. Matching uses file + lexical owning scope +
 function name — never line numbers or sibling indices. Ambiguous matches
 (duplicated keys, for example several anonymous closures under one parent)
-inherit no individual allowance; their over-cap values are compared as a
-group and reported explicitly. Rename/move that cannot be matched is new
+inherit no individual allowance. An ambiguous member at or below its
+threshold passes. An ambiguous over-threshold member is retained debt only
+when its nearest enclosing named function/method — whose own key is unique
+in both revisions — has unchanged source span content between base and
+candidate (line endings normalized, positions ignored); a changed, absent
+or non-unique owner, or an unavailable proof, is blocked ambiguity and
+fails the gate. Totals, maxima or sorted-value comparisons never prove
+individual members unchanged. Rename/move that cannot be matched is new
 code. The gate exits 0 on pass, 1 on regression (new over-cap function,
-previously-compliant crossing, or increased retained debt), and 2 on any
-input, analyzer, report, or base failure. All retained and improved debt is
+previously-compliant crossing, increased retained debt, or blocked
+ambiguity), and 2 on any input, analyzer, report, or base failure. All retained and improved debt is
 still reported for mandatory review, and reviewers must not let an old
 allowance justify new responsibility in a hotspot.
 

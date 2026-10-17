@@ -11,10 +11,14 @@ Functions match across revisions by (file, lexical owning scope, function
 name); line numbers and sibling indices are never cross-revision identity.
 A rename or move that cannot be matched is a new function, not laundered
 debt. Ambiguous keys (for example several anonymous closures under one
-lexical parent) receive no individual allowance: their over-cap own-values
-are compared as sorted multisets, so an unchanged or improved group is
-explicit retained debt while any worsening or extra over-cap member is a
-gate failure. Matching ambiguity is always reported, never a silent PASS.
+lexical parent) receive no individual allowance: an ambiguous member at or
+below its threshold passes, while an ambiguous over-threshold member is
+permitted only when the nearest enclosing named function/method whose own
+cross-revision key is unique in both revisions has byte-identical source
+span content (line endings normalized). An unchanged owner proves the
+whole ambiguous group is retained debt; a changed owner, an absent or
+non-unique owner, or an unavailable proof is blocked ambiguity and fails
+the gate. Multiset dominance never proves individual members unchanged.
 
 Statuses: NEW, REGRESSED, RETAINED, IMPROVED, RESOLVED, REMOVED, plus
 AMBIGUOUS group reporting. CheckError marks input/base/report failures;
@@ -104,13 +108,69 @@ def _key_identity(k):
     return f"{k[0]} {scope + '::' if scope else ''}{k[2]}"
 
 
-def classify(base, head):
+def _source_lines(root, rel):
+    """Measured source file lines with line endings normalized.
+
+    Missing or undecodable content is an integrity failure (exit 2), not
+    a gate verdict.
+    """
+    path = os.path.join(root, *rel.split("/")) if root else rel
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        raise reports.CheckError(
+            f"source unavailable for owner proof: {rel}: {exc}"
+        ) from exc
+    try:
+        return data.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise reports.CheckError(
+            f"source not decodable UTF-8 for owner proof: {rel}: {exc}"
+        ) from exc
+
+
+def _span_lines(root, m):
+    """Line content of measurement m's span; invalid spans fail closed."""
+    lines = _source_lines(root, m["file"])
+    start, end = m["start_line"], m["end_line"]
+    if not 1 <= start <= end <= len(lines):
+        raise reports.CheckError(
+            f"invalid owner span {start}-{end} in {m['file']} "
+            f"({len(lines)} lines)"
+        )
+    return lines[start - 1 : end]
+
+
+def _owner_key(k, base_groups, head_groups):
+    """Innermost named scope ancestor whose own key is unique in both
+    revisions; None when no named ancestor or none is uniquely matched.
+
+    Non-function ancestors (impls, traits) are never measurement keys, so
+    they fail the uniqueness check and the search continues outward.
+    """
+    file, scope, _ = k
+    for i in range(len(scope) - 1, -1, -1):
+        if scope[i] == "<anonymous>":
+            continue
+        ok = (file, scope[:i], scope[i])
+        if (
+            len(base_groups.get(ok, ())) == 1
+            and len(head_groups.get(ok, ())) == 1
+        ):
+            return ok
+    return None
+
+
+def classify(base, head, base_root, head_root):
     """Annotate each head measurement with status/base fields.
 
-    Unique keys match 1:1. Duplicated keys match only as a group: the
-    sorted over-cap own-values must not grow or worsen, else the group is
-    an explicit ambiguous regression. Returns the verdict consumed by the
-    CLI and the summary projection.
+    Unique keys match 1:1. Duplicated keys never match individually: a
+    group with no over-cap head member is compliant, and a group with
+    over-cap head members is retained debt only when the enclosing named
+    owner's source span is unchanged between revisions; otherwise it is
+    blocked ambiguity and fails the gate. Returns the verdict consumed by
+    the CLI and the summary projection.
     """
     base_groups = _group(base)
     head_groups = _group(head)
@@ -164,37 +224,71 @@ def classify(base, head):
             continue
         if len(bg) == 1 and len(hg) == 1:
             continue
-        base_over = _over_caps(bg)
         head_over = _over_caps(hg)
-        # Multiset dominance: the i-th largest head value must not exceed
-        # the i-th largest base value, and the group must not gain members.
-        # Ascending pairing would falsely flag resolving a smaller member
-        # (base {8,20} -> head {20}); descending pairing is the exact
-        # "no member demonstrably worsened" test.
-        # Multiset dominance: the i-th largest head value must not exceed
-        # the i-th largest base value, and the group must not gain members.
-        # Ascending pairing would falsely flag resolving a smaller member
-        # (base {8,20} -> head {20}); descending pairing is the exact
-        # "no member demonstrably worsened" test.
-        regressed = len(head_over) > len(base_over) or any(
-            hv > bv
-            for hv, bv in zip(
-                sorted(head_over, reverse=True),
-                sorted(base_over, reverse=True),
+        entry = {
+            "identity": _key_identity(k),
+            "file": k[0],
+            "scope": list(k[1]),
+            "name": k[2],
+            "members": len(hg),
+            "head_over": head_over,
+            "base_over": _over_caps(bg),
+            "owner": None,
+            "owner_base_span": None,
+            "owner_head_span": None,
+        }
+        if not head_over:
+            entry.update(
+                disposition="compliant",
+                blocked=False,
+                reason="no over-cap member; under-cap members pass "
+                "without owner proof",
             )
-        )
-        ambiguous_groups.append(
-            {
-                "identity": _key_identity(k),
-                "file": k[0],
-                "scope": list(k[1]),
-                "name": k[2],
-                "members": len(hg),
-                "head_over": head_over,
-                "base_over": base_over,
-                "regressed": regressed,
-            }
-        )
+        else:
+            owner = _owner_key(k, base_groups, head_groups)
+            if owner is not None:
+                b_owner = base_groups[owner][0]
+                h_owner = head_groups[owner][0]
+                entry.update(
+                    owner=_key_identity(owner),
+                    owner_base_span=[
+                        b_owner["start_line"], b_owner["end_line"]
+                    ],
+                    owner_head_span=[
+                        h_owner["start_line"], h_owner["end_line"]
+                    ],
+                )
+            if owner is None:
+                entry.update(
+                    disposition="blocked",
+                    blocked=True,
+                    reason="no uniquely matched named owner; ambiguous "
+                    "over-cap members cannot be proven unchanged",
+                )
+            elif not base_root:
+                entry.update(
+                    disposition="blocked",
+                    blocked=True,
+                    reason="base source tree unavailable; owner proof "
+                    "cannot be established",
+                )
+            elif _span_lines(base_root, b_owner) == _span_lines(
+                head_root, h_owner
+            ):
+                entry.update(
+                    disposition="retained",
+                    blocked=False,
+                    reason="owner source span unchanged; ambiguous "
+                    "debt proven retained",
+                )
+            else:
+                entry.update(
+                    disposition="blocked",
+                    blocked=True,
+                    reason="owner source span changed; ambiguous "
+                    "over-cap members cannot be proven unchanged",
+                )
+        ambiguous_groups.append(entry)
 
     return {
         "counts": counts,
@@ -204,5 +298,5 @@ def classify(base, head):
         "removed": removed,
         "ambiguous_groups": ambiguous_groups,
         "gate_fail": bool(failures)
-        or any(g["regressed"] for g in ambiguous_groups),
+        or any(g["blocked"] for g in ambiguous_groups),
     }

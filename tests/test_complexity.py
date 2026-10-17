@@ -194,7 +194,9 @@ class CliFixtures(unittest.TestCase):
             make_repo(td, {"src/main.rs": two})
             commit(td)
             res = run_checker(td)
-            self.assertEqual(res.returncode, 0, res.stdout)
+            # Two over-cap unit-child runs share one key; with no uniquely
+            # matched named owner the ambiguous debt is blocked (exit 1).
+            self.assertEqual(res.returncode, 1, res.stdout)
             self.assertIn("ambiguous", res.stdout)
             s = summary_of(td)
             self.assertEqual(s["violation_count"], 2)
@@ -204,6 +206,9 @@ class CliFixtures(unittest.TestCase):
             self.assertEqual(
                 s["run_allowance"]["status"], "ambiguous"
             )
+            grp = s["ratchet"]["ambiguous_groups"][0]
+            self.assertEqual(grp["disposition"], "blocked")
+            self.assertIsNone(grp["owner"])
 
     def test_missing_dispatch_is_absent_not_granted(self):
         with tempfile.TemporaryDirectory() as td:
