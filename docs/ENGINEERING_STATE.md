@@ -4,7 +4,7 @@
 
 - **Project**: DuskWeave
 - **Workspace**: `D:/DuskWeave-ci-complexity` (selected reusable M1 source worktree; verify actual branch/HEAD per packet)
-- **Current Phase**: Active delivery on `fix/native-live-repeatability` (repeatable native live testing: fresh `dw_native_` database selection, explicit `--env-file` key loading, honest live outcomes). Base `b4be03ebd5a4165cb20f4dbe4dca048c754bf21f`. Predecessors #61, #60, #59, #58, #56, #57 merged. Next work: a sourced real observation feeding an LLM hypothesis/next decision through the owning model and existing history path.
+- **Current Phase**: Active delivery on `feat/m1-terrain-dns-intake` (operator-submitted safe DNS observation intake, narrow Tier-1 Terrain claim evaluation/freshness, and Trajectory history inspection/recovery). Base `cd7e482c905440bb9bf61bc5e04eb34b4060980d`. Predecessors #62, #61, #60, #59, #58, #56, #57 merged. Next work: Terrain's eligible bounded view feeds ContextPack, and changed evidence produces an appropriate LLM decision or explicit uncertainty disposition.
 - **Active Seal**: `DW-FOUNDATION-001`; `DW-M0-001`
 - **Seal Status**: **SEALED — EXPLICITLY RESEALED** (product-owner authorization, 2026-09-29; coherence verified); **M0 SEALED** (product-owner authorization, 2026-10-05)
 - **Sealed Authority Baseline**: `f93087b52c480822544bad0fb5d99d17eedf8ac0`
@@ -77,9 +77,10 @@ All interactions and plans are subject to:
 
 ## 6. Current slices and next action
 
-- **Active work / PR**: `fix/native-live-repeatability` — Make native live testing repeatable (fresh `dw_native_` database names, explicit `--env-file` key loading, honest `LIVE_*` outcomes) and execute one bounded live DeepSeek episode. Base `b4be03ebd5a4165cb20f4dbe4dca048c754bf21f`. Candidate head, CI and review status are tracked directly in Git and GitHub.
-- **Next action**: Review and merge this delivery. Follow-up: a sourced real observation for niagamas.com informs an LLM hypothesis/next decision, retained through the owning model and existing history path.
+- **Active work / PR**: `feat/m1-terrain-dns-intake` — Operator-reviewed safe DNS observation intake (`operator_reviewed_dns`), narrow Tier-1 `CyberTerrain` claim evaluation and read-time freshness (`min(perception + lowest_ttl, perception + 60s)`), and narrow `CampaignTrajectory` history inspection and post-commit recovery ([runbook](RUN_M1_TERRAIN.md)). Base `cd7e482c905440bb9bf61bc5e04eb34b4060980d`. Candidate head, CI and review status are tracked directly in Git and GitHub.
+- **Next action**: Review the final bounded FIX + TEST correction of [PR #63](https://github.com/carlitotate12160-tech/DuskWeave/pull/63), including the [restricted SQL admission boundary](RUN_M1_TERRAIN.md#restricted-sql-admission-boundary) and retained six-finding regressions. Keep the PR open and unmerged for owner acceptance; candidate CI and review disposition remain on GitHub. Synthetic/native PostgreSQL evidence grants no acquisition qualification or M1 seal. ContextPack integration remains subsequent work after acceptance/merge.
 - **Reconciled predecessor merges (GitHub master)**:
+  - [PR #62](https://github.com/carlitotate12160-tech/DuskWeave/pull/62) (`cd7e482`): fix(m1): repeatable native live testing + one bounded live episode
   - [PR #61](https://github.com/carlitotate12160-tech/DuskWeave/pull/61) (`b4be03e`): chore: simplify delivery policy and advisory metrics enforcement
   - [PR #60](https://github.com/carlitotate12160-tech/DuskWeave/pull/60) (`304b809`): feat(m1): implement production-native inference and continuation
   - [PR #59](https://github.com/carlitotate12160-tech/DuskWeave/pull/59) (`1a0a4c3`): build(deps): bump actions/upload-artifact from 7.0.1 to 7.0.2

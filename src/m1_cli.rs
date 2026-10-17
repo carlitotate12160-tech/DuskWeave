@@ -8,6 +8,9 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
         "m1-context-prepare" => super::m1_context_cli::command(args),
         "m1-session" | "m1-session-withdraw" => super::m1_session_cli::command(command, args),
         "m1-inference-budget" => super::m1_inference_budget_cli::command(args),
+        "m1-terrain-record" | "m1-terrain-inspect" | "m1-terrain-recover" => {
+            super::m1_terrain_cli::command(command, args)
+        }
         _ => Err(Fail::Input("unknown_command")),
     }
 }

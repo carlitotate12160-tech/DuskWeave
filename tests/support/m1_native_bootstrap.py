@@ -61,7 +61,7 @@ class Fixture:
         if self.sql(f"SELECT 1 FROM pg_database WHERE datname='{self.database}'", database="postgres").strip():
             raise RuntimeError("native_database_collision")
         suffix = secrets.token_hex(6)
-        owners = ["admin", "core", "broker", "cognition", "history"]
+        owners = ["admin", "core", "broker", "cognition", "history", "terrain"]
         if kind == "fixture":
             owners.append("otherbroker")
         self.roles = {name: identifier(f"dw_nf60_{suffix}_{name}") for name in owners}
@@ -78,19 +78,21 @@ class Fixture:
                          "--no-superuser", "--no-createdb", "--no-createrole", "--no-replication",
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
         self.sql(f"CREATE DATABASE {self.database} OWNER {self.roles['admin']}", database="postgres")
-        for group in ("dw_runtime", "dw_m1_broker", "dw_m1_cognition", "dw_m1_trajectory"):
+        for group in ("dw_runtime", "dw_m1_broker", "dw_m1_cognition", "dw_m1_trajectory", "dw_m1_terrain"):
             self.sql(f"DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='{group}') "
                      f"THEN CREATE ROLE {group} NOLOGIN NOSUPERUSER NOBYPASSRLS; END IF; END $$")
         self.migrate(initial=True)
         for name, groups in (("core", "dw_runtime"), ("broker", "dw_m1_broker"),
                              ("otherbroker", "dw_m1_broker"),
-                             ("cognition", "dw_m1_cognition"), ("history", "dw_m1_trajectory")):
+                             ("cognition", "dw_m1_cognition"), ("history", "dw_m1_trajectory"),
+                             ("terrain", "dw_m1_terrain")):
             if name not in self.roles:
                 continue
             self.sql(f"GRANT {groups} TO {self.roles[name]}")
         variables = {"admin": "DW_TEST_ADMIN_DATABASE_URL", "core": "DW_TEST_DATABASE_URL",
                      "broker": "DW_INFERENCE_BROKER_DATABASE_URL", "cognition": "DW_COGNITION_DATABASE_URL",
-                     "history": "DW_TRAJECTORY_DATABASE_URL", "otherbroker": "DW_NATIVE_OTHER_BROKER_DATABASE_URL"}
+                     "history": "DW_TRAJECTORY_DATABASE_URL", "terrain": "DW_TERRAIN_DATABASE_URL",
+                     "otherbroker": "DW_NATIVE_OTHER_BROKER_DATABASE_URL"}
         for owner, variable in variables.items():
             if owner not in self.roles:
                 continue
@@ -112,7 +114,8 @@ class Fixture:
     def negative_owners(self):
         """Fresh hostile-principal controls; no retained principal is widened."""
         suffix = secrets.token_hex(6)
-        names = {kind: identifier(f"dw_nf60_{suffix}_{kind}") for kind in ("sibling", "foreign", "setonly", "column", "corebad")}
+        names = {kind: identifier(f"dw_nf60_{suffix}_{kind}") for kind in (
+            "sibling", "foreign", "setonly", "column", "corebad", "terraincolumn", "terrainsetonly")}
         for kind, role in names.items():
             if self.sql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'", database="postgres").strip():
                 raise RuntimeError("native_login_collision")
@@ -121,7 +124,8 @@ class Fixture:
             private_run(["docker", "exec", "-i", self.container, "createuser", "-U", "postgres",
                          "--no-superuser", "--no-createdb", "--no-createrole", "--no-replication",
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
-            groups = {"sibling": "dw_m1_broker,dw_m1_cognition", "column": "dw_m1_broker", "corebad": "dw_runtime"}.get(kind, "dw_m1_cognition")
+            groups = {"sibling": "dw_m1_broker,dw_m1_cognition", "column": "dw_m1_broker", "corebad": "dw_runtime",
+                      "terraincolumn": "dw_m1_terrain", "terrainsetonly": "dw_m1_terrain"}.get(kind, "dw_m1_cognition")
             self.sql(f"GRANT {groups} TO {role}")
             variable = f"DW_NATIVE_{kind.upper()}_DATABASE_URL"
             self.env[variable] = f"postgresql://{role}:{quote(password, safe='')}@127.0.0.1:5432/{self.database}?sslmode=disable"
@@ -129,13 +133,15 @@ class Fixture:
         self.sql(f"GRANT USAGE ON SCHEMA mission TO {names['foreign']}; GRANT INSERT ON mission.missions TO {names['foreign']}")
         self.sql(f"GRANT {names['foreign']} TO {names['setonly']} WITH INHERIT FALSE, SET TRUE")
         self.sql(f"GRANT UPDATE(ends_at) ON mission.missions TO {names['column']}; GRANT INSERT ON cognition.reasoning_decisions,trajectory.reasoning_history TO {names['corebad']}")
+        self.sql(f"GRANT UPDATE(valid_until) ON terrain.current_claims TO {names['terraincolumn']}; "
+                 f"GRANT {names['terraincolumn']} TO {names['terrainsetonly']} WITH INHERIT FALSE, SET TRUE")
 
     def sql(self, statement, database=None):
         return private_run(["docker", "exec", "-i", self.container, "psql", "-X", "-U", "postgres",
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13) if initial else (12, 13)
+        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14) if initial else (12, 13, 14)
         for number in numbers:
             source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
             if not initial:
@@ -143,6 +149,7 @@ class Fixture:
                 source = source.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")
                 source = source.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ")
                 source = source.replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION ")
+                source = source.replace("CREATE VIEW ", "CREATE OR REPLACE VIEW ")
                 source = re.sub(r"CREATE TRIGGER (\w+) (.*?);", lambda m:
                                 "DO $refresh$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='" + m[1] +
                                 "') THEN " + m[0] + " END IF; END $refresh$;", source, flags=re.S)

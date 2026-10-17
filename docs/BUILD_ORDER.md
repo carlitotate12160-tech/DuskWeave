@@ -45,9 +45,11 @@ Current seal:
 
 Current engineering state:
 
-Active delivery: `chore/simplify-delivery-policy` — Simplify delivery policy and
-its existing CI enforcement. Base `4c76b80ad0c932edf7b8358056c2f84606a653c0`.
-Predecessors #60, #59, #58, #56, #57 merged. See
+Active delivery: `feat/m1-terrain-dns-intake` — Operator-reviewed safe DNS
+observation intake, narrow Tier-1 Terrain claim evaluation/freshness, and
+Trajectory history inspection/recovery. Base
+`cd7e482c905440bb9bf61bc5e04eb34b4060980d`. Predecessors #62, #61, #60, #59,
+#58, #56, #57 merged. See
 [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 for active work, reconciled merges, and governing milestone evidence.
 
