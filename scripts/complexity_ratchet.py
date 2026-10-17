@@ -166,8 +166,22 @@ def classify(base, head):
             continue
         base_over = _over_caps(bg)
         head_over = _over_caps(hg)
+        # Multiset dominance: the i-th largest head value must not exceed
+        # the i-th largest base value, and the group must not gain members.
+        # Ascending pairing would falsely flag resolving a smaller member
+        # (base {8,20} -> head {20}); descending pairing is the exact
+        # "no member demonstrably worsened" test.
+        # Multiset dominance: the i-th largest head value must not exceed
+        # the i-th largest base value, and the group must not gain members.
+        # Ascending pairing would falsely flag resolving a smaller member
+        # (base {8,20} -> head {20}); descending pairing is the exact
+        # "no member demonstrably worsened" test.
         regressed = len(head_over) > len(base_over) or any(
-            hv > bv for hv, bv in zip(head_over, base_over)
+            hv > bv
+            for hv, bv in zip(
+                sorted(head_over, reverse=True),
+                sorted(base_over, reverse=True),
+            )
         )
         ambiguous_groups.append(
             {

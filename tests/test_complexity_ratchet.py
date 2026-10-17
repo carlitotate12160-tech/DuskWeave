@@ -62,6 +62,20 @@ ONE_CLOSURE = """fn parent() {
 }
 """
 
+MIXED_CLOSURES = """fn parent() {
+    let _a = || {
+""" + "        if true {}\n" * 19 + """    };
+    let _b = || {
+""" + "        if true {}\n" * 7 + """    };
+}
+"""
+
+KEPT_LARGER_CLOSURE = """fn parent() {
+    let _a = || {
+""" + "        if true {}\n" * 19 + """    };
+}
+"""
+
 SCOPE_PAIR = """struct A;
 struct B;
 impl A {
@@ -258,6 +272,19 @@ class RatchetGate(unittest.TestCase):
             git(td, "add", "src/c.rs")
             res = run_checker(td, base=base)
             self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+
+    def test_ambiguous_group_resolving_smaller_member_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            make_repo(td, {"src/c.rs": MIXED_CLOSURES})
+            base = commit(td)
+            write(td, "src/c.rs", KEPT_LARGER_CLOSURE)
+            git(td, "add", "src/c.rs")
+            res = run_checker(td, base=base)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            grp = summary_of(td)["ratchet"]["ambiguous_groups"][0]
+            self.assertEqual(grp["base_over"], [8, 20])
+            self.assertEqual(grp["head_over"], [20])
+            self.assertFalse(grp["regressed"])
 
     def test_new_ambiguous_closure_violation_fails(self):
         with tempfile.TemporaryDirectory() as td:
