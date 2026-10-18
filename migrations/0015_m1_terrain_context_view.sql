@@ -107,6 +107,7 @@ BEGIN
                WHERE NOT (m.included_assets @> to_jsonb(a)) OR (m.excluded_assets @> to_jsonb(a))) THEN
         RAISE EXCEPTION 'terrain_authority_unavailable';
     END IF;
+    BEGIN
     v_vantage := (policy->>'vantage_ref')::uuid; v_resolver := policy->>'resolver_ipv4';
     IF EXISTS (
         SELECT 1 FROM terrain.current_claims cc
@@ -277,6 +278,9 @@ BEGIN
         'claims', v_claims,
         'omitted_by_claim_limit', v_omitted
     );
+    EXCEPTION
+        WHEN data_exception THEN RAISE EXCEPTION 'terrain_lineage_unavailable';
+    END;
 EXCEPTION
     WHEN data_exception THEN RAISE EXCEPTION 'terrain_view_query_refused';
 END; $$;

@@ -1415,6 +1415,10 @@ fn scalar_projection_mismatches_and_overlapping_rules_fail_closed() {
             "UPDATE terrain.materials SET completeness = 'truncated' WHERE engagement_id = $1 AND campaign_id = $2",
             "UPDATE terrain.materials SET completeness = 'complete' WHERE engagement_id = $1 AND campaign_id = $2",
         ),
+        (
+            "UPDATE terrain.outbox SET contract = jsonb_set(contract, '{engagement_id}', '\"not-a-uuid\"'::jsonb) WHERE engagement_id = $1 AND campaign_id = $2",
+            "UPDATE terrain.outbox SET contract = jsonb_set(contract, '{engagement_id}', to_jsonb(engagement_id::text)) WHERE engagement_id = $1 AND campaign_id = $2",
+        ),
     ] {
         admin.execute(mutate_sql, &[&e.0, &c.0]).unwrap();
         assert_eq!(
