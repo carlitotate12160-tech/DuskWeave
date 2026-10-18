@@ -115,7 +115,7 @@ class Fixture:
         """Fresh hostile-principal controls; no retained principal is widened."""
         suffix = secrets.token_hex(6)
         names = {kind: identifier(f"dw_nf60_{suffix}_{kind}") for kind in (
-            "sibling", "foreign", "setonly", "column", "corebad", "terraincolumn", "terrainsetonly")}
+            "sibling", "foreign", "setonly", "column", "corebad", "terraincolumn", "terrainsetonly", "prepare")}
         for kind, role in names.items():
             if self.sql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'", database="postgres").strip():
                 raise RuntimeError("native_login_collision")
@@ -125,7 +125,8 @@ class Fixture:
                          "--no-superuser", "--no-createdb", "--no-createrole", "--no-replication",
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
             groups = {"sibling": "dw_m1_broker,dw_m1_cognition", "column": "dw_m1_broker", "corebad": "dw_runtime",
-                      "terraincolumn": "dw_m1_terrain", "terrainsetonly": "dw_m1_terrain"}.get(kind, "dw_m1_cognition")
+                      "terraincolumn": "dw_m1_terrain", "terrainsetonly": "dw_m1_terrain",
+                      "prepare": "dw_runtime,dw_m1_broker"}.get(kind, "dw_m1_cognition")
             self.sql(f"GRANT {groups} TO {role}")
             variable = f"DW_NATIVE_{kind.upper()}_DATABASE_URL"
             self.env[variable] = f"postgresql://{role}:{quote(password, safe='')}@127.0.0.1:5432/{self.database}?sslmode=disable"
@@ -141,7 +142,7 @@ class Fixture:
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14) if initial else (12, 13, 14)
+        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15) if initial else (12, 13, 14, 15)
         for number in numbers:
             source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
             if not initial:

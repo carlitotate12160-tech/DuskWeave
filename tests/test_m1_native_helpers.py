@@ -94,6 +94,31 @@ class ExistingDatabaseRefusal(unittest.TestCase):
         self.assertEqual(str(ctx.exception), "native_identifier_refused")
 
 
+class MigrationSelectionAndOrder(unittest.TestCase):
+    def run_migrate(self, initial):
+        fx = object.__new__(bootstrap.Fixture)
+        fx.migration_actor = "dw_nf60_admin"
+        calls = []
+        fx.sql = calls.append
+        fx.migrate(initial=initial)
+        return calls
+
+    def test_initial_setup_includes_0015_after_predecessors(self):
+        calls = self.run_migrate(initial=True)
+        self.assertEqual(len(calls), 13)
+        self.assertIn("terrain.accept_dns_observation", calls[-2])
+        self.assertIn("CREATE FUNCTION terrain.current_dns_context_view", calls[-1])
+
+    def test_refresh_includes_0015_after_0012_0013_0014_with_replace(self):
+        calls = self.run_migrate(initial=False)
+        self.assertEqual(len(calls), 4)
+        self.assertIn("execution.inference_may_send", calls[0])
+        self.assertIn("execution.inference_reservation", calls[1])
+        self.assertIn("terrain.accept_dns_observation", calls[2])
+        self.assertIn("CREATE OR REPLACE FUNCTION terrain.current_dns_context_view", calls[3])
+
+
+
 class EnvFileKeySelection(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()

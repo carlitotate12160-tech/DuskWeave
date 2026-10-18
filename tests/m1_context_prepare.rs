@@ -68,7 +68,10 @@ fn context_pack_successful_assembly_and_byte_equivalence() {
     assert_eq!(views.len(), 6);
     assert_eq!(views[0]["owner"], "mission");
     assert_eq!(views[0]["availability"], "available");
-    for v in &views[1..] {
+    assert_eq!(views[1]["owner"], "cyber_terrain");
+    assert_eq!(views[1]["availability"], "unavailable");
+    assert_eq!(views[1]["reason"], "disclosure_not_permitted");
+    for v in &views[2..] {
         assert_eq!(v["availability"], "unavailable");
         assert_eq!(v["reason"], "not_loaded_by_this_profile");
     }

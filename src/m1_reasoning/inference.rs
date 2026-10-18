@@ -79,6 +79,9 @@ pub trait Broker {
     fn provenance(&mut self, scope: &Scope) -> Res<serde_json::Value>;
     fn finish(&mut self, scope: &Scope) -> Res<()>;
     fn inspect(&mut self, scope: &Scope) -> Res<&'static str>;
+    fn inspect_pack(&mut self, _scope: &Scope) -> Res<Option<String>> {
+        Ok(None)
+    }
 }
 
 #[derive(Serialize)]
@@ -118,6 +121,9 @@ pub struct Receipt {
     pub kind: &'static str,
     pub call_ids: Vec<Uuid>,
     pub provenance: serde_json::Value,
+    pub pack_state: &'static str,
+    pub pack_utf8: Option<String>,
+    pub proposal: Option<Proposal>,
     pub recovery_category: &'static str,
     pub decision: Uuid,
     pub event: Option<Uuid>,
@@ -180,10 +186,14 @@ pub fn infer(
         publication_obligation: "trajectory.reasoning_history.v1",
     };
     let (publication, consumer) = publish(&event, scope, broker, store, history);
+    let (pack_state, pack_utf8) = receipt_pack(broker.inspect_pack(scope));
     Receipt {
         kind: "m1_inference_receipt_v1",
-        call_ids: event.call_ids.clone(),
-        provenance: event.provenance.clone(),
+        call_ids: event.call_ids,
+        provenance: event.provenance,
+        pack_state,
+        pack_utf8,
+        proposal: event.proposal,
         recovery_category: "inspect_original_identity",
         decision: scope.decision,
         event: Some(event_id),
@@ -203,31 +213,56 @@ pub fn inspect_recover(
     history: &mut impl ReasoningHistory,
 ) -> Res<Receipt> {
     let event = store.inspect(scope)?;
-    let call_ids = event
-        .as_ref()
-        .map(|d| d.call_ids.clone())
-        .unwrap_or_default();
-    let provenance = event
-        .as_ref()
-        .map(|d| d.provenance.clone())
-        .unwrap_or(serde_json::Value::Null);
+    let (call_ids, provenance, proposal) = event_fields(&event);
     let (event_id, disposition, publication, status) = recover_event(event, redeliver, history)?;
-    if redeliver && status == "completed" {
-        let _ = broker.finish(scope);
-    }
+    let ((pack_state, pack_utf8), consumption) = inspect_broker(scope, redeliver, status, broker)?;
     Ok(Receipt {
         kind: "m1_inference_receipt_v1",
         call_ids,
         provenance,
+        pack_state,
+        pack_utf8,
+        proposal,
         recovery_category: "no_provider_replay",
         decision: scope.decision,
         event: event_id,
         proposal_disposition: disposition,
         publication,
         history: status,
-        consumption: broker.inspect(scope)?,
+        consumption,
         dispatch_granted: false,
     })
+}
+
+fn event_fields(event: &Option<Decision>) -> (Vec<Uuid>, serde_json::Value, Option<Proposal>) {
+    match event {
+        Some(d) => (d.call_ids.clone(), d.provenance.clone(), d.proposal.clone()),
+        None => (Vec::new(), serde_json::Value::Null, None),
+    }
+}
+
+fn receipt_pack(res: Res<Option<String>>) -> (&'static str, Option<String>) {
+    match res {
+        Ok(Some(pack)) => ("available", Some(pack)),
+        Ok(None) => ("not_bound", None),
+        Err(_) => ("unavailable", None),
+    }
+}
+
+fn inspect_broker(
+    scope: &Scope,
+    redeliver: bool,
+    status: &'static str,
+    broker: &mut impl Broker,
+) -> Res<((&'static str, Option<String>), &'static str)> {
+    if redeliver && status == "completed" {
+        let _ = broker.finish(scope);
+    }
+    let pack = match broker.inspect_pack(scope) {
+        Err(e) if e != "inference_inspect_unavailable" => return Err(e),
+        res => receipt_pack(res),
+    };
+    Ok((pack, broker.inspect(scope)?))
 }
 
 fn admitted_proposal(admission: Admission) -> (Option<Proposal>, &'static str) {

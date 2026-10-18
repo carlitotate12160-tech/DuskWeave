@@ -240,6 +240,7 @@ pub(crate) struct ContextDisclosure {
     pub candidates: usize,
     pub required_classes: bool,
     pub operator_premises: bool,
+    pub owner_qualified_summaries: bool,
     pub totals: [i64; 5],
     pub required: [i64; 5],
 }
@@ -264,6 +265,9 @@ impl InferencePermission {
             operator_premises: self
                 .field_classes
                 .contains(&SafeFieldClass::AdmittedOperatorPremises),
+            owner_qualified_summaries: self
+                .field_classes
+                .contains(&SafeFieldClass::OwnerQualifiedSummaries),
             totals: [
                 c.calls,
                 c.request_bytes,
