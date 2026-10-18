@@ -99,6 +99,8 @@ class TerrainRunner(unittest.TestCase):
         self.original = [dict(call=CALL, p=pack())]
         self.counts = [dict(COUNTS) for _ in range(4)]
         self.reservations = [1] * 4
+        self.foreign_call_growth = [0] * 4
+        self.foreign_reservation_growth = [0] * 4
         self.clock = NOW
         self.hold = False
         self.seen = []
@@ -121,8 +123,12 @@ class TerrainRunner(unittest.TestCase):
             return json.dumps(self.original)
         if "native_input_bindings" in statement:
             return json.dumps([D])
-        if "count(*)" in statement and "inference_reservations" in statement:
-            return str(self.reservations.pop(0))
+        if "'campaign_calls'" in statement:
+            index = 4 - len(self.reservations)
+            rows = self.reservations.pop(0)
+            return json.dumps(dict(reservation_records=rows,
+                                   campaign_calls=self.counts[index]["calls"] + self.foreign_call_growth[index],
+                                   campaign_reservation_records=rows + self.foreign_reservation_growth[index]))
         raise AssertionError(statement)
 
     def command(self, binary, fixture, args, key=None):
@@ -310,6 +316,23 @@ class TerrainRunner(unittest.TestCase):
         _, result = self.run_episode()
         self.assertEqual((result["status"], result["extra_reservation_records"]), ("LIVE_FAIL", 1))
 
+    def test_recovery_calls_on_another_decision_cannot_escape_accounting(self):
+        self.foreign_call_growth[-1] = 1
+        _, result = self.run_episode()
+        self.assertEqual((result["status"], result["extra_call_records"]), ("LIVE_FAIL", 1))
+
+    def test_recovery_reservations_on_another_decision_cannot_escape_accounting(self):
+        self.foreign_reservation_growth[-1] = 1
+        _, result = self.run_episode()
+        self.assertEqual((result["status"], result["extra_reservation_records"]), ("LIVE_FAIL", 1))
+
+    def test_hidden_second_decision_before_first_snapshot_cannot_pass(self):
+        self.foreign_call_growth = [1] * 4
+        self.foreign_reservation_growth = [1] * 4
+        _, result = self.run_episode()
+        self.assertEqual(result["status"], "LIVE_FAIL")
+        self.assertEqual(result["extra_call_records"], 0)
+
     def test_no_terrain_in_pack_fails(self):
         value = json.loads(pack())
         value["references"] = []
@@ -427,6 +450,38 @@ class TerrainRunner(unittest.TestCase):
         evidence = json.loads((report / "terrain_live_qualification.json").read_text(encoding="utf-8"))
         self.assertEqual(evidence["status"], "LIVE_BLOCKED")
         self.assertEqual(evidence["failures"], ["input_bound"])
+
+    def test_report_directory_failure_is_category_only(self):
+        report = self.root / "blocked-report"
+        report.write_text(SENTINEL, encoding="utf-8")
+        args = ["--binary", str(self.binary), "--report", str(report),
+                "--evidence-kind", "synthetic_input_provider_qualification"]
+        for name in ("registration", "observation", "context-request"):
+            args += [f"--{name}", str(self.root / name)]
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            code = live.main(args)
+        self.assertEqual(code, 1)
+        self.assertEqual(output.getvalue().strip(), "terrain_live_report_unavailable")
+        self.assertEqual(report.read_text(encoding="utf-8"), SENTINEL)
+
+    def test_unexpected_post_start_exception_retains_known_identity_without_raw_error(self):
+        self.counts[-1] = AttributeError(SENTINEL)
+        code, result = self.run_episode()
+        self.assertEqual((code, result["status"], result["decision"], result["event"]),
+                         (1, "LIVE_FAIL", D, EVENT))
+        self.assertIn("qualification_interrupted", result["failures"])
+        self.assertIsNone(result["counts"])
+
+    def test_operator_interrupt_retains_known_identity_without_stale_counts(self):
+        self.counts[-1] = KeyboardInterrupt()
+        try:
+            code, result = self.run_episode()
+        except KeyboardInterrupt:
+            self.fail("The interrupted qualification must retain its safe report")
+        self.assertEqual((code, result["status"], result["decision"]), (1, "LIVE_FAIL", D))
+        self.assertIn("qualification_interrupted", result["failures"])
+        self.assertIsNone(result["counts"])
 
 
 if __name__ == "__main__":

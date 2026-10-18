@@ -283,7 +283,8 @@ never overwritten. `null` counts mean unknown, not measured zero.
 decision, outbox, accepted history and closure; one generation and zero/one repair;
 an eligible reference from this exact observation present in the original sent P;
 equal generation/repair P bytes; exact original P on inspection and both recoveries;
-unchanged call identities, decision/event/proposal and reservation/call counts;
+unchanged call identities, decision/event/proposal and reservation/call counts
+(both this decision and the whole scoped campaign, catching new-identity records);
 and `dispatch_granted = false` on every receipt. The original P comes directly
 from scoped `execution.inference_calls`; production inspect verifies its binding.
 A separate preparation allocates a different decision: its bytes are not a

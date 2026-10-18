@@ -64,11 +64,18 @@ def records(text):
     return parsed, malformed
 
 
-def snapshot(fixture, decision):
-    canonical_uuid(decision)
+def snapshot(fixture, e, c, decision):
+    for value in (e, c, decision):
+        canonical_uuid(value)
     counts = durable_counts(fixture, decision)
-    counts["reservation_records"] = int(fixture.sql(
-        f"SELECT count(*) FROM execution.inference_reservations WHERE operation_id='{decision}'").strip())
+    counts.update(json.loads(fixture.sql(
+        "SELECT json_build_object("
+        "'reservation_records',(SELECT count(*) FROM execution.inference_reservations"
+        f" WHERE operation_id='{decision}'),"
+        "'campaign_calls',(SELECT count(*) FROM execution.inference_calls"
+        f" WHERE (e,c)=('{e}','{c}')),"
+        "'campaign_reservation_records',(SELECT count(*) FROM execution.inference_reservations"
+        f" WHERE (engagement_id,campaign_id)=('{e}','{c}')))")))
     require(all(type(v) is int and v >= 0 for v in counts.values()), "counts_invalid")
     return counts
 
@@ -239,7 +246,7 @@ def reconcile(options, fixture, inputs, e, c, text, exit_code, result):
             return
     before, original, references, calls = None, None, [], []
     try:
-        before = snapshot(fixture, decision)
+        before = snapshot(fixture, e, c, decision)
         original, calls = retained_packs(fixture, e, c, decision)
         references = terrain_references(original, result["terrain"], e, c, decision)
         result.update(pack_sha256=hashlib.sha256(original.encode()).hexdigest(),
@@ -279,7 +286,7 @@ def reconcile(options, fixture, inputs, e, c, text, exit_code, result):
             failures.append(failure_code(exc, "historical_inspection_failed"))
         result["historical_checks"].append(check)
         try:
-            latest = snapshot(fixture, decision)
+            latest = snapshot(fixture, e, c, decision)
         except ERRORS as exc:
             result["counts"] = None
             failures.append(failure_code(exc, "counts_unavailable"))
@@ -287,19 +294,23 @@ def reconcile(options, fixture, inputs, e, c, text, exit_code, result):
         result["counts"] = latest
         try:
             require(before is not None, "initial_counts_unknown")
-            for key in ("calls", "reserved_calls", "reservation_records"):
+            for key in ("calls", "reserved_calls", "reservation_records",
+                        "campaign_calls", "campaign_reservation_records"):
                 require(latest[key] == before[key], "recovery_accounting_growth")
         except ERRORS as exc:
             failures.append(failure_code(exc, "counts_unavailable"))
     counts = result["counts"]
     if before is not None and counts is not None:
-        result["extra_call_records"] = counts["calls"] - before["calls"]
-        result["extra_reservation_records"] = counts["reservation_records"] - before["reservation_records"]
+        result["extra_call_records"] = counts["campaign_calls"] - before["campaign_calls"]
+        result["extra_reservation_records"] = (
+            counts["campaign_reservation_records"] - before["campaign_reservation_records"])
     try:
         require(counts is not None, "counts_unavailable")
         require(counts["generation"] == 1 and counts["repair"] in (0, 1)
                 and counts["calls"] == counts["generation"] + counts["repair"]
-                and counts["reserved_calls"] == 2 and counts["reservation_records"] == 1,
+                and counts["campaign_calls"] == counts["calls"]
+                and counts["reserved_calls"] == 2 and counts["reservation_records"] == 1
+                and counts["campaign_reservation_records"] == 1,
                 "call_accounting_invalid")
         require(all(counts[k] == 1 for k in ("decisions", "outbox", "history", "closures")),
                 "durable_completion_absent")
@@ -345,9 +356,9 @@ def main(argv=None):
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
     parser.add_argument("--database-name", default=None)
     options = parser.parse_args(argv)
-    options.report.mkdir(parents=True, exist_ok=True)
     path = options.report / "terrain_live_qualification.json"
     try:
+        options.report.mkdir(parents=True, exist_ok=True)
         destination = path.open("x", encoding="utf-8")
     except OSError:
         print("terrain_live_report_unavailable", file=sys.stderr)
@@ -360,7 +371,12 @@ def main(argv=None):
             qualify(options, result)
         except ERRORS as exc:
             result["failures"].append(failure_code(exc, "qualification_unavailable"))
-        destination.write(json.dumps(result, indent=2))
+        except (Exception, KeyboardInterrupt):
+            result["status"] = "LIVE_BLOCKED" if result["status"] == "LIVE_BLOCKED" else "LIVE_FAIL"
+            result.update(counts=None, extra_call_records=None, extra_reservation_records=None)
+            result["failures"].append("qualification_interrupted")
+        finally:
+            destination.write(json.dumps(result, indent=2))
     print(json.dumps({k: result[k] for k in ("status", "extra_call_records", "extra_reservation_records")}))
     return 0 if result["status"] == "LIVE_PASS" else 1
 
