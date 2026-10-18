@@ -31,6 +31,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 
 ## Decisions to Implement
 - Concrete architectural and implementation decisions captured by accepted PRDs/ADRs and packet.
+- For affected contracts, specify producer/artifact/consumer semantics (units, identity role/order and state), actual serialized byte bounds including request/configuration/repair, and lifecycle timing against freshness/deadlines. Preserve required information and original evidence times.
 - Runtime diff, file LOC and function span are advisory review reference points under QUALITY_BAR.md, not hard ceilings; a crossing produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR. McCabe is an enforced per-function ratchet (QUALITY_BAR.md canonical): a packet that must add or worsen an over-threshold function names the function, reason and smallest remedy.
 - No budget exception ledgers, separate authorization packets, or pure-dispatch digest allowances are required for numerical crossings.
 
@@ -38,10 +39,12 @@ Execute the assigned packet directly. Do not return another architecture plan.
 - Exact observable assertions proving completion.
 - Grounded in requirements, owner contracts, failure boundaries, and observable evidence.
 - Wiring for runtime slices: traced path from authorized entrypoint through changed production component to consumer and observable result.
+- For affected capacity/time boundaries, assert the minimum useful case and relevant legal boundary cases; state measured margins and honest omissions/expiry outcomes. Explain N/A where these boundaries are unaffected.
 
 ## Relevant Checks & Validation
 - DESIGN: document conventions, authority references, links, invariants; runtime wiring is N/A.
 - IMPLEMENT/FIX: unit, integration, and scenario tests; conflict markers, hygiene, formatting, and Clippy.
+- Exercise an artifact from the real producer through the real consumer where executable, including language/process boundaries; do not substitute mutually consistent mocks. Record evidence in the existing packet/review, not a new gate or report family.
 - McCabe ratchet is enforced in the required `metrics` job (exit 1 on regression); LOC/diff metrics remain advisory reports.
 - Material failures (broken tests, compiler errors, hygiene violations, invalid input) must be corrected before merge in the same PR.
 

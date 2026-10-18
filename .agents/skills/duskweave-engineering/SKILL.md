@@ -192,6 +192,21 @@ readable formatting to lower counted lines.
 List exact editable files separately from read-only caller/consumer references.
 For runtime packets, trace the real entrypoint and consumer and require a test
 through that path. An unchanged caller need not be editable.
+For affected serialized, resource or temporal contracts, inspect the actual
+producer -> immutable artifact -> consumer path before handoff. Check field
+meaning, units, identity role/order and state semantics; reserved identities
+and initiated effects are different. Measure actual UTF-8 serialization for
+the minimum useful case and relevant legal boundary cases, including complete
+request/configuration and repair material where applicable; counts and estimates
+alone do not establish fit. Map provisioning, acquisition, operator review,
+send and current-use admission against freshness and deadlines. Complete setup
+before acquiring short-lived evidence where feasible; preserve original times
+and reject expiry rather than extending validity or silently reacquiring.
+Require a regression that passes an artifact from the real producer through
+the real consumer when executable at this stage, including language/process
+boundaries. Mock agreement alone does not prove their contract. Record measured
+margins, tested limits and unresolved assumptions in the existing packet/review
+evidence under QUALITY_BAR.md section 7; add no separate artifact or approval gate.
 A changed production component consumed only by unit tests is an island.
 If there is no authorized entrypoint/consumer in scope, split or defer the
 runtime packet. Do not impose runtime wiring checks on DESIGN-only documents.
