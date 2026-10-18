@@ -203,7 +203,123 @@ python tests/support/m1_native_bootstrap.py --container dwpg-r3 \
 Run focused native tests locally. CI runs the complete suite and coverage on its
 isolated disposable service; legacy cluster-role bootstrap is not authorized locally.
 
-## One bounded live episode
+## Terrain-Informed Qualification Runner
+
+Use the dedicated [Terrain runner](../tests/support/m1_terrain_live.py), not the
+inference-only helper, to qualify operator-reviewed DNS -> Terrain intake ->
+immutable ContextPack -> native provider decision/history -> historical recovery.
+This is qualification tooling, not a collector or production workflow engine.
+
+```bash
+python tests/support/m1_terrain_live.py \
+  --binary <committed-candidate-duskweave-binary> \
+  --report <fresh-report-directory> \
+  --registration <operator-approved-registration.json> \
+  --observation <operator-reviewed-dns-observation.json> \
+  --context-request <operator-approved-context-request.json> \
+  --evidence-kind real_operator_dns \
+  [--env-file .env] [--database-name <dw_native_live_...>]
+```
+
+All three files are mandatory, remain operator-owned, and are never copied into
+the report. Each orchestration read is bounded to 16 KiB. Keep them unchanged
+during the run. The binary remains authoritative for scope, consent, disclosure,
+evidence admission and current-use eligibility:
+
+- Registration uses the existing `register` format: an approved Mission with its
+  M1 DNS purpose/vantage/resolver policy plus current `m1_inference_permission_v2`,
+  `deepseek-responses-envelope32-v1`, recipient/terms approval, finite limits and
+  explicitly approved `owner_qualified_summaries`. The runner never adds consent,
+  approval references, assets or scope.
+- Observation uses [the existing Terrain DNS format](RUN_M1_TERRAIN.md):
+  `m1_terrain_dns_observation_v1`, `source_kind = operator_reviewed_dns`, the same
+  engagement/campaign and selected asset, and independently reviewed non-sensitive
+  DNS material. Preserve its original perception time, uncertainty and TTL.
+- Context request uses [the existing preparation format](RUN_M1_CONTEXT_PREPARE.md):
+  `m1_context_prepare_request_v1`, matching Mission/permission and a candidate
+  containing the observation's asset. No caller-supplied accepted view or pack.
+
+Use `--evidence-kind synthetic_input_provider_qualification` only for a separately
+authorized provider episode with clearly synthetic operator inputs. The required
+label is an operator declaration, not automated proof of observation provenance.
+Neither evidence kind is DuskWeave DNS acquisition or permission for target contact.
+No real Mission/observation/context files or current provider consent accompanied
+this tooling delivery: actual qualification is `LIVE_NOT_EXECUTED`.
+
+### Sequence And Proof Criteria
+
+The existing bootstrap qualifies the retained owned `dwpg-r3` service (pinned
+PostgreSQL 17 image, running, loopback port 5432), provisions one fresh `live`
+database and distinct restricted owner logins, and applies existing migrations.
+Omitting `--database-name` generates a unique `dw_native_live_*` name. Existing
+databases/logins are refused, never reset, dropped or reused. Serialize this
+role-mutating run with other fixture owners; retain interrupted databases/roles.
+
+The runner registers exactly the supplied Mission, records the observation once
+through `m1-terrain-record --operation new`, and requires accepted history, a fresh
+usable OBSERVED claim and no integrity hold before inference. Freshness is the
+existing Terrain window, capped at 60 seconds from the original `perceived_at`;
+input preparation, provisioning and inference all consume that window. Expiry
+blocks/defer honestly. Never edit the timestamp to pass: a fresh observation
+requires a separate operator action and a fresh decision. Production release and
+cited-reference admission checks still handle expiry during the attempt.
+
+It invokes `m1-infer --operation new` exactly once, with the selected key passed
+only to that child. The production decision permits one generation plus at most
+one eligible schema repair, with no orchestration retry, fallback or model switch.
+Fresh-process `m1-infer-inspect` and two `m1-infer-recover` invocations use that same
+decision and unchanged context request, without the key. Timeout retains the
+partial/durable scoped identity when available; post-start uncertainty is
+`LIVE_FAIL`, never relabeled `LIVE_BLOCKED` because later inspection failed.
+
+`terrain_live_qualification.json` contains safe scoped identities, source/time/status,
+tested Git commit and binary SHA-256, counts, exact reference IDs, P digest/equality
+assertions, fixed failure categories, and only a successfully admitted/verified
+proposal. It contains no input copies, pack copy, raw command output, stderr,
+provider response, private reasoning or credentials. A pre-existing report is
+never overwritten. `null` counts mean unknown, not measured zero.
+
+`LIVE_PASS` requires all of the following: one admitted current-profile provider
+decision, outbox, accepted history and closure; one generation and zero/one repair;
+an eligible reference from this exact observation present in the original sent P;
+equal generation/repair P bytes; exact original P on inspection and both recoveries;
+unchanged call identities, decision/event/proposal and reservation/call counts
+(both this decision and the whole scoped campaign, catching new-identity records);
+and `dispatch_granted = false` on every receipt. The original P comes directly
+from scoped `execution.inference_calls`; production inspect verifies its binding.
+A separate preparation allocates a different decision: its bytes are not a
+substitute or an equality baseline.
+
+`proposal_cites_terrain` separately reports whether the actual admitted proposal,
+next intent or view selectors cite the retained Terrain reference. The operator
+must assess the preserved hypothesis, alternative, expected/falsifying observation,
+uncertainty, rationale and next intent for useful evidence-led access-validation
+planning. Ignoring Terrain is reported honestly and never triggers another send.
+Connected inference is not adaptation, action-outcome feedback, acquisition,
+validated access, a complete cognitive MVP or an M1 seal. APT41, Lazarus and Volt
+Typhoon remain behavioral reference lenses, never playbooks or execution permission.
+
+`LIVE_BLOCKED` covers pre-send input/consent/fixture/freshness failures.
+`LIVE_FAIL` covers a started/possibly sent attempt failing qualification, including
+missing/tampered historical P or unknown counts. No automatic retry is performed.
+Build the binary from the tested commit under the process-owned ordinary target
+`D:/DuskWeave-build/rust-1.94.1/normal`; the report records its hash but cannot itself
+prove binary-to-source provenance. Use fresh subdirectories under
+`D:/DuskWeave-build/rust-1.94.1/reports/dw-m1-terrain-live-runner`.
+No ordinary/instrumented cache mixing, cleanup, configuration changes or new live
+provider/target authority follows from this command.
+
+Deterministic checks (synthetic controlled boundaries, not live evidence):
+
+```bash
+python -m unittest discover -s tests -p test_m1_terrain_live.py
+python -m unittest discover -s tests -p test_m1_native_helpers.py
+```
+
+Production wiring is unchanged: runner -> real Mission/Terrain/inference CLIs ->
+existing owner contracts -> provider/history -> verified historical receipts.
+
+## One Bounded Inference-Only Episode
 
 ```bash
 python tests/support/m1_native_live.py --binary <path-to-duskweave> \
@@ -219,6 +335,9 @@ fallback or target contact; `live_qualification.json` records `LIVE_PASS`,
 after inference starts keeps the original decision identity and the durable
 call/decision/outbox/history/closure counts; it is never relabeled as a
 preflight block.
+
+This older helper supplies inference-only consent and no Terrain observation.
+Its `LIVE_PASS` cannot establish Terrain-informed cognition; it remains unchanged.
 
 ### Helper `.env` loading vs direct CLI environment
 
