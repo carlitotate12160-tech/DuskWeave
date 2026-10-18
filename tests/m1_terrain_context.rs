@@ -633,12 +633,75 @@ fn byte_fitting_prefers_dropping_operator_only_candidate_before_sole_terrain_pre
         0
     );
 
-    // Reduce context_bytes further so terrain_0 itself must be omitted, keeping candidate a1
+    // Input position must not sacrifice the sole eligible Terrain premise.
+    let mut reversed = ContextRequest {
+        version: q_two.version.clone(),
+        mission: q_two.mission.clone(),
+        candidates: q_two.candidates.clone(),
+    };
+    reversed.candidates.reverse();
+    let reversed_prep = m1_context::prepare(&mut reader_tight, &reversed, op).unwrap();
+    assert_eq!(
+        reversed_prep.terrain_dependencies(),
+        tight_prep.terrain_dependencies()
+    );
+    assert_eq!(
+        request::reference_ids(reversed_prep.utf8().as_bytes()).unwrap(),
+        vec!["mission", "asset_0", "terrain_0"]
+    );
+    assert!(!reversed_prep.utf8().contains(&a2.0.to_string()));
+    let reversed_pack: Value = serde_json::from_str(reversed_prep.utf8()).unwrap();
+    assert_eq!(reversed_pack["candidates"], tight_pack["candidates"]);
+    assert_eq!(reversed_pack["references"], tight_pack["references"]);
+    assert_eq!(reversed_pack["owner_views"], tight_pack["owner_views"]);
+    assert_eq!(reversed_pack["omissions"]["supplied_candidates"], 2);
+    assert_eq!(reversed_pack["omissions"]["shown_candidates"], 1);
+    assert_eq!(reversed_pack["omissions"]["omitted_candidates"], 1);
+    assert_eq!(
+        reversed_pack["omissions"]["selection"],
+        "input_order_with_count_and_byte_bounds"
+    );
+    assert!(reversed_prep.utf8().len() <= 4096);
+
+    // Consent candidate ceiling applies to the input prefix first; a Terrain-backed candidate
+    // outside that authorized prefix (index 1 when candidates limit is 1) is never pulled in.
+    let (m_cap1_base, req_cap1) = build_mission(e, c, now, true, 4096);
+    let mut cap1_val = serde_json::to_value(&m_cap1_base).unwrap();
+    cap1_val["fields"]["m1_inference_permission"]["operation_limits"]["candidates"] = json!(1);
+    let m_cap1: MissionRegistered = serde_json::from_value(cap1_val).unwrap();
+    let mut reader_cap1 = FixedReader(ContextBasis {
+        mission: m_cap1.clone(),
+        capacity: default_capacity(),
+        evaluated_at: now,
+        terrain: TerrainContextState::Available(build_view(
+            &m_cap1,
+            vec![a1, a2],
+            now,
+            vec![sample_raw_claim(e, c, 0x801, 0x21, now - 10)],
+            0,
+        )),
+    });
+    let q_cap1 = ContextRequest {
+        version: reversed.version.clone(),
+        mission: req_cap1,
+        candidates: reversed.candidates.clone(),
+    };
+    let cap1_prep = m1_context::prepare(&mut reader_cap1, &q_cap1, op).unwrap();
+    assert!(cap1_prep.terrain_dependencies().is_empty());
+    let cap1_pack: Value = serde_json::from_str(cap1_prep.utf8()).unwrap();
+    assert_eq!(cap1_pack["candidates"].as_array().unwrap().len(), 1);
+    assert_eq!(cap1_pack["references"][1]["entity"], json!(a2.0));
+    assert_eq!(
+        cap1_pack["omissions"]["selection"],
+        "input_order_prefix_with_count_and_byte_bounds"
+    );
+
+    // Reduce context_bytes further so terrain_0 itself must be omitted, keeping 1 candidate
     let tight_len = tight_prep.utf8().len();
     let (m_smaller, req_smaller) = build_mission(e, c, now, true, tight_len - 1);
     let q_smaller = ContextRequest {
         version: "m1_context_prepare_request_v1".into(),
-        mission: req_smaller,
+        mission: req_smaller.clone(),
         candidates: q_two.candidates.clone(),
     };
     let mut reader_smaller = FixedReader(ContextBasis {
@@ -649,11 +712,35 @@ fn byte_fitting_prefers_dropping_operator_only_candidate_before_sole_terrain_pre
     });
     let smaller_prep = m1_context::prepare(&mut reader_smaller, &q_smaller, op).unwrap();
     assert!(smaller_prep.terrain_dependencies().is_empty());
+    assert_eq!(
+        request::reference_ids(smaller_prep.utf8().as_bytes()).unwrap(),
+        vec!["mission", "asset_0"]
+    );
     let smaller_pack: Value = serde_json::from_str(smaller_prep.utf8()).unwrap();
     assert_eq!(smaller_pack["owner_views"][1]["shown_claims"], 0);
     assert_eq!(
         smaller_pack["owner_views"][1]["omissions"]["omitted_by_byte_bound"],
         1
+    );
+    let rev_len = reversed_prep.utf8().len();
+    let (m_smaller_rev, req_smaller_rev) = build_mission(e, c, now, true, rev_len - 1);
+    let q_smaller_rev = ContextRequest {
+        version: "m1_context_prepare_request_v1".into(),
+        mission: req_smaller_rev,
+        candidates: reversed.candidates.clone(),
+    };
+    let mut reader_smaller_rev = FixedReader(ContextBasis {
+        mission: m_smaller_rev,
+        capacity: default_capacity(),
+        evaluated_at: now,
+        terrain: TerrainContextState::Available(view.clone()),
+    });
+    let smaller_rev_prep =
+        m1_context::prepare(&mut reader_smaller_rev, &q_smaller_rev, op).unwrap();
+    assert!(smaller_rev_prep.terrain_dependencies().is_empty());
+    assert_eq!(
+        request::reference_ids(smaller_rev_prep.utf8().as_bytes()).unwrap(),
+        vec!["mission", "asset_0"]
     );
 
     // Minimum required metadata that cannot fit defers

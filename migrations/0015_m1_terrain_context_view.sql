@@ -116,8 +116,23 @@ BEGIN
         LEFT JOIN terrain.evaluations ev ON ev.engagement_id = cc.engagement_id AND ev.campaign_id = cc.campaign_id AND ev.operation_id = cc.operation_id
         LEFT JOIN terrain.claim_revisions cr ON cr.engagement_id = cc.engagement_id AND cr.campaign_id = cc.campaign_id AND cr.operation_id = cc.operation_id
         WHERE cc.engagement_id = v_e AND cc.campaign_id = v_c
-          AND cc.asset_ref = ANY(v_assets)
-          AND (NOT v_has_claim_filter OR cc.claim_id = ANY(v_claim_ids))
+          AND (
+              cc.asset_ref = ANY(v_assets)
+              OR cr.asset_ref = ANY(v_assets)
+              OR ob.asset_ref = ANY(v_assets)
+              OR (cc.payload->>'asset_ref') = ANY(SELECT a::text FROM unnest(v_assets) a)
+              OR (cr.payload->>'asset_ref') = ANY(SELECT a::text FROM unnest(v_assets) a)
+              OR (ob.payload->>'asset_ref') = ANY(SELECT a::text FROM unnest(v_assets) a)
+              OR (o.contract#>>'{claim,asset_ref}') = ANY(SELECT a::text FROM unnest(v_assets) a)
+          )
+          AND (
+              NOT v_has_claim_filter
+              OR cc.claim_id = ANY(v_claim_ids)
+              OR cr.claim_id = ANY(v_claim_ids)
+              OR o.claim_id = ANY(v_claim_ids)
+              OR (cc.payload->>'claim_id') = ANY(SELECT cid::text FROM unnest(v_claim_ids) cid)
+              OR (o.contract#>>'{claim,claim_id}') = ANY(SELECT cid::text FROM unnest(v_claim_ids) cid)
+          )
           AND (
               o.operation_id IS NULL OR ob.operation_id IS NULL OR mat.operation_id IS NULL OR ev.operation_id IS NULL OR cr.operation_id IS NULL
               OR o.event_id IS DISTINCT FROM cc.event_id OR o.event_id IS DISTINCT FROM (o.contract->>'event_id')::uuid
@@ -126,9 +141,39 @@ BEGIN
               OR o.evaluation_id IS DISTINCT FROM cc.evaluation_id OR o.evaluation_id IS DISTINCT FROM ev.evaluation_id OR ev.claim_id IS DISTINCT FROM cc.claim_id
               OR o.claim_id IS DISTINCT FROM cc.claim_id OR o.claim_revision IS DISTINCT FROM cc.claim_revision
               OR cr.claim_id IS DISTINCT FROM cc.claim_id OR cr.claim_revision IS DISTINCT FROM cc.claim_revision
-              OR ob.request_hash IS DISTINCT FROM o.request_hash OR ob.payload IS DISTINCT FROM (o.contract->'observation')
+              OR ob.request_hash IS DISTINCT FROM o.request_hash OR o.request_hash IS DISTINCT FROM (o.contract->>'request_hash')
+              OR (o.contract->>'kind') IS DISTINCT FROM 'terrain_changed'
+              OR (o.contract->'version') IS DISTINCT FROM '1'::jsonb
+              OR (o.contract->>'producer') IS DISTINCT FROM 'terrain'
+              OR (o.contract->>'publication_obligation') IS DISTINCT FROM 'trajectory.terrain_history.v1'
+              OR (o.contract->>'engagement_id')::uuid IS DISTINCT FROM cc.engagement_id
+              OR (o.contract->>'campaign_id')::uuid IS DISTINCT FROM cc.campaign_id
+              OR (o.contract->>'operation_id')::uuid IS DISTINCT FROM cc.operation_id
+              OR ob.payload IS DISTINCT FROM (o.contract->'observation')
               OR mat.payload IS DISTINCT FROM (o.contract->'material') OR ev.payload IS DISTINCT FROM (o.contract->'evaluation')
               OR cr.payload IS DISTINCT FROM (o.contract->'claim') OR cc.payload IS DISTINCT FROM cr.payload
+              OR to_jsonb(cr) IS DISTINCT FROM (to_jsonb(cc) - 'event_id')
+              OR cc.payload IS DISTINCT FROM ((to_jsonb(cc) - ARRAY['engagement_id','campaign_id','operation_id','event_id','payload']) || jsonb_build_object('temporal_frontier', cc.payload->'temporal_frontier'))
+              OR ob.payload IS DISTINCT FROM ((to_jsonb(ob) - ARRAY['request_hash','payload']) || jsonb_build_object('uncertainty_seconds', ob.payload->'uncertainty_seconds'))
+              OR mat.payload IS DISTINCT FROM ((to_jsonb(mat) - ARRAY['engagement_id','campaign_id','operation_id','payload']) || jsonb_build_object('qclass', 'IN', 'limitations', mat.payload->'limitations'))
+              OR ev.payload IS DISTINCT FROM (to_jsonb(ev) - ARRAY['engagement_id','campaign_id','operation_id','payload'])
+              OR ob.correlation_id IS DISTINCT FROM (o.contract->>'correlation_id')::uuid
+              OR ob.vantage_ref IS DISTINCT FROM cc.vantage_ref OR ob.resolver_ipv4 IS DISTINCT FROM cc.resolver_ipv4
+              OR ob.subject_name IS DISTINCT FROM cc.subject_name OR ob.asset_ref IS DISTINCT FROM cc.asset_ref
+              OR ob.perceived_at IS DISTINCT FROM cc.perceived_at OR ob.recorded_at < ob.perceived_at
+              OR jsonb_typeof(ob.payload->'uncertainty_seconds') IS DISTINCT FROM 'number'
+              OR (ob.payload->>'uncertainty_seconds')::integer NOT BETWEEN 0 AND 300
+              OR mat.answers IS DISTINCT FROM cc.answers
+              OR jsonb_typeof(mat.payload->'limitations') IS DISTINCT FROM 'array'
+              OR jsonb_array_length(mat.payload->'limitations') > 4
+              OR jsonb_typeof(cc.answers) IS DISTINCT FROM 'array'
+              OR jsonb_array_length(cc.answers) > 4
+              OR ev.observation_id IS DISTINCT FROM cc.observation_id OR ev.material_id IS DISTINCT FROM cc.material_id
+              OR ev.valid_until IS DISTINCT FROM cc.valid_until
+              OR ev.usable_routing_premise IS DISTINCT FROM (ev.outcome = 'qualified_dns_claim' AND cc.claim_status = 'observed' AND NOT cc.conflicted)
+              OR cc.previous_claim_revision IS DISTINCT FROM (cc.claim_revision - 1)
+              OR jsonb_typeof(cc.payload->'temporal_frontier') IS DISTINCT FROM 'number'
+              OR (cc.payload->>'temporal_frontier')::bigint < cc.perceived_at
               OR (o.contract->>'registration_operation_id')::uuid IS DISTINCT FROM m.operation_id
               OR (o.contract->>'registration_event_id')::uuid IS DISTINCT FROM reg.event_id
               OR (o.contract->>'mission_revision')::integer IS DISTINCT FROM 1
@@ -147,6 +192,18 @@ BEGIN
                   WHERE ex_rule->>'exact' = cc.subject_name
                      OR ex_rule->>'label_suffix' = cc.subject_name
                      OR right(cc.subject_name, length(ex_rule->>'label_suffix') + 1) = '.' || (ex_rule->>'label_suffix'))
+          )
+    ) OR EXISTS (
+        SELECT 1 FROM terrain.claim_revisions cr
+        WHERE cr.engagement_id = v_e AND cr.campaign_id = v_c
+          AND (cr.asset_ref = ANY(v_assets) OR (cr.payload->>'asset_ref') = ANY(SELECT a::text FROM unnest(v_assets) a))
+          AND (NOT v_has_claim_filter OR cr.claim_id = ANY(v_claim_ids) OR (cr.payload->>'claim_id') = ANY(SELECT cid::text FROM unnest(v_claim_ids) cid))
+          AND NOT EXISTS (
+              SELECT 1 FROM terrain.current_claims cc
+              WHERE cc.engagement_id = cr.engagement_id AND cc.campaign_id = cr.campaign_id
+                AND cc.subject_name = cr.subject_name AND cc.claim_kind = cr.claim_kind
+                AND cc.vantage_ref = cr.vantage_ref AND cc.resolver_ipv4 = cr.resolver_ipv4
+                AND cc.claim_revision >= cr.claim_revision
           )
     ) THEN
         RAISE EXCEPTION 'terrain_lineage_unavailable';
@@ -227,3 +284,49 @@ END; $$;
 REVOKE ALL ON FUNCTION terrain.current_dns_context_view(jsonb) FROM PUBLIC, dw_runtime, dw_m1_broker, dw_m1_cognition, dw_m1_trajectory, dw_m1_terrain;
 GRANT USAGE ON SCHEMA terrain TO dw_m1_broker;
 GRANT EXECUTE ON FUNCTION terrain.current_dns_context_view(jsonb) TO dw_m1_broker;
+
+-- Order Terrain current-claim and integrity-hold mutations with Broker's short release fence.
+CREATE FUNCTION terrain.guard_terrain_release_fence()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+BEGIN
+    IF TG_OP <> 'DELETE' THEN
+        PERFORM pg_catalog.pg_advisory_xact_lock(
+            pg_catalog.hashtextextended(NEW.engagement_id::text || ':' || NEW.campaign_id::text, 0)
+        );
+        IF TG_TABLE_SCHEMA = 'terrain' AND TG_TABLE_NAME = 'integrity_conflicts' THEN
+            PERFORM pg_catalog.pg_advisory_xact_lock(
+                pg_catalog.hashtextextended(cr.engagement_id::text || ':' || cr.campaign_id::text, 0)
+            )
+            FROM terrain.claim_revisions cr WHERE cr.claim_id = NEW.claim_id;
+        END IF;
+    END IF;
+    IF TG_OP <> 'INSERT' THEN
+        PERFORM pg_catalog.pg_advisory_xact_lock(
+            pg_catalog.hashtextextended(OLD.engagement_id::text || ':' || OLD.campaign_id::text, 0)
+        );
+        IF TG_TABLE_SCHEMA = 'terrain' AND TG_TABLE_NAME = 'integrity_conflicts' THEN
+            PERFORM pg_catalog.pg_advisory_xact_lock(
+                pg_catalog.hashtextextended(cr.engagement_id::text || ':' || cr.campaign_id::text, 0)
+            )
+            FROM terrain.claim_revisions cr WHERE cr.claim_id = OLD.claim_id;
+        END IF;
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END; $$;
+
+CREATE TRIGGER terrain_current_claims_release_fence
+BEFORE INSERT OR UPDATE OR DELETE ON terrain.current_claims
+FOR EACH ROW EXECUTE FUNCTION terrain.guard_terrain_release_fence();
+
+CREATE TRIGGER terrain_integrity_conflicts_release_fence
+BEFORE INSERT OR UPDATE OR DELETE ON terrain.integrity_conflicts
+FOR EACH ROW EXECUTE FUNCTION terrain.guard_terrain_release_fence();
+
+CREATE TRIGGER terrain_history_release_fence
+BEFORE INSERT OR UPDATE OR DELETE ON trajectory.terrain_history
+FOR EACH ROW EXECUTE FUNCTION terrain.guard_terrain_release_fence();
+
+REVOKE ALL ON FUNCTION terrain.guard_terrain_release_fence() FROM PUBLIC, dw_runtime, dw_m1_broker, dw_m1_cognition, dw_m1_trajectory, dw_m1_terrain;

@@ -113,12 +113,19 @@ Cognition compiles the accepted M1 mission question:
   `references` (`terrain_0..terrain_7`) and are linked in the corresponding
   candidate's `terrain_references` array. Hostnames, resolver/answer IPv4
   addresses, and raw DNS packets are never projected into `ContextPack`.
-- **Candidates and byte fitting**: displayed up to the consent candidates limit
-  and byte bounds (ceiling 4096 bytes, JSON depth ≤8). Complete claim entries and
-  metadata are never truncated; if the full view exceeds `context_bytes`, the
-  assembly shrinks `shown_claims` (recording `omitted_by_byte_bound`) or drops
-  an optional operator-only candidate before dropping the sole eligible Terrain
-  premise for an included asset.
+- **Candidates and byte fitting**: first applies the consent `candidates` ceiling
+  (at most 8) to the input prefix; candidates outside that authorized prefix are
+  never pulled in. Complete claim entries and metadata are never truncated to fit
+  within `context_bytes` (ceiling 4096 bytes, JSON depth ≤8). Under byte pressure,
+  assembly drops an optional operator-only candidate from the selected set
+  (wherever it occurs in the authorized prefix, preserving the remaining candidates'
+  relative input order and priorities) before dropping the sole eligible Terrain
+  premise (`omitted_by_byte_bound`). All pack-local IDs (`asset_0..`, `terrain_0..`),
+  candidate `terrain_references` links, `PreparedContext::terrain_dependencies()`,
+  and omission counts are built from that final selection (`selection` reports
+  `"input_order_prefix_with_count_and_byte_bounds"` when the final candidates form
+  an input prefix and `"input_order_with_count_and_byte_bounds"` when an earlier
+  operator-only candidate was omitted under byte bounds).
 - **Capacity**: informational snapshot of remaining capacity across all five
   dimensions, fence epoch, and full-decision requirements.
 

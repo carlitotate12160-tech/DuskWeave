@@ -102,15 +102,28 @@ only the binding exists; it cannot retrofit a binding onto a historical reservat
      (`dns_hostname_ipv4_resolution`), never corroborated fact or target permission.
    - Proposals must cite exact pack-local IDs (`mission`, `asset_*`, `terrain_*`);
      substituting raw UUIDs, JSON paths, or omitted/unknown IDs is rejected.
-2. **Pre-Release vs Cited-Reference Current-Use Validation (`TerrainBasis`)**:
-   - **Before provider release (`before_provider_release`)**: inside
-     `PgBroker::release_into` (under the session advisory lock, before network I/O),
-     the Broker verifies current Mission authority, `owner_qualified_summaries`
-     disclosure, and every serialized `TerrainDependency` in the `ContextPack` via
-     `terrain.current_dns_context_view` filtered by exact `claim_ids`. If any
-     serialized dependency was superseded, expired, held, conflicted, or withdrawn
-     before release, release returns `NeverReleased` (`reference_ineligible` or
-     `current_authority_unavailable`) and zero provider calls are sent.
+2. **Pre-Release Launch Fence vs Cited-Reference Current-Use Validation (`TerrainBasis`)**:
+   - **Before provider release (`before_provider_release`) and launch ordering**:
+     inside `PgBroker::release_into`, the Broker acquires the campaign session
+     advisory lock (`hashtextextended(engagement_id::text || ':' || campaign_id::text, 0)`),
+     verifies current Mission authority, `owner_qualified_summaries` disclosure,
+     and every serialized `TerrainDependency` in the `ContextPack` via
+     `terrain.current_dns_context_view` filtered by exact `claim_ids` (which
+     validates both canonical payload lineage and every projected scalar/index
+     column across `terrain.current_claims`, `terrain.claim_revisions`,
+     `terrain.evaluations`, `terrain.materials`, `terrain.observations`, and
+     `terrain.outbox`), and holds that session fence only until actual transport
+     launch (`release()`). Narrow transaction-scoped write-guard triggers on
+     `terrain.current_claims`, `terrain.integrity_conflicts`, and
+     `trajectory.terrain_history` acquire `pg_advisory_xact_lock` on the same
+     campaign key, ordering Terrain supersession and integrity-hold writes with
+     the release check-to-launch interval. If an invalidation commits before
+     release admission, release returns `NeverReleased` (`reference_ineligible`
+     or `current_authority_unavailable`) and zero provider calls are sent; if
+     release wins the fence, a concurrent Terrain writer cannot commit before
+     transport launch and proceeds immediately after `release()` unlocks the
+     session fence (before LLM response waiting, so no transaction, row, or
+     campaign advisory lock is held across provider latency).
    - **During transfer (`current_authority_and_premises`)**: progress callbacks check
      current Mission authority and the operation deadline without re-querying all
      Terrain dependencies, so an uncited independent claim changing mid-flight does
@@ -133,6 +146,16 @@ only the binding exists; it cannot retrofit a binding onto a historical reservat
      equality between generation and repair `context_pack` payloads, and checks
      that any committed decision's `bindings` match the call bindings. Tampered or
      mismatched bytes fail closed (`inference_decision_integrity`).
+   - On continuation (`m1-infer-inspect`, `m1-infer-recover`, and repeated
+     `m1-infer` for a known decision identity), a transient pack-read failure
+     (`inference_inspect_unavailable`, such as unreadable pack columns while
+     decision history and call-state accounting remain readable) yields an
+     explicit receipt with `pack_state: "unavailable"`, `pack_utf8: null`,
+     preserved historical `decision`/`event`/`proposal`/`history`, honest
+     `consumption`, `recovery_category: "no_provider_replay"`, and
+     `dispatch_granted: false`. Hard integrity failures
+     (`inference_decision_integrity`) and input-binding conflicts remain
+     fatal errors and are never mapped to `"available"` or `"not_bound"`.
    - `m1-infer-inspect`, `m1-infer-recover`, and repeated `m1-infer` for a known
      decision identity never construct a provider, query current Terrain state, or
      re-serialize `ContextPack` bytes.

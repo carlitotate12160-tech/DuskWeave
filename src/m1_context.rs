@@ -1,6 +1,6 @@
 //! Cognition-owned, read-only ContextPack assembly. No accepted decision or transport.
 use crate::m1_context_capacity::ContextCapacity;
-use crate::m1_context_input::ContextRequest;
+use crate::m1_context_input::{Candidate, ContextRequest};
 use crate::m1_inference_permission::ContextDisclosure;
 use crate::m1_terrain_view::{
     EffectiveClaimStatus, TerrainClaimSummary, TerrainDependency, TerrainPublicView,
@@ -75,14 +75,14 @@ fn resolve_terrain(
     let TerrainContextState::Available(view) = &b.terrain else {
         return Ok(b.terrain.clone());
     };
-    let selected = selected_assets(q, q.candidates.len().min(d.candidates));
+    let selected = selected_assets(&q.candidates[..q.candidates.len().min(d.candidates)]);
     let checked = view.validate_for_mission(&b.mission, &selected, b.evaluated_at)?;
     Ok(TerrainContextState::Available(checked))
 }
 
-fn selected_assets(q: &ContextRequest, count: usize) -> Vec<AssetRef> {
-    let mut assets = Vec::with_capacity(count);
-    for c in &q.candidates[..count] {
+fn selected_assets(cands: &[Candidate]) -> Vec<AssetRef> {
+    let mut assets = Vec::with_capacity(cands.len());
+    for c in cands {
         if !assets.contains(&c.asset_ref) {
             assets.push(c.asset_ref);
         }
@@ -103,11 +103,10 @@ fn eligible_claims(terrain: &TerrainContextState) -> Vec<TerrainClaimSummary> {
 
 fn kept_claims(
     all_claims: &[TerrainClaimSummary],
-    q: &ContextRequest,
-    cand_count: usize,
+    cands: &[Candidate],
     claim_count: usize,
 ) -> Vec<TerrainClaimSummary> {
-    let allowed = selected_assets(q, cand_count);
+    let allowed = selected_assets(cands);
     all_claims
         .iter()
         .filter(|c| allowed.contains(&c.asset_ref))
@@ -117,25 +116,23 @@ fn kept_claims(
 }
 
 fn shrink_step(
-    q: &ContextRequest,
+    cands: &mut Vec<Candidate>,
     kept: &[TerrainClaimSummary],
-    cand_count: &mut usize,
     claim_count: &mut usize,
 ) -> bool {
-    if *cand_count > 0
-        && !kept
-            .iter()
-            .any(|c| c.asset_ref == q.candidates[*cand_count - 1].asset_ref)
+    if let Some(idx) = cands
+        .iter()
+        .rposition(|cand| !kept.iter().any(|c| c.asset_ref == cand.asset_ref))
     {
-        *cand_count -= 1;
+        cands.remove(idx);
         return true;
     }
     if *claim_count > 0 {
         *claim_count -= 1;
         return true;
     }
-    if *cand_count > 0 {
-        *cand_count -= 1;
+    if !cands.is_empty() {
+        cands.pop();
         return true;
     }
     false
@@ -150,17 +147,17 @@ fn fit_pack(
     terrain: &TerrainContextState,
 ) -> Res<PreparedContext> {
     let all_claims = eligible_claims(terrain);
-    let mut cand_count = q.candidates.len().min(disclosure.candidates);
+    let mut cands = q.candidates[..q.candidates.len().min(disclosure.candidates)].to_vec();
     let mut claim_count = all_claims.len();
     loop {
-        let kept = kept_claims(&all_claims, q, cand_count, claim_count);
+        let kept = kept_claims(&all_claims, &cands, claim_count);
         let omitted_bytes = (all_claims.len() - kept.len()) as u32;
         let (raw, deps) = pack(
             basis,
             disclosure,
             q,
             op,
-            cand_count,
+            &cands,
             terrain,
             &kept,
             omitted_bytes,
@@ -173,7 +170,7 @@ fn fit_pack(
                 terrain_dependencies: deps,
             });
         }
-        if !shrink_step(q, &kept, &mut cand_count, &mut claim_count) {
+        if !shrink_step(&mut cands, &kept, &mut claim_count) {
             return Err(Fail::State("context_size_deferred"));
         }
     }
@@ -233,8 +230,7 @@ fn check_candidates(q: &ContextRequest, m: &MissionRegistered, allowed: bool) ->
 
 fn build_references(
     b: &ContextBasis,
-    q: &ContextRequest,
-    count: usize,
+    cands: &[Candidate],
     kept: &[TerrainClaimSummary],
 ) -> Res<(Vec<Value>, Vec<TerrainDependency>)> {
     let m = &b.mission;
@@ -251,7 +247,7 @@ fn build_references(
         "freshness": "as_of_snapshot",
         "completeness": "scope_reference"
     })];
-    refs.extend(q.candidates[..count].iter().enumerate().map(|(i, c)| {
+    refs.extend(cands.iter().enumerate().map(|(i, c)| {
         json!({
             "id": format!("asset_{i}"),
             "owner": "operator",
@@ -342,8 +338,8 @@ fn terrain_owner_view(
     })
 }
 
-fn build_candidates(q: &ContextRequest, count: usize, deps: &[TerrainDependency]) -> Vec<Value> {
-    q.candidates[..count]
+fn build_candidates(cands: &[Candidate], deps: &[TerrainDependency]) -> Vec<Value> {
+    cands
         .iter()
         .enumerate()
         .map(|(i, c)| {
@@ -371,7 +367,7 @@ fn pack(
     d: &ContextDisclosure,
     q: &ContextRequest,
     op: OperationId,
-    count: usize,
+    cands: &[Candidate],
     terrain: &TerrainContextState,
     kept: &[TerrainClaimSummary],
     omitted_by_byte_bound: u32,
@@ -414,8 +410,17 @@ fn pack(
             })
         }),
     );
-    let (refs, deps) = build_references(b, q, count, kept)?;
-    let candidates = build_candidates(q, count, &deps);
+    let (refs, deps) = build_references(b, cands, kept)?;
+    let candidates = build_candidates(cands, &deps);
+    let selection = if cands
+        .iter()
+        .zip(&q.candidates)
+        .all(|(a, b)| a.asset_ref == b.asset_ref)
+    {
+        "input_order_prefix_with_count_and_byte_bounds"
+    } else {
+        "input_order_with_count_and_byte_bounds"
+    };
     let val = json!({
         "version": "m1_context_pack_v1",
         "engagement_id": m.engagement_id,
@@ -433,9 +438,9 @@ fn pack(
         "candidates": candidates,
         "omissions": {
             "supplied_candidates": q.candidates.len(),
-            "shown_candidates": count,
-            "omitted_candidates": q.candidates.len() - count,
-            "selection": "input_order_prefix_with_count_and_byte_bounds",
+            "shown_candidates": cands.len(),
+            "omitted_candidates": q.candidates.len() - cands.len(),
+            "selection": selection,
             "manifests": "catalog_unavailable"
         },
         "pending_unknown": [

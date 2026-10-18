@@ -373,6 +373,76 @@ fn terrain_inference_repair_and_cli_inspect_recover_preserve_exact_pack_and_dete
     }
     assert_eq!(calls.load(Ordering::SeqCst), 2);
 
+    // Pack inspection alone is unavailable; accounting/history stay readable.
+    // Collect every result and restore grants before asserting their outcomes.
+    let mut admin = terrain_support::admin_client();
+    let res_before: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM execution.inference_reservations WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&e.0, &c.0],
+        )
+        .unwrap()
+        .get(0);
+    admin.batch_execute("REVOKE SELECT ON execution.inference_calls FROM dw_m1_broker; GRANT SELECT(e,c,d,state) ON execution.inference_calls TO dw_m1_broker").unwrap();
+    let direct_unavail = inspect_recover(&scope, false, &mut broker, &mut store, &mut history);
+    let unavailable: Vec<_> = ["m1-infer-inspect", "m1-infer-recover", "m1-infer"]
+        .into_iter()
+        .map(|cmd| {
+            run_cli_raw(
+                cmd,
+                &[
+                    "--input",
+                    path.to_str().unwrap(),
+                    "--operation",
+                    &scope.decision.to_string(),
+                ],
+            )
+        })
+        .collect();
+    admin.batch_execute("REVOKE SELECT(e,c,d,state) ON execution.inference_calls FROM dw_m1_broker; GRANT SELECT ON execution.inference_calls TO dw_m1_broker").unwrap();
+    let res_after: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM execution.inference_reservations WHERE engagement_id=$1 AND campaign_id=$2",
+            &[&e.0, &c.0],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(res_before, res_after);
+    let direct_rec =
+        direct_unavail.expect("direct inspect_recover must return unavailable receipt");
+    assert_eq!(direct_rec.pack_state, "unavailable");
+    assert!(direct_rec.pack_utf8.is_none());
+    assert_eq!(
+        direct_rec.consumption,
+        "completed_charged_unused_repair_reserved"
+    );
+    assert!(!direct_rec.dispatch_granted);
+    for (ok, lines) in unavailable {
+        assert!(
+            ok,
+            "pack-only read failure must yield unavailable receipt: {lines:?}"
+        );
+        let rec = lines.last().unwrap();
+        assert_eq!(rec["decision"], scope.decision.to_string());
+        assert_eq!(rec["pack_state"], "unavailable");
+        assert!(rec["pack_utf8"].is_null());
+        assert_eq!(rec["event"], event_id.to_string());
+        assert_eq!(rec["proposal_disposition"], "validated_proposal");
+        assert_eq!(rec["publication"], "committed");
+        assert_eq!(rec["history"], "completed");
+        assert_eq!(
+            rec["consumption"],
+            "completed_charged_unused_repair_reserved"
+        );
+        assert_eq!(
+            rec["proposal"]["references"],
+            json!(["mission", "asset_0", "terrain_0"])
+        );
+        assert_eq!(rec["recovery_category"], "no_provider_replay");
+        assert_eq!(rec["dispatch_granted"], false);
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+
     // Mutating stored pack bytes in execution.inference_calls is detected as inference_decision_integrity
     terrain_support::admin_client()
         .execute(

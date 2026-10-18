@@ -605,6 +605,43 @@ fn terrain_connected_command_with_lifecycle() {
         assert_eq!(r.history, "completed");
         assert!(!r.dispatch_granted);
     }
+    let mut admin = native::admin();
+    admin
+        .batch_execute(
+            "REVOKE SELECT ON execution.inference_calls FROM dw_m1_broker; \
+             GRANT SELECT(e,c,d,state) ON execution.inference_calls TO dw_m1_broker",
+        )
+        .unwrap();
+    let (_, inspect_args) = args(&q, &receipt.decision.to_string());
+    let unavail_results: Vec<_> = ["m1-infer-inspect", "m1-infer-recover", "m1-infer"]
+        .into_iter()
+        .map(|command| {
+            command_with::<CountedTerrainProvider>(command, &inspect_args, || {
+                panic!("unavailable-pack continuation must never construct provider")
+            })
+        })
+        .collect();
+    admin
+        .batch_execute(
+            "REVOKE SELECT(e,c,d,state) ON execution.inference_calls FROM dw_m1_broker; \
+             GRANT SELECT ON execution.inference_calls TO dw_m1_broker",
+        )
+        .unwrap();
+    for res in unavail_results {
+        let r = res.expect("unavailable-pack continuation receipt");
+        assert_eq!(r.decision, receipt.decision);
+        assert_eq!(r.event, receipt.event);
+        assert_eq!(r.pack_state, "unavailable");
+        assert!(r.pack_utf8.is_none());
+        assert_eq!(
+            r.proposal.as_ref().unwrap().references,
+            vec!["mission", "asset_0", "terrain_0"]
+        );
+        assert_eq!(r.history, "completed");
+        assert_eq!(r.consumption, "completed_charged_unused_repair_reserved");
+        assert_eq!(r.recovery_category, "no_provider_replay");
+        assert!(!r.dispatch_granted);
+    }
     assert_eq!(
         (
             factories.load(Ordering::SeqCst),

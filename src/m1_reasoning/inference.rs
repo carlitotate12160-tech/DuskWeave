@@ -258,9 +258,9 @@ fn inspect_broker(
     if redeliver && status == "completed" {
         let _ = broker.finish(scope);
     }
-    let pack = match broker.inspect_pack(scope)? {
-        Some(p) => ("available", Some(p)),
-        None => ("not_bound", None),
+    let pack = match broker.inspect_pack(scope) {
+        Err(e) if e != "inference_inspect_unavailable" => return Err(e),
+        res => receipt_pack(res),
     };
     Ok((pack, broker.inspect(scope)?))
 }
