@@ -45,9 +45,11 @@ Current seal:
 
 Current engineering state:
 
-Active delivery: `demo/m1-one-console-20261019`
+Latest merged delivery: `demo/m1-one-console-20261019`
 (`DW-DEMO-M1-ONE-CONSOLE-REVIEW-RETEST` + `DW-DIAGNOSE-M1-SCHEMA-DEADLINE`,
-documentation plus test-only diagnostics) at merged BASE
+documentation plus test-only diagnostics) — [PR #69](https://github.com/carlitotate12160-tech/DuskWeave/pull/69)
+squash-merged 2026-10-19T08:51:52Z as
+`20671c64e706df570c6e00b673655fbfe4455d31` at BASE
 `ff9c3703c375990e4a55db9e68527e4dcd34c96f` (PR #68 merged 2026-10-19;
 exact-master CI 39200545621 SUCCESS) — records the one-console review helper
 qualification (14 synthetic tests PASS; foreground rehearsal `REHEARSAL_PASS`
