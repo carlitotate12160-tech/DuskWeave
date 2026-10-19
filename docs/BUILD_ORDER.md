@@ -45,15 +45,15 @@ Current seal:
 
 Current engineering state:
 
-Active delivery: `qualify/m1-terrain-live`
-(`DW-IMPLEMENT-M1-TERRAIN-LIVE-RUNNER`) — dedicated operator-input
-[Terrain-informed qualification runner](RUN_M1_NATIVE_INFERENCE.md#terrain-informed-qualification-runner);
-no production runtime change, `dispatch_granted = false`. Base
-`a5f5f766964ef43f63e43d46359a4b33e3c706fa` (PR #65 merged; exact-master CI
-39126574504 SUCCESS). Actual live qualification is `LIVE_NOT_EXECUTED` pending
-approved concrete inputs/current consent, not established by tooling delivery. See
-[ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
-for active work, reconciled merges, and governing milestone evidence.
+Active delivery: `demo/m1-terrain-informed` ([PR #67](https://github.com/carlitotate12160-tech/DuskWeave/pull/67),
+`DW-FIX-M1-TERRAIN-QUALIFICATION` R3) at merged BASE
+`fd73340c60c84d3fff49e459141a3b4f378631fd` (PR #66 merged 2026-10-18;
+exact-master CI 39134848423 SUCCESS) — preserves the historical `LIVE_FAIL`
+episode and delivers code-only qualification for ContextPack deduplication and
+the `context_bytes_insufficient` last-premise floor, reserved-vs-actual call
+verification, and `--await-reviewed-observation` lifecycle; see
+[M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md](M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md)
+and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action).
 
 Current design document:
 

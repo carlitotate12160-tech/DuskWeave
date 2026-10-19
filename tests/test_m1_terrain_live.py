@@ -20,7 +20,7 @@ def uid(n):
     return str(uuid.UUID(int=n))
 
 
-E, C, OP, D, EVENT, CLAIM, OBS, MAT, EVAL, ASSET, VANTAGE, CALL = map(uid, range(1, 13))
+E, C, OP, D, EVENT, CLAIM, OBS, MAT, EVAL, ASSET, VANTAGE, CALL, REPAIR = map(uid, range(1, 14))
 NOW = 1760000000
 SENTINEL = "SYNTHETIC-RAW-SECRET-DO-NOT-RETAIN"
 COUNTS = dict(calls=1, generation=1, repair=0, reserved_calls=2,
@@ -66,7 +66,7 @@ def proposal():
 
 
 def inference_receipt():
-    return dict(kind="m1_inference_receipt_v1", decision=D, event=EVENT, call_ids=[CALL],
+    return dict(kind="m1_inference_receipt_v1", decision=D, event=EVENT, call_ids=[CALL, REPAIR],
                 proposal_disposition="validated_proposal", publication="committed", history="completed",
                 pack_state="available", pack_utf8=pack(), proposal=proposal(),
                 recovery_category="no_provider_replay", dispatch_granted=False)
@@ -97,6 +97,7 @@ class TerrainRunner(unittest.TestCase):
         self.initial["recovery_category"] = "inspect_original_identity"
         self.historical = [inference_receipt() for _ in range(3)]
         self.original = [dict(call=CALL, p=pack())]
+        self.reservation_rows = [dict(generation=CALL, repair=REPAIR)]
         self.counts = [dict(COUNTS) for _ in range(4)]
         self.reservations = [1] * 4
         self.foreign_call_growth = [0] * 4
@@ -119,6 +120,8 @@ class TerrainRunner(unittest.TestCase):
             return str(self.clock)
         if "claim_integrity_holds" in statement:
             return "t" if self.hold else "f"
+        if "json_agg" in statement and "inference_reservations" in statement:
+            return json.dumps(self.reservation_rows)
         if "json_agg" in statement and "inference_calls" in statement:
             return json.dumps(self.original)
         if "native_input_bindings" in statement:
@@ -203,6 +206,8 @@ class TerrainRunner(unittest.TestCase):
                                  "m1-infer-inspect", "m1-infer-recover", "m1-infer-recover"])
         self.assertEqual([args[0] for args, key in self.seen if key], ["m1-infer"])
         self.assertEqual(result["terrain_reference_ids"], ["terrain_0"])
+        self.assertEqual(result["reserved_call_ids"], [CALL, REPAIR])
+        self.assertEqual(result["actual_call_ids"], [CALL])
 
     def test_missing_disclosure_blocks_without_inference(self):
         self.registration["m1_inference_permission"]["field_classes"] = []
@@ -285,20 +290,19 @@ class TerrainRunner(unittest.TestCase):
         self.assertEqual(result["status"], "LIVE_FAIL")
 
     def test_generation_repair_bytes_differ_fails(self):
-        self.original.append(dict(call=uid(70), p=pack() + " "))
+        self.original.append(dict(call=REPAIR, p=pack() + " "))
         _, result = self.run_episode()
         self.assertEqual(result["status"], "LIVE_FAIL")
 
     def test_matching_generation_repair_bytes_pass(self):
-        self.original.append(dict(call=uid(70), p=pack()))
+        self.original.append(dict(call=REPAIR, p=pack()))
         for counts in self.counts:
             counts.update(calls=2, repair=1)
-        self.initial["call_ids"].append(uid(70))
-        for receipt in self.historical:
-            receipt["call_ids"].append(uid(70))
         code, result = self.run_episode()
         self.assertEqual((code, result["status"]), (0, "LIVE_PASS"))
         self.assertTrue(result["generation_repair_pack_equal"])
+        self.assertEqual(result["reserved_call_ids"], [CALL, REPAIR])
+        self.assertEqual(result["actual_call_ids"], [CALL, REPAIR])
 
     def test_missing_original_pack_fails(self):
         self.original = []

@@ -295,11 +295,27 @@ from eligible owner contracts, not a caller-supplied accepted view. Required fie
   premises are separately admitted and source-labeled; they do not qualify acquisition.
 - `omissions` gives unavailable/withheld/stale/truncated reasons and supported coverage
   only; `pending_unknown` names unresolved work and limitations, not fabricated outcomes.
+  For the four always-unloaded owner views (`foothold_graph`, `attack_path_view`,
+  `objective_state`, `campaign_trajectory`), per-entry `reason` is omitted and
+  `pending_unknown` records `other_owner_views_not_loaded_by_profile` for those four
+  owners; Terrain retains its specific unavailable reason, operator references and
+  candidates retain their explicit premise status/freshness/completeness, and
+  `remaining_capacity` retains `reservation_granted = false` and
+  `shared_call_clock = not_started`.
 - `manifests` lists admitted profile/version/digest and actual availability, never inferred
   from an ADR alone. `remaining_capacity` is Broker's safe reservation/remainder view,
   distinguishing bytes, tokens, calls and time; it is not authority to consume them.
 A missing Mission view defers the decision. Missing other views permits honest limited
-reasoning, not manufactured access, path, environmental or objective claims. Another safe
+reasoning, not manufactured access, path, environmental or objective claims. When the
+validated, disclosure-permitted loaded Terrain view has no fresh usable `Observed` claim
+for the originally selected candidate prefix under consent, existing unavailable/stale/
+withheld/conflicted/limited-reasoning behavior is preserved (`context_size_deferred` if
+mandatory metadata itself cannot fit). When at least one such eligible claim exists for
+that prefix, successful preparation must retain at least one eligible claim, a linked
+retained candidate, its pack reference, and its `TerrainDependency`; byte fitting drops
+optional unlinked operator candidates first and may omit surplus claims, but never removes
+the final supported premise or its last linked candidate, deferring instead with
+`context_bytes_insufficient` before inference reservation or provider work. Another safe
 view request is `observe_more` intent: obtaining changed context needs a new decision and
 reservation; repair cannot expand the pack. Questions/alternatives remain open-ended.
 

@@ -651,3 +651,6 @@ fn terrain_connected_command_with_lifecycle() {
     );
     std::fs::remove_file(path).unwrap();
 }
+
+#[path = "m1_terrain_live_contract.rs"]
+mod m1_terrain_live_contract;

@@ -218,6 +218,7 @@ python tests/support/m1_terrain_live.py \
   --observation <operator-reviewed-dns-observation.json> \
   --context-request <operator-approved-context-request.json> \
   --evidence-kind real_operator_dns \
+  [--await-reviewed-observation] \
   [--env-file .env] [--database-name <dw_native_live_...>]
 ```
 
@@ -255,12 +256,28 @@ Omitting `--database-name` generates a unique `dw_native_live_*` name. Existing
 databases/logins are refused, never reset, dropped or reused. Serialize this
 role-mutating run with other fixture owners; retain interrupted databases/roles.
 
-The runner registers exactly the supplied Mission, records the observation once
-through `m1-terrain-record --operation new`, and requires accepted history, a fresh
-usable OBSERVED claim and no integrity hold before inference. Freshness is the
-existing Terrain window, capped at 60 seconds from the original `perceived_at`;
-input preparation, provisioning and inference all consume that window. Expiry
-blocks/defer honestly. Never edit the timestamp to pass: a fresh observation
+In `--await-reviewed-observation` mode, setup completes before short-lived
+operator DNS evidence begins ageing:
+1. Validate and snapshot static `registration` and `context-request` bytes,
+   scope, disclosure, and profile while requiring the `observation` path to be
+   initially absent.
+2. Provision one fresh fixture database and register the Mission once, keeping
+   credentials in the same runner process, then emit one flushed safe `READY`
+   JSON line (`status`, `engagement_id`, `campaign_id`, `fixture_database`) on
+   stdout with no open SQL transaction or campaign lock held across waiting.
+3. Read at most one bounded stdin continuation line (`continue\n` or
+   `continue\r\n`, `<= 16` UTF-8 bytes) after the operator independently collects,
+   reviews, and writes the observation file; verify static input bytes are
+   unchanged, admit the observation once preserving its original timestamps, and
+   proceed to Terrain intake.
+
+The runner records the observation once through `m1-terrain-record --operation new`
+and requires accepted history, a fresh usable OBSERVED claim, no integrity hold,
+and `remaining_lifetime_seconds` (`valid_until - now`) strictly greater than the
+consented `decision_wall_time_ms` before inference (`terrain_freshness_insufficient`
+otherwise). Freshness is the existing Terrain window, capped at 60 seconds from
+the original `perceived_at`. Expiry or insufficient remaining lifetime blocks
+before send honestly. Never edit the timestamp to pass: a fresh observation
 requires a separate operator action and a fresh decision. Production release and
 cited-reference admission checks still handle expiry during the attempt.
 
@@ -271,21 +288,34 @@ Fresh-process `m1-infer-inspect` and two `m1-infer-recover` invocations use that
 decision and unchanged context request, without the key. Timeout retains the
 partial/durable scoped identity when available; post-start uncertainty is
 `LIVE_FAIL`, never relabeled `LIVE_BLOCKED` because later inspection failed.
+If `m1-infer` fails closed at `m1_context::prepare` with
+`error=context_bytes_insufficient`, the runner retains the allocated `decision`
+identity, verifies zero reservations, calls, decisions, outbox rows, history
+rows, closures, and recovery growth across inspect and both recoveries, and
+records `LIVE_BLOCKED` (`context_bytes_insufficient`) only when durable evidence
+proves no release occurred (preserving `LIVE_FAIL` if any effect or unknown
+state exists).
 
 `terrain_live_qualification.json` contains safe scoped identities, source/time/status,
-tested Git commit and binary SHA-256, counts, exact reference IDs, P digest/equality
-assertions, fixed failure categories, and only a successfully admitted/verified
-proposal. It contains no input copies, pack copy, raw command output, stderr,
-provider response, private reasoning or credentials. A pre-existing report is
-never overwritten. `null` counts mean unknown, not measured zero.
+tested Git commit and binary SHA-256, counts, exact reference IDs,
+`reserved_call_ids`, `actual_call_ids`, P digest/equality assertions, fixed
+failure categories, and only a successfully admitted/verified proposal. It
+contains no input copies, pack copy, raw command output, stderr, provider
+response, private reasoning or credentials. A pre-existing report is never
+overwritten. `null` counts mean unknown, not measured zero.
 
 `LIVE_PASS` requires all of the following: one admitted current-profile provider
 decision, outbox, accepted history and closure; one generation and zero/one repair;
 an eligible reference from this exact observation present in the original sent P;
 equal generation/repair P bytes; exact original P on inspection and both recoveries;
-unchanged call identities, decision/event/proposal and reservation/call counts
-(both this decision and the whole scoped campaign, catching new-identity records);
-and `dispatch_granted = false` on every receipt. The original P comes directly
+receipt `call_ids` matching the exact ordered reservation pair
+`[generation_call_id, repair_call_id]` from scoped `execution.inference_reservations`
+(`record_revision = 1`, `kind = 'reserved_not_sent'`); actual
+`execution.inference_calls` rows containing `generation_call_id` (and optionally
+`repair_call_id` when repair ran, with no duplicates or foreign call IDs);
+unchanged decision/event/proposal and reservation/call counts (both this decision
+and the whole scoped campaign, catching new-identity records); and
+`dispatch_granted = false` on every receipt. The original P comes directly
 from scoped `execution.inference_calls`; production inspect verifies its binding.
 A separate preparation allocates a different decision: its bytes are not a
 substitute or an equality baseline.
@@ -299,7 +329,8 @@ Connected inference is not adaptation, action-outcome feedback, acquisition,
 validated access, a complete cognitive MVP or an M1 seal. APT41, Lazarus and Volt
 Typhoon remain behavioral reference lenses, never playbooks or execution permission.
 
-`LIVE_BLOCKED` covers pre-send input/consent/fixture/freshness failures.
+`LIVE_BLOCKED` covers pre-send input/consent/fixture/freshness failures and
+proven zero-release `context_bytes_insufficient` floor refusals.
 `LIVE_FAIL` covers a started/possibly sent attempt failing qualification, including
 missing/tampered historical P or unknown counts. No automatic retry is performed.
 Build the binary from the tested commit under the process-owned ordinary target
@@ -313,6 +344,7 @@ Deterministic checks (synthetic controlled boundaries, not live evidence):
 
 ```bash
 python -m unittest discover -s tests -p test_m1_terrain_live.py
+python -m unittest discover -s tests -p test_m1_terrain_live_contract.py
 python -m unittest discover -s tests -p test_m1_native_helpers.py
 ```
 

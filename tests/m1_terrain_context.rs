@@ -696,12 +696,13 @@ fn byte_fitting_prefers_dropping_operator_only_candidate_before_sole_terrain_pre
         "input_order_prefix_with_count_and_byte_bounds"
     );
 
-    // Reduce context_bytes further so terrain_0 itself must be omitted, keeping 1 candidate
+    // Reduce context_bytes below the single-candidate + single-claim floor:
+    // byte fitting must defer with context_bytes_insufficient rather than drop the last premise.
     let tight_len = tight_prep.utf8().len();
     let (m_smaller, req_smaller) = build_mission(e, c, now, true, tight_len - 1);
     let q_smaller = ContextRequest {
         version: "m1_context_prepare_request_v1".into(),
-        mission: req_smaller.clone(),
+        mission: req_smaller,
         candidates: q_two.candidates.clone(),
     };
     let mut reader_smaller = FixedReader(ContextBasis {
@@ -710,17 +711,9 @@ fn byte_fitting_prefers_dropping_operator_only_candidate_before_sole_terrain_pre
         evaluated_at: now,
         terrain: TerrainContextState::Available(view.clone()),
     });
-    let smaller_prep = m1_context::prepare(&mut reader_smaller, &q_smaller, op).unwrap();
-    assert!(smaller_prep.terrain_dependencies().is_empty());
     assert_eq!(
-        request::reference_ids(smaller_prep.utf8().as_bytes()).unwrap(),
-        vec!["mission", "asset_0"]
-    );
-    let smaller_pack: Value = serde_json::from_str(smaller_prep.utf8()).unwrap();
-    assert_eq!(smaller_pack["owner_views"][1]["shown_claims"], 0);
-    assert_eq!(
-        smaller_pack["owner_views"][1]["omissions"]["omitted_by_byte_bound"],
-        1
+        m1_context::prepare(&mut reader_smaller, &q_smaller, op).err(),
+        Some(Fail::State("context_bytes_insufficient"))
     );
     let rev_len = reversed_prep.utf8().len();
     let (m_smaller_rev, req_smaller_rev) = build_mission(e, c, now, true, rev_len - 1);
@@ -735,16 +728,14 @@ fn byte_fitting_prefers_dropping_operator_only_candidate_before_sole_terrain_pre
         evaluated_at: now,
         terrain: TerrainContextState::Available(view.clone()),
     });
-    let smaller_rev_prep =
-        m1_context::prepare(&mut reader_smaller_rev, &q_smaller_rev, op).unwrap();
-    assert!(smaller_rev_prep.terrain_dependencies().is_empty());
     assert_eq!(
-        request::reference_ids(smaller_rev_prep.utf8().as_bytes()).unwrap(),
-        vec!["mission", "asset_0"]
+        m1_context::prepare(&mut reader_smaller_rev, &q_smaller_rev, op).err(),
+        Some(Fail::State("context_bytes_insufficient"))
     );
 
-    // Minimum required metadata that cannot fit defers
-    let (m_tiny, req_tiny) = build_mission(e, c, now, true, 512);
+    // Without an available eligible Terrain premise for the selected prefix, tiny consent
+    // preserves context_size_deferred when mandatory metadata itself cannot fit.
+    let (m_tiny, req_tiny) = build_mission(e, c, now, false, 512);
     let q_tiny = ContextRequest {
         version: "m1_context_prepare_request_v1".into(),
         mission: req_tiny,
@@ -885,3 +876,6 @@ fn pure_dependency_recheck_cited_hook_and_binding_verification() {
         request::verify_binding(p_str, cfg_str, body_str, "00".repeat(32).as_str(), false).is_err()
     );
 }
+
+#[path = "support/m1_terrain_capacity.rs"]
+mod m1_terrain_capacity;

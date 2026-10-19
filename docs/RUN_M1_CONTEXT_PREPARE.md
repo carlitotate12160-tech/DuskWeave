@@ -106,26 +106,64 @@ Cognition compiles the accepted M1 mission question:
       `"owner_view_unavailable"`.
   - Remaining environmental views (`foothold_graph`, `attack_path_view`,
     `objective_state`, `campaign_trajectory`) remain explicitly marked
-    `unavailable` with `reason: "not_loaded_by_this_profile"`.
+    `unavailable` with `revision: null`, `frontier: null`, and `evaluated_at`;
+    their repeated per-entry `reason` is omitted in favor of the single
+    `pending_unknown` entry `["other_owner_views_not_loaded_by_profile"]`
+    (which applies to exactly those four owners, while operator reference
+    `source`/`status`/`freshness`/`completeness`, candidate `status`, and
+    capacity `reservation_granted: false` / `shared_call_clock: "not_started"`
+    retain the remaining uncertainty and admission explanations).
 - **Terrain references and safe projection**: only current, unheld, fresh
   `observed` claims (`operator_reviewed_dns`, `dns_hostname_ipv4_resolution`,
   `tier1`, `corroborated: false`, `routing_usable: true`) become active
   `references` (`terrain_0..terrain_7`) and are linked in the corresponding
   candidate's `terrain_references` array. Hostnames, resolver/answer IPv4
   addresses, and raw DNS packets are never projected into `ContextPack`.
-- **Candidates and byte fitting**: first applies the consent `candidates` ceiling
-  (at most 8) to the input prefix; candidates outside that authorized prefix are
-  never pulled in. Complete claim entries and metadata are never truncated to fit
-  within `context_bytes` (ceiling 4096 bytes, JSON depth ≤8). Under byte pressure,
-  assembly drops an optional operator-only candidate from the selected set
-  (wherever it occurs in the authorized prefix, preserving the remaining candidates'
-  relative input order and priorities) before dropping the sole eligible Terrain
-  premise (`omitted_by_byte_bound`). All pack-local IDs (`asset_0..`, `terrain_0..`),
-  candidate `terrain_references` links, `PreparedContext::terrain_dependencies()`,
-  and omission counts are built from that final selection (`selection` reports
-  `"input_order_prefix_with_count_and_byte_bounds"` when the final candidates form
-  an input prefix and `"input_order_with_count_and_byte_bounds"` when an earlier
-  operator-only candidate was omitted under byte bounds).
+- **Candidates, byte fitting, and minimum-premise floor**: first applies the
+  consent `candidates` ceiling (at most 8) to the input prefix; candidates
+  outside that authorized prefix are never pulled in. Complete claim entries and
+  metadata are never truncated to fit within `context_bytes` (ceiling 4096 bytes,
+  JSON depth ≤8).
+  - If the validated, disclosure-permitted loaded Terrain view has **no** fresh
+    usable `observed` claim for the originally selected candidate prefix under
+    consent, existing unavailable/stale/withheld/conflicted/limited-reasoning
+    behavior is preserved, and `context_size_deferred` is returned only when
+    mandatory metadata itself cannot fit `context_bytes`.
+  - If **at least one** fresh usable `observed` claim exists for that prefix,
+    successful preparation must retain at least one such claim, a linked
+    retained candidate, its pack reference, and its `TerrainDependency`. Under
+    byte pressure, assembly drops optional unlinked operator candidates first
+    (wherever they occur in the authorized prefix, preserving the remaining
+    candidates' relative input order and priorities) and may omit surplus claims
+    (`omitted_by_byte_bound`), but never removes the final supported premise or
+    its last linked candidate. If required metadata plus the minimum retained
+    premise cannot fit `context_bytes`, `m1_context::prepare` fails closed with
+    `Fail::State("context_bytes_insufficient")` before any inference reservation
+    or provider work.
+  - All pack-local IDs (`asset_0..`, `terrain_0..`), candidate
+    `terrain_references` links, `PreparedContext::terrain_dependencies()`, and
+    omission counts are built from that final selection (`selection` reports
+    `"input_order_prefix_with_count_and_byte_bounds"` when the final candidates
+    form an input prefix and `"input_order_with_count_and_byte_bounds"` when an
+    earlier operator-only candidate was omitted under byte bounds).
+- **Measured capacity and request-binding margins**:
+  - Historical 1-candidate, 1-claim shape with `cache_remaining_ttl` and
+    `single_vantage_only`: `P = 3899` UTF-8 bytes (`197`-byte margin under
+    `4096`), `configuration = 5462` bytes (`10922`-byte margin under `16384`),
+    generation `body = 8891` bytes (`7493`-byte margin), and 7-code repair
+    `body = 9111` bytes (`7273`-byte margin; `repair_bytes = 147` under `2048`).
+  - All 8 routing-eligible `DnsLimitation` subsets (`[]` through
+    `["cache_remaining_ttl", "single_vantage_only", "resolver_recursion_variance"]`)
+    fit at `4096` (`P <= 3932` bytes, minimum margin `164` bytes).
+  - Combined worst-case numeric-width boundaries at PostgreSQL `timestamptz`
+    maximum epoch (`9_224_318_015_999`, 13 digits), `epoch = i64::MAX`, all five
+    `campaign` remaining-capacity fields at `i64::MAX`, `uncertainty_seconds = 300`,
+    `lowest_ttl_seconds = 86400`, all 3 eligible limitations, `priority = "medium"`,
+    and `64` supplied candidates (`candidates = 1`): `P = 4075` bytes (`21`-byte
+    margin; generation `body = 9069`, repair `body = 9289`) at intake-bounded
+    `claim_revision = 10001` / `omitted_by_claim_limit = 0`, and `P = 4094` bytes
+    (`2`-byte margin; generation `body = 9088`, repair `body = 9308`) at pure-view
+    `u32::MAX` `claim_revision` and `omitted_by_claim_limit`.
 - **Capacity**: informational snapshot of remaining capacity across all five
   dimensions, fence epoch, and full-decision requirements.
 
@@ -153,8 +191,13 @@ For successful ingress parsing and operation allocation, the command outputs a s
 
 Outcomes:
 - `prepared`: success; `pack_utf8` carries the exact immutable JSON string.
-- `deferred`: consent window not yet open or expired, consent missing required
-  field classes, or candidates supplied without `admitted_operator_premises`.
+- `deferred`: consent window not yet open or expired (`context_consent_deferred`),
+  consent missing required field classes, candidates supplied without
+  `admitted_operator_premises` (`context_disclosure_deferred`), mandatory metadata
+  exceeding `context_bytes` (`context_size_deferred`), or required metadata plus
+  the minimum available eligible Terrain premise exceeding `context_bytes`
+  (`context_bytes_insufficient`). Emits a `deferred` receipt with `pack_utf8: null`
+  and all false grant flags, prints `error=<code>`, and exits non-zero.
 - `refused`: out-of-scope candidate assets or basis mismatch.
 - `unavailable`: post-allocation reader failures (e.g. database query error,
   second reader-connect failure, lock wait timeout, or missing Broker role). Emits

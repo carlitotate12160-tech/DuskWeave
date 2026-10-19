@@ -73,8 +73,12 @@ fn context_pack_successful_assembly_and_byte_equivalence() {
     assert_eq!(views[1]["reason"], "disclosure_not_permitted");
     for v in &views[2..] {
         assert_eq!(v["availability"], "unavailable");
-        assert_eq!(v["reason"], "not_loaded_by_this_profile");
+        assert!(v.get("reason").is_none());
     }
+    assert_eq!(
+        parsed["pending_unknown"],
+        json!(["other_owner_views_not_loaded_by_profile"])
+    );
 
     assert_eq!(parsed["candidates"].as_array().unwrap().len(), 2);
     assert_eq!(parsed["omissions"]["supplied_candidates"], 2);
