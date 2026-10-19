@@ -776,7 +776,7 @@ fn fast_repair_child_is_rejected_as_deadline_crossing() {
     );
     assert_eq!(code, Some(0), "child must return normally");
     assert_eq!(connections, 2, "both calls must reach the listener");
-    let reason = verdict.err().expect("must be rejected");
+    let reason = verdict.unwrap_err();
     assert!(
         reason.contains("not a deadline rejection"),
         "rejection must name the accepted outcome, observed: {reason}"
@@ -805,7 +805,7 @@ fn early_transport_failure_child_is_rejected_as_deadline_crossing() {
     );
     assert_eq!(code, Some(0), "child must return normally");
     assert_eq!(connections, 2, "both calls must reach the listener");
-    let reason = verdict.err().expect("must be rejected");
+    let reason = verdict.unwrap_err();
     assert!(
         reason.contains("elapsed") && reason.contains("outside"),
         "rejection must name the elapsed bound, observed: {reason}"
@@ -837,7 +837,7 @@ fn missing_terminal_record_child_is_rejected() {
     );
     assert_eq!(code, Some(0), "child must return normally");
     assert_eq!(connections, 2, "both calls must reach the listener");
-    let reason = verdict.err().expect("must be rejected");
+    let reason = verdict.unwrap_err();
     assert!(
         reason.contains("terminal record absent"),
         "rejection must name the missing terminal record, observed: {reason}"
