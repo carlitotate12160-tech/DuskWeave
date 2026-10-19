@@ -625,13 +625,32 @@ Select a foreground Rust `m1-run` application use case, with provider-free
 `m1-run-inspect` and `m1-run-recover`. One strict initial request binds an existing
 current Mission, admitted seed asset/name references, purpose/mode, fresh inference
 permission, deadline and run profile. For this new lane select initial registration
-with `m1_inference_permission_v3`: retain v2's fixed numerical/provider constraints
-and add an explicit `admitted_campaign_decision_feedback` disclosure class for the
-preceding committed safe proposal/explanation, decision references and owner-qualified
-outcome. It admits no raw response, private reasoning or arbitrary history. Old v1/v2
+with `m1_inference_permission_v3` and provider profile
+`deepseek-responses-autonomous-v1`. Its exact new limits are canonical in ADR-016
+section 4a; preserve v2's recipient/model, non-streaming/no-tools settings,
+response-envelope and safe-proposal constraints unless explicitly amended here.
+The closed safe-field set has nine possible classes: v2's eight plus
+`admitted_campaign_decision_feedback` for the preceding committed safe
+proposal/explanation, decision references and owner-qualified outcome. Retain
+`admitted_repair_fields_codes` and require the feedback class for this lane;
+no arbitrary tenth class. Update Rust parsing, SQL admission and disclosure
+checks together rather than leaving the old eight-class guard. It admits no raw response, private reasoning or arbitrary history. Old v1/v2
 consent never implies this class; upgrading/rebinding an old campaign is out of scope.
 Registration remains Mission-owned and occurs
-before start; no mid-run operator input, shell workflow, hand-edited observations,
+before start. V3 additionally binds `execution_mode` and the run profile to a
+closed recipient/provider/effect combination:
+
+| Run profile | Execution mode | Inference recipient / profile | DNS effect |
+| --- | --- | --- | --- |
+| `autonomous-dns-fixture-v1` | `controlled_fixture` | `urn:duskweave:fixture:inference:v1` / `deterministic-autonomous-v1` | `dns-routing-fixture-v1` |
+| `autonomous-dns-provider-fixture-v1` | `controlled_fixture` | `https://api.deepseek.com/responses` / `deepseek-responses-autonomous-v1` | `dns-routing-fixture-v1` |
+| `autonomous-dns-v1` | `live` | `https://api.deepseek.com/responses` / `deepseek-responses-autonomous-v1` | `dns-routing-v2` |
+
+A fresh non-nil terms/policy reference and explicit approval cover that exact
+recipient; local deterministic-fixture approval implies no external disclosure. Reject
+cross-mode/run combinations before reservation or adapter construction. Profile,
+source and execution mode are distinct from blind/defender-informed exercise mode.
+There is no mid-run operator input, shell workflow, hand-edited observations,
 context files or copied operation IDs. Input data cannot assert current authority.
 
 The supervisor owns only run identity, bounded lifecycle, phase dispositions and
@@ -673,13 +692,49 @@ admitted hypothesis summary is at most 128 UTF-8 bytes, omitted with a reason if
 it cannot fit; it is never required over the retained current Terrain premise.
 Disclosure requires the new class above; missing permission defers without a send.
 Source/time/uncertainty/omissions remain explicit. This is not an all-run
-history dump. Actual UTF-8 pack/request/configuration/repair fit must be measured
-before the later runtime packet; no capacity-fit claim is made by this DESIGN.
+history dump. Select an 8192-byte context ceiling for this version, not the
+legacy 4096 or an assumed-sufficient 6144. The following DESIGN serialization
+measurements bind concrete synthetic examples, including the complete escaped
+pack, schema, instructions and repair-code request; they are not Rust runtime
+qualification or an exhaustive proof for every legal combination.
+
+| Example | Pack | Configuration | Generation request | Repair request |
+| --- | ---: | ---: | ---: | ---: |
+| Decision 1, one seed, qualified manifest, absent predecessor | 3300 | 5503 | 8078 | 8298 |
+| Decision 2, one seed, one claim/two limitations, full predecessor/128-byte summary | 5131 | 5759 | 10329 | 10549 |
+| Decision 2, eight candidates, otherwise same | 7581 | 6319 | 13703 | 13923 |
+| Decision 2, eight candidates, wide numeric fields, 128 quote bytes | 7831 | 6319 | 14209 | 14429 |
+| Decision 2, same widths, 128-byte multibyte summary | 7703 | 6319 | 13825 | 14045 |
+| Provider-fixture Decision 2, eight candidates, quote/width case | 7900 | 6350 | 14278 | 14498 |
+
+The [wire examples](fixtures/m1-autonomous-wire-examples-v1.json) contain the exact
+proposed serialized P/C/B strings, static instructions and SHA-256 call bindings. Serialize
+recursively sorted keys as compact UTF-8 JSON without ASCII escaping or a trailing
+newline; lengths count bytes, not characters. Hash using the existing
+`dw-inference-binding-v1` length-prefixed P/C/B algorithm. The largest tested case leaves
+292 bytes of pack headroom and 1886 bytes of complete-request headroom. Numeric
+examples use SQL-supported claim revision 10001, i64-width capacity and synthetic
+owner times; they do not imply a newly widened Mission/time policy. No target or
+provider was contacted. The fixture documents a proposed wire format, not a new
+runtime helper, accepted contract or successful operational loop.
+
+All field vocabularies/identifier forms remain closed and bounded; optional text
+is measured after escaping. An eight-candidate ceiling does not promise all eight
+will always fit. Fit may drop optional summary then unrelated candidates, with
+explicit omissions; retain the eligible current Terrain premise, selected seed,
+qualified manifest and required predecessor identities/outcome. If that minimum
+cannot fit P, C and both generation/repair B limits, defer without reserving or
+sending. Parse pack/verify binding with this profile's 8192 limit; raising only
+pack construction while leaving `request::reference_ids`/`verify_binding` at
+4096 fails the contract. Configuration and request limits stay 16384 each.
+Before runtime delivery, reproduce these cases through the real Rust producer and
+consumer, add exact-limit/+1 and escaping cases, and remeasure after any template
+change. An example fitting does not authorize arbitrary request growth.
 
 Keep `m1_inference_proposal_v1` intent categories. In the autonomous profile,
 `observe_more` with exactly one eligible seed reference and a qualified
-`dns-routing-v2` manifest proposes one DNS observation. The manifest binds UDP or
-TCP explicitly; no worker-selected transport switch, retry or alias question.
+`dns-routing-v2` manifest proposes one DNS observation. The live manifest binds UDP or
+TCP explicitly; fixture mode instead uses `dns-routing-fixture-v1`, with no egress; no worker-selected transport switch, retry or alias question.
 `observe_more` with `view_request` is an owner-view read and never DNS dispatch;
 combining an effect manifest and view request rejects as ambiguous. Free text
 cannot supply action parameters. Deterministic authority/Gateway validate the
@@ -695,11 +750,41 @@ or M1 completion. Unsupported effects produce a visible capability-gap dispositi
 
 ### Effect ownership, safe source and Terrain intake
 
-Prequalify Linux core/Broker and ADR-015's attempt-local Go capture/exporter,
-host egress/STOP/disposal and ADR-017 framing before advertising DNS availability.
-Prepare images/toolchain before the run; no campaign-time install or image pull.
-An unqualified deployment blocks before provider expenditure or target release.
-Same-user Windows capture and the historical Python helpers are not substitutes.
+Select these explicit execution profiles using the same application/owner ports:
+
+- `autonomous-dns-fixture-v1`: real `m1-run` entrypoint, supervisor, restricted
+  PostgreSQL owner stores, decision/authorization checks, Broker reservation,
+  Terrain reconciliation and history. Deterministic inference and Broker-effect
+  adapters supply two proposals and a synthetic DNS result; zero provider/target
+  egress, no shell/helper orchestration or operator input. Use fresh fixture-only
+  permission, `deterministic-autonomous-v1` inference and `dns-routing-fixture-v1`
+  catalog identities, `execution_mode=controlled_fixture`, and source
+  `fixture_dns_acquisition` verified against a committed fixture-issued result.
+  A digest/source enum alone still does not confer authority. This validates
+  orchestration and failure semantics, not real LLM behavior or live DNS.
+- `autonomous-dns-provider-fixture-v1`: the real provider plus the same synthetic
+  Broker effect and fixture Terrain source. Qualify the new inference profile's
+  SQL/fence, cancellation, resolver and supervisor behavior on its actual platform
+  first, with fresh explicit provider disclosure. Allow egress only for that
+  authorized inference endpoint/transport; zero target DNS/acquisition. This
+  proves actual LLM → fixture feedback → actual LLM without waiting for the Go
+  capture/nft target-acquisition stack. It cannot establish live target facts.
+- `autonomous-dns-v1`: real provider and acquisition. Before advertising a live
+  manifest, qualify Linux core/Broker, ADR-015's attempt-local Go capture/exporter,
+  host egress/STOP/disposal, ADR-017 framing and the new inference cancellation
+  path. Prepare images/toolchain before start; no campaign-time install or pull.
+  Same-user Windows capture and historical Python helpers cannot substitute.
+
+Bind mode through Mission/run, manifest, pack/configuration, Broker result,
+Terrain source and history. Fixture records must never satisfy live-premise,
+release or milestone predicates, nor silently promote a manifest. A pure fixture
+uses the production application contracts while replacing effect ports only;
+it is an explicit test lane, no relaxation of ADR-015 for network effects.
+Fixture wiring may be delivered before Linux qualification, or independently
+alongside that preparation. Unqualified live deployment blocks before provider
+expenditure or target release. The real-provider fixture is a separately bound run, never a switch inside a
+deterministic fixture. This DESIGN executes neither. It does not qualify a native
+Windows M1 acquisition deployment or bypass accepted sensitive-data boundaries.
 
 Preserve inference/session mutual exclusion: finish the first inference's durable
 publication/accounting and fence its sender before claiming an acquisition session.
@@ -721,7 +806,10 @@ Rejected/READY-only/may-start records cannot masquerade as an observed DNS respo
 
 Use `m1_terrain_dns_issued_observation_v1` for issued acquisition and a new migration;
 preserve historical operator-input contracts and migrations. Keep the exact manual
-label; add `issued_dns_acquisition` only after binding verification.
+label; add `issued_dns_acquisition` only after live binding verification, and
+keep `fixture_dns_acquisition` separately qualified for fixture mode only. Use the
+same versioned intake envelope with explicit mode/profile; no caller-selected
+source override. Source/mode must survive dependency checks and downstream views.
 Update Terrain view SQL, typed dependencies, ContextPack and history/inspection
 together. Terrain independently qualifies claim status/tier, conflicts and freshness;
 Broker cannot write accepted Terrain state. Intake uses expected revisions and safe
@@ -730,10 +818,15 @@ pack and explicitly references the first decision/result; it cannot reuse the fi
 
 ### Budgets, failures and verification boundary
 
-Use the proposed ADR-016 supervision rule without increasing its 20-second shared
-decision, existing 30-second command or 60-second acquisition ceilings. New run
-authority must cover two decisions and their conditional repair reservations;
-old consent is never reused, widened or refilled. Preserve perceived time and TTL:
+Use the proposed ADR-016 section 4a profile: 20 seconds per provider call,
+40 seconds shared active work, a 45-second reserved decision envelope and
+50-second supervised phase. The legacy 20/30-second profiles and 60-second
+acquisition ceiling remain unchanged. New run authority must cover both decisions
+and conditional repair reservations, including 90000 inference wall-time ms;
+old consent is never reused, widened or refilled. Profile-aware Rust/SQL quota
+validation, capacity snapshots and CLI admission must agree with the new values.
+No global replacement of every 20000/4096 constant is permitted.
+Preserve perceived time and TTL:
 expiry is `min(perceived_at + TTL, perceived_at + 60s)`. A stale/short-lived result
 may yield defer, not timestamp refresh, DNS replay or forced second-call success.
 
@@ -744,9 +837,14 @@ not send evidence; child exit without terminal evidence retains uncertainty.
 Inspection/recovery uses only durable records and at most three database-only
 tries/invocation; it performs no provider call, unused repair, DNS or refill.
 
-The later runtime delivery must include real CLI→child→Broker→Go exporter→Terrain
-→second decision→history tests, actual serialized-byte boundaries and Linux/SQL
-role/fence qualification. Inject withdrawal-before-release (zero effects), parent
+First implement and qualify the controlled fixture through the real
+CLI→child→Broker→Terrain→second decision→history path with restricted SQL roles.
+Next qualify and exercise actual two-decision inference against the same fixture
+using the explicitly bound provider-fixture profile and fresh provider permission.
+Qualify real Go producer/consumer and host STOP before any authorized target run. Each later runtime
+packet needs an exact source/consumer map and actual serialized-byte boundaries;
+these design examples do not qualify nonexistent runtime code. Inject
+withdrawal-before-release (zero effects), parent
 loss/lease expiry, child deadline/exit, forged source, TTL expiry, conflict, result
 commit/ACK loss and history failure; assert fresh recovery counts without replay.
 Dependency enforcement, named touched Terrain debt and phase diagnostics follow

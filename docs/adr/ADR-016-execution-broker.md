@@ -309,47 +309,104 @@ storage, cancellation, transport and formatted runtime-fit evidence remains UNVE
 
 ## 4a. Proposed bounded-run supervision (2026-10-19)
 
-**Status: PROPOSED; exact text requires owner acceptance.** Select a foreground
-application supervisor for [the first autonomous run](../contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19),
-rather than putting the entire run inside the legacy 30-second CommandGuard.
-Keep each existing phase command's 30-second active guard and each decision's
-shared generation/repair deadline of at most 20 seconds unchanged. Cognitive work
-remains outside the acquisition episode's 60-second ceiling. No watchdog reset,
-human-response pause or new repair clock can extend an issued operation.
+**Status: PROPOSED; exact text requires owner acceptance.** This selects the new
+`m1_inference_permission_v3` / `deepseek-responses-autonomous-v1` lane for
+[the autonomous run](../contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19).
+The controlled fixture uses the same bounded accounting with the separately bound
+`deterministic-autonomous-v1` local provider profile and zero external calls.
+Legacy v1/v2 permissions, profiles, shared 20-second decisions and 30-second
+CommandGuard remain unchanged. Existing consent cannot authorize the new lane.
 
-For the new `autonomous-dns-v1` run select a deployment ceiling of 150000 ms,
-two decisions, one acquisition episode and one DNS attempt; Mission/run input
-must supply positive finite limits no wider than these. Effective wall time is
-the minimum of this ceiling, the requested run limit, current Mission window
-and inference-consent window. It includes setup, child startup, owner work and
-publication. Child waits are further clamped to run/authority remainder; there
-is no unconditional finalization grace beyond authority. This new run ceiling
-is not a change to any call/decision/episode ceiling or to old consent.
-The 150000 ms value is a selected initial bound, not a measured latency guarantee.
+| New-lane limit | Selection / accounting meaning |
+| --- | --- |
+| Provider call | At most 20000 ms each, including connection establishment (at most 5000 ms); no retry or parallel call |
+| Active generation + conditional repair | One shared 40000 ms clock, including admission and validation; repair never resets it |
+| Cancellation escalation | At most 2000 ms inside the decision/phase/run envelope; cooperative abort first, independently supervised hard stop second |
+| Terminal accounting/publication | At most 3000 ms reserved inside the decision envelope; exhaustion leaves pending/UNKNOWN, never promised completion |
+| Full decision | `decision_wall_time_ms=45000`: 40000 active + 2000 stop + 3000 accounting; reserve this entire duration before generation |
+| Child inference phase | At most 50000 ms from launch: up to 5000 preparation plus the decision envelope; independent parent guard |
+| Immutable ContextPack | At most 8192 UTF-8 bytes, at most 8 candidates; complete request/configuration each <=16384 bytes |
+| Run / acquisition | Run <=150000 ms; unchanged acquisition episode ceiling <=60000 ms; max 2 decisions, 1 acquisition episode, 1 DNS attempt |
 
-Under the unchanged full inference profile, two decisions need capacity for
-four call slots, 65536 request bytes, 262144 response bytes, 16384 output-token
-capacity and 40000 shared wall-time milliseconds. These are worst-case reserved
-capacities, not predicted usage or billing. Require fresh owner-issued totals
-covering them; reserve each decision through the existing exclusive Broker
-boundary. Unknown/possibly-consumed capacity remains charged across phase/session
-closure and recovery. No new phase owner receives another allowance.
+V3 operation limits explicitly include `per_call_wall_time_ms`,
+`shared_wall_time_ms`, `phase_wall_time_ms`, `cancel_grace_ms` and
+`accounting_window_ms` alongside the existing `decision_wall_time_ms`. Register
+this profile's selected timer values as fixed values; expiry can only clamp
+runtime use. Preserve the v2 fixed response65536, output4096, connect5000,
+proposal8192, text1024, repair2048, repair-code8, envelope-depth32,
+proposal-depth8, collection64, calls2 and concurrency1 settings. Positive smaller
+context/candidate/request/configuration limits remain valid only when the minimum
+useful P/C/B can fit; no silent truncation of required context or output capacity.
 
-The supervisor durably records the original phase identity and observes bounded
-child exit/status independently of its hard watchdog. Child hard exit may prevent
-a Cognition receipt; the supervisor can append a safe run-termination disposition,
-then invoke database-only reconciliation under its original run deadline. It
-cannot invent a lost decision/proposal, infer send from a marker, restart the
-child, or continue the campaign after an unresolved required obligation. If the
-supervisor also dies, inspection reports the last durable milestone and UNKNOWN;
-no guaranteed final receipt or historical exit-phase attribution is claimed.
+These are engineering-selected initial ceilings, not measured latency percentiles
+or success guarantees. The historical 10.084-second generation is one sample,
+not a P50 or proof of which watchdog killed repair. Two full 20-second calls need
+additional local work, so admission clamps each call to the remaining shared
+clock; a completed generation does not guarantee time for repair. Configure curl's
+whole-transfer timeout and connection bound accordingly, with bounded response
+bytes and no transport retry, redirect or fallback.
 
-Normal provider timeout/cancellation, generation, repair and publication have
-separate safe dispositions. A child exit code alone does not prove the internal
-killer or send phase. Existing raw-free diagnostics and independent host STOP
-apply; host egress closure never waits for this publication work. Verification
-must distinguish a shared-deadline child kill, outer command kill, parent loss,
-ordinary transport return and history failure, with zero recovery replays.
+The supervisor prebinds fixed child identities and absolute monotonic deadlines.
+Clamp active work to the earliest shared-work deadline, decision remainder minus
+stop/accounting reserve, phase/run remainder and current Mission/consent/premise
+validity. No new effect may start during stop/accounting. Expiry/withdrawal ends
+network authority; grace never extends it. Escalate by the earliest of cancel +
+2000 ms, permit/authority expiry, decision, phase or run deadline. Publication after a
+stop uses only safe owner/database work within the remaining original envelope;
+its permission to record history is not permission to send. Late cancellation
+may consume the accounting reserve and leave a pending obligation. Recovery is
+bounded database-only work, not a continuation or deadline reset.
+
+Select cooperative cancellation for this lane: the curl progress callback reads
+only a stop latch and monotonic permit expiry, never synchronous SQL, locks or
+history I/O. A separately owned authority coordinator obtains fresh restricted
+Mission/premise checks and renews a local permit at most every 500 ms, with a
+maximum 2000 ms lease anchored to the check's start time. Keep only one outstanding
+check, bounded by remaining lease/decision time. A late or failed check
+cannot renew it. No new call uses a cached permit instead of the existing fresh
+release fence. All authority/premise writers participate in the stop fence and
+signal owned I/O before slow SQL/history waits; cross-process stop must use the
+real control channel, not unrelated per-process AtomicBools. Permit loss aborts
+in-flight waiting; it cannot recall already disclosed data or provider work.
+
+The independent supervisor closes the child's I/O and reaps it if cooperative
+abort stalls. Removing the child `process::exit(124)` watchdog without this
+replacement fails qualification. Curl progress can be delayed during idle I/O;
+resolver/backend and platform stopping bounds must be tested. In particular,
+NOSIGNAL with a blocking resolver is not proof of a bounded DNS wait. Qualified
+runtime uses an interruptible resolver/backend or relies on the independently
+tested process stop within the same bounds. Live acquisition additionally keeps
+ADR-015's independent host egress/STOP path ahead of database publication.
+
+Two full decisions reserve four call slots, 65536 request bytes, 262144 response
+bytes, 16384 output-token capacity and **90000 inference wall-time milliseconds**.
+The wall-time unit includes the 45000-ms decision envelope, not child preparation
+or acquisition, which remain bounded by the run clock. These are capacities, not
+predicted usage or billing. Every phase consumes the same run remainder: two
+50-second phases plus a 60-second acquisition cannot all use their maxima under
+150 seconds. Admit only within the actual remainder; defer/stop on exhaustion,
+never extend the run. Unknown/possibly consumed reservations stay charged across
+session closure and restart; a new phase owner receives no new allowance.
+
+The supervisor observes bounded child status independently of its watchdog and
+appends safe phase, last durable milestone and termination disposition. Generation,
+conditional repair, acquisition, Terrain delivery and publication remain separately
+attributed. A marker or exit code proves neither send nor killer. Missing durable
+accounting yields UNKNOWN/pending; do not regenerate a lost proposal, restart a
+child, resume unused repair or advance the campaign across an unresolved required
+obligation. Parent death may leave no final receipt; fresh inspection reports
+that limit. Test ordinary timeout, stalled cooperative abort, hard child exit,
+parent loss, authority loss and history failure with zero recovery effects.
+
+## Supporting engineering references for section 4a
+
+Checked 2026-10-19; these explain mechanisms, not DuskWeave authority or certification.
+
+- [Rust process::exit](https://doc.rust-lang.org/std/process/fn.exit.html): no stack destructors; motivates cooperative completion and honest hard-exit uncertainty.
+- [libcurl progress](https://curl.se/libcurl/c/CURLOPT_XFERINFOFUNCTION.html) and [NOSIGNAL](https://curl.se/libcurl/c/CURLOPT_NOSIGNAL.html): abort callback and resolver limitations; motivate the independent supervisor.
+- [AWS timeouts and retries](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/): select/calibrate budgets from measured distributions; no arbitrary latency percentile or automatic replay claim.
+- [AWS idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/) and [transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): stable request identity, parameter conflict and durable publication obligations; no exactly-once external effect promise.
+- [PostgreSQL advisory locks](https://www.postgresql.org/docs/17/explicit-locking.html#ADVISORY-LOCKS): session-lock lifetime differs from transaction lifetime; pooling is not a mechanical Client replacement.
 
 ## 5. Consequences
 

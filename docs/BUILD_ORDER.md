@@ -47,13 +47,16 @@ Current engineering state:
 
 Latest merged delivery: [PR #70](https://github.com/carlitotate12160-tech/DuskWeave/pull/70),
 `535eab5cde6215becd9f5f0ee6a663a5f1173ff8`, reconciles PR #69 (`20671c6`).
-Current preparation: the [PROPOSED autonomous-run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19)
+Active draft delivery: [PR #71](https://github.com/carlitotate12160-tech/DuskWeave/pull/71), the [PROPOSED autonomous-run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19)
 and its [ADR-016 supervision amendment](adr/ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19).
 [ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 owns active work, evidence limits and next action. The existing
 [MVP roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
 owns outcome order and audit follow-up. This is DESIGN preparation, not qualified
-acquisition, exact-text acceptance, target permission or M1 completion.
+acquisition, exact-text acceptance, target permission or M1 completion. After
+exact-text acceptance, deliver the controlled fixture through production ports
+first; live-boundary preparation may run independently. Real-provider/DNS
+qualification and fresh authorization remain required for the live outcome.
 
 Current design document:
 

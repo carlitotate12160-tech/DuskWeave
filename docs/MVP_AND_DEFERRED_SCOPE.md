@@ -55,8 +55,10 @@ used to demonstrate this campaign loop, not a replacement product or fixed strat
 | Outcome | Completion evidence / dependency |
 | --- | --- |
 | Resolve autonomous-run runtime contracts | Publish the bounded [run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19); its new exact text remains PROPOSED until owner acceptance. Preserve existing accepted sections and seals. |
-| Qualify execution prerequisites | Linux core/Broker and ADR-015 capture/exporter/host STOP, ADR-016 effect admission/accounting, ADR-017 real producer/consumer IPC. A running Docker/WSL installation alone is insufficient. Infrastructure delivery is labeled as such. |
-| First operational autonomous run | Mission → first LLM proposal → authorized DNS → owner-qualified Terrain → second LLM decision → durable history/inspect; no operator input between start and terminal receipt. A controlled fixture proves wiring; only fresh explicit authorization can qualify a live client run. |
+| Prove autonomous orchestration in a controlled fixture | First runtime slice: `autonomous-dns-fixture-v1`, production `m1-run`/owner ports and restricted PostgreSQL, deterministic inference and Broker effect fixtures, distinct source/mode and no external egress. Mission → proposal → authorized fixture effect → Terrain → second proposal → durable history/inspect; no intermediate input. Qualify idempotency, stop, UNKNOWN and database-only recovery here. No real LLM/live DNS or M1 seal claim. |
+| Prove cognitive feedback with the real provider | After qualifying the new inference boundary, `autonomous-dns-provider-fixture-v1` uses actual LLM calls with the same deterministic Broker effect/source and fresh provider consent. No target egress; not blocked on Go capture/nft qualification. Require the second admitted proposal to consume the fixture result; a scripted replacement does not qualify real cognition. |
+| Qualify live boundaries (may proceed independently of fixture wiring) | New inference timing/cancellation and ADR-015 Linux core/Broker/capture/exporter/host STOP, ADR-016 admission/accounting, ADR-017 real producer/consumer IPC. A running Docker/WSL installation alone is insufficient. Infrastructure work supports the loop; it is not a prerequisite for the isolated fixture above. |
+| First operational autonomous live run | Mission → real LLM proposal → authorized DNS → owner-qualified Terrain → real second LLM decision → durable history/inspect, with no operator input between start and terminal receipt. Requires accepted profiles, qualified live boundaries and fresh explicit client/inference authorization; fixture or old consent cannot satisfy them. |
 | Validation and adaptation | Admitted HTTPS validation in the same loop; new evidence materially changes or supports the next hypothesis/action with visible rationale. No forced DNS/HEAD/subdomain playbook. |
 | Complete cognitive M1 | CT, bounded synthesis/evolution, applicable campaign-local feedback and minimum report under the M1 contract. Two LLM calls or DNS/HEAD alone do not seal M1. |
 | After M1 | Bounded access/authorized credential validation through its owning accepted contracts and current permission. |
@@ -84,6 +86,15 @@ absence of schema isolation do not justify a rewrite: the latter claims were
 corrected by source inspection. Preserve existing thread/watchdog/I/O bounds and
 SQL owner/role isolation; qualify their actual behavior on the changed path.
 Do not turn all historical debt into a prerequisite for the first run.
+
+The minimal-loop approach follows [Anthropic's agent engineering guidance](https://www.anthropic.com/engineering/building-effective-agents):
+explicit tool/environment feedback and stopping conditions, starting with simple
+composition. [Agent evaluation guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+supports isolated reproducible environments and grading actual outcomes. Apply
+these as implementation/evaluation references, not product authority: assertions
+must show that decision two consumed the qualified result, duplicate start/recovery
+caused zero additional effects, and fixture provenance cannot satisfy live checks.
+A green scripted fixture is necessary wiring evidence, not real LLM evaluation.
 
 ## 2. Deferred development candidates
 
