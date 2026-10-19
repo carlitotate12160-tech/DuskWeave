@@ -68,5 +68,5 @@ fn done_response_disarms_monitor_in_process() {
 #[test]
 fn command_guard_installs_fixed_budget_and_drops_cleanly() {
     // Guard lifecycle without expiry: Drop sends Done, disarming the monitor.
-    let _guard = CommandGuard::start();
+    let _guard = CommandGuard::start().expect("command guard installs");
 }

@@ -369,15 +369,40 @@ forced exit produces exactly the observed state (persisted
 `may_send_uncertain`, no receipt, nonzero exit). Alternative explanations
 (e.g., a transport-level abort) would ordinarily transition the row to
 `usage_unknown` or `failed_never_released`; a mid-call `process::exit`/fatal
-abort is the mechanism consistent with the persisted marker. This remains a
-hypothesis until an offline reproduction records the exit phase/code —
-scheduled as diagnosis before any further live attempt.
+abort is the mechanism consistent with the persisted marker.
+
+### Offline diagnosis (DW-DIAGNOSE-M1-SCHEMA-DEADLINE)
+
+- **Schema contract**: the emitted provider schema (real `request::bind`
+  over a `m1_context::prepare` pack) and the local decoder were checked on
+  27 synthetic cases via `jsonschema` 4.26.0 (Draft 2020-12) — zero
+  expectation disagreements, no supported-shape defect. Every schema-valid
+  refusal comes from an intentionally stricter native bound (byte vs
+  character `maxLength`, trim, premise/eligibility); the only local-side
+  tolerance is omission of required-but-nullable keys, a harmless
+  direction. The live generation's `proposal_shape` violation field remains
+  unknown because provider text is not retained.
+- **Deadline reproduction**: the real `decide` + concrete transport against
+  loopback reproduced the observed shape exactly — generation `completed`,
+  repair `may_send` marker committed, then `process::exit(124)` inside
+  `provider.call` while the repair send was in flight (unscaled child:
+  exit 124 at 20027 ms with the server observing 2 requests; scaled child
+  identical at 1549 ms). Controls: an expired shared deadline before
+  release yields `NeverReleased` with no second request, and a disarmed
+  deadline never exits.
+- **Attribution limit**: the `database_wait` command monitor also produces
+  exit 124 with no transport involvement, so the code alone cannot attribute
+  the historical killer — the reproduction proves the mechanism can produce
+  the exact ledger shape, not that it fired in episode `20261019-3`.
+- Report: `D:/DuskWeave-build/rust-1.94.1/reports/dw-diagnose-m1-schema-deadline/cycle-1`.
 
 ### Bounded finding for Work
 
-If the hypothesis holds, the shared wall budget across generation+repair
-leaves insufficient headroom for a repair of comparable provider latency;
-candidate corrections (raise `shared_wall_time_ms`, give the repair its own
+The reproduction confirms the failure shape is reachable through the real
+transport: the shared wall budget across generation+repair leaves
+insufficient headroom for a repair of comparable provider latency, and
+deadline expiry terminates the process before accounting can settle.
+Candidate corrections (raise `shared_wall_time_ms`, give the repair its own
 deadline window, or make deadline expiry close accounting gracefully before
 exit) are Work/engineering decisions, not in-demo patches.
 

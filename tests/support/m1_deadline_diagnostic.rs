@@ -525,16 +525,16 @@ fn repair_send_crossing_scaled_deadline_records_exit_and_phase() {
     let calls = server.calls.load(Ordering::SeqCst);
     export_outcome("repair_send_crossing_scaled", &ckpt, code, elapsed, calls);
     assert!(
-        code.is_some(),
-        "sacrificial child must exit within the bound (code={code:?})"
+        matches!(code, Some(124) | Some(0)),
+        "child must end by watchdog (124) or bounded transport return (0), not an unrelated exit (code={code:?})"
     );
     assert!(
-        text.contains("may_send_repair"),
-        "repair marker must be checkpointed: {text}"
+        text.contains("may_send_repair") && text.contains("release_enter"),
+        "repair marker and release entry must be checkpointed: {text}"
     );
-    assert!(
-        calls >= 1,
-        "server must observe at least the generation request (calls={calls})"
+    assert_eq!(
+        calls, 2,
+        "server must observe both generation and repair requests (calls={calls})"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -590,12 +590,12 @@ fn unscaled_twenty_second_shared_deadline_child() {
     let calls = server.calls.load(Ordering::SeqCst);
     export_outcome("unscaled_shared_deadline", &ckpt, code, elapsed, calls);
     assert!(
-        code.is_some(),
-        "unscaled child must finish within the parent bound"
+        matches!(code, Some(124) | Some(0)),
+        "unscaled child must end by watchdog (124) or bounded transport return (0), not an unrelated exit (code={code:?})"
     );
     assert!(
-        text.contains("may_send_repair"),
-        "repair marker must be checkpointed: {text}"
+        text.contains("may_send_repair") && text.contains("release_enter"),
+        "repair marker and release entry must be checkpointed: {text}"
     );
     if code == Some(124) {
         assert!(
@@ -604,10 +604,10 @@ fn unscaled_twenty_second_shared_deadline_child() {
         );
     }
     let _ = std::fs::remove_dir_all(&dir);
-    // `calls` == 2 additionally proves the repair send physically happened.
-    assert!(
-        calls >= 1,
-        "generation request must be observed (calls={calls})"
+    // `calls` == 2 proves the repair send physically reached the listener.
+    assert_eq!(
+        calls, 2,
+        "server must observe both generation and repair requests (calls={calls})"
     );
 }
 
