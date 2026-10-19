@@ -11,6 +11,7 @@
 | Authority | Accepted PRD-000..010, ADR-001..008 and the six scoped M1 ADRs; no target permission |
 | Delivery | One documentation-only DESIGN outcome; runtime diff = 0 |
 | Preserved seals | DW-FOUNDATION-001 and DW-M0-001; no full-domain or M1 seal |
+| Autonomous-run amendment | Section 7 is PROPOSED, 2026-10-19; engineering-selected runtime decisions, not owner acceptance or permission to execute |
 
 ## 1. Outcome and decision boundary
 
@@ -610,3 +611,147 @@ separately qualify actual DeepSeek behavior only with authorized safe disclosure
   Record candidate/platform/configuration and actual call/history counts. Fixture success
   is not provider availability, storage/cancellation qualification on another platform,
   action feedback, synthesis, reporting, cognitive MVP completion or an M1 seal.
+
+## 7. Proposed autonomous-run amendment (2026-10-19)
+
+**Status: PROPOSED.** These are the engineering-selected decisions for the
+owner-requested first autonomous outcome, against merged PR #70 (`535eab5`).
+They do not alter acceptance of sections 1–6, existing consent, seals or target
+permissions. The matching time/supervision amendment is [ADR-016 section 4a](../adr/ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19).
+
+### Run entrypoint and ownership
+
+Select a foreground Rust `m1-run` application use case, with provider-free
+`m1-run-inspect` and `m1-run-recover`. One strict initial request binds an existing
+current Mission, admitted seed asset/name references, purpose/mode, fresh inference
+permission, deadline and run profile. For this new lane select initial registration
+with `m1_inference_permission_v3`: retain v2's fixed numerical/provider constraints
+and add an explicit `admitted_campaign_decision_feedback` disclosure class for the
+preceding committed safe proposal/explanation, decision references and owner-qualified
+outcome. It admits no raw response, private reasoning or arbitrary history. Old v1/v2
+consent never implies this class; upgrading/rebinding an old campaign is out of scope.
+Registration remains Mission-owned and occurs
+before start; no mid-run operator input, shell workflow, hand-edited observations,
+context files or copied operation IDs. Input data cannot assert current authority.
+
+The supervisor owns only run identity, bounded lifecycle, phase dispositions and
+references to owner records. Persist this application bookkeeping in PostgreSQL;
+it is neither another operational model nor a universal campaign aggregate.
+One run owner per campaign is fenced durably. Duplicate start inspects the original
+identity; conflicting input rejects. A lost supervisor never auto-resumes effects.
+Composition injects narrow Mission, Cognition, Broker, Terrain and Trajectory ports;
+the controller receives no sibling mutable aggregate or infrastructure repository.
+
+Select fixed child-phase supervision for inference and acquisition/owner delivery,
+using the reviewed binary and closed phase commands with run/operation references.
+No arbitrary executable, shell, path or environment forwarding. The supervisor
+preallocates and durably binds phase identities before launch. Child output is
+bounded safe contract data; raw capture/attach bytes never traverse its result pipe.
+Existing CLI entrypoints remain compatible; the run uses application contracts,
+not parsing human CLI output or feeding `approve`/`continue` tokens.
+
+### Bootstrap and proposal-to-effect mapping
+
+Bootstrap uses Mission-admitted operator seeds as labeled premises with unknown
+environmental freshness. An absent Terrain view stays unavailable. Existing
+ContextPack semantics already permit limited reasoning without a usable claim;
+do not require invented OBSERVED evidence or weaken the eligible-premise retention
+floor once Terrain evidence exists. Mission's goal/question and declared priority
+are not environmental claims. Seed asset/name binding comes from current Mission
+policy, never an endpoint inferred from LLM prose.
+
+Cognition assembles the immutable pack and proposal; Pathing retains ownership
+of derived route/candidate views. Add a versioned autonomous profile to the
+existing ContextPack contract, named `m1_context_pack_autonomous_v1`, preserving
+`m1_context_pack_v1` and its initial profile unchanged. Its
+manifests list only deployment-qualified available profiles with release binding.
+Its bounded predecessor view references the first committed decision and admitted
+outcome; the first pack has an explicit absent-predecessor disposition. The second
+contains stable decision/event, selected intent/seed, attempt/result and
+Terrain-publication references and outcome dispositions. An optional previously
+admitted hypothesis summary is at most 128 UTF-8 bytes, omitted with a reason if
+it cannot fit; it is never required over the retained current Terrain premise.
+Disclosure requires the new class above; missing permission defers without a send.
+Source/time/uncertainty/omissions remain explicit. This is not an all-run
+history dump. Actual UTF-8 pack/request/configuration/repair fit must be measured
+before the later runtime packet; no capacity-fit claim is made by this DESIGN.
+
+Keep `m1_inference_proposal_v1` intent categories. In the autonomous profile,
+`observe_more` with exactly one eligible seed reference and a qualified
+`dns-routing-v2` manifest proposes one DNS observation. The manifest binds UDP or
+TCP explicitly; no worker-selected transport switch, retry or alias question.
+`observe_more` with `view_request` is an owner-view read and never DNS dispatch;
+combining an effect manifest and view request rejects as ambiguous. Free text
+cannot supply action parameters. Deterministic authority/Gateway validate the
+selected reference/profile and current bounds; Broker alone releases the effect.
+
+The first delivery profile allows at most two decisions, one DNS attempt and one
+acquisition episode. It is a bounded execution limit, not a strategy: valid
+retain/defer/stop choices and capability-gap outcomes remain possible; the
+controller cannot rewrite them into DNS. The qualification scenario selects DNS
+in decision one and cites its accepted outcome in decision two. Further effects
+are not executed by this profile. This proves feedback wiring, not full adaptation
+or M1 completion. Unsupported effects produce a visible capability-gap disposition.
+
+### Effect ownership, safe source and Terrain intake
+
+Prequalify Linux core/Broker and ADR-015's attempt-local Go capture/exporter,
+host egress/STOP/disposal and ADR-017 framing before advertising DNS availability.
+Prepare images/toolchain before the run; no campaign-time install or image pull.
+An unqualified deployment blocks before provider expenditure or target release.
+Same-user Windows capture and the historical Python helpers are not substitutes.
+
+Preserve inference/session mutual exclusion: finish the first inference's durable
+publication/accounting and fence its sender before claiming an acquisition session.
+Broker activates a separately bound effect session under ADR-016; a
+`prepared_no_effects` record is never upgraded by reinterpretation. Drain the pair,
+close egress and reconcile required result/history obligations before closing that
+effect session and admitting decision two. Financial consumption remains charged;
+closing exclusive ownership is not a refund. Unresolved handling stops progression.
+All authority writers, including withdrawal and premise-invalidating owner writes,
+participate in the fence. Host STOP precedes SQL/history waits; no role widens scope.
+
+Broker reserves episode/attempt/counters and requires durable decision/authorization
+history before release. Persist an admitted exporter result plus its publication
+obligation before result ACK. Terrain's intake accepts a restricted read/reference
+to that issued result, independently binding campaign, session generation, proposal,
+attempt, profile/schema/release, request, phase/counters and original perception time.
+Caller JSON, an `authorized` flag, a source enum or a matching hash is insufficient.
+Rejected/READY-only/may-start records cannot masquerade as an observed DNS response.
+
+Use `m1_terrain_dns_issued_observation_v1` for issued acquisition and a new migration;
+preserve historical operator-input contracts and migrations. Keep the exact manual
+label; add `issued_dns_acquisition` only after binding verification.
+Update Terrain view SQL, typed dependencies, ContextPack and history/inspection
+together. Terrain independently qualifies claim status/tier, conflicts and freshness;
+Broker cannot write accepted Terrain state. Intake uses expected revisions and safe
+atomic owner publication. The second decision reads a new immutable owner-qualified
+pack and explicitly references the first decision/result; it cannot reuse the first pack.
+
+### Budgets, failures and verification boundary
+
+Use the proposed ADR-016 supervision rule without increasing its 20-second shared
+decision, existing 30-second command or 60-second acquisition ceilings. New run
+authority must cover two decisions and their conditional repair reservations;
+old consent is never reused, widened or refilled. Preserve perceived time and TTL:
+expiry is `min(perceived_at + TTL, perceived_at + 60s)`. A stale/short-lived result
+may yield defer, not timestamp refresh, DNS replay or forced second-call success.
+
+Persist separate acquisition, Terrain, inference and publication outcomes, with safe
+phase, last-observed milestone, terminal/UNKNOWN category and original references.
+Failure after successful DNS must not relabel DNS as failed. A may-send marker is
+not send evidence; child exit without terminal evidence retains uncertainty.
+Inspection/recovery uses only durable records and at most three database-only
+tries/invocation; it performs no provider call, unused repair, DNS or refill.
+
+The later runtime delivery must include real CLI→child→Broker→Go exporter→Terrain
+→second decision→history tests, actual serialized-byte boundaries and Linux/SQL
+role/fence qualification. Inject withdrawal-before-release (zero effects), parent
+loss/lease expiry, child deadline/exit, forged source, TTL expiry, conflict, result
+commit/ACK loss and history failure; assert fresh recovery counts without replay.
+Dependency enforcement, named touched Terrain debt and phase diagnostics follow
+the concrete [roadmap dispositions](../MVP_AND_DEFERRED_SCOPE.md#13-audit-disposition-attached-to-these-deliveries).
+An autonomous target-effects packet additionally requires its exact source map,
+measured wire fit and qualified deployment prerequisites. A scoped infrastructure
+IMPLEMENT packet may deliver and test the missing boundary in isolation; its
+completion is not the first operational run. DESIGN completion asserts neither.

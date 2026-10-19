@@ -10,6 +10,7 @@
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-003/005/013/015; Stage 12 product-input rebind in accepted M1 enabling section 2 |
 | Scope | [M1 enabling lane](../contracts/M1-enabling-architecture.md); no full-stage acceptance |
+| Autonomous-run amendment | Section 4a is PROPOSED, 2026-10-19; existing accepted limits and sections retain their status |
 
 ## 1. Context and problem statement
 
@@ -305,6 +306,50 @@ recovery retains ADR-013's bounded invocation policy and existing wait guards. A
 new decision requires explicit new identity, current consent and remaining capacity; it
 cannot erase uncertainty. Concrete future assertions are in the enabling contract; all
 storage, cancellation, transport and formatted runtime-fit evidence remains UNVERIFIED.
+
+## 4a. Proposed bounded-run supervision (2026-10-19)
+
+**Status: PROPOSED; exact text requires owner acceptance.** Select a foreground
+application supervisor for [the first autonomous run](../contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19),
+rather than putting the entire run inside the legacy 30-second CommandGuard.
+Keep each existing phase command's 30-second active guard and each decision's
+shared generation/repair deadline of at most 20 seconds unchanged. Cognitive work
+remains outside the acquisition episode's 60-second ceiling. No watchdog reset,
+human-response pause or new repair clock can extend an issued operation.
+
+For the new `autonomous-dns-v1` run select a deployment ceiling of 150000 ms,
+two decisions, one acquisition episode and one DNS attempt; Mission/run input
+must supply positive finite limits no wider than these. Effective wall time is
+the minimum of this ceiling, the requested run limit, current Mission window
+and inference-consent window. It includes setup, child startup, owner work and
+publication. Child waits are further clamped to run/authority remainder; there
+is no unconditional finalization grace beyond authority. This new run ceiling
+is not a change to any call/decision/episode ceiling or to old consent.
+The 150000 ms value is a selected initial bound, not a measured latency guarantee.
+
+Under the unchanged full inference profile, two decisions need capacity for
+four call slots, 65536 request bytes, 262144 response bytes, 16384 output-token
+capacity and 40000 shared wall-time milliseconds. These are worst-case reserved
+capacities, not predicted usage or billing. Require fresh owner-issued totals
+covering them; reserve each decision through the existing exclusive Broker
+boundary. Unknown/possibly-consumed capacity remains charged across phase/session
+closure and recovery. No new phase owner receives another allowance.
+
+The supervisor durably records the original phase identity and observes bounded
+child exit/status independently of its hard watchdog. Child hard exit may prevent
+a Cognition receipt; the supervisor can append a safe run-termination disposition,
+then invoke database-only reconciliation under its original run deadline. It
+cannot invent a lost decision/proposal, infer send from a marker, restart the
+child, or continue the campaign after an unresolved required obligation. If the
+supervisor also dies, inspection reports the last durable milestone and UNKNOWN;
+no guaranteed final receipt or historical exit-phase attribution is claimed.
+
+Normal provider timeout/cancellation, generation, repair and publication have
+separate safe dispositions. A child exit code alone does not prove the internal
+killer or send phase. Existing raw-free diagnostics and independent host STOP
+apply; host egress closure never waits for this publication work. Verification
+must distinguish a shared-deadline child kill, outer command kill, parent loss,
+ordinary transport return and history failure, with zero recovery replays.
 
 ## 5. Consequences
 

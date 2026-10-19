@@ -31,6 +31,10 @@ Every ADR is written using the following fixed structure:
 
 ## 2. ADR Registry & Dependency Index
 
+The autonomous-run extension in [ADR-016 section 4a](ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19)
+is PROPOSED (2026-10-19). Existing accepted sections retain their status; the
+new run ceiling and supervision contract are not accepted by publication or merge.
+
 ADR-001..008 are authored and ACCEPTED. ADR-009/011/013/015/016/017 R1 and the
 M1 enabling owner/sequencing contract were ACCEPTED by the product owner on
 2026-10-06 for the selected M1 lane only; no full-stage acceptance or seal is claimed.

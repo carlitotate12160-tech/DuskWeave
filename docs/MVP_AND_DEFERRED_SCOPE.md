@@ -43,6 +43,48 @@ engineering policy in [QUALITY_BAR.md](../QUALITY_BAR.md); no fixed PR count or 
 framework is selected. Profile details and current amendment acceptance/readiness are recorded in
 [ENGINEERING_STATE.md](ENGINEERING_STATE.md), not inferred from this scope confirmation.
 
+### 1.2 Autonomous campaign delivery order (owner direction, 2026-10-19)
+
+The operator supplies Mission, admitted seeds, scope/disclosure/ROE, exercise mode,
+window and finite budgets once. Routine acquisition, owner intake, reasoning,
+authorization, execution, feedback and history proceed without intermediate JSON
+editing, copied IDs, per-record approval or `approve`/`continue` input. Operator
+stop/withdrawal and scope changes remain explicit. DNS is the first admitted action
+used to demonstrate this campaign loop, not a replacement product or fixed strategy.
+
+| Outcome | Completion evidence / dependency |
+| --- | --- |
+| Resolve autonomous-run runtime contracts | Publish the bounded [run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19); its new exact text remains PROPOSED until owner acceptance. Preserve existing accepted sections and seals. |
+| Qualify execution prerequisites | Linux core/Broker and ADR-015 capture/exporter/host STOP, ADR-016 effect admission/accounting, ADR-017 real producer/consumer IPC. A running Docker/WSL installation alone is insufficient. Infrastructure delivery is labeled as such. |
+| First operational autonomous run | Mission → first LLM proposal → authorized DNS → owner-qualified Terrain → second LLM decision → durable history/inspect; no operator input between start and terminal receipt. A controlled fixture proves wiring; only fresh explicit authorization can qualify a live client run. |
+| Validation and adaptation | Admitted HTTPS validation in the same loop; new evidence materially changes or supports the next hypothesis/action with visible rationale. No forced DNS/HEAD/subdomain playbook. |
+| Complete cognitive M1 | CT, bounded synthesis/evolution, applicable campaign-local feedback and minimum report under the M1 contract. Two LLM calls or DNS/HEAD alone do not seal M1. |
+| After M1 | Bounded access/authorized credential validation through its owning accepted contracts and current permission. |
+
+Manual observation input remains optional with its original source label. Freeze
+one-use demo helper development; historical episodes and failures remain evidence,
+never reusable consent. No tracking-document family, fixed PR count, daemon,
+message bus, Tokio conversion or multi-crate rewrite is required.
+
+### 1.3 Audit disposition attached to these deliveries
+
+The numerical debt below is the retained baseline recorded in ENGINEERING_STATE,
+not a fresh complexity measurement or proof of a runtime defect.
+
+| Owner / trigger | Concrete work and closure evidence |
+| --- | --- |
+| Application/domain boundary; first cross-context runtime wiring | Add a CI-executed dependency check for the actual protected owner modules and inward adapter direction. Baseline allowed contracts pass; an injected forbidden infrastructure/sibling-implementation dependency fails, including alias/re-export and qualified-path cases. No blanket baseline allowlist. |
+| Terrain persistence; automatic issued-result intake | Repay `PgTerrainStore::record_dns` (24) and `load_existing` (17) cohesively to ≤7 per resulting function; include `read_current_claim` (10) if changed. Candidate-bound measurement plus real SQL tests must preserve source binding, atomicity, conflicts, role separation and commit-unknown. Renaming or forwarding helpers do not close debt. |
+| Application/Broker/transport; run supervision and inference integration | Persist safe phase/outcome evidence for admission, generation, conditional repair, termination and publication separately from acquisition/Terrain. Inject deadline/cancel/child-exit/history faults. A may-send marker never proves a send; hard parent loss cannot promise a final receipt. Recovery makes zero provider/DNS calls. |
+| Terrain/CLI/history; when the named function is changed | Retained debt: `inspect_dns` (9), `verify_mission_permission` (13), `TerrainReceipt::from_event` (10), `map_policy_reason` (10), `connect_qualified` (8), `run_record` (8), `command` (8), `EvaluationOutcome::as_str` (8), `record_terrain_history` (12), `inspect_terrain_history` (13), plus the ambiguous `m1_terrain_cli::command::<anonymous>` group. Preserve the ratchet; repay changed responsibility, leave untouched debt explicitly open. |
+
+Large files trigger ownership/cohesion review; size alone is not a God Object.
+Single-crate design, `#[path]`, alleged absence of threads/timeouts and alleged
+absence of schema isolation do not justify a rewrite: the latter claims were
+corrected by source inspection. Preserve existing thread/watchdog/I/O bounds and
+SQL owner/role isolation; qualify their actual behavior on the changed path.
+Do not turn all historical debt into a prerequisite for the first run.
+
 ## 2. Deferred development candidates
 
 Deferred means outside initial scope; evaluate means a possible direction, not a commitment to build it. Revisit using evidence and the stated trigger.
