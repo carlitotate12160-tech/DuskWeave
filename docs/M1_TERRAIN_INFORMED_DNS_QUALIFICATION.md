@@ -90,3 +90,93 @@ vulnerability, or access.
 
 Work review of F1 and F2. A repeated episode is a separate operator decision;
 this packet performs no retry.
+
+---
+
+## Code-Only Remediation & Qualification (`DW-FIX-M1-TERRAIN-QUALIFICATION` R3)
+
+The historical `LIVE_FAIL` episode (`dw_native_live_da649bfb0f34bf1d`) is
+preserved unchanged. `DW-FIX-M1-TERRAIN-QUALIFICATION` (R3) repairs the
+reproducible code and tooling defects above using deterministic synthetic
+fixtures, the real restricted PostgreSQL database, and an injected provider,
+with zero external DNS queries or live provider calls:
+
+1. **Prior audit measurements vs R3 lossless deduplication and last-premise floor (`src/m1_context.rs`)**:
+   - Prior audit measurements established that reconstructing the historical
+     2-limitation claim (`cache_remaining_ttl`, `single_vantage_only`) added
+     835 bytes (799-byte reference + 36-byte linkage) to the 3264-byte base
+     pack for `4099` UTF-8 bytes against `4096` (while a 1-limitation fixture
+     fit at `4081` bytes).
+   - `m1_context::prepare` now omits the 4× repeated per-entry
+     `reason: "not_loaded_by_this_profile"` on `foothold_graph`,
+     `attack_path_view`, `objective_state`, and `campaign_trajectory` and
+     replaces the three duplicated `pending_unknown` strings with
+     `["other_owner_views_not_loaded_by_profile"]` (saving 200 UTF-8 bytes
+     while preserving all six owner entries, timestamps, Terrain unavailable
+     reasons, operator premise metadata, and capacity
+     `reservation_granted = false` / `shared_call_clock = "not_started"`).
+   - **Last-premise sufficiency policy**: when the validated,
+     disclosure-permitted loaded Terrain view has at least one fresh usable
+     `Observed` claim for the originally selected candidate prefix under
+     consent, successful preparation must retain at least one such claim, its
+     linked candidate, its pack reference, and its `TerrainDependency`. Byte
+     fitting drops optional unlinked operator candidates first and may omit
+     surplus claims, but fails closed with
+     `Fail::State("context_bytes_insufficient")` rather than dropping the final
+     supported premise (preserving `context_size_deferred` when no eligible
+     claim exists and mandatory metadata itself cannot fit).
+   - **Measured R3 capacity and bindings** (`tests/support/m1_terrain_capacity.rs`):
+     - Historical 2-limitation shape: `P = 3899` bytes (`197`-byte margin under
+       `4096`), `configuration = 5462` bytes (`10922`-byte margin under
+       `16384`), generation `body = 8891` bytes (`7493`-byte margin), 7-code
+       repair `body = 9111` bytes (`7273`-byte margin; `repair_bytes = 147`
+       under `2048`).
+     - All 8 routing-eligible `DnsLimitation` subsets fit `4096` (`P <= 3932`
+       bytes, margin `164` bytes).
+     - Combined worst-case numeric-width boundaries at PostgreSQL `timestamptz`
+       max epoch (`9_224_318_015_999`, 13 digits), `i64::MAX` epoch and
+       5-dimension campaign capacity, `300` s uncertainty, `86400` s TTL, 3
+       limitations, `medium` priority, and 64 supplied candidates:
+       `P = 4075` bytes (`21`-byte margin; generation `body = 9069`, repair
+       `body = 9289`) at intake max `claim_revision = 10001`, and `P = 4094`
+       bytes (`2`-byte margin; generation `body = 9088`, repair `body = 9308`)
+       at pure-view `u32::MAX` `claim_revision` and `omitted_by_claim_limit`.
+   - **Native zero-send floor disposition** (`tests/support/m1_terrain_live_contract.rs`,
+     `tests/m1_terrain_context_cli.rs`): under smaller consent (`3500` bytes),
+     `command_with("m1-infer", ...)` fails at `m1_context::prepare` with
+     `Fail::State("context_bytes_insufficient")`, preserves the allocated
+     decision identity in `execution.native_input_bindings`, and produces zero
+     provider prepare/call invocations, zero `inference_reservations`, zero
+     `inference_calls`, zero `reasoning_decisions`/outbox/history/closures, and
+     zero quota charge; `m1-context-prepare` emits its `deferred` receipt with
+     `pack_utf8: null`, all false grant flags, and
+     `error=context_bytes_insufficient`.
+2. **Reserved vs actual call verification (`tests/support/m1_terrain_live.py`)**:
+   - Reads the scoped initial `execution.inference_reservations` row
+     (`record_revision = 1`, `kind = 'reserved_not_sent'`), validates canonical
+     distinct non-nil UUIDs `[generation_call_id, repair_call_id]`, compares
+     receipt `call_ids` to that exact ordered pair without sorting,
+     independently verifies actual `execution.inference_calls` rows (generation
+     required, repair optional, no duplicates or foreign IDs), and reports
+     `reserved_call_ids` and `actual_call_ids` separately.
+   - Real Rust-to-Python contract regression
+     (`terrain_connected_command_with_receipt_and_sql_pass_python_verifier`)
+     passes the actual `command_with` receipts and PostgreSQL rows over stdin to
+     the Python verifier and confirms `LIVE_PASS` for 2 reserved IDs / 1 actual
+     generation row plus rejection of role-reversed `call_ids`.
+3. **Setup before observation ageing (`--await-reviewed-observation`)**:
+   - Validates static inputs while requiring observation initially absent,
+     provisions the fixture and registers Mission once, emits flushed safe
+     `READY` with no open SQL transaction or campaign lock, reads one bounded
+     `continue` line (`<= 16` UTF-8 bytes), verifies static snapshots unchanged,
+     admits the observation preserving original timestamps, and requires
+     `remaining_lifetime_seconds` (`valid_until - now`) to exceed the consented
+     `decision_wall_time_ms` before invoking `m1-infer`.
+   - Note on the historical episode timing: the observation was 56 seconds old
+     when Terrain was recorded (~3 seconds of freshness remaining before
+     ~8.175 seconds of provider latency); the portions of that 56-second
+     interval were not decomposed and are not attributed solely to provisioning.
+4. **Limits**: this remediation is code-only qualification. It does not
+   reclassify Episode `20261018-1` as `LIVE_PASS`, execute a new live DNS or
+   provider episode, or qualify DuskWeave target acquisition, adaptation,
+   cognitive MVP completion, or an M1 seal.

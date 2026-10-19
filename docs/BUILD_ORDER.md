@@ -45,10 +45,13 @@ Current seal:
 
 Current engineering state:
 
-Active work: one bounded Terrain-informed live qualification episode at merged
-BASE `fd73340c60c84d3fff49e459141a3b4f378631fd` (PR #66 merged 2026-10-18;
-exact-master CI 39134848423 SUCCESS) — outcome LIVE_FAIL, a truthful completed
-attempt with no retry; findings and next action in
+Active delivery: `demo/m1-terrain-informed` ([PR #67](https://github.com/carlitotate12160-tech/DuskWeave/pull/67),
+`DW-FIX-M1-TERRAIN-QUALIFICATION` R3) at merged BASE
+`fd73340c60c84d3fff49e459141a3b4f378631fd` (PR #66 merged 2026-10-18;
+exact-master CI 39134848423 SUCCESS) — preserves the historical `LIVE_FAIL`
+episode and delivers code-only qualification for ContextPack deduplication and
+the `context_bytes_insufficient` last-premise floor, reserved-vs-actual call
+verification, and `--await-reviewed-observation` lifecycle; see
 [M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md](M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action).
 

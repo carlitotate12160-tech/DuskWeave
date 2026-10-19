@@ -457,3 +457,58 @@ fn terrain_inference_repair_and_cli_inspect_recover_preserve_exact_pack_and_dete
 
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn cli_context_prepare_floor_emits_deferred_receipt_with_context_bytes_insufficient() {
+    let _g = terrain_support::db();
+    let (e, c) = db_support::scope(0xb103);
+    let now = terrain_support::policy_support::now();
+    let mut raw_reg = tc_support::combined_registration_json(e, c, now, true);
+    raw_reg["m1_inference_permission"]["operation_limits"]["context_bytes"] = json!(3500);
+    let _ = terrain_support::policy_support::register(&raw_reg);
+    let _ =
+        tc_support::record_dns_accepted(e, c, &terrain_support::dns_request_json(e, c, now - 10));
+    let (req_val, _) = tc_support::context_request_for(
+        e,
+        c,
+        &raw_reg,
+        vec![(Uuid::from_u128(0x21), Priority::High)],
+    );
+    let path = write_temp_input(&req_val, "prepare_floor");
+    let dsn = std::env::var("DW_NATIVE_PREPARE_DATABASE_URL").unwrap();
+    let out = terrain_support::policy_support::cli(
+        &["m1-context-prepare", "--input", path.to_str().unwrap()],
+        Some(&dsn),
+    );
+    let _ = std::fs::remove_file(path);
+    assert!(!out.status.success() && out.stderr.is_empty());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(
+        (lines.len(), lines[1]),
+        (2, "error=context_bytes_insufficient")
+    );
+    let r: Value = serde_json::from_str(lines[0]).unwrap();
+    assert_eq!(
+        (r["kind"].as_str(), r["outcome"].as_str()),
+        (Some("m1_context_preparation_receipt_v1"), Some("deferred"))
+    );
+    assert!(r["pack_utf8"].is_null());
+    assert!(
+        !Uuid::parse_str(r["decision_id"].as_str().unwrap())
+            .unwrap()
+            .is_nil()
+    );
+    let false_flags = [
+        "current_permission",
+        "dispatch_granted",
+        "provider_qualified",
+        "acquisition_qualified",
+        "send_qualified",
+        "reservation_granted",
+        "decision_published",
+        "history_completed",
+        "request_binding_qualified",
+    ];
+    assert!(false_flags.iter().all(|f| r[*f] == false));
+}

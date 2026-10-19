@@ -119,6 +119,7 @@ fn shrink_step(
     cands: &mut Vec<Candidate>,
     kept: &[TerrainClaimSummary],
     claim_count: &mut usize,
+    min_claims: usize,
 ) -> bool {
     if let Some(idx) = cands
         .iter()
@@ -127,18 +128,14 @@ fn shrink_step(
         cands.remove(idx);
         return true;
     }
-    if *claim_count > 0 {
+    if *claim_count > min_claims {
         *claim_count -= 1;
-        return true;
-    }
-    if !cands.is_empty() {
-        cands.pop();
         return true;
     }
     false
 }
 
-// Bounded optional-candidate and Terrain-claim omission: preserve required metadata even at zero.
+// Bounded optional-candidate and surplus-claim omission; never drop the last eligible premise.
 fn fit_pack(
     basis: &ContextBasis,
     disclosure: &ContextDisclosure,
@@ -146,8 +143,9 @@ fn fit_pack(
     op: OperationId,
     terrain: &TerrainContextState,
 ) -> Res<PreparedContext> {
-    let all_claims = eligible_claims(terrain);
     let mut cands = q.candidates[..q.candidates.len().min(disclosure.candidates)].to_vec();
+    let all_claims = kept_claims(&eligible_claims(terrain), &cands, usize::MAX);
+    let min_claims = usize::from(!all_claims.is_empty());
     let mut claim_count = all_claims.len();
     loop {
         let kept = kept_claims(&all_claims, &cands, claim_count);
@@ -170,8 +168,9 @@ fn fit_pack(
                 terrain_dependencies: deps,
             });
         }
-        if !shrink_step(&mut cands, &kept, &mut claim_count) {
-            return Err(Fail::State("context_size_deferred"));
+        if !shrink_step(&mut cands, &kept, &mut claim_count, min_claims) {
+            let code = ["context_size_deferred", "context_bytes_insufficient"][min_claims];
+            return Err(Fail::State(code));
         }
     }
 }
@@ -405,8 +404,7 @@ fn pack(
                 "availability": "unavailable",
                 "revision": null,
                 "frontier": null,
-                "evaluated_at": b.evaluated_at,
-                "reason": "not_loaded_by_this_profile"
+                "evaluated_at": b.evaluated_at
             })
         }),
     );
@@ -443,11 +441,7 @@ fn pack(
             "selection": selection,
             "manifests": "catalog_unavailable"
         },
-        "pending_unknown": [
-            "environmental_views_unavailable",
-            "operator_premises_unverified",
-            "send_admission_pending"
-        ],
+        "pending_unknown": ["other_owner_views_not_loaded_by_profile"],
         "manifests": [],
         "remaining_capacity": {
             "snapshot_epoch": b.capacity.epoch,
