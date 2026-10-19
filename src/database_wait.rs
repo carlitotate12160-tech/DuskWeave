@@ -271,3 +271,7 @@ pub(super) fn connect_owner(
 #[cfg(test)]
 #[path = "../tests/faults/database_wait_faults.rs"]
 mod fault_tests;
+
+#[cfg(test)]
+#[path = "../tests/faults/m1_command_deadline.rs"]
+mod m1_command_deadline;

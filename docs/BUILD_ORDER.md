@@ -45,19 +45,26 @@ Current seal:
 
 Current engineering state:
 
-Active delivery: `demo/m1-terrain-retest-20261019`
-(`DW-DEMO-M1-TERRAIN-RETEST-20261019` + `DW-DEMO-M1-HANDOFF-QUALIFICATION-RETEST`,
-documentation-only) at merged BASE `aadd5401a332a0b43b028c0a94eec2e92cfe59f1`
-(PR #67 merged 2026-10-19; exact-master CI 39194044884 SUCCESS) — records
-retest episode `20261019-1` **LIVE_BLOCKED** (`operator_continue_eof`), the
-stdin transport qualification (IDE exec `PROBE_BLOCKED`; operator foreground
-terminal `PROBE_ACK` PASS), and retest episode `20261019-2` **LIVE_BLOCKED**
-(`terrain_freshness_insufficient`: `continue` delivered, operator-reviewed DNS
-admitted, Terrain claim accepted fresh/observed, then 11 s < 20 s margin —
-zero provider calls), while preserving the historical `LIVE_FAIL` episode and
-the merged R3 remediation (ContextPack deduplication,
-`context_bytes_insufficient` last-premise floor, reserved-vs-actual call
-verification, `--await-reviewed-observation` lifecycle); see
+Active delivery: `demo/m1-one-console-20261019`
+(`DW-DEMO-M1-ONE-CONSOLE-REVIEW-RETEST` + `DW-DIAGNOSE-M1-SCHEMA-DEADLINE`,
+documentation plus test-only diagnostics) at merged BASE
+`ff9c3703c375990e4a55db9e68527e4dcd34c96f` (PR #68 merged 2026-10-19;
+exact-master CI 39200545621 SUCCESS) — records the one-console review helper
+qualification (14 synthetic tests PASS; foreground rehearsal `REHEARSAL_PASS`
+at 9.156 s) and episode `20261019-3` **LIVE_FAIL**: measured handoff 12.844 s,
+Terrain claim accepted fresh/`observed` (47 s remaining), `m1-infer` ran with
+`terrain_0` in sent P and reserved==actual call IDs; generation `completed`
+(10084 ms, real provider usage; admission `Repairable`/`proposal_shape`) but
+the inference process exited nonzero, leaving the repair call
+`may_send_uncertain` without final accounting — historical send-path entry
+and exact termination phase UNVERIFIED; separately, the offline
+real-transport/synthetic-Broker experiment demonstrated the shared 20 s
+`decision_wall_time_ms` deadline mechanism (`exit(124)` mid-repair-send,
+finding F3), which does not establish the historical send or PostgreSQL
+durability; preserves
+the historical
+`LIVE_FAIL` episode, the `20261019-1`/`20261019-2` **LIVE_BLOCKED** records,
+and the merged R3 remediation; see
 [M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md](M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action).
 

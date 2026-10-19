@@ -260,11 +260,15 @@ qualified foreground terminal at BASE `aadd5401a332a0b43b028c0a94eec2e92cfe59f1`
 | Provider | none — blocked in preflight before `m1-infer`; no attempt, so no possible send |
 | Outcome | `LIVE_BLOCKED`, failure `terrain_freshness_insufficient`; `remaining_lifetime_seconds` 11 < 20 required; counts unknown (`null`, not measured zero) |
 
-Review, observation write, and the `continue` handoff consumed ~48 s of the
-observation's 60-second capped lifetime (`valid_until = perceived_at +
-min(lowest_ttl, 60)`), leaving 11 s against the required `> 20 s` inference
-window. Per packet the margin loss is reported, not rescued: no recollection,
-timestamp rewrite, validity extension, or second runner invocation.
+The combined post-response interval — DNS response receipt through review,
+observation write, `continue` handoff, and Terrain intake evaluation — was
+~48 s of the observation's 60-second capped lifetime (`valid_until =
+perceived_at + min(lowest_ttl, 60)`), leaving 11 s against the required
+`> 20 s` inference window. The individual review/write/handoff/intake
+durations were not separately measured; the interval is the combined
+post-response span, not human review time alone. Per packet the margin loss is
+reported, not rescued: no recollection, timestamp rewrite, validity extension,
+or second runner invocation.
 `dispatch_granted = false`, `automatic_retry = false`, `target_activity = false`;
 the fixture and registered Mission are retained as evidence, and all prior
 reports/databases remain unchanged.
@@ -280,3 +284,203 @@ or M1 seal.
 Any further episode needs a review-to-continue path inside the freshness
 margin (for example a faster operator review loop or a separately authorized
 bounded handoff) plus fresh operator consent; this packet performs no retry.
+
+---
+
+## One-console review helper — 20261019 (synthetic qualification)
+
+To remove avoidable post-DNS agent/file/terminal round trips while preserving
+actual operator review, a one-use local helper `one_console.py` was built
+outside the repository (external evidence dir; not committed): the foreground
+parent spawns the unchanged `tests/support/m1_terrain_live.py` with
+`stdin=PIPE` held open, performs the bounded collection, displays the safe
+observation projection, requires one explicit `approve` token, then
+automatically writes that exact approved observation with exclusive creation
+and flushes `continue` into the same runner pipe. EOF, rejection, invalid
+input, timeout, pre-existing file, write failure, or any safety check failure
+sends no `continue` and closes the owned child so it can record BLOCKED.
+
+- 14 synthetic unittest cases against a real subprocess pipe
+  (`rehearsal_child.py`): READY-before-collection, file-absent-before-review,
+  `continue` only after a complete approved file, rejection/EOF/invalid/
+  timeout/write-failure/existing-observation paths, exact field/TTL/timestamp
+  preservation, a sensitive sentinel never reaching report surfaces, and
+  no-sleep 30 s budget/expiry boundaries — all PASS.
+- One representative foreground rehearsal with actual operator review of a
+  clearly synthetic observation (documentation-only `example.invalid` data; no
+  DB/DNS/provider/credentials): `REHEARSAL_PASS`, measured
+  receipt→approval→write→continue flush = **9.156 s** ≤ 30 s target;
+  `REHEARSAL_ACK` verified by the child. Evidence:
+  `D:/DuskWeave-build/rust-1.94.1/reports/dw-demo-m1-terrain-informed/one-console-20261019/rehearsal-proof.json`
+  (local). The rehearsal proves the human/controller handoff only — not
+  production DB/provider latency or a live outcome.
+- Exact-master CI run 39200545621 at BASE `ff9c370` reached SUCCESS before any
+  live invocation.
+
+## Episode 20261019-3 — LIVE_FAIL (truthful completed attempt)
+
+Same bounded lane at BASE `ff9c3703c375990e4a55db9e68527e4dcd34c96f`
+(origin/master after the PR #68 merge on 2026-10-19T04:39:13Z; branch
+`demo/m1-one-console-20261019`), executed through the qualified foreground
+console helper.
+
+| Check | Result |
+| --- | --- |
+| Tested commit | `ff9c3703c375990e4a55db9e68527e4dcd34c96f` (origin/master = BASE; CI 39200545621 SUCCESS) |
+| Binary SHA-256 | `23ed9b0f7b1414a455e0b2ffc96a6ca2c1966319bfeeacbb3315f2ee2555dab4` |
+| Setup | `dwpg-r3` requalified (pinned PostgreSQL 17 image, loopback 5432, running); fresh fixture `dw_native_live_43b4dc45f93d682e`; Mission registration accepted once (`a3f7426c-234e-4786-889c-a806bde7d1cf`); `READY` emitted; observation absent until approved |
+| Handoff | PASS and measured — DNS response receipt → operator `approve` → complete `observation.json` write → `continue` flush = **12.844 s** ≤ 30 s target (helper `timing-summary.json`); the ~48 s combined post-response interval of episode `20261019-2` was eliminated |
+| Operator DNS | exactly one UDP `A/IN` datagram to the declared resolver, 3 s timeout, no retry/fallback/follow-up; `noerror`, complete, 1 answer, TTL 3600 s, `perceived_at` 1792385928, `uncertainty_seconds` 1; operator reviewed the displayed fields and typed `approve` |
+| Terrain intake | accepted — `observed`/`fresh`, `claim_revision` 1, no integrity hold, `evaluated_at` 1792385941, `valid_until` 1792385988 (60 s cap), `temporal_frontier` 1792385928, `remaining_lifetime_seconds` 47 > 20 required; full original lineage (operation `8162a737`, event `7af2a79d`, observation `3b99631d`, material `4b0ad5ca`, evaluation `983c8750`, claim `fcce48ce`) |
+| Inference | `m1-infer --operation new` ran once; decision `05be8971-0735-43b9-88ac-ec6dd39c6e07`; P 3899 bytes, `pack_sha256` `7b159b65…`; `terrain_reference_ids` `["terrain_0"]` carried in the original sent P; `reserved_call_ids` == `actual_call_ids` exactly (`4fab9f56…`, `a2ec3b8a…`); `generation_repair_pack_equal` true; 1 reservation record / 2 reserved calls; `extra_call_records` 0, `extra_reservation_records` 0 |
+| Provider | generation call `4fab9f56…` **completed** (usage: input 2653 / output 2012 / reasoning 1552 tokens, `wall_time_ms` 10084, requested and reported model `deepseek-flash`, `response_bytes` 15943); admission `Repairable`, code **`proposal_shape`** (retained repair body); repair call `a2ec3b8a…` remained **`may_send_uncertain`**, usage NULL — the inference process exited nonzero before final accounting; whether the repair entered `release_into`/`p.call`, performed a send, or reached the provider is unverified (honest uncertain accounting; ADR-016 permits a crash between marker commit and send) |
+| Durable completion | `decisions`/`outbox`/`history`/`closures` all 0 — no committed decision, no receipt; inspect + 2 recoveries all `pack_equal` true but `verified` false (`identity_invalid`: no committed decision identity) |
+| Outcome | `LIVE_FAIL` — failures `inference_exit`, `inference_receipt_absent`, `identity_invalid` ×3, `durable_completion_absent`; `dispatch_granted` false, `automatic_retry` false, `target_activity` false |
+
+## Finding F3 — `inference_exit` (repair persisted `may_send_uncertain` after a nonzero inference exit; send attribution unverified; shared deadline is the leading hypothesis)
+
+### Facts (directly retained evidence)
+
+- The reservation's shared `decision_wall_time_ms = 20000` covers the
+  generation call AND the one permitted schema repair.
+- Generation call `4fab9f56…` is `completed` with usage `wall_time_ms` 10084 —
+  a ~10.1 s provider transfer inside the shared 20 s window (the transfer
+  figure is not the entire shared-clock duration); admission was `Repairable`
+  with code **`proposal_shape`** (the retained repair body carries
+  `{"repair_error_codes":["proposal_shape"]}` — the generation response did
+  not decode to the required proposal shape).
+- Repair call `a2ec3b8a…` passed `prepare`/`may_send` (row →
+  `may_send_uncertain`). Whether it entered `release_into`/`p.call`,
+  performed a network send, or reached the provider is **UNVERIFIED** —
+  ADR-016 permits a crash between marker commit and send. Its state never
+  reached `usage_unknown`, `failed_never_released`, or `completed`, and usage
+  is NULL: the process exited after the may-send marker committed and before
+  any post-send state transition.
+- `m1-infer` exited nonzero within the runner's 40 s timeout (no
+  `inference_timeout` recorded); the exit code itself was not retained in the
+  report. No receipt, no decision/outbox/history/closure rows.
+- The uncertain accounting is correct: whether the repair request reached the
+  provider is unknown — neither claimed nor denied.
+
+### Hypothesis (consistent with all evidence, not directly observed)
+
+The deadline watchdog in `src/m1_reasoning/transport.rs` (`Deadline::arm` →
+`std::process::exit(124)`) fires `process::exit` when the shared deadline
+elapses. With ~10.1 s consumed by generation, a repair response of comparable
+provider latency (~10 s) would still be in flight at deadline expiry, and the
+forced exit produces exactly the observed state (persisted
+`may_send_uncertain`, no receipt, nonzero exit). Alternative explanations
+(e.g., a transport-level abort) would ordinarily transition the row to
+`usage_unknown` or `failed_never_released`; a mid-call `process::exit`/fatal
+abort is the mechanism consistent with the persisted marker.
+
+### Offline diagnosis (DW-DIAGNOSE-M1-SCHEMA-DEADLINE, cycle 2 corrected)
+
+Evidence boundary, stated explicitly:
+
+- The historical episode's `may_send_uncertain` marker and missing final
+  accounting do **not** prove entry into `release_into`/`p.call`, a network
+  send, or provider receipt — ADR-016 permits a crash between marker commit
+  and send, and the live exit code and exact phase were not retained. The
+  historical termination phase and send attribution remain **UNVERIFIED**.
+- The offline harness drives the real `decision_attempt::decide` sequence
+  and the concrete libcurl transport, but through a **synthetic in-memory
+  Broker**: its markers and accounting callbacks are test observations, not
+  PostgreSQL durability. It does not reproduce production admission fences,
+  CLI startup, or actual decision publication, and does not prove the exact
+  durable ledger state.
+- The fixture's connection counter increments at TCP accept — it records
+  **accepted loopback connections**, not complete HTTP request delivery.
+- Fast synthetic generation plus a deliberately stalled repair demonstrates
+  deadline **enforcement**; it does not establish realistic
+  generation+repair latency or select a deployment ceiling. The live 10084
+  ms transfer figure is a provider transfer time, not the entire
+  shared-clock duration.
+
+Findings within that boundary:
+
+- **Schema contract**: the emitted provider schema (real `request::bind`
+  over a `m1_context::prepare` pack) vs the local decoder, 27 synthetic
+  cases via `jsonschema` 4.26.0 (Draft 2020-12): 11 schema-valid (8
+  accepted + 3 refused by stricter native bounds) and 16 schema-invalid (2
+  locally accepted nullable-key omissions + 11 repairable + 3 rejected).
+  Zero expectation disagreements demonstrates agreement on the **tested
+  matrix only**, not complete schema/decoder equivalence; no supported-shape
+  defect was demonstrated and the stricter native checks are preserved.
+  (The cycle-1 report's earlier 7+4 / 11+5 subtotals were miscounted; these
+  values derive from the retained `schema-result.json`.)
+- **Deadline mechanism**: the same deadline watchdog hard exit is
+  demonstrated through the real transport — the child exited 124 near the
+  shared bound (scaled 1526 ms at a 1500 ms deadline; unscaled 20047 ms at
+  a 20000 ms deadline) after `may_send_repair`/`release_enter` checkpoints,
+  with the fixture recording 2 accepted connections. The graceful path is
+  also bounded: an exit-0 outcome requires a terminal
+  `rejected:provider_transport_unknown` record inside the clock window with
+  the uncertain accounting callback, and oracle regressions reject a fast
+  accepted repair, an early non-deadline failure, and a missing terminal
+  record. Controls: an expired shared deadline before release yields
+  `NeverReleased` with no second connection, and a disarmed deadline never
+  exits.
+- **Attribution limit**: the `database_wait` command monitor also produces
+  exit 124 with no transport involvement, so the code alone cannot
+  attribute the historical killer — the reproduction proves the mechanism
+  can produce a consistent observation shape, not that it fired in episode
+  `20261019-3`.
+- Reports: `.../dw-diagnose-m1-schema-deadline/cycle-1` (retained) and
+  `.../cycle-2` (corrected oracle + regressions).
+
+Engineering disposition: this evidence does not establish a contract
+violation requiring graceful cancellation, and authorizes no budget
+increase. The shared 20 s inference bound, the outer 30 s command bound,
+and the no-repair-clock-reset rule are preserved; a fresh repair window is
+not an available fix under current ADR-016. Any later policy amendment must
+be separately resolved before implementation.
+
+### Bounded finding for Work
+
+The reproduction demonstrates deadline enforcement through the real
+transport; it does not measure realistic generation+repair latency or
+justify a ceiling change on one sample. Within current ADR-016 semantics
+the engineering disposition stands: bounds preserved, no repair clock
+reset, no demonstrated contract violation. If Work later resolves a policy
+amendment, candidate corrections could include a raised
+`shared_wall_time_ms` or graceful deadline expiry that settles accounting
+before process end; a fresh repair window is not among the available fixes
+under the current contract. All of these remain Work/engineering decisions,
+not in-demo patches.
+
+## Reasoning assessment (20261019-3)
+
+No admitted proposal exists: the decision was never durably committed, so
+`proposal_cites_terrain` is UNVERIFIED, not refuted. Notably, the original sent
+P did carry `terrain_reference_ids` `["terrain_0"]` — the premise-retention
+fix from PR #67 held in live use — but whether the model's output would have
+cited it cannot be assessed from an uncommitted generation.
+
+## Evidence and limits (20261019-3)
+
+- Evidence kind `real_operator_dns`; runner report (local):
+  `D:/DuskWeave-build/rust-1.94.1/reports/dw-demo-m1-terrain-informed/episode-20261019-3/result/terrain_live_qualification.json`;
+  helper `timing-summary.json` alongside; disposable fixture
+  `dw_native_live_43b4dc45f93d682e` retained on owned `dwpg-r3`.
+- After the `LIVE_FAIL`, one accidental second helper `live` invocation was
+  attempted; the unchanged runner's report-path collision guard stopped it
+  before any fixture, registration, DNS, or provider activity, and the helper's
+  exclusive write refused to overwrite `timing-summary.json`. No retry effect
+  occurred; all episode evidence derives from the single authorized
+  invocation.
+- The provider key was read only by the inference child; no raw provider
+  output, private reasoning, or DNS bytes are retained in the report.
+- Established live for the first time: real Terrain-informed ContextPack send
+  with premise retained (`terrain_0` in P), reserved==actual call identity, a
+  completed provider generation with recorded usage, and correct uncertain
+  accounting for an interrupted repair. Still unqualified: committed
+  decision/receipt, admitted proposal, citation, adaptation, acquisition,
+  access, cognitive MVP completion, M1 seal.
+
+### Next action
+
+Work review of F3 (shared decision wall-time vs generation+repair latency).
+Any further live episode is a separate operator decision with fresh consent
+and, per the finding, likely needs the wall-budget decision resolved; this
+packet performs no retry.
