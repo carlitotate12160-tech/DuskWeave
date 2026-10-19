@@ -45,13 +45,19 @@ Current seal:
 
 Current engineering state:
 
-Active delivery: `demo/m1-terrain-informed` ([PR #67](https://github.com/carlitotate12160-tech/DuskWeave/pull/67),
-`DW-FIX-M1-TERRAIN-QUALIFICATION` R3) at merged BASE
-`fd73340c60c84d3fff49e459141a3b4f378631fd` (PR #66 merged 2026-10-18;
-exact-master CI 39134848423 SUCCESS) — preserves the historical `LIVE_FAIL`
-episode and delivers code-only qualification for ContextPack deduplication and
-the `context_bytes_insufficient` last-premise floor, reserved-vs-actual call
-verification, and `--await-reviewed-observation` lifecycle; see
+Active delivery: `demo/m1-terrain-retest-20261019`
+(`DW-DEMO-M1-TERRAIN-RETEST-20261019` + `DW-DEMO-M1-HANDOFF-QUALIFICATION-RETEST`,
+documentation-only) at merged BASE `aadd5401a332a0b43b028c0a94eec2e92cfe59f1`
+(PR #67 merged 2026-10-19; exact-master CI 39194044884 SUCCESS) — records
+retest episode `20261019-1` **LIVE_BLOCKED** (`operator_continue_eof`), the
+stdin transport qualification (IDE exec `PROBE_BLOCKED`; operator foreground
+terminal `PROBE_ACK` PASS), and retest episode `20261019-2` **LIVE_BLOCKED**
+(`terrain_freshness_insufficient`: `continue` delivered, operator-reviewed DNS
+admitted, Terrain claim accepted fresh/observed, then 11 s < 20 s margin —
+zero provider calls), while preserving the historical `LIVE_FAIL` episode and
+the merged R3 remediation (ContextPack deduplication,
+`context_bytes_insufficient` last-premise floor, reserved-vs-actual call
+verification, `--await-reviewed-observation` lifecycle); see
 [M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md](M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md)
 and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action).
 

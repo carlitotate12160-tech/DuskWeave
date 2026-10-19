@@ -180,3 +180,103 @@ with zero external DNS queries or live provider calls:
    reclassify Episode `20261018-1` as `LIVE_PASS`, execute a new live DNS or
    provider episode, or qualify DuskWeave target acquisition, adaptation,
    cognitive MVP completion, or an M1 seal.
+
+---
+
+## Episode 20261019-1 — LIVE_BLOCKED (truthful completed attempt)
+
+Bounded DEMO retest at BASE `aadd5401a332a0b43b028c0a94eec2e92cfe59f1`
+(origin/master after the PR #67 merge; `demo/m1-terrain-retest-20261019`) of the
+same operator-reviewed DNS -> Terrain intake -> immutable ContextPack ->
+approved provider -> fresh-process inspect/two recoveries lane for the
+operator-selected asset domain.
+
+| Check | Result |
+| --- | --- |
+| Tested commit | `aadd5401a332a0b43b028c0a94eec2e92cfe59f1` (origin/master = BASE) |
+| Binary SHA-256 | `9129c7d9a6a82855e21c3198181143c7c58ca7074201e67f2ac86ac914995023` |
+| Setup | `dwpg-r3` requalified (pinned PostgreSQL 17 image, loopback 5432, running); `cargo build --locked --bin duskweave` on toolchain 1.94.1, shared ordinary target; 70 deterministic tests PASS (`test_m1_terrain_live` 39, `test_m1_terrain_live_contract` 5, `test_m1_native_helpers` 26); fresh fixture `dw_native_live_466203c294c1c597`; Mission registration accepted once (`registration_operation_id` `47fc6f6d-f24a-4ce1-ad85-1ee9afe00a47`); safe `READY` emitted with no open transaction or campaign lock |
+| Operator DNS | none — the observation phase was never reached; zero datagrams sent |
+| Provider | none — `m1-infer` was never invoked; no attempt, so no possible send |
+| Outcome | `LIVE_BLOCKED`, failure `operator_continue_eof`; counts unknown (`null`, not measured zero) |
+
+The runner's single bounded stdin `continue` read for the reviewed-observation
+handoff received EOF after READY: this execution environment does not retain an
+interactive writable stdin for a backgrounded runner process. Per packet the
+blocker is reported before DNS; no setup-after-observation substitution was
+used, `inputs/observation.json` was never created, the static inputs remained
+byte-frozen, and no second runner invocation was permitted or attempted.
+`dispatch_granted = false`, `automatic_retry = false`, `target_activity = false`
+(the report's flag covers the platform's own activity; no operator DNS query
+was made in this episode). The fixture database and the registered Mission are
+retained as evidence; `dw_native_live_da649bfb0f34bf1d` and the historical
+`LIVE_FAIL` record remain unchanged.
+
+No mechanical-path, freshness, or reasoning conclusion is established: Terrain
+intake of a new observation, connected inference, proposal citation, and the
+premise-retention and reserved-vs-actual identity checks are unqualified live
+for this episode. This is operator_input admission tooling only — no
+DuskWeave acquisition, adaptation loop, target contact, access, cognitive MVP
+completion, or M1 seal.
+
+### Next action
+
+A further live episode requires an execution environment able to retain
+interactive stdin for the runner's `continue` handoff (or a separately
+authorized bounded handoff mechanism) and remains a fresh operator decision
+with current consent; this packet performs no retry.
+
+---
+
+## Stdin transport qualification — 20261019 (pre-episode proof)
+
+Before any new live invocation the stdin transport was qualified with the
+packet-supplied `stdin-probe.py` (no fixture, database, DNS, credential,
+provider, or production CLI involvement):
+
+| Mechanism | Result |
+| --- | --- |
+| IDE agent exec tool (persistent shell session, non-PTY) | `PROBE_BLOCKED` — `readline` hit `stdin_eof` at launch (pid 27156); a later interaction cannot deliver input |
+| Operator foreground interactive PowerShell | `PROBE_ACK` — `READY` (pid 16496), process stayed alive on `readline`, operator later typed the printed challenge, exit 0 |
+
+Qualified transport: **operator foreground terminal**. Evidence:
+`D:/DuskWeave-build/rust-1.94.1/reports/dw-demo-m1-terrain-informed/transport-probe-20261019/transport-proof.json`
+(local). Two earlier same-console probe invocations ended `invalid_input`
+(operator typed placeholder/a space) while still demonstrating stdin delivery.
+
+## Episode 20261019-2 — LIVE_BLOCKED (truthful completed attempt)
+
+Same bounded lane for the operator-selected asset domain, executed through the
+qualified foreground terminal at BASE `aadd5401a332a0b43b028c0a94eec2e92cfe59f1`.
+
+| Check | Result |
+| --- | --- |
+| Tested commit | `aadd5401a332a0b43b028c0a94eec2e92cfe59f1` (origin/master = BASE) |
+| Binary SHA-256 | `9129c7d9a6a82855e21c3198181143c7c58ca7074201e67f2ac86ac914995023` (unchanged BASE binary) |
+| Setup | `dwpg-r3` requalified (pinned PostgreSQL 17 image, loopback 5432, running); fresh fixture `dw_native_live_ddc8eab9e28534f0`; Mission registration accepted once (`60f2ae07-849d-4f71-99b5-65b4764765f9`); `READY` emitted; runner alive with qualified stdin |
+| Handoff | PASS — `continue` delivered through the qualified terminal; `operator_continue_eof` did not recur |
+| Operator DNS | exactly one UDP `A/IN` datagram to the declared resolver, 3 s timeout, no retry/fallback/follow-up; `noerror`, complete, 1 answer, TTL 1799 s, RTT ~78 ms, `uncertainty_seconds` 1; operator reviewed the projected fields and approved |
+| Terrain intake | accepted — `observed`/`fresh`, `claim_revision` 1, no integrity hold, `perceived_at` 1792383493, `valid_until` 1792383553, `temporal_frontier` 1792383493, `evaluated_at` 1792383541; full original lineage (operation `41bdf8f3`, event `05806b06`, observation `7a0046d6`, material `f4f61076`, evaluation `fa0abae6`, claim `b7e3e2c2`) |
+| Provider | none — blocked in preflight before `m1-infer`; no attempt, so no possible send |
+| Outcome | `LIVE_BLOCKED`, failure `terrain_freshness_insufficient`; `remaining_lifetime_seconds` 11 < 20 required; counts unknown (`null`, not measured zero) |
+
+Review, observation write, and the `continue` handoff consumed ~48 s of the
+observation's 60-second capped lifetime (`valid_until = perceived_at +
+min(lowest_ttl, 60)`), leaving 11 s against the required `> 20 s` inference
+window. Per packet the margin loss is reported, not rescued: no recollection,
+timestamp rewrite, validity extension, or second runner invocation.
+`dispatch_granted = false`, `automatic_retry = false`, `target_activity = false`;
+the fixture and registered Mission are retained as evidence, and all prior
+reports/databases remain unchanged.
+
+Mechanical proof advanced but the loop is still unqualified live: the qualified
+stdin transport and real Terrain intake of a current observation now pass;
+ContextPack send, connected inference, proposal citation, and recoveries remain
+unestablished. No acquisition, adaptation, access, cognitive MVP completion,
+or M1 seal.
+
+### Next action
+
+Any further episode needs a review-to-continue path inside the freshness
+margin (for example a faster operator review loop or a separately authorized
+bounded handoff) plus fresh operator consent; this packet performs no retry.
