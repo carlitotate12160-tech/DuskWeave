@@ -696,7 +696,38 @@ history dump. Select an 8192-byte context ceiling for this version, not the
 legacy 4096 or an assumed-sufficient 6144. The following DESIGN serialization
 measurements bind concrete synthetic examples, including the complete escaped
 pack, schema, instructions and repair-code request; they are not Rust runtime
-qualification or an exhaustive proof for every legal combination.
+qualification or an exhaustive proof for every legal combination. Each case is
+an independent capacity example: no committed-predecessor field was produced by
+executing another case, and together they are not evidence of a linked
+two-decision execution. Linked deterministic-fixture producer/consumer
+qualification through the real `m1-run` path remains a requirement of the
+Walking Skeleton runtime packet.
+
+The autonomous profile serializes only the bounded states below; all other
+fields, bounds and semantics are inherited unchanged from `m1_context_pack_v1`,
+including `available`/`unavailable` owner views with their reason set,
+`operator_premise` candidates, the inherited reference shapes (Mission
+`scope_reference`, `declared_only`/`premise`, complete Terrain claim),
+`input_order_*` selection strings, the `remaining_capacity` snapshot shape and
+the `m1_inference_proposal_v1` intent categories. `m1_context_pack_v1` and
+v1/v2 permission behavior are unchanged.
+
+| Closed vocabulary | `m1_context_pack_autonomous_v1` binding |
+| --- | --- |
+| `run_profile` and `execution_mode` | Identical bound pair in pack and configuration: `autonomous-dns-fixture-v1`/`controlled_fixture`, `autonomous-dns-provider-fixture-v1`/`controlled_fixture` or `autonomous-dns-v1`/`live`; each `manifests[]` entry and the `predecessor` restate their own `execution_mode`. Any other pairing or an absent field rejects before reservation. |
+| `pending_unknown` | `unloaded_owner_views_not_loaded_by_profile` marks owner views this profile does not load; v1's `other_owner_views_not_loaded_by_profile` remains the v1-pack reason only. |
+| `owner_views[]` availability | Adds `bounded_predecessor`: the `campaign_trajectory` view carries only the committed predecessor decision `event`/`revision` frontier, never current Trajectory truth. `available`/`unavailable` keep v1 meaning and reason vocabulary (`not_requested` for an unloaded Terrain view). |
+| `manifests[]` and `omissions.manifests` | Entries carry `availability: qualified`, their qualified `execution_mode`, `profile`, pack-local `reference` (`dns_udp`), `release_sha256`, `schema`, `transport` and owner `qualification_ref`. `omissions.manifests` is `qualified_profiles_only`: only deployment-qualified profiles with release binding are listed; v1's `catalog_unavailable` is unchanged. |
+| Seed reference | `source: admitted_operator_seed` marks a Mission-admitted operator seed retaining `status: premise`/`completeness: declared_only`; the label is premise-only, never observed or current evidence. |
+| Trajectory reference | `status: committed_historical_decision` with `owner: campaign_trajectory`, `source: cognition`, scoped decision `entity`/`event` UUIDs and `recorded_at`; it names a historical committed record only. |
+| `predecessor` | `availability: absent` with `reason: first_decision`, or `availability: committed` carrying pack-local `decision_reference`/`selected_seed_reference`, `selected_intent`, owner-record `attempt_ref`/`result_ref`/`terrain_publication_ref`, the predecessor `execution_mode` and its committed owner-qualified `outcome` disposition (`owner_qualified_observed` in the serialized examples). `hypothesis_summary` is optional, at most 128 UTF-8 bytes, omitted with a bounded `hypothesis_summary_omission` reason when it cannot fit (`null` when shown); it never displaces the retained current Terrain premise. |
+| Reference identity | `references[].id`, `decision_reference`, `selected_seed_reference` and `manifests[].reference` are pack-local labels (`mission`, `asset_N`, `terrain_N`, `previous_decision`, `dns_udp`) valid only inside one immutable pack and its bound schema enums. `entity`, `*_ref`, `frontier` and `lineage` values are scoped owner-record UUIDs. A pack-local label resolves only through the bound pack; neither kind grants current authority. |
+
+No `source` label, `availability` value, reference or historical committed
+record grants current authority: deterministic admission rechecks Mission
+consent, scope and owner state for each decision. These are the only states the
+proposed profile serializes; the vocabulary adds no product behavior beyond
+this amendment.
 
 | Example | Pack | Configuration | Generation request | Repair request |
 | --- | ---: | ---: | ---: | ---: |
