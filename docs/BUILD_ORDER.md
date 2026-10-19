@@ -56,9 +56,10 @@ Terrain claim accepted fresh/`observed` (47 s remaining), `m1-infer` ran with
 (10084 ms, real provider usage; admission `Repairable`/`proposal_shape`) but
 the repair call persisted `may_send_uncertain` after exiting inside the
 provider send — the shared 20 s `decision_wall_time_ms` watchdog `exit(124)`
-mid-send mechanism was reproduced offline (finding F3; the historical
-episode's exact killer stays unverified because exit 124 is also produced by
-the outer command guard); preserves
+mid-send mechanism was demonstrated offline through the real transport with
+a synthetic Broker (finding F3; that marker does not prove the historical
+send, and the exact killer stays unverified because exit 124 is also
+produced by the outer command guard); preserves
 the historical
 `LIVE_FAIL` episode, the `20261019-1`/`20261019-2` **LIVE_BLOCKED** records,
 and the merged R3 remediation; see

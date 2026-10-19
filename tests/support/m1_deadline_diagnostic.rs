@@ -10,6 +10,7 @@ use crate::m1_reasoning::decision_attempt;
 use crate::m1_reasoning::inference::{
     Broker, Provider, Received, ReleaseFailure, Reservation, Scope, Usage,
 };
+use serde_json::Value;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread::JoinHandle;
@@ -51,7 +52,7 @@ fn defective_proposal() -> String {
 /// socket for delay_ms then closes without a response (injected stall).
 struct TwoShot {
     url: String,
-    calls: Arc<AtomicUsize>,
+    accepted: Arc<AtomicUsize>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -60,8 +61,8 @@ impl TwoShot {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/responses", listener.local_addr().unwrap());
-        let calls = Arc::new(AtomicUsize::new(0));
-        let observed = calls.clone();
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let observed = accepted.clone();
         let worker = std::thread::spawn(move || {
             let end = Instant::now() + Duration::from_secs(90);
             for (delay_ms, body) in responses {
@@ -120,7 +121,7 @@ impl TwoShot {
         });
         Self {
             url,
-            calls,
+            accepted,
             worker: Some(worker),
         }
     }
@@ -306,6 +307,18 @@ fn scope() -> Scope {
     }
 }
 
+fn summarize(outcome: &Res<(Admission, Vec<Uuid>, Vec<String>)>) -> String {
+    match outcome {
+        Ok((Admission::Accepted(_), _, _)) => "accepted".to_owned(),
+        Ok((Admission::Repairable(codes), _, _)) => {
+            format!("repairable:{}", codes.join(","))
+        }
+        Ok((Admission::Rejected(code), _, _)) | Err(code) => {
+            format!("rejected:{code}")
+        }
+    }
+}
+
 fn run_decide(url: &str, deadline_ms: u64, log: Option<PathBuf>) -> (DiagBroker, String) {
     let mut broker = DiagBroker::new(deadline_ms, log);
     let mut provider = LoopbackProvider {
@@ -315,16 +328,26 @@ fn run_decide(url: &str, deadline_ms: u64, log: Option<PathBuf>) -> (DiagBroker,
     let mut basis = Basis(true);
     let outcome = decision_attempt::decide(&mut broker, &mut provider, &mut basis, &scope(), PACK);
     broker.mark("decide_returned");
-    let summary = match &outcome {
-        Ok((Admission::Accepted(_), _, _)) => "accepted".to_owned(),
-        Ok((Admission::Repairable(codes), _, _)) => {
-            format!("repairable:{}", codes.join(","))
-        }
-        Ok((Admission::Rejected(code), _, _)) | Err(code) => {
-            format!("rejected:{code}")
-        }
-    };
+    let summary = summarize(&outcome);
     (broker, summary)
+}
+
+/// Bounded terminal record appended to the checkpoint stream on a normal
+/// return. Write errors fail the child/test: absent or malformed records
+/// must not count as success. Not called on the watchdog-interrupted path.
+fn write_terminal(log: &PathBuf, broker: &DiagBroker, summary: &str) {
+    let line = json!({"phase": "terminal", "outcome": summary,
+        "elapsed_ms": broker.t0.elapsed().as_millis(),
+        "remaining_ms": broker
+            .deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()});
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(log)
+        .expect("terminal_record_write");
+    writeln!(f, "{line}").expect("terminal_record_write");
+    f.flush().expect("terminal_record_write");
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -347,14 +370,31 @@ fn deadline_diag_child() {
             // Controlled blocking: plain sleep; only the armed watchdog can end it.
             std::thread::sleep(Duration::from_secs(30));
         }
-        "decide" => {
+        "decide" | "decide_skip_terminal" => {
             let url = std::env::var("DW_DIAG_URL").unwrap();
             let deadline_ms = env_u64("DW_DIAG_DEADLINE_MS", 1500);
             let log = std::env::var("DW_DIAG_CHECKPOINT").ok().map(PathBuf::from);
             if let Some(path) = &log {
                 std::fs::write(path, "").unwrap();
             }
-            let (_broker, _summary) = run_decide(&url, deadline_ms, log);
+            let mut broker = DiagBroker::new(deadline_ms, log.clone());
+            let mut provider = LoopbackProvider {
+                url: url.clone(),
+                inner: DeepSeekProvider::default(),
+            };
+            let mut basis = Basis(true);
+            let outcome =
+                decision_attempt::decide(&mut broker, &mut provider, &mut basis, &scope(), PACK);
+            broker.mark("decide_returned");
+            if scenario == "decide" {
+                // Terminal evidence is required on a normal return; a write
+                // failure must fail the child, never become silent success.
+                write_terminal(
+                    log.as_ref().expect("checkpoint_path_required"),
+                    &broker,
+                    &summarize(&outcome),
+                );
+            }
         }
         _ => {}
     }
@@ -396,7 +436,14 @@ fn wait_bounded(child: &mut std::process::Child, bound: Duration) -> (Option<i32
 /// Optional evidence export: when DW_DIAG_REPORT_DIR names an existing
 /// directory, copy the child's checkpoint timeline and a bounded outcome
 /// record into it. Absent variable keeps tests hermetic.
-fn export_outcome(name: &str, ckpt: &PathBuf, code: Option<i32>, elapsed: Duration, calls: usize) {
+fn export_outcome(
+    name: &str,
+    ckpt: &PathBuf,
+    code: Option<i32>,
+    elapsed: Duration,
+    calls: usize,
+    oracle: &Result<(), String>,
+) {
     let Some(dir) = std::env::var_os("DW_DIAG_REPORT_DIR") else {
         return;
     };
@@ -410,11 +457,96 @@ fn export_outcome(name: &str, ckpt: &PathBuf, code: Option<i32>, elapsed: Durati
     let outcome = json!({"case": name,
         "exit_code": code,
         "elapsed_ms": elapsed.as_millis(),
-        "server_requests": calls});
+        "accepted_connections": calls,
+        "oracle": match oracle { Ok(()) => "pass".to_owned(), Err(e) => format!("rejected: {e}") }});
     let _ = std::fs::write(
         dir.join(format!("{name}-outcome.json")),
         serde_json::to_string_pretty(&outcome).unwrap(),
     );
+}
+
+/// Deadline-crossing oracle: a successful child observation must prove the
+/// intended outcome, not just exit. Two accepted loopback connections and the
+/// generation-complete/repair-entry checkpoints are required on both paths.
+/// Exit 124 additionally needs near-deadline elapsed; a normal return needs
+/// a well-formed terminal record consistent with deadline-limited transport
+/// rejection plus the uncertain accounting callback. Anything else is a
+/// rejected observation (false-positive guard).
+fn verify_crossing(
+    ckpt_text: &str,
+    code: Option<i32>,
+    elapsed: Duration,
+    connections: usize,
+    budget_ms: u64,
+    window_ms: (u64, u64),
+) -> Result<(), String> {
+    for phase in [
+        "may_send_generation",
+        "release_callback",
+        "send_completed",
+        "accounting_completed",
+        "may_send_repair",
+        "release_enter",
+    ] {
+        if !ckpt_text.contains(phase) {
+            return Err(format!("missing phase {phase}"));
+        }
+    }
+    if connections != 2 {
+        return Err(format!("accepted loopback connections {connections} != 2"));
+    }
+    match code {
+        Some(124) => {
+            // Interrupted preterminal path: watchdog fired inside the send.
+            // Missing terminal evidence is expected only here.
+            let ms = elapsed.as_millis() as u64;
+            if !(window_ms.0..=window_ms.1).contains(&ms) {
+                return Err(format!("exit 124 elapsed {ms}ms outside {window_ms:?}"));
+            }
+            Ok(())
+        }
+        Some(0) => {
+            // Normal return: deadline-limited transport rejection is the
+            // only consistent terminal outcome; prove it from the record.
+            let line = ckpt_text
+                .lines()
+                .rev()
+                .find(|l| l.contains("\"phase\":\"terminal\""))
+                .ok_or("terminal record absent")?;
+            let record: Value =
+                serde_json::from_str(line).map_err(|_| "terminal record malformed")?;
+            let outcome = record["outcome"]
+                .as_str()
+                .ok_or("terminal outcome missing")?;
+            if outcome != "rejected:provider_transport_unknown" {
+                return Err(format!(
+                    "terminal outcome {outcome} is not a deadline rejection"
+                ));
+            }
+            let elapsed_ms = record["elapsed_ms"]
+                .as_u64()
+                .ok_or("terminal elapsed missing")?;
+            let floor = budget_ms.saturating_sub(100);
+            if !(floor..=budget_ms + 4000).contains(&elapsed_ms) {
+                return Err(format!(
+                    "terminal elapsed {elapsed_ms}ms outside {floor}..={} ",
+                    budget_ms + 4000
+                ));
+            }
+            let remaining_ms = record["remaining_ms"]
+                .as_u64()
+                .ok_or("terminal remaining missing")?;
+            if remaining_ms > 100 {
+                return Err(format!("terminal remaining {remaining_ms}ms > 100"));
+            }
+            if !ckpt_text.contains("accounting_uncertain") {
+                return Err("uncertain accounting callback missing".to_owned());
+            }
+            Ok(())
+        }
+        Some(other) => Err(format!("unexpected exit code {other}")),
+        None => Err("child did not exit within the parent bound".to_owned()),
+    }
 }
 
 fn unique_dir(tag: &str) -> PathBuf {
@@ -437,7 +569,7 @@ fn generation_shape_defect_then_admitted_repair_one_reservation() {
     ]);
     let (broker, summary) = run_decide(&server.url, 5_000, None);
     assert_eq!(summary, "accepted");
-    assert_eq!(server.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(server.accepted.load(Ordering::SeqCst), 2);
     for phase in [
         "reserve",
         "may_send_generation",
@@ -485,7 +617,7 @@ fn expired_deadline_before_repair_release_prevents_second_send() {
         outcome,
         Ok((Admission::Rejected("inference_deadline"), _, _))
     ));
-    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(server.accepted.load(Ordering::SeqCst), 1);
     for phase in [
         "may_send_repair",
         "release_enter",
@@ -522,20 +654,17 @@ fn repair_send_crossing_scaled_deadline_records_exit_and_phase() {
     ]);
     let (code, elapsed) = wait_bounded(&mut child, Duration::from_secs(12));
     let text = std::fs::read_to_string(&ckpt).unwrap_or_default();
-    let calls = server.calls.load(Ordering::SeqCst);
-    export_outcome("repair_send_crossing_scaled", &ckpt, code, elapsed, calls);
-    assert!(
-        matches!(code, Some(124) | Some(0)),
-        "child must end by watchdog (124) or bounded transport return (0), not an unrelated exit (code={code:?})"
+    let connections = server.accepted.load(Ordering::SeqCst);
+    let verdict = verify_crossing(&text, code, elapsed, connections, 1500, (1000, 5500));
+    export_outcome(
+        "repair_send_crossing_scaled",
+        &ckpt,
+        code,
+        elapsed,
+        connections,
+        &verdict,
     );
-    assert!(
-        text.contains("may_send_repair") && text.contains("release_enter"),
-        "repair marker and release entry must be checkpointed: {text}"
-    );
-    assert_eq!(
-        calls, 2,
-        "server must observe both generation and repair requests (calls={calls})"
-    );
+    verdict.expect("scaled crossing observation must prove the deadline outcome");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -587,28 +716,124 @@ fn unscaled_twenty_second_shared_deadline_child() {
     ]);
     let (code, elapsed) = wait_bounded(&mut child, Duration::from_secs(26));
     let text = std::fs::read_to_string(&ckpt).unwrap_or_default();
-    let calls = server.calls.load(Ordering::SeqCst);
-    export_outcome("unscaled_shared_deadline", &ckpt, code, elapsed, calls);
-    assert!(
-        matches!(code, Some(124) | Some(0)),
-        "unscaled child must end by watchdog (124) or bounded transport return (0), not an unrelated exit (code={code:?})"
+    let connections = server.accepted.load(Ordering::SeqCst);
+    let verdict = verify_crossing(&text, code, elapsed, connections, 20000, (17000, 24000));
+    export_outcome(
+        "unscaled_shared_deadline",
+        &ckpt,
+        code,
+        elapsed,
+        connections,
+        &verdict,
     );
-    assert!(
-        text.contains("may_send_repair") && text.contains("release_enter"),
-        "repair marker and release entry must be checkpointed: {text}"
-    );
-    if code == Some(124) {
-        assert!(
-            elapsed >= Duration::from_secs(17) && elapsed <= Duration::from_secs(24),
-            "watchdog exit should occur near the 20 s shared deadline (elapsed {elapsed:?})"
-        );
-    }
+    verdict.expect("unscaled crossing observation must prove the deadline outcome");
     let _ = std::fs::remove_dir_all(&dir);
-    // `calls` == 2 proves the repair send physically reached the listener.
-    assert_eq!(
-        calls, 2,
-        "server must observe both generation and repair requests (calls={calls})"
+}
+
+/// Shared parent spawn for oracle-regression children: same verification
+/// path as the crossing tests, with the fixture responses chosen per case.
+fn spawn_decide_child(
+    server: &TwoShot,
+    deadline_ms: &str,
+    scenario: &str,
+) -> (std::process::Child, PathBuf, PathBuf) {
+    let dir = unique_dir("regression");
+    std::fs::create_dir(&dir).unwrap();
+    let ckpt = dir.join("checkpoints.jsonl");
+    let child = spawn_child(&[
+        ("DW_DIAG_SCENARIO", scenario.to_owned()),
+        ("DW_DIAG_URL", server.url.clone()),
+        ("DW_DIAG_DEADLINE_MS", deadline_ms.to_owned()),
+        (
+            "DW_DIAG_CHECKPOINT",
+            ckpt.to_string_lossy().replace('\\', "/"),
+        ),
+    ]);
+    (child, dir, ckpt)
+}
+
+#[test]
+fn fast_repair_child_is_rejected_as_deadline_crossing() {
+    // Genuine regression: a real child whose repair completes fast and is
+    // admitted exits 0 — but that is NOT deadline-crossing evidence. The
+    // shared oracle must reject it (wrong outcome class and remaining time).
+    let server = TwoShot::start(vec![
+        (0, Some(envelope(&defective_proposal()))),
+        (0, Some(envelope(&valid_proposal()))),
+    ]);
+    let (mut child, dir, ckpt) = spawn_decide_child(&server, "1500", "decide");
+    let (code, elapsed) = wait_bounded(&mut child, Duration::from_secs(12));
+    let text = std::fs::read_to_string(&ckpt).unwrap_or_default();
+    let connections = server.accepted.load(Ordering::SeqCst);
+    let verdict = verify_crossing(&text, code, elapsed, connections, 1500, (1000, 5500));
+    export_outcome(
+        "regression_fast_repair",
+        &ckpt,
+        code,
+        elapsed,
+        connections,
+        &verdict,
     );
+    assert!(
+        verdict.is_err(),
+        "fast accepted repair must not satisfy the crossing oracle"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn early_transport_failure_child_is_rejected_as_deadline_crossing() {
+    // Unrelated early failure: the repair connection closes immediately, so
+    // the transport error arrives long before the deadline. Same oracle path
+    // must reject it on the terminal elapsed bound.
+    let server = TwoShot::start(vec![(0, Some(envelope(&defective_proposal()))), (0, None)]);
+    let (mut child, dir, ckpt) = spawn_decide_child(&server, "1500", "decide");
+    let (code, elapsed) = wait_bounded(&mut child, Duration::from_secs(12));
+    let text = std::fs::read_to_string(&ckpt).unwrap_or_default();
+    let connections = server.accepted.load(Ordering::SeqCst);
+    let verdict = verify_crossing(&text, code, elapsed, connections, 1500, (1000, 5500));
+    export_outcome(
+        "regression_early_failure",
+        &ckpt,
+        code,
+        elapsed,
+        connections,
+        &verdict,
+    );
+    assert!(
+        verdict.is_err(),
+        "early non-deadline failure must not satisfy the crossing oracle"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn missing_terminal_record_child_is_rejected() {
+    // Oracle integrity control: a child that returns normally but omits the
+    // required terminal record must be rejected — absent evidence is not
+    // success.
+    let server = TwoShot::start(vec![
+        (0, Some(envelope(&defective_proposal()))),
+        (0, Some(envelope(&valid_proposal()))),
+    ]);
+    let (mut child, dir, ckpt) = spawn_decide_child(&server, "1500", "decide_skip_terminal");
+    let (code, elapsed) = wait_bounded(&mut child, Duration::from_secs(12));
+    let text = std::fs::read_to_string(&ckpt).unwrap_or_default();
+    let connections = server.accepted.load(Ordering::SeqCst);
+    let verdict = verify_crossing(&text, code, elapsed, connections, 1500, (1000, 5500));
+    export_outcome(
+        "regression_missing_terminal",
+        &ckpt,
+        code,
+        elapsed,
+        connections,
+        &verdict,
+    );
+    assert!(
+        verdict.is_err(),
+        "absent terminal record must not satisfy the crossing oracle"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -629,5 +854,5 @@ fn release_callback_is_the_send_linearization_point() {
         .position(|e| e == "accounting_completed")
         .unwrap();
     assert!(callback < completed);
-    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(server.accepted.load(Ordering::SeqCst), 1);
 }

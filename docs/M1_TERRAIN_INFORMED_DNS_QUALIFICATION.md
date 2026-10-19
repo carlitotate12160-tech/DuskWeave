@@ -333,26 +333,29 @@ console helper.
 | Operator DNS | exactly one UDP `A/IN` datagram to the declared resolver, 3 s timeout, no retry/fallback/follow-up; `noerror`, complete, 1 answer, TTL 3600 s, `perceived_at` 1792385928, `uncertainty_seconds` 1; operator reviewed the displayed fields and typed `approve` |
 | Terrain intake | accepted — `observed`/`fresh`, `claim_revision` 1, no integrity hold, `evaluated_at` 1792385941, `valid_until` 1792385988 (60 s cap), `temporal_frontier` 1792385928, `remaining_lifetime_seconds` 47 > 20 required; full original lineage (operation `8162a737`, event `7af2a79d`, observation `3b99631d`, material `4b0ad5ca`, evaluation `983c8750`, claim `fcce48ce`) |
 | Inference | `m1-infer --operation new` ran once; decision `05be8971-0735-43b9-88ac-ec6dd39c6e07`; P 3899 bytes, `pack_sha256` `7b159b65…`; `terrain_reference_ids` `["terrain_0"]` carried in the original sent P; `reserved_call_ids` == `actual_call_ids` exactly (`4fab9f56…`, `a2ec3b8a…`); `generation_repair_pack_equal` true; 1 reservation record / 2 reserved calls; `extra_call_records` 0, `extra_reservation_records` 0 |
-| Provider | generation call `4fab9f56…` **completed** (usage: input 2653 / output 2012 / reasoning 1552 tokens, `wall_time_ms` 10084, requested and reported model `deepseek-flash`, `response_bytes` 15943); admission `Repairable`, code **`proposal_shape`** (retained repair body); repair call `a2ec3b8a…` remained **`may_send_uncertain`**, usage NULL — the process exited while the repair send was in flight; whether it reached the provider is unknown (honest uncertain accounting) |
+| Provider | generation call `4fab9f56…` **completed** (usage: input 2653 / output 2012 / reasoning 1552 tokens, `wall_time_ms` 10084, requested and reported model `deepseek-flash`, `response_bytes` 15943); admission `Repairable`, code **`proposal_shape`** (retained repair body); repair call `a2ec3b8a…` remained **`may_send_uncertain`**, usage NULL — the inference process exited nonzero before final accounting; whether the repair entered `release_into`/`p.call`, performed a send, or reached the provider is unverified (honest uncertain accounting; ADR-016 permits a crash between marker commit and send) |
 | Durable completion | `decisions`/`outbox`/`history`/`closures` all 0 — no committed decision, no receipt; inspect + 2 recoveries all `pack_equal` true but `verified` false (`identity_invalid`: no committed decision identity) |
 | Outcome | `LIVE_FAIL` — failures `inference_exit`, `inference_receipt_absent`, `identity_invalid` ×3, `durable_completion_absent`; `dispatch_granted` false, `automatic_retry` false, `target_activity` false |
 
-## Finding F3 — `inference_exit` (repair died inside the provider send; shared deadline is the leading hypothesis)
+## Finding F3 — `inference_exit` (repair persisted `may_send_uncertain` after a nonzero inference exit; send attribution unverified; shared deadline is the leading hypothesis)
 
 ### Facts (directly retained evidence)
 
 - The reservation's shared `decision_wall_time_ms = 20000` covers the
   generation call AND the one permitted schema repair.
 - Generation call `4fab9f56…` is `completed` with usage `wall_time_ms` 10084 —
-  ~10.1 s of the shared 20 s window consumed; admission was `Repairable`
+  a ~10.1 s provider transfer inside the shared 20 s window (the transfer
+  figure is not the entire shared-clock duration); admission was `Repairable`
   with code **`proposal_shape`** (the retained repair body carries
   `{"repair_error_codes":["proposal_shape"]}` — the generation response did
   not decode to the required proposal shape).
 - Repair call `a2ec3b8a…` passed `prepare`/`may_send` (row →
-  `may_send_uncertain`) and entered `release_into`/`p.call`. Its state never
+  `may_send_uncertain`). Whether it entered `release_into`/`p.call`,
+  performed a network send, or reached the provider is **UNVERIFIED** —
+  ADR-016 permits a crash between marker commit and send. Its state never
   reached `usage_unknown`, `failed_never_released`, or `completed`, and usage
-  is NULL: the process exited inside the send window — after the may-send
-  marker committed and before any post-send state transition.
+  is NULL: the process exited after the may-send marker committed and before
+  any post-send state transition.
 - `m1-infer` exited nonzero within the runner's 40 s timeout (no
   `inference_timeout` recorded); the exit code itself was not retained in the
   report. No receipt, no decision/outbox/history/closure rows.
@@ -371,40 +374,80 @@ forced exit produces exactly the observed state (persisted
 `usage_unknown` or `failed_never_released`; a mid-call `process::exit`/fatal
 abort is the mechanism consistent with the persisted marker.
 
-### Offline diagnosis (DW-DIAGNOSE-M1-SCHEMA-DEADLINE)
+### Offline diagnosis (DW-DIAGNOSE-M1-SCHEMA-DEADLINE, cycle 2 corrected)
+
+Evidence boundary, stated explicitly:
+
+- The historical episode's `may_send_uncertain` marker and missing final
+  accounting do **not** prove entry into `release_into`/`p.call`, a network
+  send, or provider receipt — ADR-016 permits a crash between marker commit
+  and send, and the live exit code and exact phase were not retained. The
+  historical termination phase and send attribution remain **UNVERIFIED**.
+- The offline harness drives the real `decision_attempt::decide` sequence
+  and the concrete libcurl transport, but through a **synthetic in-memory
+  Broker**: its markers and accounting callbacks are test observations, not
+  PostgreSQL durability. It does not reproduce production admission fences,
+  CLI startup, or actual decision publication, and does not prove the exact
+  durable ledger state.
+- The fixture's connection counter increments at TCP accept — it records
+  **accepted loopback connections**, not complete HTTP request delivery.
+- Fast synthetic generation plus a deliberately stalled repair demonstrates
+  deadline **enforcement**; it does not establish realistic
+  generation+repair latency or select a deployment ceiling. The live 10084
+  ms transfer figure is a provider transfer time, not the entire
+  shared-clock duration.
+
+Findings within that boundary:
 
 - **Schema contract**: the emitted provider schema (real `request::bind`
-  over a `m1_context::prepare` pack) and the local decoder were checked on
-  27 synthetic cases via `jsonschema` 4.26.0 (Draft 2020-12) — zero
-  expectation disagreements, no supported-shape defect. Every schema-valid
-  refusal comes from an intentionally stricter native bound (byte vs
-  character `maxLength`, trim, premise/eligibility); the only local-side
-  tolerance is omission of required-but-nullable keys, a harmless
-  direction. The live generation's `proposal_shape` violation field remains
-  unknown because provider text is not retained.
-- **Deadline reproduction**: the real `decide` + concrete transport against
-  loopback reproduced the observed shape exactly — generation `completed`,
-  repair `may_send` marker committed, then `process::exit(124)` inside
-  `provider.call` while the repair send was in flight (unscaled child:
-  exit 124 at 20027 ms with the server observing 2 requests; scaled child
-  identical at 1549 ms). Controls: an expired shared deadline before
-  release yields `NeverReleased` with no second request, and a disarmed
-  deadline never exits.
+  over a `m1_context::prepare` pack) vs the local decoder, 27 synthetic
+  cases via `jsonschema` 4.26.0 (Draft 2020-12): 11 schema-valid (8
+  accepted + 3 refused by stricter native bounds) and 16 schema-invalid (2
+  locally accepted nullable-key omissions + 11 repairable + 3 rejected).
+  Zero expectation disagreements demonstrates agreement on the **tested
+  matrix only**, not complete schema/decoder equivalence; no supported-shape
+  defect was demonstrated and the stricter native checks are preserved.
+  (The cycle-1 report's earlier 7+4 / 11+5 subtotals were miscounted; these
+  values derive from the retained `schema-result.json`.)
+- **Deadline mechanism**: the same deadline watchdog hard exit is
+  demonstrated through the real transport — the child exited 124 near the
+  shared bound (scaled 1526 ms at a 1500 ms deadline; unscaled 20047 ms at
+  a 20000 ms deadline) after `may_send_repair`/`release_enter` checkpoints,
+  with the fixture recording 2 accepted connections. The graceful path is
+  also bounded: an exit-0 outcome requires a terminal
+  `rejected:provider_transport_unknown` record inside the clock window with
+  the uncertain accounting callback, and oracle regressions reject a fast
+  accepted repair, an early non-deadline failure, and a missing terminal
+  record. Controls: an expired shared deadline before release yields
+  `NeverReleased` with no second connection, and a disarmed deadline never
+  exits.
 - **Attribution limit**: the `database_wait` command monitor also produces
-  exit 124 with no transport involvement, so the code alone cannot attribute
-  the historical killer — the reproduction proves the mechanism can produce
-  the exact ledger shape, not that it fired in episode `20261019-3`.
-- Report: `D:/DuskWeave-build/rust-1.94.1/reports/dw-diagnose-m1-schema-deadline/cycle-1`.
+  exit 124 with no transport involvement, so the code alone cannot
+  attribute the historical killer — the reproduction proves the mechanism
+  can produce a consistent observation shape, not that it fired in episode
+  `20261019-3`.
+- Reports: `.../dw-diagnose-m1-schema-deadline/cycle-1` (retained) and
+  `.../cycle-2` (corrected oracle + regressions).
+
+Engineering disposition: this evidence does not establish a contract
+violation requiring graceful cancellation, and authorizes no budget
+increase. The shared 20 s inference bound, the outer 30 s command bound,
+and the no-repair-clock-reset rule are preserved; a fresh repair window is
+not an available fix under current ADR-016. Any later policy amendment must
+be separately resolved before implementation.
 
 ### Bounded finding for Work
 
-The reproduction confirms the failure shape is reachable through the real
-transport: the shared wall budget across generation+repair leaves
-insufficient headroom for a repair of comparable provider latency, and
-deadline expiry terminates the process before accounting can settle.
-Candidate corrections (raise `shared_wall_time_ms`, give the repair its own
-deadline window, or make deadline expiry close accounting gracefully before
-exit) are Work/engineering decisions, not in-demo patches.
+The reproduction demonstrates deadline enforcement through the real
+transport; it does not measure realistic generation+repair latency or
+justify a ceiling change on one sample. Within current ADR-016 semantics
+the engineering disposition stands: bounds preserved, no repair clock
+reset, no demonstrated contract violation. If Work later resolves a policy
+amendment, candidate corrections could include a raised
+`shared_wall_time_ms` or graceful deadline expiry that settles accounting
+before process end; a fresh repair window is not among the available fixes
+under the current contract. All of these remain Work/engineering decisions,
+not in-demo patches.
 
 ## Reasoning assessment (20261019-3)
 
