@@ -53,9 +53,11 @@ qualification (14 synthetic tests PASS; foreground rehearsal `REHEARSAL_PASS`
 at 9.156 s) and episode `20261019-3` **LIVE_FAIL**: measured handoff 12.844 s,
 Terrain claim accepted fresh/`observed` (47 s remaining), `m1-infer` ran with
 `terrain_0` in sent P and reserved==actual call IDs; generation `completed`
-(10084 ms, real provider usage) but the repair call ended `may_send_uncertain`
-when the shared 20 s `decision_wall_time_ms` watchdog exited the process
-mid-send — no committed decision (finding F3); preserves the historical
+(10084 ms, real provider usage; admission `Repairable`/`proposal_shape`) but
+the repair call persisted `may_send_uncertain` after exiting inside the
+provider send — the shared 20 s `decision_wall_time_ms` watchdog `exit(124)`
+is the leading hypothesis pending offline reproduction (finding F3); preserves
+the historical
 `LIVE_FAIL` episode, the `20261019-1`/`20261019-2` **LIVE_BLOCKED** records,
 and the merged R3 remediation; see
 [M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md](M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md)

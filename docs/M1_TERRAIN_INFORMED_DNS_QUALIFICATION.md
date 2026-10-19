@@ -333,27 +333,53 @@ console helper.
 | Operator DNS | exactly one UDP `A/IN` datagram to the declared resolver, 3 s timeout, no retry/fallback/follow-up; `noerror`, complete, 1 answer, TTL 3600 s, `perceived_at` 1792385928, `uncertainty_seconds` 1; operator reviewed the displayed fields and typed `approve` |
 | Terrain intake | accepted — `observed`/`fresh`, `claim_revision` 1, no integrity hold, `evaluated_at` 1792385941, `valid_until` 1792385988 (60 s cap), `temporal_frontier` 1792385928, `remaining_lifetime_seconds` 47 > 20 required; full original lineage (operation `8162a737`, event `7af2a79d`, observation `3b99631d`, material `4b0ad5ca`, evaluation `983c8750`, claim `fcce48ce`) |
 | Inference | `m1-infer --operation new` ran once; decision `05be8971-0735-43b9-88ac-ec6dd39c6e07`; P 3899 bytes, `pack_sha256` `7b159b65…`; `terrain_reference_ids` `["terrain_0"]` carried in the original sent P; `reserved_call_ids` == `actual_call_ids` exactly (`4fab9f56…`, `a2ec3b8a…`); `generation_repair_pack_equal` true; 1 reservation record / 2 reserved calls; `extra_call_records` 0, `extra_reservation_records` 0 |
-| Provider | generation call `4fab9f56…` **completed** (usage: input 2653 / output 2012 / reasoning 1552 tokens, `wall_time_ms` 10084, requested and reported model `deepseek-flash`, `response_bytes` 15943); repair call `a2ec3b8a…` remained **`may_send_uncertain`**, usage NULL — the process exited while the repair send was in flight; whether it reached the provider is unknown (honest uncertain accounting) |
+| Provider | generation call `4fab9f56…` **completed** (usage: input 2653 / output 2012 / reasoning 1552 tokens, `wall_time_ms` 10084, requested and reported model `deepseek-flash`, `response_bytes` 15943); admission `Repairable`, code **`proposal_shape`** (retained repair body); repair call `a2ec3b8a…` remained **`may_send_uncertain`**, usage NULL — the process exited while the repair send was in flight; whether it reached the provider is unknown (honest uncertain accounting) |
 | Durable completion | `decisions`/`outbox`/`history`/`closures` all 0 — no committed decision, no receipt; inspect + 2 recoveries all `pack_equal` true but `verified` false (`identity_invalid`: no committed decision identity) |
 | Outcome | `LIVE_FAIL` — failures `inference_exit`, `inference_receipt_absent`, `identity_invalid` ×3, `durable_completion_absent`; `dispatch_granted` false, `automatic_retry` false, `target_activity` false |
 
-## Finding F3 — `inference_exit` (shared decision wall-time consumed by generation)
+## Finding F3 — `inference_exit` (repair died inside the provider send; shared deadline is the leading hypothesis)
 
-The reservation's shared `decision_wall_time_ms = 20000` deadline covers the
-generation call AND the one permitted schema repair. The generation call
-consumed 10084 ms of the shared window and was admitted as repairable. The
-repair call then passed `prepare`/`may_send` (row → `may_send_uncertain`) and
-entered the provider send; the deadline watchdog in
-`src/m1_reasoning/transport.rs` (`Deadline::arm` → `std::process::exit(124)`)
-forcibly exited the process while that send was still in flight. The row never
-reached `usage_unknown` or `failed_never_released`, so the process died inside
-`p.call` — consistent with a repair response needing a timescale comparable to
-the generation's ~10 s while <10 s of shared budget remained. The uncertain
-accounting is correct: the send is neither claimed nor denied. Bounded finding
-for Work — the shared wall budget across generation+repair leaves
-insufficient headroom for a repair of comparable provider latency; candidate
-corrections (raise `shared_wall_time_ms`, or give the repair its own deadline
-window) are Work/engineering decisions, not in-demo patches.
+### Facts (directly retained evidence)
+
+- The reservation's shared `decision_wall_time_ms = 20000` covers the
+  generation call AND the one permitted schema repair.
+- Generation call `4fab9f56…` is `completed` with usage `wall_time_ms` 10084 —
+  ~10.1 s of the shared 20 s window consumed; admission was `Repairable`
+  with code **`proposal_shape`** (the retained repair body carries
+  `{"repair_error_codes":["proposal_shape"]}` — the generation response did
+  not decode to the required proposal shape).
+- Repair call `a2ec3b8a…` passed `prepare`/`may_send` (row →
+  `may_send_uncertain`) and entered `release_into`/`p.call`. Its state never
+  reached `usage_unknown`, `failed_never_released`, or `completed`, and usage
+  is NULL: the process exited inside the send window — after the may-send
+  marker committed and before any post-send state transition.
+- `m1-infer` exited nonzero within the runner's 40 s timeout (no
+  `inference_timeout` recorded); the exit code itself was not retained in the
+  report. No receipt, no decision/outbox/history/closure rows.
+- The uncertain accounting is correct: whether the repair request reached the
+  provider is unknown — neither claimed nor denied.
+
+### Hypothesis (consistent with all evidence, not directly observed)
+
+The deadline watchdog in `src/m1_reasoning/transport.rs` (`Deadline::arm` →
+`std::process::exit(124)`) fires `process::exit` when the shared deadline
+elapses. With ~10.1 s consumed by generation, a repair response of comparable
+provider latency (~10 s) would still be in flight at deadline expiry, and the
+forced exit produces exactly the observed state (persisted
+`may_send_uncertain`, no receipt, nonzero exit). Alternative explanations
+(e.g., a transport-level abort) would ordinarily transition the row to
+`usage_unknown` or `failed_never_released`; a mid-call `process::exit`/fatal
+abort is the mechanism consistent with the persisted marker. This remains a
+hypothesis until an offline reproduction records the exit phase/code —
+scheduled as diagnosis before any further live attempt.
+
+### Bounded finding for Work
+
+If the hypothesis holds, the shared wall budget across generation+repair
+leaves insufficient headroom for a repair of comparable provider latency;
+candidate corrections (raise `shared_wall_time_ms`, give the repair its own
+deadline window, or make deadline expiry close accounting gracefully before
+exit) are Work/engineering decisions, not in-demo patches.
 
 ## Reasoning assessment (20261019-3)
 
