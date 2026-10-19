@@ -491,3 +491,6 @@ with socket.socket() as listener:
     }
     std::fs::remove_dir(dir).unwrap();
 }
+
+#[path = "m1_deadline_diagnostic.rs"]
+mod m1_deadline_diagnostic;
