@@ -48,6 +48,32 @@ replace implementation with another plan.
 Startup guidance: docs/workflows/START_HERE.md.
 Project Instructions text: docs/workflows/PROJECT_INSTRUCTIONS.md.
 
+## Walking skeleton delivery
+
+Build the smallest complete entrypoint-to-history behavior first, then replace
+external-effect adapters incrementally. The selected autonomous sequence is in
+[the existing MVP roadmap](docs/MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19).
+The application supervisor, authority checks, owner reconciliation and restricted
+PostgreSQL path stay real; deterministic provider/effect fixtures are explicit,
+isolated test doubles. Fixture success proves orchestration, not LLM cognition,
+live acquisition or a milestone seal. Keep that runnable regression in later slices.
+
+Measure slices by observable behavior and failure completeness. Target one
+cohesive PR for the first skeleton; file/diff LOC alone cannot force precursor
+PRs or helper fragmentation. Retain the enforced McCabe ratchet.
+Prefer owner-local unit tests and integration tests through application contracts
+for internal logic. Do not expose private APIs or add public CLI commands only
+for testing. Keep a real-entrypoint test for operational commands such as m1-run;
+fixed internal child-phase commands are not extra operator workflow steps.
+Retire an old command only after its actual operational/recovery consumers and
+accepted compatibility obligations have a tested replacement.
+
+Use bounded synthetic spikes to resolve empirical uncertainty before claiming
+capacity or latency fit. Record sample size, configuration, complete wire bytes,
+timing phases and uncertainty; observed percentiles are not legal input bounds.
+Policy ceilings may be selected conservatively before calibration but must be
+identified as policy, never measured fit. No spike reuses old live consent.
+
 ## Required reading order
 
 Before making changes, read:

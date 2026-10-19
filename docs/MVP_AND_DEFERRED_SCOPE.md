@@ -55,10 +55,10 @@ used to demonstrate this campaign loop, not a replacement product or fixed strat
 | Outcome | Completion evidence / dependency |
 | --- | --- |
 | Resolve autonomous-run runtime contracts | Publish the bounded [run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19); its new exact text remains PROPOSED until owner acceptance. Preserve existing accepted sections and seals. |
-| Prove autonomous orchestration in a controlled fixture | First runtime slice: `autonomous-dns-fixture-v1`, production `m1-run`/owner ports and restricted PostgreSQL, deterministic inference and Broker effect fixtures, distinct source/mode and no external egress. Mission → proposal → authorized fixture effect → Terrain → second proposal → durable history/inspect; no intermediate input. Qualify idempotency, stop, UNKNOWN and database-only recovery here. No real LLM/live DNS or M1 seal claim. |
-| Prove cognitive feedback with the real provider | After qualifying the new inference boundary, `autonomous-dns-provider-fixture-v1` uses actual LLM calls with the same deterministic Broker effect/source and fresh provider consent. No target egress; not blocked on Go capture/nft qualification. Require the second admitted proposal to consume the fixture result; a scripted replacement does not qualify real cognition. |
+| Walking skeleton (slice 1): prove autonomous orchestration in a controlled fixture | First runtime slice: `autonomous-dns-fixture-v1`, production `m1-run`/owner ports and restricted PostgreSQL, deterministic inference and Broker effect fixtures, distinct source/mode and no external egress. Mission → proposal → authorized fixture effect → Terrain → second proposal → durable history/inspect; no intermediate input. Qualify idempotency, stop, UNKNOWN and database-only recovery here. No real LLM/live DNS or M1 seal claim. |
+| Real inference (slice 2): prove cognitive feedback with the real provider | After qualifying the new inference boundary, `autonomous-dns-provider-fixture-v1` uses actual LLM calls with the same deterministic Broker effect/source and fresh provider consent. No target egress; not blocked on Go capture/nft qualification. Require the second admitted proposal to consume the fixture result; a scripted replacement does not qualify real cognition. |
 | Qualify live boundaries (may proceed independently of fixture wiring) | New inference timing/cancellation and ADR-015 Linux core/Broker/capture/exporter/host STOP, ADR-016 admission/accounting, ADR-017 real producer/consumer IPC. A running Docker/WSL installation alone is insufficient. Infrastructure work supports the loop; it is not a prerequisite for the isolated fixture above. |
-| First operational autonomous live run | Mission → real LLM proposal → authorized DNS → owner-qualified Terrain → real second LLM decision → durable history/inspect, with no operator input between start and terminal receipt. Requires accepted profiles, qualified live boundaries and fresh explicit client/inference authorization; fixture or old consent cannot satisfy them. |
+| Real Broker egress (slice 3): first operational autonomous live run | Mission → real LLM proposal → authorized DNS → owner-qualified Terrain → real second LLM decision → durable history/inspect, with no operator input between start and terminal receipt. Requires accepted profiles, qualified live boundaries and fresh explicit client/inference authorization; fixture or old consent cannot satisfy them. |
 | Validation and adaptation | Admitted HTTPS validation in the same loop; new evidence materially changes or supports the next hypothesis/action with visible rationale. No forced DNS/HEAD/subdomain playbook. |
 | Complete cognitive M1 | CT, bounded synthesis/evolution, applicable campaign-local feedback and minimum report under the M1 contract. Two LLM calls or DNS/HEAD alone do not seal M1. |
 | After M1 | Bounded access/authorized credential validation through its owning accepted contracts and current permission. |
@@ -67,6 +67,37 @@ Manual observation input remains optional with its original source label. Freeze
 one-use demo helper development; historical episodes and failures remain evidence,
 never reusable consent. No tracking-document family, fixed PR count, daemon,
 message bus, Tokio conversion or multi-crate rewrite is required.
+
+**Owner-directed method: Walking Skeleton / Tracer Bullet First.** Target one
+cohesive PR for slice 1 through the real application supervisor, restricted SQL
+state transitions, Broker admission, Terrain reconciliation and durable history.
+Only external inference/effect adapters are deterministic substitutes. Decision 2
+must consume a newly produced pack linked to decision 1 and the fixture outcome;
+printing two prewritten receipts without these owner transitions does not pass.
+Tests cover duplicate/conflicting start, withdrawal-before-release, child loss,
+commit/ACK uncertainty and fresh inspect/recover with zero effect replay. Keep
+this executable regression while replacing adapters in slices 2 and 3. A fake
+LLM proves feedback plumbing, not cognitive quality. Live qualification remains
+required; do not perfect every infrastructure component before proving the loop.
+
+Use owner-local unit tests for private logic and integration tests through the
+application ports. Preserve at least one real m1-run subprocess/entrypoint test;
+no new public micro-command or public visibility solely for a terminal test.
+Functional cohesion and reviewable failure semantics define a slice; 450 lines
+may be justified without artificial splitting. McCabe remains enforced.
+
+A spike answers a specific unknown with synthetic safe inputs and its own bounded
+configuration. Before external provider use, obtain fresh disclosure permission;
+this direction runs no provider or target experiment. Measure full P/C/B plus
+repair, escaped UTF-8, model/settings, actual/reserved calls, token usage where
+reported, phase latency, cancellation and durable accounting separately. Record
+sample size and distribution limitations; a small sample does not establish P99,
+and P99 does not bound every legal serialized input. Derive fit from tested input
+bounds plus complete serialization, not a percentile alone. Numerical ceilings
+may be resource/authority policy choices; label them as selected until calibrated.
+A spike does not silently widen an accepted profile or convert test results into
+production authority. Retain concise evidence in the existing PR/qualification
+record, not another report/ADR/tracking family.
 
 ### 1.3 Audit disposition attached to these deliveries
 
@@ -86,6 +117,17 @@ absence of schema isolation do not justify a rewrite: the latter claims were
 corrected by source inspection. Preserve existing thread/watchdog/I/O bounds and
 SQL owner/role isolation; qualify their actual behavior on the changed path.
 Do not turn all historical debt into a prerequisite for the first run.
+
+Cleanup decisions from current source inspection (2026-10-19):
+
+| Item | Disposition / retirement trigger |
+| --- | --- |
+| Local root artifacts/cache | Remove only the named untracked root nul/evidence_authcap.out and ignored Python caches. Root-specific ignores avoid hiding unrelated .out evidence; __pycache__ is already ignored. Never use blanket git clean. |
+| Granular public CLI | Freeze test-only expansion. Deprecate individually after m1-run is stable and real callers/tests have replacements. Stop/withdrawal, inspect/recover and accepted M0 behavior remain operational contracts, not automatically obsolete scaffolding. Test support consumes production use cases; it must not duplicate their logic. |
+| PostgreSQL adapters | Current root inventory has 20 postgres_*.rs files, not 18. Review duplication/cohesion when touched; consolidate proven duplication within the same owner. Do not compress Mission, Broker/authority and Trajectory responsibilities or qualified roles into three broad repositories. Preserve session-lock lifetime and transaction/fence semantics before considering pooling. No rename-only sweep before the skeleton. |
+| M0 planning | Production authority_confirmation, PgMissionStore, PgTrajectory and withdrawal paths still depend on planning contracts. Preserve them now. Retire only after caller/history compatibility, withdrawal/refusal and fresh recovery have tested replacements and an explicit disposition of accepted M0 behavior. An M1 seal alone is insufficient. |
+| SQL and McCabe | SQL string size does not directly create Rust control-flow complexity. Terrain already uses database acceptance/conflict functions. Repay record_dns/load_existing by cohesive orchestration/decoding responsibilities and measured behavior; do not move business authority into SQL merely to lower Rust McCabe. A new view/function needs a real ownership/atomicity reason, new migration and role/integrity/commit-unknown tests. |
+| Accepted PRD/ADR and evidence | Preserve authoritative semantics, seals and referenced historical evidence. Simplify current navigation and genuinely superseded duplication; do not delete authority to reduce the document count. |
 
 The minimal-loop approach follows [Anthropic's agent engineering guidance](https://www.anthropic.com/engineering/building-effective-agents):
 explicit tool/environment feedback and stopping conditions, starting with simple
