@@ -774,9 +774,12 @@ fn fast_repair_child_is_rejected_as_deadline_crossing() {
         connections,
         &verdict,
     );
+    assert_eq!(code, Some(0), "child must return normally");
+    assert_eq!(connections, 2, "both calls must reach the listener");
+    let reason = verdict.err().expect("must be rejected");
     assert!(
-        verdict.is_err(),
-        "fast accepted repair must not satisfy the crossing oracle"
+        reason.contains("not a deadline rejection"),
+        "rejection must name the accepted outcome, observed: {reason}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -800,9 +803,12 @@ fn early_transport_failure_child_is_rejected_as_deadline_crossing() {
         connections,
         &verdict,
     );
+    assert_eq!(code, Some(0), "child must return normally");
+    assert_eq!(connections, 2, "both calls must reach the listener");
+    let reason = verdict.err().expect("must be rejected");
     assert!(
-        verdict.is_err(),
-        "early non-deadline failure must not satisfy the crossing oracle"
+        reason.contains("elapsed") && reason.contains("outside"),
+        "rejection must name the elapsed bound, observed: {reason}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -829,9 +835,12 @@ fn missing_terminal_record_child_is_rejected() {
         connections,
         &verdict,
     );
+    assert_eq!(code, Some(0), "child must return normally");
+    assert_eq!(connections, 2, "both calls must reach the listener");
+    let reason = verdict.err().expect("must be rejected");
     assert!(
-        verdict.is_err(),
-        "absent terminal record must not satisfy the crossing oracle"
+        reason.contains("terminal record absent"),
+        "rejection must name the missing terminal record, observed: {reason}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
