@@ -10,7 +10,7 @@
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted ADR-003/005/013/015; Stage 12 product-input rebind in accepted M1 enabling section 2 |
 | Scope | [M1 enabling lane](../contracts/M1-enabling-architecture.md); no full-stage acceptance |
-| Autonomous-run amendment | Section 4a is PROPOSED, 2026-10-19; existing accepted limits and sections retain their status |
+| Autonomous-run amendment | Section 4a ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 
 ## 1. Context and problem statement
 
@@ -309,7 +309,10 @@ storage, cancellation, transport and formatted runtime-fit evidence remains UNVE
 
 ## 4a. Proposed bounded-run supervision (2026-10-19)
 
-**Status: PROPOSED; exact text requires owner acceptance.** This selects the new
+**Status: ACCEPTED — product owner, 2026-10-19**, exact section 4a text at
+`0615fb72c946fd6abf0823692be621096091377c`, as the basis for Walking Skeleton
+implementation. This accepts no demonstrated runtime, target permission or seal.
+The historical proposed heading is retained for stable links. This selects the new
 `m1_inference_permission_v3` / `deepseek-responses-autonomous-v1` lane for
 [the autonomous run](../contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19).
 The controlled fixture uses the same bounded accounting with the separately bound

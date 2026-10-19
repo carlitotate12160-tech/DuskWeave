@@ -614,8 +614,12 @@ separately qualify actual DeepSeek behavior only with authorized safe disclosure
 
 ## 7. Proposed autonomous-run amendment (2026-10-19)
 
-**Status: PROPOSED.** These are the engineering-selected decisions for the
-owner-requested first autonomous outcome, against merged PR #70 (`535eab5`).
+**Status: ACCEPTED — product owner, 2026-10-19.** The owner accepted the exact
+section 7 text at `0615fb72c946fd6abf0823692be621096091377c` as the basis for
+Walking Skeleton implementation. Acceptance proves no autonomous runtime,
+grants no target permission and changes no seal. The historical proposed heading
+is retained for stable links. This selects the first autonomous outcome against
+merged PR #70 (`535eab5`).
 They do not alter acceptance of sections 1–6, existing consent, seals or target
 permissions. The matching time/supervision amendment is [ADR-016 section 4a](../adr/ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19).
 

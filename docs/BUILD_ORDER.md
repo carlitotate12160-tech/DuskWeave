@@ -52,10 +52,12 @@ and its [ADR-016 supervision amendment](adr/ADR-016-execution-broker.md#4a-propo
 [ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 owns active work, evidence limits and next action. The existing
 [MVP roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
-owns outcome order and audit follow-up. This is DESIGN preparation, not qualified
-acquisition, exact-text acceptance, target permission or M1 completion. After
-exact-text acceptance, deliver the controlled fixture through production ports
-first; live-boundary preparation may run independently. Real-provider/DNS
+owns outcome order and audit follow-up. The owner accepted exact section 7 / ADR-016 section 4a text at
+`0615fb72c946fd6abf0823692be621096091377c` on 2026-10-19 for Walking Skeleton
+implementation. This grants no qualified acquisition, target permission or M1
+completion. Deliver the controlled fixture through production ports first after
+the accepted change is integrated and a bounded runtime packet is issued;
+live-boundary preparation may run independently. Real-provider/DNS
 qualification and fresh authorization remain required for the live outcome.
 
 Current design document:
