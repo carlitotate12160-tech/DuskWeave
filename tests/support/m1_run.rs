@@ -139,20 +139,120 @@ pub fn path(q: &Value) -> std::path::PathBuf {
 pub fn id(q: &Value) -> Uuid {
     Uuid::parse_str(q["run_id"].as_str().unwrap()).unwrap()
 }
+pub const PRODUCTION_LEASE_MS: u64 = 2000;
+pub const LEASE_RENEW_CADENCE: std::time::Duration = std::time::Duration::from_millis(400);
+
 pub fn release() -> String {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(std::fs::read(env!("CARGO_BIN_EXE_duskweave")).unwrap())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    static RELEASE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    RELEASE
+        .get_or_init(|| {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(std::fs::read(env!("CARGO_BIN_EXE_duskweave")).unwrap())
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        })
+        .clone()
 }
-pub fn start_only(q: &Value) -> duskweave::m1_run::RunRecord {
+pub fn broker_store() -> duskweave::postgres_m1_run::PgRunStore {
+    let mut client = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
+    duskweave::m1_reasoning::postgres::qualify_owner(&mut client, "dw_m1_broker").unwrap();
+    duskweave::postgres_m1_run::PgRunStore::new(client)
+}
+pub fn broker_store_through(port: u16) -> duskweave::postgres_m1_run::PgRunStore {
+    let mut client = terrain::terrain_support::through("DW_INFERENCE_BROKER_DATABASE_URL", port);
+    duskweave::m1_reasoning::postgres::qualify_owner(&mut client, "dw_m1_broker").unwrap();
+    duskweave::postgres_m1_run::PgRunStore::new(client)
+}
+pub fn start_with(
+    store: &mut duskweave::postgres_m1_run::PgRunStore,
+    q: &Value,
+) -> duskweave::m1_run::RunRecord {
     let q: duskweave::m1_run::RunRequest = serde_json::from_value(q.clone()).unwrap();
-    let mut store = duskweave::postgres_m1_run::PgRunStore::new(native::client(
-        "DW_INFERENCE_BROKER_DATABASE_URL",
-    ));
     assert!(store.start(&q, &release()).unwrap());
     store.inspect(q.run_id).unwrap()
+}
+pub fn start_only(q: &Value) -> duskweave::m1_run::RunRecord {
+    let mut store = broker_store();
+    start_with(&mut store, q)
+}
+
+pub struct LeaseCustodian {
+    stop: std::sync::mpsc::Sender<()>,
+    worker: Option<std::thread::JoinHandle<duskweave::Res<usize>>>,
+}
+impl LeaseCustodian {
+    pub fn start(
+        record: &duskweave::m1_run::RunRecord,
+        mut store: duskweave::postgres_m1_run::PgRunStore,
+    ) -> Self {
+        let run_id = record.request.run_id;
+        let deadline = run_deadline(record);
+        let initial_next = (std::time::Instant::now() + LEASE_RENEW_CADENCE).min(deadline);
+        store.renew(run_id).unwrap();
+        let (stop, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::Builder::new()
+            .name("test_run_lease_custodian".into())
+            .spawn(move || renew_loop(store, run_id, deadline, initial_next, rx))
+            .unwrap();
+        Self {
+            stop,
+            worker: Some(worker),
+        }
+    }
+    pub fn finish(mut self) -> duskweave::Res<usize> {
+        let _ = self.stop.send(());
+        self.worker
+            .take()
+            .expect("custodian join handle")
+            .join()
+            .expect("custodian thread")
+    }
+}
+impl Drop for LeaseCustodian {
+    fn drop(&mut self) {
+        let _ = self.stop.send(());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+fn run_deadline(record: &duskweave::m1_run::RunRecord) -> std::time::Instant {
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock_unavailable")
+        .as_millis();
+    let remain = u128::try_from(record.deadline_at_ms)
+        .ok()
+        .and_then(|d| d.checked_sub(now))
+        .filter(|d| *d <= 150000)
+        .expect("run_deadline");
+    Instant::now() + Duration::from_millis(remain as u64)
+}
+fn renew_loop(
+    mut store: duskweave::postgres_m1_run::PgRunStore,
+    run_id: Uuid,
+    deadline: std::time::Instant,
+    mut next: std::time::Instant,
+    rx: std::sync::mpsc::Receiver<()>,
+) -> duskweave::Res<usize> {
+    use std::sync::mpsc::RecvTimeoutError;
+    use std::time::Instant;
+    let mut renewals = 1usize;
+    loop {
+        match rx.recv_timeout(next.saturating_duration_since(Instant::now())) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return Ok(renewals),
+            Err(RecvTimeoutError::Timeout) => {
+                if Instant::now() >= deadline {
+                    return Err(duskweave::Fail::State("run_deadline"));
+                }
+                next = (Instant::now() + LEASE_RENEW_CADENCE).min(deadline);
+                store.renew(run_id)?;
+                renewals += 1;
+            }
+        }
+    }
 }
 
 pub fn complete_first(record: &duskweave::m1_run::RunRecord) {
@@ -163,6 +263,7 @@ pub fn complete_first(record: &duskweave::m1_run::RunRecord) {
     };
     let r = record.request.run_id;
     let mut store = PgRunStore::new(native::client("DW_INFERENCE_BROKER_DATABASE_URL"));
+    store.renew(r).unwrap();
     store.start_phase(r, RunPhase::DecisionOne).unwrap();
     let mut child = command()
         .args([
@@ -190,5 +291,6 @@ pub fn complete_first(record: &duskweave::m1_run::RunRecord) {
         store.renew(r).unwrap();
         std::thread::sleep(Duration::from_millis(100));
     }
+    store.renew(r).unwrap();
     store.complete_phase(r, RunPhase::DecisionOne).unwrap();
 }

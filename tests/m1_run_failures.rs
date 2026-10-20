@@ -89,23 +89,28 @@ fn result_commit_ack_loss_recovers_original_terrain_without_replaying_effect_or_
     use std::time::Duration;
     let _g = native::db();
     refresh();
+    let rel = release();
+    let relay = proxy::Relay::start("127.0.0.1:5432".parse().unwrap(), b"COMMIT");
+    let mut store = broker_store();
+    let custodian_store = broker_store();
+    let mut relayed = broker_store_through(relay.port());
+    let unsupervised_q = registered(0xa728);
     let q = registered(0xa722);
-    let record = start_only(&q);
+    let record = start_with(&mut store, &q);
+    let custodian = LeaseCustodian::start(&record, custodian_store);
     complete_first(&record);
     let r = id(&q);
-    let mut store = PgRunStore::new(native::client("DW_INFERENCE_BROKER_DATABASE_URL"));
     store.start_phase(r, RunPhase::Acquisition).unwrap();
-    store
-        .claim_phase(r, RunPhase::Acquisition, &release())
-        .unwrap();
+    store.claim_phase(r, RunPhase::Acquisition, &rel).unwrap();
     let request = store.reserve_effect(r, 0).unwrap();
     let result = duskweave::m1_fixture_dns::acquire(request).unwrap();
-    let relay = proxy::Relay::start("127.0.0.1:5432".parse().unwrap(), b"COMMIT");
-    let mut relayed = PgRunStore::new(native::through(
-        "DW_INFERENCE_BROKER_DATABASE_URL",
-        relay.port(),
-    ));
-    store.renew(r).unwrap();
+    let unsupervised = start_with(&mut store, &unsupervised_q);
+    std::thread::sleep(Duration::from_millis(PRODUCTION_LEASE_MS + 250));
+    assert_eq!(
+        store.renew(unsupervised.request.run_id),
+        Err(duskweave::Fail::State("run_stopped"))
+    );
+    store.check(r).unwrap();
     let outcome = std::thread::scope(|s| {
         let worker = s.spawn(|| relayed.commit_result(r, &result));
         assert!(relay.observed(Duration::from_secs(10)));
@@ -129,6 +134,11 @@ fn result_commit_ack_loss_recovers_original_terrain_without_replaying_effect_or_
         drop(relay);
         worker.join().unwrap()
     });
+    let renewals = custodian.finish().unwrap();
+    assert!(
+        renewals >= 5,
+        "custodian must renew at <=400ms cadence across >2000ms setup barrier: {renewals}"
+    );
     assert_eq!(
         outcome,
         Err(duskweave::Fail::Unresolved("fixture_result_unknown"))
@@ -136,6 +146,7 @@ fn result_commit_ack_loss_recovers_original_terrain_without_replaying_effect_or_
     for _ in 0..2 {
         let (ok, v) = cli("m1-run-recover", "--run", &r.to_string());
         assert!(ok, "{v}");
+        assert_eq!(v["run_id"], json!(r));
         assert_eq!(v["effect_count"], 1);
         assert_eq!(v["decision_count"], 1);
         assert_eq!(v["terrain_history_count"], 1);
@@ -338,18 +349,19 @@ fn eight_seed_broker_commit_preserves_the_bound_selected_input_identity() {
                 .collect::<Vec<_>>()
         );
     });
-    let record = start_only(&q);
+    let rel = release();
+    let mut store = broker_store();
+    let custodian_store = broker_store();
+    let mut b = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
+    let record = start_with(&mut store, &q);
+    let custodian = LeaseCustodian::start(&record, custodian_store);
     complete_first(&record);
     let r = id(&q);
-    let mut store = PgRunStore::new(native::client("DW_INFERENCE_BROKER_DATABASE_URL"));
     store.start_phase(r, RunPhase::Acquisition).unwrap();
-    store
-        .claim_phase(r, RunPhase::Acquisition, &release())
-        .unwrap();
+    store.claim_phase(r, RunPhase::Acquisition, &rel).unwrap();
     let request = store.reserve_effect(r, 0).unwrap();
     let result = duskweave::m1_fixture_dns::acquire(request).unwrap();
     let raw = serde_json::to_value(&result).unwrap();
-    let mut b = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
     let mut tx = b.transaction().unwrap();
     let check = tx.execute("SELECT execution.commit_fixture_dns($1,$2)", &[&r, &raw]);
     assert!(
@@ -362,4 +374,5 @@ fn eight_seed_broker_commit_preserves_the_bound_selected_input_identity() {
     );
     tx.rollback().unwrap();
     store.commit_result(r, &result).unwrap();
+    assert!(custodian.finish().unwrap() >= 1);
 }

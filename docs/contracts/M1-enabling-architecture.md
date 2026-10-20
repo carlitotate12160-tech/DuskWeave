@@ -11,7 +11,7 @@
 | Authority | Accepted PRD-000..010, ADR-001..008 and the six scoped M1 ADRs; no target permission |
 | Delivery | One documentation-only DESIGN outcome; runtime diff = 0 |
 | Preserved seals | DW-FOUNDATION-001 and DW-M0-001; no full-domain or M1 seal |
-| Autonomous-run amendment | Section 7 is PROPOSED, 2026-10-19; engineering-selected runtime decisions, not owner acceptance or permission to execute |
+| Autonomous-run amendment | [Section 7](#7-proposed-autonomous-run-amendment-2026-10-19) ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 
 ## 1. Outcome and decision boundary
 
