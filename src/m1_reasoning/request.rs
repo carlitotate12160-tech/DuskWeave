@@ -1,3 +1,5 @@
+#[path = "request_autonomous.rs"]
+mod autonomous;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
@@ -18,7 +20,10 @@ fn object(properties: Map<String, Value>) -> Value {
 
 pub fn reference_ids(pack: &[u8]) -> Result<Vec<String>, &'static str> {
     let value =
-        crate::m1_reasoning::bounded_json::parse(pack, 4096, 1024).map_err(|_| "request_encode")?;
+        crate::m1_reasoning::bounded_json::parse(pack, 8192, 1024).map_err(|_| "request_encode")?;
+    if pack.len() > pack_limit(&value) {
+        return Err("request_encode");
+    }
     let references = value
         .get("references")
         .and_then(Value::as_array)
@@ -122,8 +127,20 @@ fn bytes(value: &Value, cap: usize) -> Result<Vec<u8>, &'static str> {
 
 pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'static str> {
     let ids = reference_ids(pack)?;
+    let parsed: Value = serde_json::from_slice(pack).map_err(|_| "request_encode")?;
+    if parsed["version"] == "m1_context_pack_autonomous_v1" {
+        return autonomous::bind(pack, &parsed, &ids, repair_codes);
+    }
+    bind_legacy(pack, &ids, repair_codes)
+}
+
+fn bind_legacy(
+    pack: &[u8],
+    ids: &[String],
+    repair_codes: Option<&[&str]>,
+) -> Result<BoundCall, &'static str> {
     let p = std::str::from_utf8(pack).map_err(|_| "request_encode")?;
-    let schema = schema(&ids);
+    let schema = schema(ids);
     let input = input(p, repair_codes)?;
     let settings = json!({"model":"deepseek-flash","stream":false,
         "reasoning":{"effort":"high"},"tools":[],"tool_choice":"none",
@@ -177,7 +194,7 @@ pub fn verify_binding(
     expected_binding: &str,
     expected_repair: bool,
 ) -> Result<(), &'static str> {
-    if pack.len() > 4096 || configuration.len() > 16384 || body.len() > 16384 {
+    if configuration.len() > 16384 || body.len() > 16384 {
         return Err("inference_decision_integrity");
     }
     reference_ids(pack.as_bytes()).map_err(|_| "inference_decision_integrity")?;
@@ -226,4 +243,12 @@ fn input(pack: &str, codes: Option<&[&str]>) -> Result<Value, &'static str> {
         {"role":"user","content":pack},
         {"role":"user","content":repair}
     ]))
+}
+
+fn pack_limit(value: &Value) -> usize {
+    if value["version"] == "m1_context_pack_autonomous_v1" {
+        8192
+    } else {
+        4096
+    }
 }

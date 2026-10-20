@@ -163,6 +163,18 @@ proven. Closure is simpler ownership, less duplication/dead code and preserved
 behavior, not a required percentage reduction or smaller files at any cost.
 Do not raise thresholds, remove explanations or fragment helpers to satisfy LOC.
 
+**Current implementation disposition (2026-10-20):** PR #72 merged `ca7d4ef`
+with conservative document classification, sanitized heartbeat and isolated cache
+identities; PR #73 merged `00e5667` preserving this roadmap. The active
+[Walking Skeleton packet](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md)
+repays Terrain `record_dns` 24 → 6 and `load_existing` 17 → 2 in local pinned
+analysis, retains the source/transaction guards and adds automatic issued-result
+intake. Final-head gates and independent review remain delivery requirements.
+The other 11 named hotspots and ambiguous CLI closure stay OPEN at the checkpoint
+above. Shared inference-basis construction is deduplicated; legacy CLI and M0
+paths remain because registration/assessment/withdrawal/inspect/recovery consumers
+still require them. This is not wholesale legacy removal or qualified parallelism.
+
 **Measured CI baseline:** PR #71 run
 [39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),
 source head 0615fb7 (PR merge checkout 157c155), retained qualification artifact:

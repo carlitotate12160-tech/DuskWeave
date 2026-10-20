@@ -73,6 +73,12 @@ jobs:
       - name: Structure and hygiene check
         run: python scripts/check_structure.py
 
+      - name: Protected owner dependency direction
+        run: python scripts/check_dependencies.py
+
+      - name: Dependency-checker negative controls
+        run: python -m unittest discover -s tests -p test_dependencies.py
+
       - name: Structure-checker regression tests
         run: python -m unittest discover -s tests -p test_structure.py
 

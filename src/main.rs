@@ -28,6 +28,10 @@ mod m1_inference_budget_cli;
 mod m1_policy_cli;
 mod m1_prepared_withdrawal_cli;
 mod m1_reasoning_cli;
+mod m1_run_cli;
+mod m1_run_effect;
+mod m1_run_inference;
+mod m1_run_supervision;
 mod m1_session_cli;
 mod m1_terrain_cli;
 mod planning_cli;
@@ -304,14 +308,15 @@ fn run(command: &str, args: &[String]) -> Res<()> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
-    let outcome = database_wait::CommandGuard::start().and_then(|guard| {
-        let outcome = args
-            .get(1)
-            .ok_or(Fail::Input("missing_command"))
-            .and_then(|command| run(command, &args));
-        drop(guard);
-        outcome
-    });
+    let outcome = database_wait::CommandGuard::for_command(args.get(1).map(String::as_str))
+        .and_then(|guard| {
+            let outcome = args
+                .get(1)
+                .ok_or(Fail::Input("missing_command"))
+                .and_then(|command| run(command, &args));
+            drop(guard);
+            outcome
+        });
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(f) => {

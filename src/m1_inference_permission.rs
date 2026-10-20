@@ -16,6 +16,7 @@ enum SafeFieldClass {
     OmissionsUnknown,
     Capacity,
     AdmittedRepairFieldsCodes,
+    AdmittedCampaignDecisionFeedback,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,17 +66,50 @@ struct OperationInferenceLimits {
     json_depth: i64,
     collection_entries: i64,
     concurrency: i64,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    per_call_wall_time_ms: Option<i64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    shared_wall_time_ms: Option<i64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    phase_wall_time_ms: Option<i64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    cancel_grace_ms: Option<i64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    accounting_window_ms: Option<i64>,
 }
 
 impl OperationInferenceLimits {
-    fn validate(&self, depth: i64) -> Res<()> {
+    fn validate(&self, depth: i64, autonomous: bool) -> Res<()> {
         let bounded = [
-            (self.context_bytes, 4096),
+            (self.context_bytes, if autonomous { 8192 } else { 4096 }),
             (self.candidates, 8),
             (self.request_bytes, 16384),
             (self.configuration_bytes, 16384),
             (self.response_bytes, 65536),
-            (self.decision_wall_time_ms, 20000),
+            (
+                self.decision_wall_time_ms,
+                if autonomous { 45000 } else { 20000 },
+            ),
             (self.connect_time_ms, 5000),
             (self.proposal_bytes, 8192),
             (self.repair_bytes, 2048),
@@ -115,6 +149,18 @@ pub struct InferencePermission {
     exercise_mode: ExerciseMode,
     recipient: String,
     profile: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    execution_mode: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    run_profile: Option<String>,
     field_classes: Vec<SafeFieldClass>,
     starts_at: i64,
     ends_at: i64,
@@ -126,6 +172,18 @@ pub struct InferencePermission {
 
 impl InferencePermission {
     fn check_profile(&self) -> Res<()> {
+        if self.version == "m1_inference_permission_v3" {
+            return self.check_autonomous();
+        }
+        self.check_legacy_profile()?;
+        if self.permission_id.is_nil() || self.provider_terms_ref.is_nil() {
+            return Err(Fail::Input("nil_reference"));
+        }
+        self.check_field_classes()?;
+        self.validate_native_profile()
+    }
+
+    fn check_legacy_profile(&self) -> Res<()> {
         let supported = matches!(
             (self.version.as_str(), self.profile.as_str()),
             ("m1_inference_permission_v1", "deepseek-responses-v1")
@@ -140,15 +198,28 @@ impl InferencePermission {
         {
             return Err(Fail::Input("inference_unsupported_profile"));
         }
-        if self.permission_id.is_nil() || self.provider_terms_ref.is_nil() {
-            return Err(Fail::Input("nil_reference"));
-        }
-        self.check_field_classes()?;
-        self.validate_native_profile()
+        let valid = [self.execution_mode.is_none(), self.run_profile.is_none()];
+        valid
+            .into_iter()
+            .all(|v| v)
+            .then_some(())
+            .ok_or(Fail::Input("inference_unsupported_profile"))
     }
 
     fn check_field_classes(&self) -> Res<()> {
-        if self.field_classes.is_empty() || self.field_classes.len() > 8 {
+        let autonomous = self.version == "m1_inference_permission_v3";
+        let max = 8 + usize::from(autonomous);
+        if !(1..=max).contains(&self.field_classes.len()) {
+            return Err(Fail::Input("inference_invalid_field_classes"));
+        }
+        if [
+            !autonomous,
+            self.field_classes
+                .contains(&SafeFieldClass::AdmittedCampaignDecisionFeedback),
+        ]
+        .into_iter()
+        .all(|v| v)
+        {
             return Err(Fail::Input("inference_invalid_field_classes"));
         }
         for (index, class) in self.field_classes.iter().enumerate() {
@@ -183,11 +254,11 @@ impl InferencePermission {
             return Err(Fail::Input("inference_invalid_window"));
         }
         self.campaign_limits.validate()?;
-        self.operation_limits.validate(self.envelope_depth())
+        self.check_limits()
     }
 
     fn validate_native_profile(&self) -> Res<()> {
-        if self.version != "m1_inference_permission_v2" {
+        if self.version == "m1_inference_permission_v1" {
             return Ok(());
         }
         let o = &self.operation_limits;
@@ -212,7 +283,7 @@ impl InferencePermission {
     }
 
     fn envelope_depth(&self) -> i64 {
-        if self.version == "m1_inference_permission_v2" {
+        if self.version != "m1_inference_permission_v1" {
             32
         } else {
             8
@@ -237,6 +308,7 @@ pub(crate) struct ContextDisclosure {
     pub starts_at: i64,
     pub ends_at: i64,
     pub context_bytes: usize,
+    pub configuration_bytes: usize,
     pub candidates: usize,
     pub required_classes: bool,
     pub operator_premises: bool,
@@ -253,6 +325,7 @@ impl InferencePermission {
             starts_at: self.starts_at,
             ends_at: self.ends_at,
             context_bytes: o.context_bytes as usize,
+            configuration_bytes: o.configuration_bytes as usize,
             candidates: o.candidates as usize,
             required_classes: [
                 SafeFieldClass::MissionQuestionConstraints,
@@ -283,5 +356,96 @@ impl InferencePermission {
                 o.decision_wall_time_ms,
             ],
         }
+    }
+}
+
+// Absent extensions retain legacy serialization; explicit null never does.
+fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
+}
+
+impl OperationInferenceLimits {
+    fn check_timers(&self, autonomous: bool) -> Res<()> {
+        let actual = [
+            self.per_call_wall_time_ms,
+            self.shared_wall_time_ms,
+            self.phase_wall_time_ms,
+            self.cancel_grace_ms,
+            self.accounting_window_ms,
+        ];
+        let expected = if autonomous {
+            [
+                Some(20000),
+                Some(40000),
+                Some(50000),
+                Some(2000),
+                Some(3000),
+            ]
+        } else {
+            [None; 5]
+        };
+        if actual != expected || (autonomous && self.decision_wall_time_ms != 45000) {
+            return Err(Fail::Input("inference_unsupported_operation_profile"));
+        }
+        Ok(())
+    }
+}
+impl InferencePermission {
+    fn check_autonomous(&self) -> Res<()> {
+        let binding = (
+            self.run_profile.as_deref(),
+            self.execution_mode.as_deref(),
+            self.profile.as_str(),
+            self.recipient.as_str(),
+        );
+        let supported = matches!(
+            binding,
+            (
+                Some("autonomous-dns-fixture-v1"),
+                Some("controlled_fixture"),
+                "deterministic-autonomous-v1",
+                "urn:duskweave:fixture:inference:v1"
+            ) | (
+                Some("autonomous-dns-provider-fixture-v1"),
+                Some("controlled_fixture"),
+                "deepseek-responses-autonomous-v1",
+                "https://api.deepseek.com/responses"
+            ) | (
+                Some("autonomous-dns-v1"),
+                Some("live"),
+                "deepseek-responses-autonomous-v1",
+                "https://api.deepseek.com/responses"
+            )
+        );
+        let valid = [
+            supported,
+            self.provider_terms_approved,
+            !self.permission_id.is_nil(),
+            !self.provider_terms_ref.is_nil(),
+            self.field_classes
+                .contains(&SafeFieldClass::AdmittedCampaignDecisionFeedback),
+        ];
+        if !valid.into_iter().all(|v| v) {
+            return Err(Fail::Input("inference_unsupported_profile"));
+        }
+        self.check_field_classes()?;
+        self.validate_native_profile()
+    }
+    /// Bounded configured disclosure only; the caller must still obtain current authority.
+    pub fn autonomous_binding(&self) -> Option<(&str, &str)> {
+        self.run_profile
+            .as_deref()
+            .zip(self.execution_mode.as_deref())
+    }
+}
+
+impl InferencePermission {
+    fn check_limits(&self) -> Res<()> {
+        let autonomous = self.version == "m1_inference_permission_v3";
+        self.operation_limits
+            .validate(self.envelope_depth(), autonomous)?;
+        self.operation_limits.check_timers(autonomous)
     }
 }

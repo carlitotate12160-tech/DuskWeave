@@ -115,7 +115,14 @@ impl ReservationRecord {
             || [
                 (c.request_bytes, 32768),
                 (c.response_bytes, 131072),
-                (c.wall_time_ms, 20000),
+                (
+                    c.wall_time_ms,
+                    if c.wall_time_ms == 45000 {
+                        45000
+                    } else {
+                        20000
+                    },
+                ),
             ]
             .iter()
             .any(|(n, cap)| *n <= 0 || n > cap)

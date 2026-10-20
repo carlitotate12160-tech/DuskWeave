@@ -141,8 +141,18 @@ fn installed_controls() -> &'static Mutex<Option<Sender<Control>>> {
 pub(super) struct CommandGuard;
 
 impl CommandGuard {
+    pub(super) fn for_command(command: Option<&str>) -> Res<Self> {
+        match command {
+            Some("m1-run") => Self::with_budget(Duration::from_millis(150000)),
+            Some("m1-run-phase") => Self::with_budget(Duration::from_millis(60000)),
+            _ => Self::start(),
+        }
+    }
     pub(super) fn start() -> Res<Self> {
-        let tx = spawn_monitor(Budget::start(COMMAND))?;
+        Self::with_budget(COMMAND)
+    }
+    fn with_budget(budget: Duration) -> Res<Self> {
+        let tx = spawn_monitor(Budget::start(budget))?;
         installed_controls()
             .lock()
             .map_err(|_| GUARD_FAILED)?

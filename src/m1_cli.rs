@@ -1,5 +1,5 @@
 //! Pure dispatch among existing M1 handlers; no state, I/O or shared aggregates.
-use duskweave::{Fail, Res};
+use duskweave::Res;
 pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
     match command {
         "m1-infer" | "m1-infer-inspect" | "m1-infer-recover" => {
@@ -11,6 +11,6 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
         "m1-terrain-record" | "m1-terrain-inspect" | "m1-terrain-recover" => {
             super::m1_terrain_cli::command(command, args)
         }
-        _ => Err(Fail::Input("unknown_command")),
+        _ => super::m1_run_cli::command(command, args),
     }
 }
