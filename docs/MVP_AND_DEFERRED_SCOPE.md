@@ -138,6 +138,43 @@ must show that decision two consumed the qualified result, duplicate start/recov
 caused zero additional effects, and fixture provenance cannot satisfy live checks.
 A green scripted fixture is necessary wiring evidence, not real LLM evaluation.
 
+### 1.4 Delivery performance and debt closure (owner direction, 2026-10-19)
+
+These are delivery obligations, not a new milestone or authority to start a later
+runtime stage. Keep the Walking Skeleton -> real-provider fixture -> qualified
+live sequence in section 1.2. Record closure in the existing PR and this roadmap;
+do not create another tracker or count a retained warning as repaid debt.
+
+| Order / owner | Bounded outcome | Closure evidence |
+| --- | --- | --- |
+| After PR #71 disposition; CI/test tooling | First optimize documentation-only delivery: a conservative changed-path classifier avoids full Rust/coverage only for explicitly qualified documentation inputs. Source, migrations, tests, manifests, build/security configuration, CI changes, unknown paths or classification failure require full verification. Keep required check identities and an explicit fail-closed ci-ok decision; do not silently convert missing/skipped execution into PASS. | Positive documentation cases and negative runtime/configuration/unknown-path cases; no dropped applicable check; compare exact-candidate cold/warm wall time with the baseline below. |
+| Same tooling owner; measured follow-up | Expose sanitized phase/target progress without raw credentials or unrestricted child output. Cache compilation with separate normal/coverage identities bound to platform, toolchain, dependency/build inputs and instrumentation. Preserve fresh coverage profiles and actual current-candidate execution; cached binaries/results are not cached PASS. | Secret-bearing negative controls, failed-child exit propagation, unchanged assertions/test inventory and coverage floors; measured cache hit/miss and build-versus-test time. No routine cargo clean. |
+| Test-fixture owner; only after isolation qualification | Parallelize proven independent tests with bounded concurrency. Keep shared PostgreSQL role/permission/migration fixtures serialized; separate databases do not isolate cluster roles. Do not merely remove --test-threads=1 or introduce a new runner/framework before measuring its need. | Same test inventory/outcomes and coverage; repeated isolated runs without cross-fixture interference, role leakage or hidden retries; measured end-to-end improvement. |
+| Terrain owner; first automatic issued-result intake | Close record_dns=24 and load_existing=17 when the skeleton changes that intake; include read_current_claim=10 if changed. Apply section 1.3's real SQL, source-binding, conflict, role, atomicity and commit-unknown checks. | Every resulting function <=7 under the pinned ratchet; passing baseline characterization and entrypoint/consumer regression. No renamed debt, forwarding helpers or branches shifted into SQL solely to game metrics. |
+| Existing owner modules; checkpoint after the real-provider fixture demo and before optional capability expansion | Reconcile every remaining named hotspot and the ambiguous closure group in section 1.3 into bounded owner-specific repayment/removal work. Keep untouched items explicitly OPEN until verified closure; essential inference/live qualification is not replaced by a general cleanup rewrite. | Candidate-bound function identity/complexity and consumer-path evidence for each closed item; unchanged function allowances are not closure. |
+| CLI/application and persistence owners; after a tested replacement exists | Retire obsolete commands/helpers individually, migrate their real tests/callers to existing application contracts, and remove unreachable production code. Consolidate proven SQL/error-mapping duplication only within the same owner. Preserve production-used M0 assessment/history/withdrawal until accepted compatibility has a tested replacement and authorized disposition. | Before/after caller/consumer inventory, tested replacement, stop/inspect/recover and M0 compatibility evidence; no orphan exports or duplicate test-only business implementation. Do not delete accepted authority, historical evidence or migrations to lower counts. |
+
+**LOC disposition:** keep QUALITY_BAR's advisory file/diff/span references and
+the enforced McCabe ratchet unchanged. Re-inventory the touched large files
+listed in ENGINEERING_STATE, including the ContextPack/Terrain adapters and large
+Terrain test suites. Retain a large cohesive responsibility only with a concrete
+review reason; consolidate duplication or split mixed responsibilities when
+proven. Closure is simpler ownership, less duplication/dead code and preserved
+behavior, not a required percentage reduction or smaller files at any cost.
+Do not raise thresholds, remove explanations or fragment helpers to satisfy LOC.
+
+**Measured CI baseline:** PR #71 run
+[39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),
+source head 0615fb7 (PR merge checkout 157c155), retained qualification artifact:
+instrumented test build 1m23s; 101 test binaries report 869.94 seconds total and
+549 passing tests; coverage 96.74%. Slowest target totals are
+m1_inference_budget_limits 105.76s, m1_session_cli 67.09s and
+m1_prepared_withdrawal_commit_ack 40.98s. These are one-run measurements, not a
+latency percentile or promised speedup. The bootstrap captures child output until
+completion, so a silent UI interval alone does not prove a hung test. Final
+job/check status must be read separately; a completed log or earlier head is not
+a substitute for current ci-ok.
+
 ## 2. Deferred development candidates
 
 Deferred means outside initial scope; evaluate means a possible direction, not a commitment to build it. Revisit using evidence and the stated trigger.
