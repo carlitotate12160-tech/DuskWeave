@@ -254,6 +254,7 @@ fn failure_receipt(error: &Fail, operation: Option<OperationId>) -> serde_json::
 
 fn cmd_withdraw(args: &[String]) -> Res<()> {
     let mut operation = None;
+    let mut local_control_failed = false;
     let outcome = (|| {
         let (operation, recover, request) = parse_withdrawal_command(args, &mut operation)?;
         let control = if recover {
@@ -261,6 +262,7 @@ fn cmd_withdraw(args: &[String]) -> Res<()> {
         } else {
             m1_run_control::signal_campaign(request.engagement_id.0, request.campaign_id.0)
         };
+        local_control_failed = control.is_err();
         let mut store = PgMissionStore::new(connect()?);
         let mut allocator = PgAllocator::new(connect()?);
         let Some(event) = store.withdraw(&request, operation, recover, &mut allocator)? else {
@@ -288,6 +290,9 @@ fn cmd_withdraw(args: &[String]) -> Res<()> {
         Ok(receipt) => receipt.clone(),
         Err(error) => failure_receipt(error, operation),
     };
+    if local_control_failed {
+        receipt["local_control"] = serde_json::json!("unresolved");
+    }
     receipt["current_permission"] = false.into();
     receipt["continuation_blocked"] = true.into();
     println!("{receipt}");

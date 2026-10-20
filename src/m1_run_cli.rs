@@ -121,20 +121,26 @@ fn child_args(args: &[String]) -> Res<(Uuid, RunPhase)> {
     let phase = RunPhase::parse(super::flag(&flags, "phase")?)?;
     Ok((r, phase))
 }
-fn claim_child(args: &[String]) -> Res<(RunRecord, RunPhase, super::m1_run_control::Preparation)> {
-    let preparation = super::m1_run_control::Preparation::start()?;
+fn claim_child(
+    args: &[String],
+) -> Res<(
+    RunRecord,
+    RunPhase,
+    Option<super::m1_run_control::Preparation>,
+)> {
     let (r, phase) = child_args(args)?;
     let mut store = store()?;
     let record = store.claim_phase(r, phase, &release()?)?;
+    let preparation = (phase != RunPhase::Acquisition
+        && record.request.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE)
+        .then(super::m1_run_control::Preparation::start)
+        .transpose()?;
     Ok((record, phase, preparation))
 }
 fn child(args: &[String]) -> Res<()> {
     let (record, phase, preparation) = claim_child(args)?;
     match phase {
-        RunPhase::Acquisition => {
-            drop(preparation);
-            super::m1_run_effect::acquire(&record)
-        }
+        RunPhase::Acquisition => super::m1_run_effect::acquire(&record),
         _ => super::m1_run_inference::decide(&record, phase, preparation),
     }
 }

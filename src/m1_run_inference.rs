@@ -50,7 +50,7 @@ impl ProposalBasis for RunBasis {
 pub(super) fn decide(
     run: &RunRecord,
     phase: RunPhase,
-    preparation: super::m1_run_control::Preparation,
+    preparation: Option<super::m1_run_control::Preparation>,
 ) -> Res<()> {
     let local = if run.request.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE {
         Some(super::m1_run_control::Binding::qualify(&run.request)?)
