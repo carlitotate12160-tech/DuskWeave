@@ -589,13 +589,32 @@ fn assert_terminal_fence_race(slot: u128, phase_complete: bool) {
     let (custodian_store, _) = timed_broker(false);
     let rec = start_with(&mut store, &q);
     let custodian = LeaseCustodian::start(&rec, custodian_store);
-    complete_first(&rec);
+    if phase_complete {
+        publish_first(&rec);
+    } else {
+        complete_first(&rec);
+    }
     let r = rec.request.run_id;
     let mut a = native::admin();
     let mut holder = timed_conn("DW_TEST_DATABASE_URL");
     let key = scope_key(&rec);
     let (mut stopper, stopper_pid) = timed_broker(false);
     let (mut worker, worker_pid) = timed_broker(true);
+    let mut positive = timed_conn("DW_INFERENCE_BROKER_DATABASE_URL");
+    let mut tx = positive.transaction().unwrap();
+    let valid_without_stop = if phase_complete {
+        tx.execute(
+            "SELECT execution.run_phase_complete($1,'decision_one')",
+            &[&r],
+        )
+    } else {
+        tx.execute("SELECT execution.run_terminal($1,'capability_gap')", &[&r])
+    };
+    assert!(
+        valid_without_stop.is_ok(),
+        "the competing writer must be valid before STOP: {valid_without_stop:?}"
+    );
+    tx.rollback().unwrap();
     custodian.finish().unwrap();
     lock_scope(&mut holder, &key);
     let (stop_ok, competing_res) = std::thread::scope(|s| {
@@ -605,7 +624,7 @@ fn assert_terminal_fence_race(slot: u128, phase_complete: bool) {
             if phase_complete {
                 worker.complete_phase(r, RunPhase::DecisionOne)
             } else {
-                worker.terminal(r, "retained")
+                worker.terminal(r, "capability_gap")
             }
         });
         wait_advisory_blocked(&mut a, worker_pid);

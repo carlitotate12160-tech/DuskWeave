@@ -255,7 +255,7 @@ fn renew_loop(
     }
 }
 
-pub fn complete_first(record: &duskweave::m1_run::RunRecord) {
+pub fn publish_first(record: &duskweave::m1_run::RunRecord) {
     use duskweave::{m1_run::RunPhase, postgres_m1_run::PgRunStore};
     use std::{
         process::Stdio,
@@ -292,7 +292,16 @@ pub fn complete_first(record: &duskweave::m1_run::RunRecord) {
         std::thread::sleep(Duration::from_millis(100));
     }
     store.renew(r).unwrap();
-    store.complete_phase(r, RunPhase::DecisionOne).unwrap();
+}
+
+pub fn complete_first(record: &duskweave::m1_run::RunRecord) {
+    publish_first(record);
+    broker_store()
+        .complete_phase(
+            record.request.run_id,
+            duskweave::m1_run::RunPhase::DecisionOne,
+        )
+        .unwrap();
 }
 
 pub fn timed_conn(variable: &str) -> postgres::Client {
