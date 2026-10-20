@@ -45,20 +45,19 @@ Current seal:
 
 Current engineering state:
 
-Latest merged delivery: [PR #70](https://github.com/carlitotate12160-tech/DuskWeave/pull/70),
-`535eab5cde6215becd9f5f0ee6a663a5f1173ff8`, reconciles PR #69 (`20671c6`).
-Active draft delivery: [PR #71](https://github.com/carlitotate12160-tech/DuskWeave/pull/71), the [PROPOSED autonomous-run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19)
-and its [ADR-016 supervision amendment](adr/ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19).
+Latest merged delivery: [PR #73](https://github.com/carlitotate12160-tech/DuskWeave/pull/73),
+`00e5667606fbc549aa5593997d9f88316ebc62e1`, following accepted autonomous DESIGN
+[PR #71](https://github.com/carlitotate12160-tech/DuskWeave/pull/71) (`dca2564`)
+and CI tooling [PR #72](https://github.com/carlitotate12160-tech/DuskWeave/pull/72) (`ca7d4ef`).
+Active implementation: [DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md),
+controlled fixture through production `m1-run`, restricted owner persistence and durable history.
 [ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
-owns active work, evidence limits and next action. The existing
-[MVP roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
-owns outcome order and audit follow-up. The owner accepted exact section 7 / ADR-016 section 4a text at
-`0615fb72c946fd6abf0823692be621096091377c` on 2026-10-19 for Walking Skeleton
-implementation. This grants no qualified acquisition, target permission or M1
-completion. Deliver the controlled fixture through production ports first after
-the accepted change is integrated and a bounded runtime packet is issued;
-live-boundary preparation may run independently. Real-provider/DNS
-qualification and fresh authorization remain required for the live outcome.
+owns readiness and next action; the [existing roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
+owns sequencing/debt. The owner accepted section 7 / ADR-016 section 4a exact text
+`0615fb72c946fd6abf0823692be621096091377c` on 2026-10-19 for this implementation.
+No real LLM/live acquisition qualification, target permission or M1 completion is implied.
+The separately qualified provider-fixture feedback slice follows skeleton integration;
+Linux live-boundary preparation may proceed independently.
 
 Current design document:
 

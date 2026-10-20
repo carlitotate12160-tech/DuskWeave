@@ -20,12 +20,16 @@ pub const MAX_UNCERTAINTY_SECONDS: u32 = 300;
 pub enum TerrainRequestVersion {
     #[serde(rename = "m1_terrain_dns_observation_v1")]
     M1TerrainDnsObservationV1,
+    #[serde(rename = "m1_terrain_dns_issued_observation_v1")]
+    M1TerrainDnsIssuedObservationV1,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TerrainSourceKind {
     #[serde(rename = "operator_reviewed_dns")]
     OperatorReviewedDns,
+    #[serde(rename = "fixture_dns_acquisition")]
+    FixtureDnsAcquisition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -341,6 +345,18 @@ impl TerrainDnsRequest {
         if !ok.into_iter().all(|b| b) {
             return Err(Fail::Input("invalid_bounds"));
         }
+        if !matches!(
+            (self.version, self.source_kind),
+            (
+                TerrainRequestVersion::M1TerrainDnsObservationV1,
+                TerrainSourceKind::OperatorReviewedDns
+            ) | (
+                TerrainRequestVersion::M1TerrainDnsIssuedObservationV1,
+                TerrainSourceKind::FixtureDnsAcquisition
+            )
+        ) {
+            return Err(Fail::Input("invalid_source_binding"));
+        }
         validate_dns_hostname(&self.subject_name)?;
         canonical_ipv4(&self.resolver_ipv4)?;
         validate_limitations(&self.limitations)?;
@@ -370,6 +386,9 @@ pub fn parse_terrain_dns_request(raw: &[u8]) -> Res<TerrainDnsRequest> {
     let req: TerrainDnsRequest =
         serde_json::from_slice(raw).map_err(|_| Fail::Input("invalid_json"))?;
     req.validate()?;
+    if req.version != TerrainRequestVersion::M1TerrainDnsObservationV1 {
+        return Err(Fail::Input("issued_source_requires_owner_reference"));
+    }
     Ok(req)
 }
 

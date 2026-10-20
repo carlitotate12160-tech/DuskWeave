@@ -31,7 +31,7 @@ fn core_connection() -> Res<Client> {
     qualify(&mut c, "dw_runtime")?;
     Ok(c)
 }
-fn broker_connection() -> Res<Client> {
+pub(super) fn broker_connection() -> Res<Client> {
     super::database_wait::connect_owner(
         super::database_config::owner_config(
             "DW_INFERENCE_BROKER_DATABASE_URL",
@@ -248,16 +248,7 @@ fn new_inference<P: inference::Provider>(
         q,
         OperationId(s.decision),
     )?;
-    let mut basis = reasoning::postgres_terrain::TerrainBasis {
-        mission: Basis {
-            client: broker_connection()?,
-            scope: s.clone(),
-            references: reasoning::request::reference_ids(p.utf8().as_bytes())
-                .map_err(Fail::Input)?,
-            deadline: o.broker.deadline,
-        },
-        dependencies: p.terrain_dependencies().to_vec(),
-    };
+    let mut basis = prepared_basis(s, &p, o.broker.deadline)?;
     let input = inference_input(q, s, p.utf8().as_bytes())?;
     Ok(inference::infer(
         &mut o.broker,
@@ -302,3 +293,104 @@ fn identity(q: &duskweave::m1_context_input::ContextRequest) -> Res<String> {
 #[cfg(test)]
 #[path = "../tests/support/m1_native_cli.rs"]
 mod tests;
+
+pub(super) fn autonomous_inference<B: reasoning::proposal::ProposalBasis>(
+    q: &ContextRequest,
+    decision: Uuid,
+    a: &duskweave::m1_autonomous_context::AutonomousContext,
+    basis: impl FnOnce(reasoning::postgres_terrain::TerrainBasis) -> B,
+) -> Res<()> {
+    let s = scope(q, decision)?;
+    let mut o = autonomous_owners(q, &s)?;
+    let p = m1_context::prepare_autonomous(
+        &mut PgContextReader::new(broker_connection()?),
+        q,
+        OperationId(decision),
+        a,
+    )?;
+    let terrain = prepared_basis(&s, &p, o.broker.deadline)?;
+    infer_fixture(q, &s, &mut o, p, basis(terrain))
+}
+fn infer_fixture<B: reasoning::proposal::ProposalBasis>(
+    q: &ContextRequest,
+    s: &Scope,
+    o: &mut Owners,
+    p: m1_context::PreparedContext,
+    mut basis: B,
+) -> Res<()> {
+    let input = inference_input(q, s, p.utf8().as_bytes())?;
+    let receipt = inference::infer(
+        &mut o.broker,
+        &mut reasoning::fixture::DeterministicProvider,
+        &mut basis,
+        &mut o.store,
+        &mut o.history,
+        input,
+    );
+    let complete = [
+        receipt.proposal_disposition == "validated_proposal",
+        receipt.publication == "committed",
+        receipt.history == "completed",
+        receipt.pack_state == "available",
+        receipt.consumption == "completed_charged_unused_repair_reserved",
+    ];
+    complete
+        .into_iter()
+        .all(|v| v)
+        .then_some(())
+        .ok_or(Fail::Unresolved("run_inference_pending"))
+}
+fn autonomous_deadline(c: &mut Client, s: &Scope) -> Res<Instant> {
+    let ms: i64 = c
+        .query_one(
+            "SELECT execution.inference_window_ms($1,$2,$3)",
+            &[&s.engagement, &s.campaign, &s.decision],
+        )
+        .map_err(|_| Fail::State("inference_authority_unavailable"))?
+        .try_get(0)
+        .map_err(|_| Fail::Store("run_decode"))?;
+    let ms = u64::try_from(ms)
+        .ok()
+        .filter(|v| *v > 0 && *v <= 40000)
+        .ok_or(Fail::State("inference_deadline"))?;
+    Ok(Instant::now() + Duration::from_millis(ms))
+}
+pub(super) fn autonomous_recover(q: &ContextRequest, decision: Uuid) -> Res<()> {
+    let s = scope(q, decision)?;
+    let (c, store) = open_stores(q)?;
+    let mut owners = owners(c, q, Instant::now(), store)?;
+    inference::inspect_recover(
+        &s,
+        true,
+        &mut owners.broker,
+        &mut owners.store,
+        &mut owners.history,
+    )
+    .map_err(Fail::Store)?;
+    Ok(())
+}
+
+fn autonomous_owners(q: &ContextRequest, s: &Scope) -> Res<Owners> {
+    let (mut c, store) = open_stores(q)?;
+    if continuation(&mut c, s, &store.input_hash, true)? {
+        return Err(Fail::State("run_decision_already_started"));
+    }
+    let deadline = autonomous_deadline(&mut c, s)?;
+    owners(c, q, deadline, store)
+}
+fn prepared_basis(
+    s: &Scope,
+    p: &m1_context::PreparedContext,
+    deadline: Instant,
+) -> Res<reasoning::postgres_terrain::TerrainBasis> {
+    Ok(reasoning::postgres_terrain::TerrainBasis {
+        mission: Basis {
+            client: broker_connection()?,
+            scope: s.clone(),
+            references: reasoning::request::reference_ids(p.utf8().as_bytes())
+                .map_err(Fail::Input)?,
+            deadline,
+        },
+        dependencies: p.terrain_dependencies().to_vec(),
+    })
+}

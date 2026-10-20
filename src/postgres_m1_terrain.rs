@@ -84,43 +84,9 @@ impl PgTerrainStore {
             .query_opt(READ_EXISTING_SQL, &[&e.0, &c.0, &op.0])
             .map_err(|err| map_pg_err(&err))?
         else {
-            let foreign: bool = tx
-                .query_one(
-                    "SELECT EXISTS(SELECT 1 FROM terrain.outbox WHERE operation_id=$1)",
-                    &[&op.0],
-                )
-                .map_err(|err| map_pg_err(&err))?
-                .try_get(0)
-                .map_err(|_| Fail::Store("contract_decode"))?;
-            return (!foreign)
-                .then_some(None)
-                .ok_or(Fail::Conflict("operation_conflict"));
+            return missing_identity(&mut *tx, op);
         };
-        let intact: Option<bool> = row.try_get(4).map_err(|_| Fail::Store("contract_decode"))?;
-        if intact != Some(true) {
-            return Err(Fail::Store("contract_decode"));
-        }
-        let stored_hash: String = row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
-        let raw_ev: Value = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
-        let raw_cur: Value = row.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
-        let now: i64 = row.try_get(3).map_err(|_| Fail::Store("contract_decode"))?;
-        let auth_db: bool = row.try_get(5).map_err(|_| Fail::Store("contract_decode"))?;
-        let ev: TerrainAcceptedEvent =
-            serde_json::from_value(raw_ev).map_err(|_| Fail::Store("contract_decode"))?;
-        let mut cur: TerrainClaimRevision =
-            serde_json::from_value(raw_cur).map_err(|_| Fail::Store("contract_decode"))?;
-        ev.validate()?;
-        if stored_hash != ev.request_hash {
-            return Err(Fail::Store("contract_decode"));
-        }
-        let held_frontier: Option<i64> =
-            row.try_get(6).map_err(|_| Fail::Store("contract_decode"))?;
-        if let Some(frontier) = held_frontier {
-            cur.conflicted = true;
-            cur.claim_status = crate::m1_terrain::TerrainClaimStatus::Conflicted;
-            cur.temporal_frontier = frontier;
-        }
-        Ok(Some((ev, cur, now, auth_db)))
+        decode_existing(&row).map(Some)
     }
 
     fn read_current_claim(
@@ -180,12 +146,7 @@ impl PgTerrainStore {
         req: &TerrainDnsRequest,
         op: OperationId,
     ) -> Res<Result<TerrainDnsRecord, &'static str>> {
-        req.validate()?;
-        if op.0.is_nil() {
-            return Err(Fail::Input("operation_id"));
-        }
-        let hash = req.request_hash()?;
-        let request = serde_json::to_value(req).map_err(|_| Fail::Store("contract_encode"))?;
+        let ingress = DnsIngress::new(req, op)?;
         let perm = verify_mission_permission(mission, req)?;
         let mut tx = self
             .client
@@ -193,47 +154,56 @@ impl PgTerrainStore {
             .isolation_level(IsolationLevel::Serializable)
             .start()
             .map_err(|e| map_pg_err(&e))?;
-        if let Some((ev, cur, now, auth_db)) =
+        if let Some(existing) =
             Self::load_existing(&mut tx, req.engagement_id, req.campaign_id, op)?
         {
-            if ev.request_hash != hash {
-                if perm.is_ok() {
-                    let row = tx
-                        .query_one(
-                            "SELECT terrain.record_dns_integrity_conflict($1,$2)",
-                            &[&request, &op.0],
-                        )
-                        .map_err(|e| map_pg_err(&e))?;
-                    let blocks_use: bool =
-                        row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
-                    if blocks_use != integrity_conflict_applies(req, &ev) {
-                        return Err(Fail::Store("contract_decode"));
-                    }
-                    tx.commit()
-                        .map_err(|_| Fail::Unresolved("terrain_commit_unknown"))?;
-                }
-                return Err(Fail::Conflict("input_mismatch"));
-            }
-            tx.commit().map_err(|e| map_pg_err(&e))?;
-            let auth_ok = [auth_db, perm.is_ok()].into_iter().all(|b| b);
-            return Ok(Ok((ev, cur, now, auth_ok)));
+            return replay_dns(
+                tx,
+                req,
+                op,
+                &ingress.hash,
+                &ingress.request,
+                perm.is_ok(),
+                existing,
+            )
+            .map(Ok);
         }
-        let reg = match perm {
-            Ok(lineage) => lineage,
+        Self::accept_new(tx, req, op, &ingress.request, perm)
+    }
+
+    fn accept_new(
+        mut tx: Transaction<'_>,
+        req: &TerrainDnsRequest,
+        op: OperationId,
+        request: &Value,
+        permission: Result<(OperationId, crate::mission::EventId, i64), &'static str>,
+    ) -> Res<Result<TerrainDnsRecord, &'static str>> {
+        let reg = match permission {
+            Ok(reg) => reg,
             Err(reason) => return Ok(Err(reason)),
         };
-        let prior = Self::read_current_claim(&mut tx, req)?;
-        let ids = TerrainIds::derive(req.engagement_id, req.campaign_id, op)?;
-        let event = evaluate_dns_observation(req, prior.as_ref(), ids, reg)?;
-        let payload = serde_json::to_value(&event).map_err(|_| Fail::Store("contract_encode"))?;
+        let (event, payload) = Self::evaluate_new(&mut tx, req, op, reg)?;
         tx.query_one(
             "SELECT terrain.accept_dns_observation($1,$2)",
-            &[&request, &payload],
+            &[request, &payload],
         )
         .map_err(|e| map_pg_err(&e))?;
         tx.commit()
             .map_err(|_| Fail::Unresolved("terrain_commit_unknown"))?;
         Ok(Ok((event.clone(), event.claim, reg.2, true)))
+    }
+
+    fn evaluate_new(
+        tx: &mut Transaction<'_>,
+        req: &TerrainDnsRequest,
+        op: OperationId,
+        reg: (OperationId, crate::mission::EventId, i64),
+    ) -> Res<(TerrainAcceptedEvent, Value)> {
+        let prior = Self::read_current_claim(tx, req)?;
+        let ids = TerrainIds::derive(req.engagement_id, req.campaign_id, op)?;
+        let event = evaluate_dns_observation(req, prior.as_ref(), ids, reg)?;
+        let payload = serde_json::to_value(&event).map_err(|_| Fail::Store("contract_encode"))?;
+        Ok((event, payload))
     }
 
     pub fn inspect_dns(
@@ -268,4 +238,152 @@ impl PgTerrainStore {
         let auth_ok = [auth_db, snap_ok].into_iter().all(|b| b);
         Ok(Some((ev, cur, now, auth_ok)))
     }
+}
+
+// Immutable row decoding is separate from transaction/admission orchestration.
+fn decode_existing(row: &postgres::Row) -> Res<TerrainDnsRecord> {
+    let intact: Option<bool> = row.try_get(4).map_err(|_| Fail::Store("contract_decode"))?;
+    if intact != Some(true) {
+        return Err(Fail::Store("contract_decode"));
+    }
+    let event = decode_source_event(row)?;
+    let current = decode_current_projection(row)?;
+    let now = row.try_get(3).map_err(|_| Fail::Store("contract_decode"))?;
+    let authority = row.try_get(5).map_err(|_| Fail::Store("contract_decode"))?;
+    Ok((event, current, now, authority))
+}
+
+fn decode_source_event(row: &postgres::Row) -> Res<TerrainAcceptedEvent> {
+    let hash: String = row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
+    let raw: Value = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
+    let event: TerrainAcceptedEvent =
+        serde_json::from_value(raw).map_err(|_| Fail::Store("contract_decode"))?;
+    event.validate()?;
+    if hash != event.request_hash {
+        return Err(Fail::Store("contract_decode"));
+    }
+    Ok(event)
+}
+
+fn decode_current_projection(row: &postgres::Row) -> Res<TerrainClaimRevision> {
+    let raw: Value = row.try_get(2).map_err(|_| Fail::Store("contract_decode"))?;
+    let mut current: TerrainClaimRevision =
+        serde_json::from_value(raw).map_err(|_| Fail::Store("contract_decode"))?;
+    let held: Option<i64> = row.try_get(6).map_err(|_| Fail::Store("contract_decode"))?;
+    if let Some(frontier) = held {
+        current.conflicted = true;
+        current.claim_status = crate::m1_terrain::TerrainClaimStatus::Conflicted;
+        current.temporal_frontier = frontier;
+    }
+    Ok(current)
+}
+
+// A missing scoped record cannot hide reuse of the same operation in another scope.
+fn missing_identity(tx: &mut Transaction<'_>, op: OperationId) -> Res<Option<TerrainDnsRecord>> {
+    let foreign: bool = tx
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM terrain.outbox WHERE operation_id=$1)",
+            &[&op.0],
+        )
+        .map_err(|err| map_pg_err(&err))?
+        .try_get(0)
+        .map_err(|_| Fail::Store("contract_decode"))?;
+    (!foreign)
+        .then_some(None)
+        .ok_or(Fail::Conflict("operation_conflict"))
+}
+
+// Conflicting replay records the existing integrity hold atomically before refusal.
+// A duplicate keeps its historical event but re-evaluates current permission.
+#[allow(clippy::too_many_arguments)]
+fn replay_dns(
+    mut tx: Transaction<'_>,
+    req: &TerrainDnsRequest,
+    op: OperationId,
+    hash: &str,
+    request: &Value,
+    permission: bool,
+    existing: TerrainDnsRecord,
+) -> Res<TerrainDnsRecord> {
+    let (event, current, now, authority) = existing;
+    if event.request_hash != hash {
+        if permission {
+            record_integrity_hold(&mut tx, req, op, request, &event)?;
+            tx.commit()
+                .map_err(|_| Fail::Unresolved("terrain_commit_unknown"))?;
+        }
+        return Err(Fail::Conflict("input_mismatch"));
+    }
+    tx.commit().map_err(|e| map_pg_err(&e))?;
+    Ok((
+        event,
+        current,
+        now,
+        [authority, permission].into_iter().all(|b| b),
+    ))
+}
+
+fn record_integrity_hold(
+    tx: &mut Transaction<'_>,
+    req: &TerrainDnsRequest,
+    op: OperationId,
+    request: &Value,
+    event: &TerrainAcceptedEvent,
+) -> Res<()> {
+    let row = tx
+        .query_one(
+            "SELECT terrain.record_dns_integrity_conflict($1,$2)",
+            &[request, &op.0],
+        )
+        .map_err(|e| map_pg_err(&e))?;
+    let blocks: bool = row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
+    if blocks != integrity_conflict_applies(req, event) {
+        return Err(Fail::Store("contract_decode"));
+    }
+    Ok(())
+}
+
+struct DnsIngress {
+    hash: String,
+    request: Value,
+}
+impl DnsIngress {
+    fn new(req: &TerrainDnsRequest, op: OperationId) -> Res<Self> {
+        req.validate()?;
+        if op.0.is_nil() {
+            return Err(Fail::Input("operation_id"));
+        }
+        Ok(Self {
+            hash: req.request_hash()?,
+            request: serde_json::to_value(req).map_err(|_| Fail::Store("contract_encode"))?,
+        })
+    }
+}
+
+/// A reference to an issued result, never caller-supplied DNS material.
+impl PgTerrainStore {
+    pub fn record_issued(
+        &mut self,
+        mission: &mut (impl M1PolicyReader + MissionStore),
+        reference: &crate::m1_terrain_issued::IssuedDnsReference,
+    ) -> Res<Result<TerrainDnsRecord, &'static str>> {
+        reference.validate()?;
+        let q = serde_json::to_value(reference).map_err(|_| Fail::Store("contract_encode"))?;
+        let source = self
+            .client
+            .query_one("SELECT terrain.issued_dns_request($1)", &[&q])
+            .map_err(|_| Fail::State("issued_result_unavailable"))?;
+        let raw: Value = source
+            .try_get(0)
+            .map_err(|_| Fail::Store("contract_decode"))?;
+        let source: IssuedSource =
+            serde_json::from_value(raw).map_err(|_| Fail::Store("contract_decode"))?;
+        self.record_dns(mission, &source.request, source.operation)
+    }
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IssuedSource {
+    request: TerrainDnsRequest,
+    operation: OperationId,
 }

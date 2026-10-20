@@ -105,17 +105,20 @@ class MigrationSelectionAndOrder(unittest.TestCase):
 
     def test_initial_setup_includes_0015_after_predecessors(self):
         calls = self.run_migrate(initial=True)
-        self.assertEqual(len(calls), 13)
-        self.assertIn("terrain.accept_dns_observation", calls[-2])
-        self.assertIn("CREATE FUNCTION terrain.current_dns_context_view", calls[-1])
+        self.assertEqual(len(calls), 16)
+        self.assertIn("terrain.accept_dns_observation", calls[11])
+        self.assertIn("CREATE FUNCTION terrain.current_dns_context_view", calls[12])
 
     def test_refresh_includes_0015_after_0012_0013_0014_with_replace(self):
         calls = self.run_migrate(initial=False)
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls), 7)
         self.assertIn("execution.inference_may_send", calls[0])
         self.assertIn("execution.inference_reservation", calls[1])
         self.assertIn("terrain.accept_dns_observation", calls[2])
         self.assertIn("CREATE OR REPLACE FUNCTION terrain.current_dns_context_view", calls[3])
+        self.assertIn("execution.inference_profile_matches", calls[4])
+        self.assertIn("execution.run_start", calls[5])
+        self.assertIn("terrain.issued_dns_request", calls[6])
 
 
 

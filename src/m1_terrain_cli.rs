@@ -33,7 +33,7 @@ fn parse_args<'a>(command: &str, args: &'a [String]) -> Res<(&'a str, Option<Ope
     Ok((input, parse_op_flag(command, raw_op)?))
 }
 
-fn terrain_connection() -> Res<Client> {
+pub(super) fn terrain_connection() -> Res<Client> {
     super::database_wait::connect_owner(
         super::database_config::owner_config(
             "DW_TERRAIN_DATABASE_URL",
@@ -43,7 +43,7 @@ fn terrain_connection() -> Res<Client> {
     )
 }
 
-fn trajectory_connection() -> Res<Client> {
+pub(super) fn trajectory_connection() -> Res<Client> {
     super::database_wait::connect_owner(
         super::database_config::owner_config(
             "DW_TRAJECTORY_DATABASE_URL",

@@ -441,6 +441,7 @@ impl TerrainPublicView {
             return Err(Fail::State("incompatible_lineage"));
         }
         self.validate_claims()?;
+        self.validate_source_mode(mission)?;
         Ok(self.evaluate_at(evaluated_at, true))
     }
 
@@ -572,4 +573,23 @@ pub fn verify_current_dependencies(
         }
     }
     Ok(())
+}
+
+impl TerrainPublicView {
+    fn validate_source_mode(&self, mission: &MissionRegistered) -> Res<()> {
+        let fixture = mission
+            .fields
+            .m1_inference_permission()
+            .and_then(|p| p.autonomous_binding())
+            .is_some_and(|(_, m)| m == "controlled_fixture");
+        let source = if fixture {
+            TerrainSourceKind::FixtureDnsAcquisition
+        } else {
+            TerrainSourceKind::OperatorReviewedDns
+        };
+        if self.claims.iter().any(|c| c.source_kind != source) {
+            return Err(Fail::Input("terrain_source_mode_mismatch"));
+        }
+        Ok(())
+    }
 }

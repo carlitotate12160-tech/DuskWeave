@@ -53,7 +53,7 @@ pub fn prepare(
     let basis = reader.read(q, op)?;
     let disclosure = check_basis(&basis, q)?;
     let terrain = resolve_terrain(&basis, &disclosure, q)?;
-    fit_pack(&basis, &disclosure, q, op, &terrain)
+    fit_pack(&basis, &disclosure, q, op, &terrain, None)
 }
 
 fn resolve_terrain(
@@ -120,11 +120,11 @@ fn shrink_step(
     kept: &[TerrainClaimSummary],
     claim_count: &mut usize,
     min_claims: usize,
+    protected: Option<AssetRef>,
 ) -> bool {
-    if let Some(idx) = cands
-        .iter()
-        .rposition(|cand| !kept.iter().any(|c| c.asset_ref == cand.asset_ref))
-    {
+    if let Some(idx) = cands.iter().rposition(|cand| {
+        Some(cand.asset_ref) != protected && !kept.iter().any(|c| c.asset_ref == cand.asset_ref)
+    }) {
         cands.remove(idx);
         return true;
     }
@@ -142,15 +142,20 @@ fn fit_pack(
     q: &ContextRequest,
     op: OperationId,
     terrain: &TerrainContextState,
+    autonomous: Option<&crate::m1_autonomous_context::AutonomousContext>,
 ) -> Res<PreparedContext> {
     let mut cands = q.candidates[..q.candidates.len().min(disclosure.candidates)].to_vec();
     let all_claims = kept_claims(&eligible_claims(terrain), &cands, usize::MAX);
     let min_claims = usize::from(!all_claims.is_empty());
     let mut claim_count = all_claims.len();
+    let protected = autonomous.and_then(|a| {
+        a.selected_seed()
+            .or_else(|| q.candidates.first().map(|c| c.asset_ref))
+    });
     loop {
         let kept = kept_claims(&all_claims, &cands, claim_count);
         let omitted_bytes = (all_claims.len() - kept.len()) as u32;
-        let (raw, deps) = pack(
+        let (mut raw, deps) = pack(
             basis,
             disclosure,
             q,
@@ -160,15 +165,17 @@ fn fit_pack(
             &kept,
             omitted_bytes,
         )?;
-        let utf8 = serde_json::to_string(&raw).map_err(|_| Fail::Store("context_encode"))?;
-        if utf8.len() <= disclosure.context_bytes {
+        let utf8 = serialize_pack(&mut raw, autonomous)?;
+        if wire_fits(&utf8, disclosure, autonomous.is_some()) {
             return Ok(PreparedContext {
                 decision_id: op,
                 utf8,
                 terrain_dependencies: deps,
             });
         }
-        if !shrink_step(&mut cands, &kept, &mut claim_count, min_claims) {
+        if !can_shrink(autonomous.is_some(), &cands, &kept, claim_count, min_claims)
+            || !shrink_step(&mut cands, &kept, &mut claim_count, min_claims, protected)
+        {
             let code = ["context_size_deferred", "context_bytes_insufficient"][min_claims];
             return Err(Fail::State(code));
         }
@@ -310,7 +317,7 @@ fn terrain_owner_view(
         return json!({
             "owner": "cyber_terrain",
             "availability": "available",
-            "source": "operator_reviewed_dns",
+            "source": v.claims.first().map_or(crate::m1_terrain_input::TerrainSourceKind::OperatorReviewedDns,|c|c.source_kind),
             "claim_kind": "dns_hostname_ipv4_resolution",
             "revision": rev,
             "frontier": frontier,
@@ -453,4 +460,78 @@ fn pack(
         }
     });
     Ok((val, deps))
+}
+
+/// The new profile needs fresh current Mission disclosure plus an independently read predecessor.
+pub fn prepare_autonomous(
+    reader: &mut impl ContextReader,
+    q: &ContextRequest,
+    op: OperationId,
+    a: &crate::m1_autonomous_context::AutonomousContext,
+) -> Res<PreparedContext> {
+    q.validate(op)?;
+    let basis = reader.read(q, op)?;
+    check_autonomous_basis(&basis, a)?;
+    let disclosure = check_basis(&basis, q)?;
+    let terrain = resolve_terrain(&basis, &disclosure, q)?;
+    fit_pack(&basis, &disclosure, q, op, &terrain, Some(a))
+}
+fn check_autonomous_basis(
+    b: &ContextBasis,
+    a: &crate::m1_autonomous_context::AutonomousContext,
+) -> Res<()> {
+    let configured = b
+        .mission
+        .fields
+        .m1_inference_permission()
+        .and_then(|p| p.autonomous_binding());
+    let expected = Some((
+        a.binding.run_profile.as_str(),
+        a.binding.execution_mode.as_str(),
+    ));
+    let valid = [
+        configured == expected,
+        b.mission.engagement_id == a.binding.engagement_id,
+        b.mission.campaign_id == a.binding.campaign_id,
+    ];
+    valid
+        .into_iter()
+        .all(|v| v)
+        .then_some(())
+        .ok_or(Fail::State("context_basis_mismatch"))
+}
+fn can_shrink(
+    autonomous: bool,
+    cands: &[Candidate],
+    kept: &[TerrainClaimSummary],
+    count: usize,
+    minimum: usize,
+) -> bool {
+    !autonomous || cands.len() > 1 || count > minimum || !kept.is_empty()
+}
+fn wire_fits(utf8: &str, d: &ContextDisclosure, autonomous: bool) -> bool {
+    if utf8.len() > d.context_bytes {
+        return false;
+    }
+    if !autonomous {
+        return true;
+    }
+    [None, Some(&["unexpected_view_request"; 8][..])]
+        .into_iter()
+        .all(|repair| {
+            crate::m1_reasoning::request::bind(utf8.as_bytes(), repair).is_ok_and(|b| {
+                b.body.len() <= d.required[1] as usize / 2
+                    && b.configuration.len() <= d.configuration_bytes
+            })
+        })
+}
+
+fn serialize_pack(
+    raw: &mut Value,
+    autonomous: Option<&crate::m1_autonomous_context::AutonomousContext>,
+) -> Res<String> {
+    if let Some(a) = autonomous {
+        a.extend(raw)?;
+    }
+    serde_json::to_string(raw).map_err(|_| Fail::Store("context_encode"))
 }
