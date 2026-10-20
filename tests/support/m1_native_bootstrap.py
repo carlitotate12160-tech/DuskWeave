@@ -7,6 +7,7 @@ import re
 import secrets
 import subprocess
 import sys
+import time
 from urllib.parse import quote
 
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
@@ -34,6 +35,17 @@ def private_run(args, data=None):
     if result.returncode:
         raise RuntimeError("native_provisioning_failed")
     return result.stdout
+
+
+def wait_with_progress(process, label):
+    """Drain both pipes privately; emit only bounded, non-content progress."""
+    started = time.monotonic()
+    while True:
+        try:
+            return process.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            print(json.dumps({"action": label, "status": "running",
+                              "elapsed_seconds": int(time.monotonic() - started)}), flush=True)
 
 
 class Fixture:
@@ -162,14 +174,16 @@ class Fixture:
         path = report / f"{label}.log"
         if path.exists():
             raise RuntimeError("native_report_collision")
-        result = subprocess.run(args, cwd=ROOT, env=self.env, capture_output=True, text=True)
-        output = result.stderr + "\n" + result.stdout
+        with subprocess.Popen(args, cwd=ROOT, env=self.env, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True) as process:
+            stdout, stderr = wait_with_progress(process, label)
+        output = stderr + "\n" + stdout
         for value in self.secrets:
             output = output.replace(value, "[REDACTED]")
         path.write_text(output, encoding="utf-8")
-        print(json.dumps({"action": label, "exit": result.returncode}), flush=True)
+        print(json.dumps({"action": label, "exit": process.returncode}), flush=True)
         print("\n".join(output.splitlines()[-35:]), flush=True)
-        return result.returncode
+        return process.returncode
 
 
 def main():
