@@ -7,7 +7,12 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const FIXTURE_PROFILE: &str = "autonomous-dns-fixture-v1";
+pub const PROVIDER_FIXTURE_PROFILE: &str = "autonomous-dns-provider-fixture-v1";
 pub const FIXTURE_MODE: &str = "controlled_fixture";
+
+pub fn controlled_fixture_profile(profile: &str) -> bool {
+    [FIXTURE_PROFILE, PROVIDER_FIXTURE_PROFILE].contains(&profile)
+}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -43,7 +48,7 @@ impl RunRequest {
         let valid = [
             self.version == "m1_autonomous_run_request_v1",
             !self.run_id.is_nil(),
-            self.run_profile == FIXTURE_PROFILE,
+            controlled_fixture_profile(&self.run_profile),
             self.execution_mode == FIXTURE_MODE,
             self.deadline_at_ms > 0,
             (1..=8).contains(&self.seed_names.len()),

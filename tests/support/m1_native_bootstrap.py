@@ -60,6 +60,7 @@ class Fixture:
         # Container names allow the existing owned dash spelling, never SQL use.
         self.database = database_name(kind, database)
         self.env = dict(os.environ)
+        self.env.pop("DEEPSEEK_API_KEY", None)
         self.env["PYTHONDONTWRITEBYTECODE"] = "1"
         self.secrets = []
         info = json.loads(private_run(["docker", "inspect", container]))[0]
@@ -154,7 +155,7 @@ class Fixture:
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18) if initial else (12, 13, 14, 15, 16, 17, 18)
+        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19) if initial else (12, 13, 14, 15, 16, 17, 18, 19)
         for number in numbers:
             source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
             if not initial:
@@ -163,10 +164,13 @@ class Fixture:
                 source = source.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ")
                 source = source.replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION ")
                 source = source.replace("CREATE VIEW ", "CREATE OR REPLACE VIEW ")
-                source = re.sub(r"CREATE TRIGGER (\w+) (.*?);", lambda m:
+                source = re.sub(r"CREATE TRIGGER\s+(\w+)\s+(.*?);", lambda m:
                                 "DO $refresh$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='" + m[1] +
                                 "') THEN " + m[0] + " END IF; END $refresh$;", source, flags=re.S)
-            self.sql(f"SET ROLE {self.migration_actor};\n" + source)
+            try:
+                self.sql(f"SET ROLE {self.migration_actor};\n" + source)
+            except RuntimeError:
+                raise RuntimeError(f"native_migration_{number:04d}_failed") from None
 
     def run(self, label, args, report):
         if not re.fullmatch(r"[a-z0-9_-]+", label) or not isinstance(args, list) or not args:
@@ -217,6 +221,9 @@ def main():
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (RuntimeError, subprocess.SubprocessError, OSError, KeyError, ValueError):
-        print("native_fixture_bootstrap_failed", file=sys.stderr)
+    except (RuntimeError, subprocess.SubprocessError, OSError, KeyError, ValueError) as error:
+        category = str(error)
+        if not re.fullmatch(r"native_migration_[0-9]{4}_failed", category):
+            category = "native_fixture_bootstrap_failed"
+        print(category, file=sys.stderr)
         raise SystemExit(1)

@@ -3,6 +3,7 @@
 //! receipts (safe identifiers and categories only).
 #![forbid(unsafe_code)]
 
+use duskweave as control_domain;
 use duskweave::input::read_register_file;
 use duskweave::mission::{CampaignId, EngagementId, OperationId, RegistrationInput};
 use duskweave::postgres_mission::{PgAllocator, PgMissionStore};
@@ -25,10 +26,12 @@ mod database_wait;
 mod m1_cli;
 mod m1_context_cli;
 mod m1_inference_budget_cli;
+mod m1_inference_control;
 mod m1_policy_cli;
 mod m1_prepared_withdrawal_cli;
 mod m1_reasoning_cli;
 mod m1_run_cli;
+mod m1_run_control;
 mod m1_run_effect;
 mod m1_run_inference;
 mod m1_run_supervision;
@@ -253,6 +256,11 @@ fn cmd_withdraw(args: &[String]) -> Res<()> {
     let mut operation = None;
     let outcome = (|| {
         let (operation, recover, request) = parse_withdrawal_command(args, &mut operation)?;
+        let control = if recover {
+            Ok(())
+        } else {
+            m1_run_control::signal_campaign(request.engagement_id.0, request.campaign_id.0)
+        };
         let mut store = PgMissionStore::new(connect()?);
         let mut allocator = PgAllocator::new(connect()?);
         let Some(event) = store.withdraw(&request, operation, recover, &mut allocator)? else {
@@ -270,7 +278,11 @@ fn cmd_withdraw(args: &[String]) -> Res<()> {
                 consumer.publish(&event)
             }
         });
-        Ok(durable_receipt(event, history))
+        let mut receipt = durable_receipt(event, history);
+        if control.is_err() {
+            receipt["local_control"] = serde_json::json!("unresolved");
+        }
+        Ok(receipt)
     })();
     let mut receipt = match &outcome {
         Ok(receipt) => receipt.clone(),

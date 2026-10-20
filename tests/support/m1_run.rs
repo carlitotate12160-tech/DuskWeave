@@ -13,6 +13,7 @@ pub fn refresh() {
     for source in [
         include_str!("../../migrations/0017_autonomous_fixture_run.sql"),
         include_str!("../../migrations/0018_issued_fixture_terrain.sql"),
+        include_str!("../../migrations/0019_provider_fixture_feedback.sql"),
     ] {
         let normalized = source.replace("CREATE OR REPLACE FUNCTION ", "CREATE FUNCTION ");
         for function in normalized.split("CREATE FUNCTION ").skip(1) {
@@ -88,7 +89,7 @@ pub fn registered_with(slot: u128, change: impl FnOnce(&mut Value)) -> Value {
     let context = terrain::context_request_for(e, c, &raw, candidates).0;
     let seeds:Vec<_>=raw["m1_permission"]["contact_rules"].as_array().unwrap().iter().map(|r|
         json!({"asset_ref":r["asset_ref"],"name":r["rule"].get("exact").or_else(||r["rule"].get("label_suffix")).unwrap()})).collect();
-    json!({"version":"m1_autonomous_run_request_v1","run_id":consent_id(),"run_profile":"autonomous-dns-fixture-v1",
+    json!({"version":"m1_autonomous_run_request_v1","run_id":consent_id(),"run_profile":raw["m1_inference_permission"]["run_profile"],
         "execution_mode":"controlled_fixture","deadline_at_ms":now*1000+149000,"context":context,
         "seed_names":seeds})
 }
@@ -135,6 +136,50 @@ pub fn path(q: &Value) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!("dw-run-{}.json", q["run_id"].as_str().unwrap()));
     std::fs::write(&path, serde_json::to_vec(q).unwrap()).unwrap();
     path
+}
+pub fn control_root() -> std::path::PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "dw-provider-control-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        use std::process::Stdio;
+        let system = std::env::var_os("SystemRoot").unwrap();
+        let script = "$ErrorActionPreference='Stop'; \
+            $s=[Security.Principal.WindowsIdentity]::GetCurrent().User; \
+            $a=New-Object Security.AccessControl.DirectorySecurity; $a.SetOwner($s); \
+            $a.SetAccessRuleProtection($true,$false); \
+            $r=New-Object Security.AccessControl.FileSystemAccessRule($s,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); \
+            $a.AddAccessRule($r); Set-Acl -LiteralPath $env:DW_M1_RUN_CONTROL_ROOT -AclObject $a";
+        let status = Command::new(
+            std::path::Path::new(&system).join("System32/WindowsPowerShell/v1.0/powershell.exe"),
+        )
+        .env_clear()
+        .env("SystemRoot", system)
+        .env("DW_M1_RUN_CONTROL_ROOT", &root)
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+        assert!(
+            status.success(),
+            "private test control root ACL prerequisite"
+        );
+    }
+    root
 }
 pub fn id(q: &Value) -> Uuid {
     Uuid::parse_str(q["run_id"].as_str().unwrap()).unwrap()

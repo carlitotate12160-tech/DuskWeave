@@ -70,14 +70,20 @@ fn drive_phase(
     store.renew(r)?;
     store.start_phase(r, phase)?;
     let deadline = super::m1_run_supervision::phase_deadline(run_deadline, phase);
-    let outcome = wait_phase(store, r, phase, deadline);
+    let outcome = wait_phase(store, run, phase, deadline);
     if outcome.is_err() {
         let _ = store.unknown(r, phase);
     }
     outcome
 }
-fn wait_phase(store: &mut PgRunStore, r: Uuid, phase: RunPhase, deadline: Instant) -> Res<()> {
-    let child = super::m1_run_supervision::PhaseChild::launch(r, phase, deadline)?;
+fn wait_phase(
+    store: &mut PgRunStore,
+    run: &RunRecord,
+    phase: RunPhase,
+    deadline: Instant,
+) -> Res<()> {
+    let r = run.request.run_id;
+    let child = super::m1_run_supervision::PhaseChild::launch(run, phase, deadline)?;
     let mut renewal = Instant::now();
     while !child.finished()? {
         if Instant::now() >= deadline {
@@ -115,24 +121,38 @@ fn child_args(args: &[String]) -> Res<(Uuid, RunPhase)> {
     let phase = RunPhase::parse(super::flag(&flags, "phase")?)?;
     Ok((r, phase))
 }
-fn child(args: &[String]) -> Res<()> {
+fn claim_child(args: &[String]) -> Res<(RunRecord, RunPhase, super::m1_run_control::Preparation)> {
+    let preparation = super::m1_run_control::Preparation::start()?;
     let (r, phase) = child_args(args)?;
     let mut store = store()?;
     let record = store.claim_phase(r, phase, &release()?)?;
+    Ok((record, phase, preparation))
+}
+fn child(args: &[String]) -> Res<()> {
+    let (record, phase, preparation) = claim_child(args)?;
     match phase {
-        RunPhase::Acquisition => super::m1_run_effect::acquire(&record),
-        _ => super::m1_run_inference::decide(&record, phase),
+        RunPhase::Acquisition => {
+            drop(preparation);
+            super::m1_run_effect::acquire(&record)
+        }
+        _ => super::m1_run_inference::decide(&record, phase, preparation),
     }
 }
 fn inspect(command: &str, args: &[String]) -> Res<()> {
     let r = run_reference(args)?;
+    let control = if command == "m1-run-stop" {
+        super::m1_run_control::signal_run(r)
+    } else {
+        Ok(())
+    };
     let mut store = store()?;
-    match command {
+    let authoritative = match command {
         "m1-run-stop" => store.stop(r),
         "m1-run-recover" => recover(&mut store, r),
         _ => Ok(()),
-    }?;
-    emit(&mut store, r)
+    };
+    let receipt = emit(&mut store, r);
+    authoritative.and(control).and(receipt)
 }
 fn recover(store: &mut PgRunStore, r: Uuid) -> Res<()> {
     let run = store.inspect(r)?;

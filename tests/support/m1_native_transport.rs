@@ -41,15 +41,15 @@ fn envelope() -> Vec<u8> {
     .unwrap()
 }
 
-struct Server {
-    url: String,
-    calls: Arc<AtomicUsize>,
-    received_body: Arc<std::sync::Mutex<Vec<u8>>>,
-    arrived: std::sync::mpsc::Receiver<()>,
+pub(super) struct Server {
+    pub(super) url: String,
+    pub(super) calls: Arc<AtomicUsize>,
+    pub(super) received_body: Arc<std::sync::Mutex<Vec<u8>>>,
+    pub(super) arrived: std::sync::mpsc::Receiver<()>,
     worker: Option<std::thread::JoinHandle<()>>,
 }
 impl Server {
-    fn start(status: &str, headers: &str, body: Vec<u8>) -> Self {
+    pub(super) fn start(status: &str, headers: &str, body: Vec<u8>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/responses", listener.local_addr().unwrap());

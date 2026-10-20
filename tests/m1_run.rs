@@ -85,3 +85,25 @@ fn deterministic_fixture_preserves_issued_snapshot_clock_and_rejects_manual_sour
     raw["version"] = json!("m1_terrain_dns_observation_v1");
     assert!(duskweave::m1_fixture_dns::acquire(serde_json::from_value(raw).unwrap()).is_err());
 }
+
+#[test]
+fn issued_reference_accepts_both_fixture_profiles_but_never_live_or_unknown_modes() {
+    let id = "00000000-0000-0000-0000-000000000021";
+    let mut raw = json!({"version":"m1_terrain_dns_issued_observation_v1",
+        "engagement_id":id,"campaign_id":id,"result_ref":id,
+        "run_profile":"autonomous-dns-provider-fixture-v1","execution_mode":"controlled_fixture"});
+    let reference: duskweave::m1_terrain_issued::IssuedDnsReference =
+        serde_json::from_value(raw.clone()).unwrap();
+    assert!(reference.validate().is_ok());
+    for (profile, mode) in [
+        ("autonomous-dns-v1", "live"),
+        ("autonomous-dns-provider-fixture-v1", "live"),
+        ("unknown", "controlled_fixture"),
+    ] {
+        raw["run_profile"] = json!(profile);
+        raw["execution_mode"] = json!(mode);
+        let reference: duskweave::m1_terrain_issued::IssuedDnsReference =
+            serde_json::from_value(raw.clone()).unwrap();
+        assert!(reference.validate().is_err());
+    }
+}

@@ -228,12 +228,7 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
             read_terrain_dns_file(Path::new(path)).map_err(|_| Fail::Input("invalid_input"))?;
         req_captured = Some(req);
         let req = req_captured.as_ref().ok_or(Fail::Input("invalid_input"))?;
-        let (rt, tr, tj) = connect_qualified()?;
-        match (command, op_opt) {
-            ("m1-terrain-record", _) => run_record(rt, tr, tj, req, op_opt),
-            (_, Some(op)) => run_inspect_or_recover(command, rt, tr, tj, req, op),
-            _ => Err(Fail::Input("invalid_args")),
-        }
+        execute_request(command, req, op_opt)
     })();
     let (receipt, err_opt) = match outcome {
         Ok(pair) => pair,
@@ -241,7 +236,7 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
             let (res, code, mapped) = map_fail(f);
             let mut receipt =
                 TerrainReceipt::failure(res, code, req_captured.as_ref(), op_captured);
-            if command != "m1-terrain-record" && op_captured.is_some() {
+            if historical_read(command, op_captured) {
                 // A failed read establishes neither rollback nor absence of history.
                 receipt.publication = "unknown".to_string();
                 receipt.history = "unknown".to_string();
@@ -255,4 +250,27 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
         None => Ok(()),
         Some(f) => Err(f),
     }
+}
+
+fn historical_read(command: &str, operation: Option<OperationId>) -> bool {
+    command != "m1-terrain-record" && operation.is_some()
+}
+
+fn execute_request(
+    command: &str,
+    req: &TerrainDnsRequest,
+    op: Option<OperationId>,
+) -> Res<(TerrainReceipt, Option<Fail>)> {
+    let control = if command == "m1-terrain-record" {
+        super::m1_run_control::signal_campaign(req.engagement_id.0, req.campaign_id.0)
+    } else {
+        Ok(())
+    };
+    let (rt, tr, tj) = connect_qualified()?;
+    let result = match (command, op) {
+        ("m1-terrain-record", _) => run_record(rt, tr, tj, req, op),
+        (_, Some(op)) => run_inspect_or_recover(command, rt, tr, tj, req, op),
+        _ => Err(Fail::Input("invalid_args")),
+    };
+    result.map(|(receipt, failure)| (receipt, failure.or(control.err())))
 }

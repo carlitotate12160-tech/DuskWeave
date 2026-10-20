@@ -3,6 +3,7 @@ use super::inference::{Provider, Received};
 use super::proposal::ProposalBasis;
 use super::provider_diagnostic::ProviderDiagnostic;
 use super::request::BoundCall;
+use super::transport_control::{Permit, TransportGuard};
 use curl::easy::{Easy, HttpVersion, List};
 use std::cell::{Cell, RefCell};
 use std::sync::mpsc::{Sender, channel};
@@ -54,6 +55,13 @@ fn authorization_headers(key: &str) -> Result<List, curl::Error> {
     headers.append(&format!("Authorization: Bearer {key}"))?;
     Ok(headers)
 }
+fn provider_key() -> Res<String> {
+    let key = std::env::var("DEEPSEEK_API_KEY").map_err(|_| "live_key_missing")?;
+    if key.is_empty() || key.chars().any(|c| c.is_control()) {
+        return Err("live_key_invalid");
+    }
+    Ok(key)
+}
 fn tls_policy(h: &mut Easy) -> Result<(), curl::Error> {
     h.ssl_verify_peer(true)?;
     h.ssl_verify_host(true)?;
@@ -81,10 +89,7 @@ fn timeouts(h: &mut Easy, left: Duration) -> Result<(), curl::Error> {
 
 impl Provider for DeepSeekProvider {
     fn prepare(&mut self, b: &BoundCall, until: Instant) -> Res<()> {
-        let key = std::env::var("DEEPSEEK_API_KEY").map_err(|_| "live_key_missing")?;
-        if key.is_empty() || key.chars().any(|c| c.is_control()) {
-            return Err("live_key_invalid");
-        }
+        let key = provider_key()?;
         let left = until
             .checked_duration_since(Instant::now())
             .ok_or("inference_deadline")?;
@@ -143,6 +148,12 @@ fn attempt(
     if !transport_current(until, cancelled, basis) {
         return Err("provider_cancelled_uncertain");
     }
+    let (result, raw, oversized, elapsed) =
+        exchange(&mut h, &mut || transport_current(until, cancelled, basis))?;
+    finish_transfer(result, raw, oversized, &key, elapsed, basis)
+}
+type Exchange = (Result<(), curl::Error>, Vec<u8>, bool, Duration);
+fn exchange(h: &mut Easy, current: &mut dyn FnMut() -> bool) -> Res<Exchange> {
     let raw = RefCell::new(Vec::new());
     let oversized = Cell::new(false);
     let start = Instant::now();
@@ -163,18 +174,11 @@ fn attempt(
             }
         })
         .map_err(|_| "inference_transport_unavailable")?;
-        t.progress_function(|_, _, _, _| transport_current(until, cancelled, basis))
+        t.progress_function(|_, _, _, _| current())
             .map_err(|_| "inference_transport_unavailable")?;
         t.perform()
     };
-    finish_transfer(
-        result,
-        raw.into_inner(),
-        oversized.get(),
-        &key,
-        start.elapsed(),
-        basis,
-    )
+    Ok((result, raw.into_inner(), oversized.get(), start.elapsed()))
 }
 fn finish_transfer(
     result: Result<(), curl::Error>,
@@ -193,8 +197,66 @@ fn finish_transfer(
     if raw.windows(key.len()).any(|v| v == key.as_bytes()) {
         return Err("provider_unsafe_response");
     }
+    admit_without_key(&raw, elapsed, key, basis)
+}
+struct KeyExclusion<'a> {
+    owner: &'a mut dyn ProposalBasis,
+    key: &'a str,
+    reflected: Cell<bool>,
+}
+impl KeyExclusion<'_> {
+    fn clear(&self, text: &str) -> bool {
+        if text.contains(self.key) {
+            self.reflected.set(true);
+            return false;
+        }
+        true
+    }
+}
+impl ProposalBasis for KeyExclusion<'_> {
+    fn reference_eligible(&self, r: &str) -> bool {
+        self.clear(r) && self.owner.reference_eligible(r)
+    }
+    fn manifest_eligible(&self, r: &str) -> bool {
+        self.clear(r) && self.owner.manifest_eligible(r)
+    }
+    fn safe_explanation(&self, text: &str) -> bool {
+        self.clear(text) && self.owner.safe_explanation(text)
+    }
+    fn current_authority_and_premises(&mut self) -> Res<()> {
+        self.owner.current_authority_and_premises()
+    }
+    fn current_authority_for_references(&mut self, refs: &[String]) -> Res<()> {
+        if !refs.iter().all(|r| self.clear(r)) {
+            return Err("provider_unsafe_response");
+        }
+        self.owner.current_authority_for_references(refs)
+    }
+}
+fn admit_without_key(
+    raw: &[u8],
+    elapsed: Duration,
+    key: &str,
+    basis: &mut dyn ProposalBasis,
+) -> Res<Received> {
     let mut diagnostic = ProviderDiagnostic::default();
-    super::response::admit_http(&raw, elapsed, basis, &mut diagnostic)
+    let mut screened = KeyExclusion {
+        owner: basis,
+        key,
+        reflected: Cell::new(false),
+    };
+    // Screen decoded text before calling owners; raw matching misses both JSON escape layers.
+    let received = super::response::admit_http(raw, elapsed, &mut screened, &mut diagnostic)?;
+    if screened.reflected.get()
+        || received
+            .usage
+            .reported_model
+            .as_deref()
+            .is_some_and(|s| s.contains(key))
+    {
+        return Err("provider_unsafe_response");
+    }
+    Ok(received)
 }
 
 fn transport_current(
@@ -212,6 +274,144 @@ fn post(h: &mut Easy, b: &BoundCall, key: &str) -> Result<(), curl::Error> {
     h.http_headers(authorization_headers(key)?)
 }
 
+/// The autonomous lane uses the same wire/TLS/admission boundary, but no SQL in curl callbacks.
+pub struct AutonomousProvider {
+    prepared: Option<(Easy, String, String)>,
+    permit: Permit,
+}
+impl AutonomousProvider {
+    pub fn new(permit: Permit) -> Self {
+        Self {
+            prepared: None,
+            permit,
+        }
+    }
+}
+fn autonomous_binding(b: &BoundCall) -> Res<()> {
+    let p: serde_json::Value = serde_json::from_slice(&b.pack).map_err(|_| "request_encode")?;
+    let c: serde_json::Value =
+        serde_json::from_slice(&b.configuration).map_err(|_| "request_encode")?;
+    let valid = [
+        p["run_profile"] == "autonomous-dns-provider-fixture-v1",
+        p["execution_mode"] == "controlled_fixture",
+        c["run_profile"] == p["run_profile"],
+        c["execution_mode"] == p["execution_mode"],
+        c["profile"] == "deepseek-responses-autonomous-v1",
+        c["recipient"] == "https://api.deepseek.com/responses",
+    ];
+    if !valid.into_iter().all(|v| v) {
+        return Err("inference_transport_unavailable");
+    }
+    verify_wire_binding(b)
+}
+fn verify_wire_binding(b: &BoundCall) -> Res<()> {
+    let body: serde_json::Value = serde_json::from_slice(&b.body).map_err(|_| "request_encode")?;
+    super::request::verify_binding(
+        std::str::from_utf8(&b.pack).map_err(|_| "request_encode")?,
+        std::str::from_utf8(&b.configuration).map_err(|_| "request_encode")?,
+        std::str::from_utf8(&b.body).map_err(|_| "request_encode")?,
+        &b.digest,
+        body["input"].as_array().is_some_and(|v| v.len() == 2),
+    )
+}
+impl Provider for AutonomousProvider {
+    fn prepare(&mut self, b: &BoundCall, until: Instant) -> Res<()> {
+        autonomous_binding(b)?;
+        if !self.permit.current() {
+            return Err("current_authority_unavailable");
+        }
+        let key = provider_key()?;
+        let left = until
+            .checked_duration_since(Instant::now())
+            .ok_or("inference_deadline")?
+            .min(Duration::from_millis(20000));
+        let handle = configure(b, &key, left).map_err(|_| "inference_transport_unavailable")?;
+        self.prepared = Some((handle, key, b.digest.clone()));
+        Ok(())
+    }
+    fn call(
+        &mut self,
+        b: &BoundCall,
+        until: Instant,
+        basis: &mut dyn ProposalBasis,
+        release: &mut dyn FnMut() -> Res<()>,
+    ) -> Res<Received> {
+        let (handle, key, call_end) = self.take_transfer(b, until)?;
+        let _guard = TransportGuard::arm(self.permit.clone(), call_end)
+            .map_err(|_| "inference_transport_unavailable")?;
+        let received = self.exchange_owned(handle, call_end, release)?;
+        self.admit_received(received, &key, call_end, basis)
+    }
+}
+impl AutonomousProvider {
+    fn take_transfer(&mut self, b: &BoundCall, until: Instant) -> Res<(Easy, String, Instant)> {
+        let (mut handle, key, digest) = self
+            .prepared
+            .take()
+            .ok_or("inference_transport_unavailable")?;
+        if digest != b.digest || !self.permit.current() {
+            return Err("current_authority_unavailable");
+        }
+        let now = Instant::now();
+        let left = until
+            .checked_duration_since(now)
+            .ok_or("inference_deadline")?
+            .min(Duration::from_millis(20000));
+        timeouts(&mut handle, left).map_err(|_| "inference_transport_unavailable")?;
+        Ok((handle, key, now + left))
+    }
+    fn exchange_owned(
+        &mut self,
+        mut handle: Easy,
+        call_end: Instant,
+        release: &mut dyn FnMut() -> Res<()>,
+    ) -> Res<Exchange> {
+        std::thread::scope(|scope| {
+            let permit = self.permit.clone();
+            let worker = std::thread::Builder::new()
+                .name("autonomous_inference_transport".into())
+                .spawn_scoped(scope, move || {
+                    if !permit.current() {
+                        return Err("provider_cancelled_uncertain");
+                    }
+                    exchange(&mut handle, &mut || {
+                        permit.current() && Instant::now() < call_end
+                    })
+                })
+                .map_err(|_| "inference_transport_unavailable")?;
+            let opened = release();
+            if opened.is_err() {
+                self.permit.stop();
+            }
+            let received = worker.join().map_err(|_| "provider_transport_unknown")?;
+            opened?;
+            received
+        })
+    }
+    fn admit_received(
+        &self,
+        received: Exchange,
+        key: &str,
+        call_end: Instant,
+        basis: &mut dyn ProposalBasis,
+    ) -> Res<Received> {
+        if !self.permit.current() || Instant::now() >= call_end {
+            return Err("provider_cancelled_uncertain");
+        }
+        // Fresh owner/reference checks remain in proposal admission, outside the curl worker.
+        let (result, raw, oversized, elapsed) = received;
+        let received = finish_transfer(result, raw, oversized, key, elapsed, basis)?;
+        if !self.permit.current() {
+            return Err("provider_cancelled_uncertain");
+        }
+        Ok(received)
+    }
+}
+
 #[cfg(test)]
 #[path = "../../tests/support/m1_native_transport.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/m1_autonomous_transport.rs"]
+mod autonomous_tests;

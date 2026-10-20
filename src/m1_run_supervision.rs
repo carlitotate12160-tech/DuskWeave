@@ -1,37 +1,25 @@
 //! Independent child reaper. The deadline thread never waits on SQL or output pipes.
-use duskweave::m1_run::RunPhase;
+use duskweave::m1_run::{PROVIDER_FIXTURE_PROFILE, RunPhase, RunRecord};
 use duskweave::{Fail, Res};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 
 pub(super) struct PhaseChild {
     child: Arc<Mutex<Child>>,
     done: mpsc::Sender<()>,
 }
 impl PhaseChild {
-    pub(super) fn launch(run: Uuid, phase: RunPhase, deadline: Instant) -> Res<Self> {
-        let mut command = Command::new(
-            std::env::current_exe().map_err(|_| Fail::Config("run_binary_unavailable"))?,
-        );
-        command
-            .env_clear()
-            .arg("m1-run-phase")
-            .arg("--run")
-            .arg(run.to_string())
-            .arg("--phase")
-            .arg(phase.name())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        install_owner_environment(&mut command);
-        Self::supervise(
-            command
-                .spawn()
-                .map_err(|_| Fail::Store("run_child_start_unknown"))?,
-            deadline,
-        )
+    pub(super) fn launch(run: &RunRecord, phase: RunPhase, deadline: Instant) -> Res<Self> {
+        let (mut command, control) = phase_command(run, phase)?;
+        let child = command
+            .spawn()
+            .map_err(|_| Fail::Store("run_child_start_unknown"))?;
+        let owned = Self::supervise(child, deadline)?;
+        if let Some(binding) = control {
+            monitor_control(Arc::clone(&owned.child), binding, deadline)?;
+        }
+        Ok(owned)
     }
     fn supervise(child: Child, deadline: Instant) -> Res<Self> {
         let child = Arc::new(Mutex::new(child));
@@ -68,6 +56,90 @@ impl PhaseChild {
             })
     }
 }
+fn phase_command(
+    run: &RunRecord,
+    phase: RunPhase,
+) -> Res<(Command, Option<super::m1_run_control::Binding>)> {
+    run.request.validate()?;
+    let provider = run.request.run_profile == PROVIDER_FIXTURE_PROFILE;
+    let control = if provider {
+        Some(super::m1_run_control::Binding::qualify(&run.request)?)
+    } else {
+        None
+    };
+    let mut command =
+        Command::new(std::env::current_exe().map_err(|_| Fail::Config("run_binary_unavailable"))?);
+    command
+        .env_clear()
+        .arg("m1-run-phase")
+        .arg("--run")
+        .arg(run.request.run_id.to_string())
+        .arg("--phase")
+        .arg(phase.name())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    install_owner_environment(&mut command);
+    if provider {
+        install_provider_environment(&mut command, phase);
+    }
+    Ok((command, control))
+}
+fn install_provider_environment(c: &mut Command, phase: RunPhase) {
+    if let Some(root) = std::env::var_os("DW_M1_RUN_CONTROL_ROOT") {
+        c.env("DW_M1_RUN_CONTROL_ROOT", root);
+    }
+    if phase != RunPhase::Acquisition {
+        c.stdin(Stdio::piped());
+        if let Some(key) = std::env::var_os("DEEPSEEK_API_KEY") {
+            c.env("DEEPSEEK_API_KEY", key);
+        }
+    }
+}
+fn monitor_control(
+    child: Arc<Mutex<Child>>,
+    binding: super::m1_run_control::Binding,
+    deadline: Instant,
+) -> Res<()> {
+    std::thread::Builder::new()
+        .name("run_local_control".into())
+        .spawn(move || {
+            while Instant::now() < deadline {
+                let running = child
+                    .lock()
+                    .ok()
+                    .is_some_and(|mut c| matches!(c.try_wait(), Ok(None)));
+                if !running {
+                    return;
+                }
+                if binding.current().is_err() {
+                    cooperative_stop(&child, deadline);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        })
+        .map_err(|_| Fail::Config("run_control_unqualified"))?;
+    Ok(())
+}
+fn cooperative_stop(child: &Arc<Mutex<Child>>, deadline: Instant) {
+    if let Ok(mut child) = child.lock() {
+        // Closing our sole write handle sends EOF without a potentially blocking pipe write.
+        child.stdin.take();
+    }
+    let end = deadline.min(Instant::now() + Duration::from_millis(2000));
+    while Instant::now() < end {
+        if child
+            .lock()
+            .ok()
+            .is_some_and(|mut c| matches!(c.try_wait(), Ok(Some(_))))
+        {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    reap(child);
+}
 fn reap(child: &Arc<Mutex<Child>>) {
     if let Ok(mut child) = child.lock() {
         let _ = child.kill();
@@ -81,7 +153,7 @@ impl Drop for PhaseChild {
     }
 }
 fn install_owner_environment(c: &mut Command) {
-    // Fixed infrastructure boundary only; provider keys, PATH, shell and arbitrary flags never cross.
+    // Base owner allowlist; selected inference key/control are added separately, never PATH/proxies/flags.
     for key in [
         "DW_DATABASE_CONFIG_MODE",
         "DW_DATABASE_URL",
