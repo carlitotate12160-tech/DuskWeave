@@ -1,10 +1,10 @@
 # DW-IMPLEMENT-M1-PROVIDER-FIXTURE-FEEDBACK
 
-PROJECT: DuskWeave  
-MODE: IMPLEMENT  
-WORKSPACE: `D:/DuskWeave-ci-complexity`  
-BRANCH: `feat/m1-provider-fixture-feedback`  
-BASE: `2b807d6961a6fd4cb0feafb690d178213e41fb2e`  
+PROJECT: DuskWeave
+MODE: IMPLEMENT
+WORKSPACE: `D:/DuskWeave-ci-complexity`
+BRANCH: `feat/m1-provider-fixture-feedback`
+BASE: `2b807d6961a6fd4cb0feafb690d178213e41fb2e`
 Prepared: 2026-10-20, after verified merges #74 and #106.
 
 Execute this packet directly. Do not return another implementation plan or a replacement architecture. Deliver one cohesive PR. Routine corrections stay in that PR.
