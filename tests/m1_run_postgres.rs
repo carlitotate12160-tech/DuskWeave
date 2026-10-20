@@ -100,10 +100,35 @@ fn production_run_links_two_decisions_and_repeated_start_and_recovery_have_zero_
         .unwrap();
     assert_eq!(rows.len(), 2);
     let packs: Vec<Value> = rows.iter().map(|r| r.get(0)).collect();
+    let first = packs
+        .iter()
+        .find(|p| p["predecessor"]["availability"] == "absent")
+        .unwrap();
+    let first_terrain = first["owner_views"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["owner"] == "cyber_terrain")
+        .unwrap();
+    assert_eq!(first_terrain["availability"], "available");
+    assert_eq!(first_terrain["shown_claims"], 0);
+    assert!(
+        first_terrain.get("source").is_none(),
+        "empty first Terrain view must omit source: {first_terrain}"
+    );
     let second = packs
         .iter()
         .find(|p| p["predecessor"]["availability"] == "committed")
         .unwrap();
+    let second_terrain = second["owner_views"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["owner"] == "cyber_terrain")
+        .unwrap();
+    assert_eq!(second_terrain["availability"], "available");
+    assert_eq!(second_terrain["shown_claims"], 1);
+    assert_eq!(second_terrain["source"], "fixture_dns_acquisition");
     assert_eq!(second["predecessor"]["result_ref"], receipt["result"]);
     assert!(
         second["references"]

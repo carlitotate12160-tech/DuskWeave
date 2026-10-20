@@ -144,8 +144,12 @@ BEGIN
 END $$;
 
 CREATE FUNCTION execution.run_stop(r uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+DECLARE x execution.autonomous_runs;
 BEGIN
  IF execution.run_record(r) IS NULL THEN RAISE EXCEPTION 'run_identity_unavailable';END IF;
+ SELECT * INTO x FROM execution.autonomous_runs WHERE run_id=r;
+ PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text||':'||x.c::text,0));
+ UPDATE execution.session_fences SET epoch=epoch+1 WHERE engagement_id=x.e AND campaign_id=x.c;
  UPDATE execution.autonomous_control SET status='stopped',lease_until_ms=0 WHERE run_id=r AND status='running';
  PERFORM execution.close_fixture_session(r,'stopped');
 END $$;
@@ -154,8 +158,10 @@ CREATE FUNCTION execution.run_phase_complete(r uuid,wanted text) RETURNS void LA
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; d uuid;
 BEGIN
- PERFORM execution.run_current(r);
  SELECT * INTO x FROM execution.autonomous_runs WHERE run_id=r;
+ PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text||':'||x.c::text,0));
+ UPDATE execution.session_fences SET epoch=epoch+1 WHERE engagement_id=x.e AND campaign_id=x.c;
+ PERFORM execution.run_current(r);
  IF NOT EXISTS(SELECT 1 FROM execution.autonomous_control WHERE run_id=r AND phase=wanted AND claimed)
  THEN RAISE EXCEPTION 'run_phase_refused';END IF;
  IF wanted IN ('decision_one','decision_two') THEN
@@ -170,12 +176,16 @@ BEGIN
  END IF;
  INSERT INTO execution.autonomous_phases VALUES(r,wanted,'completed',floor(extract(epoch FROM clock_timestamp())*1000)::bigint);
  IF wanted='acquisition' THEN PERFORM execution.close_fixture_session(r,'completed');END IF;
- IF wanted='decision_two' THEN UPDATE execution.autonomous_control SET status='completed',lease_until_ms=0 WHERE run_id=r;END IF;
+ IF wanted='decision_two' THEN UPDATE execution.autonomous_control SET status='completed',lease_until_ms=0 WHERE run_id=r AND status='running';END IF;
 END $$;
 
 CREATE FUNCTION execution.run_unknown(r uuid,wanted text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+DECLARE x execution.autonomous_runs;
 BEGIN
  IF execution.run_record(r) IS NULL THEN RAISE EXCEPTION 'run_identity_unavailable';END IF;
+ SELECT * INTO x FROM execution.autonomous_runs WHERE run_id=r;
+ PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text||':'||x.c::text,0));
+ UPDATE execution.session_fences SET epoch=epoch+1 WHERE engagement_id=x.e AND campaign_id=x.c;
  INSERT INTO execution.autonomous_phases VALUES(r,wanted,'unknown',floor(extract(epoch FROM clock_timestamp())*1000)::bigint) ON CONFLICT DO NOTHING;
  UPDATE execution.autonomous_control SET status='unknown',lease_until_ms=0 WHERE run_id=r AND status='running';
  PERFORM execution.close_fixture_session(r,'unknown');
@@ -191,22 +201,26 @@ GRANT EXECUTE ON FUNCTION execution.run_record(uuid),execution.run_current(uuid)
 CREATE FUNCTION execution.run_terminal(r uuid,reason text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE x execution.autonomous_runs;p jsonb;expected text;
 BEGIN
- PERFORM execution.run_current(r);SELECT * INTO x FROM execution.autonomous_runs WHERE run_id=r;
+ SELECT * INTO x FROM execution.autonomous_runs WHERE run_id=r;
+ PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text||':'||x.c::text,0));
+ UPDATE execution.session_fences SET epoch=epoch+1 WHERE engagement_id=x.e AND campaign_id=x.c;
+ PERFORM execution.run_current(r);
  SELECT payload->'proposal' INTO p FROM cognition.reasoning_decisions WHERE (e,c,d)=(x.e,x.c,x.decision_one);
  expected:=CASE WHEN p#>'{next_intent,view_request}' IS NOT NULL AND p#>'{next_intent,view_request}'<>'null' THEN 'owner_view_requested'
  WHEN p#>>'{next_intent,category}'='retain' THEN 'retained' WHEN p#>>'{next_intent,category}'='defer' THEN 'deferred'
  WHEN p#>>'{next_intent,category}'='stop' THEN 'stopped' ELSE 'capability_gap' END;
  IF reason IS DISTINCT FROM expected OR NOT EXISTS(SELECT 1 FROM execution.autonomous_phases WHERE run_id=r AND phase='decision_one' AND status='completed')
  THEN RAISE EXCEPTION 'run_terminal_refused'; END IF;
- UPDATE execution.autonomous_control SET status=reason,lease_until_ms=0 WHERE run_id=r;
+ UPDATE execution.autonomous_control SET status=reason,lease_until_ms=0 WHERE run_id=r AND status='running';
 END $$;
 
 CREATE FUNCTION execution.reserve_fixture_dns(r uuid,seed integer) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE x execution.autonomous_runs;s jsonb;f jsonb;p jsonb;chosen jsonb;proposal jsonb;g bigint;n bigint;pack jsonb;asset uuid;selected integer;
 BEGIN
- s:=execution.run_current(r);f:=s->'fields';p:=f->'m1_permission';
  SELECT * INTO x FROM execution.autonomous_runs WHERE run_id=r;
  PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text||':'||x.c::text,0));
+ UPDATE execution.session_fences SET epoch=epoch+1 WHERE engagement_id=x.e AND campaign_id=x.c;
+ s:=execution.run_current(r);f:=s->'fields';p:=f->'m1_permission';
  IF NOT EXISTS(SELECT 1 FROM execution.autonomous_control WHERE run_id=r AND phase='acquisition' AND claimed)
  OR NOT EXISTS(SELECT 1 FROM execution.inference_closures WHERE (e,c,d)=(x.e,x.c,x.decision_one))
  OR EXISTS(SELECT 1 FROM execution.fixture_dns_attempts WHERE run_id=r)
@@ -249,9 +263,10 @@ END $$;
 CREATE FUNCTION execution.commit_fixture_dns(r uuid,q jsonb) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE x execution.autonomous_runs;a execution.fixture_dns_attempts;s jsonb;f jsonb;p jsonb;chosen jsonb;expected jsonb;n bigint;
 BEGIN
- s:=execution.run_current(r);f:=s->'fields';p:=f->'m1_permission';
  SELECT * INTO x FROM execution.autonomous_runs WHERE run_id=r;
  PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text||':'||x.c::text,0));
+ UPDATE execution.session_fences SET epoch=epoch+1 WHERE engagement_id=x.e AND campaign_id=x.c;
+ s:=execution.run_current(r);f:=s->'fields';p:=f->'m1_permission';
  SELECT * INTO a FROM execution.fixture_dns_attempts WHERE run_id=r;
  chosen:=x.request->'seed_names'->a.seed_index;n:=floor(extract(epoch FROM clock_timestamp())*1000)::bigint;
  IF a.run_id IS NULL OR a.release_sha256<>x.release_sha256 OR a.mode<>'controlled_fixture'

@@ -294,3 +294,132 @@ pub fn complete_first(record: &duskweave::m1_run::RunRecord) {
     store.renew(r).unwrap();
     store.complete_phase(r, RunPhase::DecisionOne).unwrap();
 }
+
+pub fn timed_conn(variable: &str) -> postgres::Client {
+    let mut c = native::client(variable);
+    c.batch_execute("SET statement_timeout='3000ms'; SET lock_timeout='750ms'")
+        .unwrap();
+    c
+}
+pub fn timed_broker(serializable: bool) -> (duskweave::postgres_m1_run::PgRunStore, i32) {
+    let mut c = timed_conn("DW_INFERENCE_BROKER_DATABASE_URL");
+    duskweave::m1_reasoning::postgres::qualify_owner(&mut c, "dw_m1_broker").unwrap();
+    if serializable {
+        c.batch_execute("SET default_transaction_isolation='serializable'")
+            .unwrap();
+    }
+    let pid = c.query_one("SELECT pg_backend_pid()", &[]).unwrap().get(0);
+    (duskweave::postgres_m1_run::PgRunStore::new(c), pid)
+}
+pub fn scope_key(rec: &duskweave::m1_run::RunRecord) -> String {
+    let q = &rec.request.context.mission;
+    format!("{}:{}", q.engagement_id.0, q.campaign_id.0)
+}
+pub fn lock_scope(c: &mut postgres::Client, key: &str) {
+    c.execute("SELECT pg_advisory_lock(hashtextextended($1,0))", &[&key])
+        .unwrap();
+}
+pub fn unlock_scope(c: &mut postgres::Client, key: &str) {
+    let ok: bool = c
+        .query_one("SELECT pg_advisory_unlock(hashtextextended($1,0))", &[&key])
+        .unwrap()
+        .get(0);
+    assert!(ok);
+}
+pub fn wait_advisory_blocked(admin: &mut postgres::Client, pid: i32) {
+    use std::time::{Duration, Instant};
+    let deadline = Instant::now() + Duration::from_millis(1200);
+    loop {
+        let blocked: bool = admin
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND NOT granted)",
+                &[&pid],
+            )
+            .unwrap()
+            .get(0);
+        if blocked {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "advisory lock barrier not reached for backend {pid}"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+pub fn ready_acquisition(
+    slot: u128,
+) -> (
+    duskweave::m1_run::RunRecord,
+    duskweave::postgres_m1_run::PgRunStore,
+    LeaseCustodian,
+) {
+    let q = registered(slot);
+    let (mut store, _) = timed_broker(false);
+    let (custodian_store, _) = timed_broker(false);
+    let rec = start_with(&mut store, &q);
+    let custodian = LeaseCustodian::start(&rec, custodian_store);
+    complete_first(&rec);
+    store
+        .start_phase(rec.request.run_id, duskweave::m1_run::RunPhase::Acquisition)
+        .unwrap();
+    store
+        .claim_phase(
+            rec.request.run_id,
+            duskweave::m1_run::RunPhase::Acquisition,
+            &release(),
+        )
+        .unwrap();
+    (rec, store, custodian)
+}
+pub fn withdraw_scope(
+    rec: &duskweave::m1_run::RunRecord,
+    client: postgres::Client,
+) -> duskweave::Res<()> {
+    use duskweave::{
+        mission::{OperationId, OperatorRef},
+        withdrawal::{WithdrawalReason, WithdrawalRequest, WithdrawalStore},
+    };
+    let q = &rec.request.context.mission;
+    let request = WithdrawalRequest {
+        engagement_id: q.engagement_id,
+        campaign_id: q.campaign_id,
+        operator_ref: OperatorRef(Uuid::from_u128(0x11)),
+        expected_mission_revision: 1,
+        reason: WithdrawalReason::OperatorRequested,
+    };
+    let mut allocator =
+        duskweave::postgres_mission::PgAllocator::new(timed_conn("DW_TEST_DATABASE_URL"));
+    let mut mission = duskweave::postgres_mission::PgMissionStore::new(client);
+    mission
+        .withdraw(&request, OperationId(consent_id()), false, &mut allocator)?
+        .ok_or(duskweave::Fail::State("withdrawal_missing"))?;
+    Ok(())
+}
+pub fn fence_state(admin: &mut postgres::Client, rec: &duskweave::m1_run::RunRecord) -> Value {
+    let r = rec.request.run_id;
+    let row = admin
+        .query_one(
+            "SELECT y.status, y.lease_until_ms, \
+             floor(extract(epoch FROM clock_timestamp())*1000)::bigint, \
+             f.phase, (f.operation_id=x.attempt), \
+             (SELECT count(*) FROM execution.fixture_dns_attempts WHERE run_id=$1), \
+             (SELECT count(*) FROM execution.fixture_dns_results WHERE run_id=$1), \
+             (SELECT count(*) FROM mission.withdrawals WHERE (engagement_id,campaign_id)=(x.e,x.c)) \
+             FROM execution.autonomous_runs x \
+             JOIN execution.autonomous_control y USING(run_id) \
+             JOIN execution.session_fences f ON (f.engagement_id,f.campaign_id)=(x.e,x.c) \
+             WHERE x.run_id=$1",
+            &[&r],
+        )
+        .unwrap();
+    json!({
+        "status": row.get::<_, String>(0),
+        "lease_current": row.get::<_, i64>(1) > row.get::<_, i64>(2),
+        "session_phase": row.get::<_, String>(3),
+        "session_attempt_match": row.get::<_, Option<bool>>(4),
+        "attempts": row.get::<_, i64>(5),
+        "results": row.get::<_, i64>(6),
+        "withdrawals": row.get::<_, i64>(7),
+    })
+}

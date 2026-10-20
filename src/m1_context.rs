@@ -305,34 +305,45 @@ fn terrain_reference_json(local_id: &str, c: &TerrainClaimSummary) -> Value {
     })
 }
 
+fn available_terrain_view(
+    b: &ContextBasis,
+    v: &TerrainPublicView,
+    shown: usize,
+    omitted_by_byte_bound: u32,
+) -> Value {
+    let rev = v.claims.iter().map(|c| c.claim_revision).max();
+    let frontier = v.claims.iter().map(|c| c.temporal_frontier).max();
+    let mut view = json!({
+        "owner": "cyber_terrain",
+        "availability": "available",
+        "claim_kind": "dns_hostname_ipv4_resolution",
+        "revision": rev,
+        "frontier": frontier,
+        "hold_frontier": v.hold_frontier(),
+        "evaluated_at": b.evaluated_at,
+        "shown_claims": shown,
+        "omissions": v.omissions(omitted_by_byte_bound)
+    });
+    if let Some(claim) = v.claims.first() {
+        view["source"] = json!(claim.source_kind);
+    }
+    view
+}
+
 fn terrain_owner_view(
     b: &ContextBasis,
     terrain: &TerrainContextState,
     shown: usize,
     omitted_by_byte_bound: u32,
 ) -> Value {
-    if let TerrainContextState::Available(v) = terrain {
-        let rev = v.claims.iter().map(|c| c.claim_revision).max();
-        let frontier = v.claims.iter().map(|c| c.temporal_frontier).max();
-        return json!({
-            "owner": "cyber_terrain",
-            "availability": "available",
-            "source": v.claims.first().map_or(crate::m1_terrain_input::TerrainSourceKind::OperatorReviewedDns,|c|c.source_kind),
-            "claim_kind": "dns_hostname_ipv4_resolution",
-            "revision": rev,
-            "frontier": frontier,
-            "hold_frontier": v.hold_frontier(),
-            "evaluated_at": b.evaluated_at,
-            "shown_claims": shown,
-            "omissions": v.omissions(omitted_by_byte_bound)
-        });
-    }
     let reason = match terrain {
+        TerrainContextState::Available(v) => {
+            return available_terrain_view(b, v, shown, omitted_by_byte_bound);
+        }
         TerrainContextState::NotLoaded => "not_loaded_by_this_profile",
         TerrainContextState::NotRequested => "not_requested",
         TerrainContextState::DisclosureNotPermitted => "disclosure_not_permitted",
         TerrainContextState::Unavailable(r) => r,
-        TerrainContextState::Available(_) => unreachable!(),
     };
     json!({
         "owner": "cyber_terrain",

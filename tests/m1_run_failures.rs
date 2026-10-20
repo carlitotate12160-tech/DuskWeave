@@ -376,3 +376,251 @@ fn eight_seed_broker_commit_preserves_the_bound_selected_input_identity() {
     store.commit_result(r, &result).unwrap();
     assert!(custodian.finish().unwrap() >= 1);
 }
+
+fn assert_release_race(kind: &str, serializable: bool, slot: u128) {
+    let (rec, _store, custodian) = ready_acquisition(slot);
+    let r = rec.request.run_id;
+    let mut a = native::admin();
+    let mut holder = timed_conn("DW_TEST_DATABASE_URL");
+    let key = scope_key(&rec);
+    let writer_var = if kind == "withdrawal" {
+        "DW_TEST_DATABASE_URL"
+    } else {
+        "DW_INFERENCE_BROKER_DATABASE_URL"
+    };
+    let mut writer = timed_conn(writer_var);
+    let writer_pid: i32 = writer
+        .query_one("SELECT pg_backend_pid()", &[])
+        .unwrap()
+        .get(0);
+    let (mut worker, worker_pid) = timed_broker(serializable);
+    assert_eq!(fence_state(&mut a, &rec)["status"], "running");
+    custodian.finish().unwrap();
+    lock_scope(&mut holder, &key);
+    let (writer_ok, released) = std::thread::scope(|s| {
+        let reference = &rec;
+        let w = s.spawn(move || match kind {
+            "stop" => PgRunStore::new(writer).stop(r),
+            "unknown" => PgRunStore::new(writer).unknown(r, RunPhase::Acquisition),
+            _ => withdraw_scope(reference, writer),
+        });
+        wait_advisory_blocked(&mut a, writer_pid);
+        let candidate = s.spawn(move || worker.reserve_effect(r, 0));
+        wait_advisory_blocked(&mut a, worker_pid);
+        unlock_scope(&mut holder, &key);
+        (w.join().unwrap().is_ok(), candidate.join().unwrap())
+    });
+    assert!(writer_ok, "{kind} writer must commit");
+    assert!(
+        released.is_err(),
+        "{kind} before release must reject: {serializable}"
+    );
+    let after = fence_state(&mut a, &rec);
+    let expected_status = if kind == "unknown" {
+        "unknown"
+    } else {
+        "stopped"
+    };
+    assert_eq!(after["status"], expected_status);
+    assert_eq!(after["attempts"], 0);
+    assert_eq!(after["results"], 0);
+    assert_eq!(after["session_phase"], "idle");
+    assert_eq!(after["session_attempt_match"], json!(null));
+}
+
+fn assert_commit_race(kind: &str, serializable: bool, slot: u128) {
+    let (rec, mut store, custodian) = ready_acquisition(slot);
+    let r = rec.request.run_id;
+    let issued = store.reserve_effect(r, 0).unwrap();
+    let result = duskweave::m1_fixture_dns::acquire(issued).unwrap();
+    let mut a = native::admin();
+    let mut holder = timed_conn("DW_TEST_DATABASE_URL");
+    let key = scope_key(&rec);
+    let writer_var = if kind == "withdrawal" {
+        "DW_TEST_DATABASE_URL"
+    } else {
+        "DW_INFERENCE_BROKER_DATABASE_URL"
+    };
+    let mut writer = timed_conn(writer_var);
+    let writer_pid: i32 = writer
+        .query_one("SELECT pg_backend_pid()", &[])
+        .unwrap()
+        .get(0);
+    let (mut worker, worker_pid) = timed_broker(serializable);
+    custodian.finish().unwrap();
+    lock_scope(&mut holder, &key);
+    let (writer_ok, committed) = std::thread::scope(|s| {
+        let reference = &rec;
+        let w = s.spawn(move || match kind {
+            "stop" => PgRunStore::new(writer).stop(r),
+            "unknown" => PgRunStore::new(writer).unknown(r, RunPhase::Acquisition),
+            _ => withdraw_scope(reference, writer),
+        });
+        wait_advisory_blocked(&mut a, writer_pid);
+        let commit = s.spawn(move || worker.commit_result(r, &result));
+        wait_advisory_blocked(&mut a, worker_pid);
+        unlock_scope(&mut holder, &key);
+        (w.join().unwrap().is_ok(), commit.join().unwrap())
+    });
+    assert!(writer_ok, "{kind} writer must commit");
+    assert!(
+        committed.is_err(),
+        "{kind} before result commit must reject: {serializable}"
+    );
+    let after = fence_state(&mut a, &rec);
+    let expected_status = if kind == "unknown" {
+        "unknown"
+    } else {
+        "stopped"
+    };
+    assert_eq!(after["status"], expected_status);
+    assert_eq!(after["attempts"], 1);
+    assert_eq!(after["results"], 0);
+    assert_eq!(after["session_phase"], "idle");
+    assert_eq!(after["session_attempt_match"], json!(null));
+    let (ok, recovered) = cli("m1-run-recover", "--run", &r.to_string());
+    assert!(ok, "{recovered}");
+    assert_eq!(recovered["effect_count"], 0);
+}
+
+fn assert_lease_wait_expiry(serializable: bool, slot: u128) {
+    use std::time::{Duration, Instant};
+    let (rec, _store, custodian) = ready_acquisition(slot);
+    let r = rec.request.run_id;
+    let mut a = native::admin();
+    let mut holder = timed_conn("DW_TEST_DATABASE_URL");
+    let key = scope_key(&rec);
+    let (mut worker, pid) = timed_broker(serializable);
+    custodian.finish().unwrap();
+    lock_scope(&mut holder, &key);
+    loop {
+        let remaining: i64 = a
+            .query_one(
+                "SELECT lease_until_ms-floor(extract(epoch FROM clock_timestamp())*1000)::bigint \
+                 FROM execution.autonomous_control WHERE run_id=$1",
+                &[&r],
+            )
+            .unwrap()
+            .get(0);
+        assert!(remaining > 0, "missed active lease window");
+        if remaining <= 350 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(fence_state(&mut a, &rec)["lease_current"], true);
+    let released = std::thread::scope(|s| {
+        let w = s.spawn(move || worker.reserve_effect(r, 0));
+        wait_advisory_blocked(&mut a, pid);
+        let limit = Instant::now() + Duration::from_millis(700);
+        while fence_state(&mut a, &rec)["lease_current"] == true {
+            assert!(
+                Instant::now() < limit,
+                "lease did not expire inside wait window"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        unlock_scope(&mut holder, &key);
+        w.join().unwrap()
+    });
+    assert!(
+        released.is_err(),
+        "expired lease during lock wait must reject"
+    );
+    let after = fence_state(&mut a, &rec);
+    assert_eq!(after["attempts"], 0);
+    assert_eq!(after["results"], 0);
+    assert_eq!(after["session_phase"], "idle");
+}
+
+#[test]
+fn fenced_withdrawal_and_stop_races_reject_release_and_late_result_commit() {
+    let _g = native::db();
+    refresh();
+    let (pos_rec, mut pos_store, pos_custodian) = ready_acquisition(0xa740);
+    let pos_r = pos_rec.request.run_id;
+    let issued = pos_store.reserve_effect(pos_r, 0).unwrap();
+    let result = duskweave::m1_fixture_dns::acquire(issued).unwrap();
+    pos_store.commit_result(pos_r, &result).unwrap();
+    pos_custodian.finish().unwrap();
+    pos_store.stop(pos_r).unwrap();
+    let pos_after = fence_state(&mut native::admin(), &pos_rec);
+    assert_eq!(pos_after["status"], "stopped");
+    assert_eq!(pos_after["attempts"], 1);
+    assert_eq!(pos_after["results"], 1);
+    assert_eq!(pos_after["session_phase"], "idle");
+    let (ok, recovered) = cli("m1-run-recover", "--run", &pos_r.to_string());
+    assert!(ok, "{recovered}");
+    assert_eq!(recovered["result"], json!(pos_rec.result));
+    assert_eq!(recovered["effect_count"], 1);
+    for (i, (kind, serializable)) in [
+        ("withdrawal", false),
+        ("stop", false),
+        ("unknown", false),
+        ("withdrawal", true),
+        ("stop", true),
+        ("unknown", true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_release_race(kind, serializable, 0xa741 + i as u128);
+    }
+    for (i, (kind, serializable)) in [
+        ("withdrawal", false),
+        ("stop", false),
+        ("unknown", false),
+        ("withdrawal", true),
+        ("stop", true),
+        ("unknown", true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_commit_race(kind, serializable, 0xa750 + i as u128);
+    }
+    assert_lease_wait_expiry(false, 0xa760);
+    assert_lease_wait_expiry(true, 0xa761);
+}
+
+fn assert_terminal_fence_race(slot: u128, phase_complete: bool) {
+    let q = registered(slot);
+    let (mut store, _) = timed_broker(false);
+    let (custodian_store, _) = timed_broker(false);
+    let rec = start_with(&mut store, &q);
+    let custodian = LeaseCustodian::start(&rec, custodian_store);
+    complete_first(&rec);
+    let r = rec.request.run_id;
+    let mut a = native::admin();
+    let mut holder = timed_conn("DW_TEST_DATABASE_URL");
+    let key = scope_key(&rec);
+    let (mut stopper, stopper_pid) = timed_broker(false);
+    let (mut worker, worker_pid) = timed_broker(true);
+    custodian.finish().unwrap();
+    lock_scope(&mut holder, &key);
+    let (stop_ok, competing_res) = std::thread::scope(|s| {
+        let w = s.spawn(move || stopper.stop(r));
+        wait_advisory_blocked(&mut a, stopper_pid);
+        let t = s.spawn(move || {
+            if phase_complete {
+                worker.complete_phase(r, RunPhase::DecisionOne)
+            } else {
+                worker.terminal(r, "retained")
+            }
+        });
+        wait_advisory_blocked(&mut a, worker_pid);
+        unlock_scope(&mut holder, &key);
+        (w.join().unwrap().is_ok(), t.join().unwrap())
+    });
+    assert!(stop_ok);
+    assert!(competing_res.is_err());
+    assert_eq!(fence_state(&mut a, &rec)["status"], "stopped");
+}
+
+#[test]
+fn fenced_stop_blocks_competing_terminal_and_phase_completion_writers() {
+    let _g = native::db();
+    refresh();
+    assert_terminal_fence_race(0xa765, false);
+    assert_terminal_fence_race(0xa766, true);
+}
