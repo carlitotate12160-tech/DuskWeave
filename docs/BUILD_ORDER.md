@@ -45,30 +45,20 @@ Current seal:
 
 Current engineering state:
 
-Latest merged delivery: `demo/m1-one-console-20261019`
-(`DW-DEMO-M1-ONE-CONSOLE-REVIEW-RETEST` + `DW-DIAGNOSE-M1-SCHEMA-DEADLINE`,
-documentation plus test-only diagnostics) — [PR #69](https://github.com/carlitotate12160-tech/DuskWeave/pull/69)
-squash-merged 2026-10-19T08:51:52Z as
-`20671c64e706df570c6e00b673655fbfe4455d31` at BASE
-`ff9c3703c375990e4a55db9e68527e4dcd34c96f` (PR #68 merged 2026-10-19;
-exact-master CI 39200545621 SUCCESS) — records the one-console review helper
-qualification (14 synthetic tests PASS; foreground rehearsal `REHEARSAL_PASS`
-at 9.156 s) and episode `20261019-3` **LIVE_FAIL**: measured handoff 12.844 s,
-Terrain claim accepted fresh/`observed` (47 s remaining), `m1-infer` ran with
-`terrain_0` in sent P and reserved==actual call IDs; generation `completed`
-(10084 ms, real provider usage; admission `Repairable`/`proposal_shape`) but
-the inference process exited nonzero, leaving the repair call
-`may_send_uncertain` without final accounting — historical send-path entry
-and exact termination phase UNVERIFIED; separately, the offline
-real-transport/synthetic-Broker experiment demonstrated the shared 20 s
-`decision_wall_time_ms` deadline mechanism (`exit(124)` mid-repair-send,
-finding F3), which does not establish the historical send or PostgreSQL
-durability; preserves
-the historical
-`LIVE_FAIL` episode, the `20261019-1`/`20261019-2` **LIVE_BLOCKED** records,
-and the merged R3 remediation; see
-[M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md](M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md)
-and [ENGINEERING_STATE.md §6](ENGINEERING_STATE.md#6-current-slices-and-next-action).
+Latest merged delivery: [PR #70](https://github.com/carlitotate12160-tech/DuskWeave/pull/70),
+`535eab5cde6215becd9f5f0ee6a663a5f1173ff8`, reconciles PR #69 (`20671c6`).
+Active draft delivery: [PR #71](https://github.com/carlitotate12160-tech/DuskWeave/pull/71), the [PROPOSED autonomous-run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19)
+and its [ADR-016 supervision amendment](adr/ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19).
+[ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
+owns active work, evidence limits and next action. The existing
+[MVP roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
+owns outcome order and audit follow-up. The owner accepted exact section 7 / ADR-016 section 4a text at
+`0615fb72c946fd6abf0823692be621096091377c` on 2026-10-19 for Walking Skeleton
+implementation. This grants no qualified acquisition, target permission or M1
+completion. Deliver the controlled fixture through production ports first after
+the accepted change is integrated and a bounded runtime packet is issued;
+live-boundary preparation may run independently. Real-provider/DNS
+qualification and fresh authorization remain required for the live outcome.
 
 Current design document:
 
