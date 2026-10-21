@@ -13,7 +13,7 @@ pub(super) struct PhaseChild {
 impl PhaseChild {
     pub(super) fn launch(run: &RunRecord, phase: RunPhase, deadline: Instant) -> Res<Self> {
         let (mut command, control, readiness) = phase_command(run, phase)?;
-        let prepared_by = Instant::now() + Duration::from_millis(5000);
+        let prepared_by = Instant::now() + super::m1_run_control::preparation_bound();
         let mut spawned = command
             .spawn()
             .map_err(|_| Fail::Store("run_child_start_unknown"))?;
@@ -121,6 +121,9 @@ fn phase_command(
 fn install_provider_environment(c: &mut Command, phase: RunPhase) {
     if let Some(root) = std::env::var_os("DW_M1_RUN_CONTROL_ROOT") {
         c.env("DW_M1_RUN_CONTROL_ROOT", root);
+    }
+    if let Some(bound) = std::env::var_os("DW_M1_RUN_PREPARATION_MS") {
+        c.env("DW_M1_RUN_PREPARATION_MS", bound);
     }
     if phase != RunPhase::Acquisition {
         c.stdin(Stdio::piped())
