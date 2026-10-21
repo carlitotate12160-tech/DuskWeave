@@ -553,10 +553,10 @@ fn normal_binary_missing_control_refuses_provider_phase_without_deterministic_fa
     std::fs::remove_file(path).unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("run_control_unqualified"));
-    let summary = broker_store().summary(id(&q)).unwrap();
-    assert_eq!(summary["decision_count"], 0);
-    assert_eq!(summary["effect_count"], 0);
-    assert_eq!(summary["inference"], json!([]));
+    assert!(
+        broker_store().inspect(id(&q)).is_err(),
+        "missing start configuration must create no run"
+    );
 }
 
 #[test]
@@ -566,6 +566,7 @@ fn qualified_private_control_reaches_selected_provider_and_missing_key_is_durabl
     let q = registered_with(0xc905, provider_permission);
     let path = path(&q);
     let root = control_root();
+    let launched = Instant::now();
     let output = command()
         .env("DW_M1_RUN_CONTROL_ROOT", &root)
         .args(["m1-run", "--input", path.to_str().unwrap()])
@@ -595,12 +596,30 @@ fn qualified_private_control_reaches_selected_provider_and_missing_key_is_durabl
         String::from_utf8_lossy(&output.stdout)
     );
     let before = broker_store().summary(id(&q)).unwrap();
+    let receipt: Value = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .unwrap();
+    assert_eq!(receipt["diagnostics"], before["diagnostics"]);
+    assert_eq!(before["diagnostic_publication"], "committed");
+    assert_eq!(
+        before["diagnostics"][0]["child_error"],
+        "run_inference_pending"
+    );
+    assert_eq!(before["diagnostics"][0]["cause_source"], "child_report");
+    assert_eq!(before["diagnostics"][0]["readiness_observed"], true);
+    println!(
+        "offline_parent_total_ms={} phase_diagnostic={}",
+        launched.elapsed().as_millis(),
+        before["diagnostics"][0]
+    );
     assert_eq!(before["effect_count"], 0);
     assert_eq!(before["inference"], json!([]));
     let (ok, after) = cli("m1-run-recover", "--run", &id(&q).to_string());
     assert!(ok, "{after}");
     assert_eq!(after["effect_count"], 0);
     assert_eq!(after["inference"], json!([]));
+    assert_eq!(after["diagnostics"], before["diagnostics"]);
 }
 
 fn diagnose_phase(root: &std::path::Path) -> String {

@@ -179,6 +179,17 @@ parsing/receipts from execution and pre-mutation signaling; the packet records
 `connect_qualified`, `run_record` and the other named hotspots remain OPEN.
 Legacy CLI/M0 consumers remain supported.
 
+**Diagnostics FIX disposition (2026-10-21, candidate):**
+[DW-FIX-M1-RUN-DIAGNOSTICS](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md) connects
+closed child terminal observations to restricted append-only records and fresh
+inspect, with configuration preflight and explicit publication uncertainty.
+Required current-head review/CI remains a delivery gate. This qualifies diagnosis,
+not the historical episode's root cause or a real provider loop. PowerShell ACL
+latency, owner-connection optimization, internal preparation timing and owner-view
+continuation remain OPEN. The separate parent reaper, readiness guard, local STOP,
+child preparation cover, authority coordinator, transport permit and decision
+envelope retain their separate failure responsibilities; the packet records the map.
+
 **Measured CI baseline:** PR #71 run
 [39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),
 source head 0615fb7 (PR merge checkout 157c155), retained qualification artifact:
