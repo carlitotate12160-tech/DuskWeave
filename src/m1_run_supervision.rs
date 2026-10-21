@@ -358,6 +358,7 @@ mod tests {
     }
     #[test]
     fn pending_readiness_expires_and_reapes_parked_child_without_parent_polling() {
+        #[cfg(windows)]
         let mut command = Command::new(
             std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
                 .join("System32/WindowsPowerShell/v1.0/powershell.exe"),
