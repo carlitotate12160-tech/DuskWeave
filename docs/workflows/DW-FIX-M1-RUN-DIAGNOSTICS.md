@@ -335,3 +335,12 @@ The R1 focused supervisor run passes 10/10; current-head broader regressions,
 review of this delta and Linux CI/coverage are the remaining delivery evidence.
 The previous committed head's local checks passed 85 Rust/28 helper assertions;
 they are historical candidate evidence, not qualification of this correction.
+
+The same distinct reviewer inspected only the correction delta on `f9a8ae0`
+and reported R1 RESOLVED / READY for that source scope. Its conclusions for the
+unchanged boundaries remain in force; it did not rerun tests or claim final CI.
+The committed corrected binary run passed 53/53, including both new readiness
+regressions. PR #109 remains OPEN; ENGINEERING_STATE now points to conditional
+owner review after all current-head required checks, without recording a merge.
+This tracking-only follow-up changes no runtime or test source. Final evidence
+is read from the actual GitHub candidate and local `r1-head-*` reports.
