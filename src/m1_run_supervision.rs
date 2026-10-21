@@ -122,9 +122,6 @@ fn install_provider_environment(c: &mut Command, phase: RunPhase) {
     if let Some(root) = std::env::var_os("DW_M1_RUN_CONTROL_ROOT") {
         c.env("DW_M1_RUN_CONTROL_ROOT", root);
     }
-    if let Some(bound) = std::env::var_os("DW_M1_RUN_PREPARATION_MS") {
-        c.env("DW_M1_RUN_PREPARATION_MS", bound);
-    }
     if phase != RunPhase::Acquisition {
         c.stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -141,39 +138,23 @@ fn read_ready(mut pipe: impl Read, expected: &str, verdict: &mpsc::Sender<Res<()
     let _ = verdict.send(await_ready(&mut pipe, expected));
     // Keep draining so the child's terminal/error line cannot hit a closed pipe.
     let mut chunk = [0u8; 512];
-    while pipe.read(&mut chunk).map(|n| n > 0).unwrap_or(false) {}
+    let mut terminal = pipe.take(16384);
+    while terminal.read(&mut chunk).map(|n| n > 0).unwrap_or(false) {}
 }
 fn await_ready(pipe: &mut impl Read, expected: &str) -> Res<()> {
-    let mut buffered: Vec<u8> = Vec::new();
-    let mut chunk = [0u8; 512];
-    loop {
-        match pipe.read(&mut chunk) {
-            Ok(0) | Err(_) => return Err(Fail::Config("run_readiness_refused")),
-            Ok(n) => {
-                buffered.extend_from_slice(&chunk[..n]);
-                if let Some(result) = ready_lines(&mut buffered, expected) {
-                    return result;
-                }
-                if buffered.len() > 16384 {
-                    return Err(Fail::Config("run_readiness_refused"));
-                }
-            }
+    let mut frame = Vec::with_capacity(128);
+    for _ in 0..128 {
+        let mut byte = [0u8; 1];
+        pipe.read_exact(&mut byte)
+            .map_err(|_| Fail::Config("run_readiness_refused"))?;
+        frame.push(byte[0]);
+        if byte[0] == b'\n' {
+            return (frame == format!("{expected}\n").as_bytes())
+                .then_some(())
+                .ok_or(Fail::Config("run_readiness_refused"));
         }
     }
-}
-fn ready_lines(buffered: &mut Vec<u8>, expected: &str) -> Option<Res<()>> {
-    while let Some(pos) = buffered.iter().position(|b| *b == b'\n') {
-        let line: Vec<u8> = buffered.drain(..=pos).collect();
-        let text = String::from_utf8_lossy(&line);
-        let text = text.trim_end();
-        if text == expected {
-            return Some(Ok(()));
-        }
-        if text.starts_with(super::m1_run_control::READY_PREFIX) {
-            return Some(Err(Fail::Config("run_readiness_refused")));
-        }
-    }
-    None
+    Err(Fail::Config("run_readiness_refused"))
 }
 /// Independent of the parent's SQL loop: missing, malformed, mismatched,
 /// oversized, EOF or late readiness cannot extend or disarm the deadline.
@@ -184,6 +165,7 @@ fn monitor_readiness(
     prepared_by: Instant,
     deadline: Instant,
 ) -> Res<()> {
+    let prepared_by = prepared_by.min(deadline);
     let (verdict, rx) = mpsc::channel();
     std::thread::Builder::new()
         .name("run_readiness_reader".into())
@@ -192,15 +174,23 @@ fn monitor_readiness(
     std::thread::Builder::new()
         .name("run_readiness_watchdog".into())
         .spawn(move || {
-            if !matches!(
-                rx.recv_timeout(prepared_by.saturating_duration_since(Instant::now())),
-                Ok(Ok(()))
-            ) {
-                cooperative_stop(&child, deadline);
+            if !ready_before(&rx, prepared_by) {
+                // Cancellation and reaping fit inside the original launch bound.
+                cooperative_stop(&child, prepared_by);
             }
         })
         .map_err(|_| Fail::Config("run_control_unqualified"))?;
     Ok(())
+}
+fn ready_before(rx: &mpsc::Receiver<Res<()>>, prepared_by: Instant) -> bool {
+    matches!(
+        rx.recv_timeout(
+            prepared_by
+                .saturating_duration_since(Instant::now())
+                .saturating_sub(Duration::from_millis(50))
+        ),
+        Ok(Ok(()))
+    ) && Instant::now() < prepared_by
 }
 fn monitor_control(
     child: Arc<Mutex<Child>>,
@@ -292,6 +282,22 @@ pub(super) fn phase_deadline(run: Instant, phase: RunPhase) -> Instant {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queued_late_ready_eof_and_refusal_cannot_disarm_the_original_guard() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(Ok(())).unwrap();
+        assert!(!ready_before(
+            &rx,
+            Instant::now() - Duration::from_millis(1)
+        ));
+        let end = Instant::now() + Duration::from_secs(5);
+        tx.send(Err(Fail::Config("run_readiness_refused"))).unwrap();
+        assert!(!ready_before(&rx, end));
+        tx.send(Ok(())).unwrap();
+        assert!(ready_before(&rx, end));
+        drop(tx);
+        assert!(!ready_before(&rx, end));
+    }
     fn parked_child() -> Child {
         #[cfg(windows)]
         let mut command = Command::new(
@@ -345,9 +351,42 @@ mod tests {
             read_ready(std::io::Cursor::new(bytes.to_vec()), &expected, &tx);
             rx.recv().unwrap()
         };
-        // Exact frame, and unrelated lines (e.g. a bind_input receipt) skipped.
+        // Exact frame only; a prelude must never be skipped.
         assert!(verdict(format!("{expected}\n").as_bytes()).is_ok());
-        assert!(verdict(format!("{{\"receipt\":1}}\n{expected}\nerror=x\n").as_bytes()).is_ok());
+        assert!(verdict(format!("{{\"receipt\":1}}\n{expected}\nerror=x\n").as_bytes()).is_err());
+        for suffix in [" ", "  ", "\t", "\r", &" ".repeat(200)] {
+            assert!(
+                verdict(format!("{expected}{suffix}\n").as_bytes()).is_err(),
+                "suffix accepted"
+            );
+        }
+        let mut invalid = expected.as_bytes().to_vec();
+        invalid.extend_from_slice(&[0xff, b'\n']);
+        assert!(verdict(&invalid).is_err());
+        assert!(verdict(expected.as_bytes()).is_err());
+        for frame in [
+            super::super::m1_run_control::ready_frame(
+                uuid::Uuid::from_u128(0x5151),
+                "decision_one",
+            ),
+            super::super::m1_run_control::ready_frame(run, "decision_two"),
+            expected.to_uppercase(),
+        ] {
+            assert!(verdict(format!("{frame}\n").as_bytes()).is_err());
+        }
+        for n in [128, 129] {
+            let mut padded = expected.as_bytes().to_vec();
+            padded.resize(n - 1, b' ');
+            padded.push(b'\n');
+            assert!(verdict(&padded).is_err(), "{n}-byte padding accepted");
+            let mut cursor = std::io::Cursor::new(padded);
+            assert!(await_ready(&mut cursor, &expected).is_err());
+            assert_eq!(
+                cursor.position(),
+                128,
+                "raw framing cannot consume a 129th byte"
+            );
+        }
         // Missing, mismatched and prefix-shaped-but-wrong content refuse.
         assert!(verdict(b"").is_err());
         assert!(verdict(b"hello\n").is_err());
@@ -394,7 +433,7 @@ mod tests {
             Instant::now() + Duration::from_secs(60),
         )
         .unwrap();
-        std::thread::sleep(Duration::from_secs(3));
+        std::thread::sleep(Duration::from_millis(400));
         assert!(child.lock().unwrap().try_wait().unwrap().is_some());
     }
 }

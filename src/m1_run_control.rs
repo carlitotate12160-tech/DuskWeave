@@ -24,17 +24,10 @@ pub(super) const READY_PREFIX: &str = "m1_run_ready_v1";
 pub(super) fn ready_frame(run: Uuid, phase: &str) -> String {
     format!("{READY_PREFIX} {run} {phase}")
 }
-/// Fixed 5000ms launch→readiness policy bound. The owner environment may
-/// override it only for instrumented qualification runs where the same
-/// protocol must hold at a slower execution speed; invalid values keep the
-/// policy bound.
+/// Fixed launch-to-readiness policy; instrumentation cannot widen it.
 #[allow(dead_code)]
 pub(super) fn preparation_bound() -> Duration {
-    std::env::var_os("DW_M1_RUN_PREPARATION_MS")
-        .and_then(|v| v.to_str()?.parse::<u64>().ok())
-        .filter(|ms| (100..=120000).contains(ms))
-        .map(Duration::from_millis)
-        .unwrap_or_else(|| Duration::from_millis(5000))
+    Duration::from_millis(5000)
 }
 #[derive(Clone)]
 pub(super) struct Binding {

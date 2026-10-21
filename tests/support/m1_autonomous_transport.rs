@@ -4,6 +4,7 @@ use super::*;
 use crate as control_domain;
 use crate::m1_reasoning::{proposal::Admission, request};
 use serde_json::{Value, json};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[path = "../../src/m1_run_control.rs"]
 mod run_control;
@@ -80,6 +81,7 @@ fn provider(server: &Server, b: &BoundCall, permit: Permit) -> AutonomousProvide
     AutonomousProvider {
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit,
+        pre_send: Box::new(|| Ok(())),
     }
 }
 
@@ -99,7 +101,14 @@ fn generation_and_repair_post_exact_autonomous_bytes_with_no_progress_owner_call
             checks: AtomicUsize::new(0),
             eligible: true,
         };
-        let result = provider(&server, &b, permit())
+        let hooks = Arc::new(AtomicUsize::new(0));
+        let called = hooks.clone();
+        let mut provider = provider(&server, &b, permit());
+        provider.pre_send = Box::new(move || {
+            called.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        });
+        let result = provider
             .call(
                 &b,
                 Instant::now() + Duration::from_secs(40),
@@ -115,6 +124,11 @@ fn generation_and_repair_post_exact_autonomous_bytes_with_no_progress_owner_call
         );
         assert_eq!(*server.received_body.lock().unwrap(), b.body);
         assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            hooks.load(Ordering::SeqCst),
+            1,
+            "pre-send hook must never run in progress callbacks"
+        );
     }
 }
 
@@ -278,6 +292,12 @@ fn autonomous_control_worker() {
     let preparation = run_control::Preparation::start().unwrap();
     let binding = run_control::Binding::qualify(&request).unwrap();
     drop(preparation);
+    if mode == "stalled_pre_send" {
+        return stalled_pre_send_case();
+    }
+    if mode.starts_with("pre_send_") {
+        return pre_send_control_case(&mode, binding);
+    }
     if mode == "signal_run" && std::env::var_os("DW_AUTONOMOUS_SIGNAL_ONLY").is_some() {
         run_control::signal_run(request.run_id).unwrap();
         assert!(binding.current().is_err());
@@ -295,6 +315,7 @@ fn autonomous_control_worker() {
     let b = bound(mode == "repair_remaining");
     let p = permit();
     run_control::read_parent(p.clone()).unwrap();
+    let marker = binding.clone();
     if mode != "coordinator_loss" {
         let renew = p.clone();
         std::thread::spawn(move || {
@@ -317,6 +338,11 @@ fn autonomous_control_worker() {
     let mut provider = AutonomousProvider {
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit: p,
+        pre_send: Box::new(move || {
+            marker
+                .current()
+                .map_err(|_| "current_authority_unavailable")
+        }),
     };
     let remaining = if mode == "repair_remaining" {
         Duration::from_millis(500)
@@ -336,6 +362,145 @@ fn autonomous_control_worker() {
             )
             .is_err()
     );
+}
+
+fn pre_send_control_case(mode: &str, binding: run_control::Binding) {
+    let late_success = mode == "pre_send_late_success";
+    let b = bound(mode.ends_with("repair"));
+    let server = Server::start("200 OK", "", envelope());
+    let p = permit();
+    let mut provider = provider(&server, &b, p.clone());
+    let (entered, gate) = channel();
+    let (resume, parked) = channel();
+    let parked = std::sync::Mutex::new(parked);
+    provider.pre_send = Box::new(move || {
+        entered.send(()).unwrap();
+        parked.lock().unwrap().recv().unwrap();
+        if late_success {
+            Ok(())
+        } else {
+            binding
+                .current()
+                .map_err(|_| "current_authority_unavailable")
+        }
+    });
+    let mut basis = Basis {
+        checks: AtomicUsize::new(0),
+        eligible: true,
+    };
+    basis.before_provider_release().unwrap();
+    let result = provider.call(
+        &b,
+        Instant::now() + Duration::from_secs(20),
+        &mut basis,
+        &mut || {
+            gate.recv_timeout(Duration::from_secs(1)).unwrap();
+            if late_success {
+                p.stop();
+            } else {
+                let q = control_request();
+                run_control::signal_campaign(
+                    q.context.mission.engagement_id.0,
+                    q.context.mission.campaign_id.0,
+                )
+                .unwrap();
+            }
+            resume.send(()).unwrap();
+            Ok(())
+        },
+    );
+    assert_eq!(result.err(), Some("provider_cancelled_uncertain"));
+    assert!(p.stopped());
+    assert_eq!(server.calls.load(Ordering::SeqCst), 0);
+}
+
+fn stalled_pre_send_case() {
+    let b = bound(false);
+    let p = permit();
+    run_control::read_parent(p.clone()).unwrap();
+    let mut h = configure(&b, "synthetic-fixture-token", Duration::from_secs(20)).unwrap();
+    h.url(&std::env::var("DW_AUTONOMOUS_TEST_URL").unwrap())
+        .unwrap();
+    let root = std::env::var_os("DW_M1_RUN_CONTROL_ROOT").unwrap();
+    let mut provider = AutonomousProvider {
+        prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
+        permit: p,
+        pre_send: Box::new(move || {
+            std::fs::write(
+                std::path::Path::new(&root).join("pre-send-entered"),
+                b"ready",
+            )
+            .unwrap();
+            loop {
+                std::thread::park();
+            }
+        }),
+    };
+    let _ = provider.call(
+        &b,
+        Instant::now() + Duration::from_secs(20),
+        &mut Basis {
+            checks: AtomicUsize::new(0),
+            eligible: true,
+        },
+        &mut || Ok(()),
+    );
+    panic!("stalled hook returned without independent enforcement");
+}
+
+#[test]
+fn blocked_pre_send_cannot_block_independent_eof_or_lease_guard() {
+    use std::process::Stdio;
+    for eof in [false, true] {
+        let root = private_root();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut worker = child("stalled_pre_send", &root)
+            .env(
+                "DW_AUTONOMOUS_TEST_URL",
+                format!("http://{}/responses", listener.local_addr().unwrap()),
+            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let end = Instant::now() + Duration::from_secs(5);
+        while !root.join("pre-send-entered").exists() {
+            assert!(
+                Instant::now() < end && worker.try_wait().unwrap().is_none(),
+                "hook barrier missing"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let started = Instant::now();
+        if eof {
+            drop(worker.stdin.take());
+        }
+        let end = started + Duration::from_millis(2300);
+        while worker.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < end, "blocked marker hook blocked guard");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(worker.wait().unwrap().code(), Some(124));
+        assert!(
+            listener.accept().is_err(),
+            "pre-send wait disclosed a request"
+        );
+    }
+}
+
+#[test]
+fn generation_and_repair_stop_after_admission_before_send_refuses_actual_marker() {
+    for mode in [
+        "pre_send_generation",
+        "pre_send_repair",
+        "pre_send_late_success",
+    ] {
+        let root = private_root();
+        let status = child(mode, &root).status().unwrap();
+        assert!(status.success(), "{mode}");
+    }
 }
 
 fn child(mode: &str, root: &std::path::Path) -> std::process::Command {

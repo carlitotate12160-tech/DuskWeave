@@ -171,6 +171,9 @@ fn bind_input(c: &mut Client, s: &Scope, hash: &str) -> Res<()> {
         "{}",
         serde_json::json!({"kind":"m1_inference_identity_v1","decision":s.decision,"dispatch_granted":false})
     );
+    store_input_binding(c, s, hash)
+}
+fn store_input_binding(c: &mut Client, s: &Scope, hash: &str) -> Res<()> {
     let mut tx = c
         .transaction()
         .map_err(|_| Fail::Store("inference_input_binding_unknown"))?;
@@ -379,9 +382,12 @@ pub(super) fn autonomous_recover(q: &ContextRequest, decision: Uuid) -> Res<()> 
 
 fn autonomous_owners(q: &ContextRequest, s: &Scope) -> Res<Owners> {
     let (mut c, store) = open_stores(q)?;
-    if continuation(&mut c, s, &store.input_hash, true)? {
+    if known_identity(&mut c, s, &store.input_hash)? {
         return Err(Fail::State("run_decision_already_started"));
     }
+    // This private phase reserves stdout for the readiness frame. The same
+    // durable identity binding remains mandatory; the public command announces it.
+    store_input_binding(&mut c, s, &store.input_hash)?;
     let deadline = autonomous_deadline(&mut c, s)?;
     owners(c, q, deadline, store)
 }

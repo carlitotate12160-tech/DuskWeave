@@ -11,7 +11,6 @@ struct State {
     deadline: Instant,
     expires_ms: AtomicU64,
     stopped: AtomicBool,
-    watch: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 impl Permit {
     pub fn new(deadline: Instant) -> Self {
@@ -20,18 +19,7 @@ impl Permit {
             deadline,
             expires_ms: AtomicU64::new(0),
             stopped: AtomicBool::new(false),
-            watch: None,
         }))
-    }
-    /// `check` is re-evaluated by every `current()` call, so a revocation
-    /// landing between admission and a send is read at the send boundary
-    /// instead of at the next renewal poll.
-    pub fn watched(deadline: Instant, check: impl Fn() -> bool + Send + Sync + 'static) -> Self {
-        let mut permit = Self::new(deadline);
-        if let Some(state) = Arc::get_mut(&mut permit.0) {
-            state.watch = Some(Arc::new(check));
-        }
-        permit
     }
     pub fn stop(&self) {
         self.0.stopped.store(true, Ordering::Release);
@@ -43,9 +31,7 @@ impl Permit {
         self.0.origin + Duration::from_millis(self.0.expires_ms.load(Ordering::Acquire))
     }
     pub fn current(&self) -> bool {
-        !self.stopped()
-            && Instant::now() < self.expiry().min(self.0.deadline)
-            && self.0.watch.as_ref().is_none_or(|w| w())
+        !self.stopped() && Instant::now() < self.expiry().min(self.0.deadline)
     }
     /// A slow check cannot manufacture a fresh lease at completion.
     pub fn publish(&self, started: Instant, valid_until: Instant) -> bool {
@@ -110,6 +96,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn callback_reads_use_only_the_atomic_permit() {
+        let end = Instant::now() + Duration::from_secs(10);
+        let p = Permit::new(end);
+        assert!(p.publish(Instant::now(), end));
+        for _ in 0..1000 {
+            assert!(p.current());
+        }
+        p.stop();
+        assert!(!p.current());
+    }
+
+    #[test]
     fn check_start_not_completion_anchors_the_lease_and_revocation_is_monotonic() {
         let p = Permit::new(Instant::now() + Duration::from_secs(10));
         assert!(!p.current(), "a cached/unissued permit cannot release work");
@@ -118,19 +116,6 @@ mod tests {
         assert!(p.expiry() <= start + Duration::from_secs(2));
         p.stop();
         assert!(!p.publish(Instant::now(), Instant::now() + Duration::from_secs(10)));
-        assert!(!p.current());
-    }
-
-    #[test]
-    fn watched_permit_revokes_at_the_live_check_not_the_cached_lease() {
-        let live = Arc::new(AtomicBool::new(true));
-        let flag = Arc::clone(&live);
-        let p = Permit::watched(Instant::now() + Duration::from_secs(10), move || {
-            flag.load(Ordering::Acquire)
-        });
-        assert!(p.publish(Instant::now(), Instant::now() + Duration::from_secs(10)));
-        assert!(p.current());
-        live.store(false, Ordering::Release);
         assert!(!p.current());
     }
 

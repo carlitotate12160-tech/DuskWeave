@@ -91,13 +91,19 @@ pub(super) fn decide(
             let coordinator = super::m1_inference_control::Coordinator::start(
                 super::m1_reasoning_cli::broker_connection()?,
                 super::m1_reasoning_cli::prepared_basis(s, p, deadline)?,
-                binding,
+                binding.clone(),
                 run.request.run_id,
                 deadline,
                 envelope_end(deadline, run)?,
             )?;
-            let provider =
-                reasoning::transport::AutonomousProvider::new(coordinator.permit.clone());
+            let provider = reasoning::transport::AutonomousProvider::new(
+                coordinator.permit.clone(),
+                move || {
+                    binding
+                        .current()
+                        .map_err(|_| "current_authority_unavailable")
+                },
+            );
             // Armed transport and the whole-decision envelope now overlap:
             // report readiness before the preparation cover ends so no
             // interval remains without a watch.

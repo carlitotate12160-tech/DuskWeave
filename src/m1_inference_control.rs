@@ -85,10 +85,7 @@ impl Coordinator {
             c.batch_execute("SET statement_timeout='200ms'; SET lock_timeout='100ms'")
                 .map_err(|_| Fail::Config("inference_control_unavailable"))?;
         }
-        // The worker's pre-send and progress gates re-read the marker channel
-        // through this check instead of trusting the last published lease.
-        let watch = binding.clone();
-        let permit = Permit::watched(deadline, move || watch.current().is_ok());
+        let permit = Permit::new(deadline);
         let mut authority = Authority {
             client,
             terrain,
@@ -125,17 +122,24 @@ impl Coordinator {
 /// Returns true only when the envelope expired without disarm.
 fn envelope_wait(active: Instant, end: Instant, permit: &Permit, done: &Receiver<()>) -> bool {
     use std::sync::mpsc::RecvTimeoutError;
-    if !matches!(
-        done.recv_timeout(active.saturating_duration_since(Instant::now())),
-        Err(RecvTimeoutError::Timeout)
-    ) {
+    envelope_wait_with(active, end, permit, |deadline| {
+        matches!(
+            done.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+            Err(RecvTimeoutError::Timeout)
+        )
+    })
+}
+fn envelope_wait_with(
+    active: Instant,
+    end: Instant,
+    permit: &Permit,
+    mut timeout: impl FnMut(Instant) -> bool,
+) -> bool {
+    if !timeout(active) {
         return false;
     }
     permit.stop();
-    matches!(
-        done.recv_timeout(end.saturating_duration_since(Instant::now())),
-        Err(RecvTimeoutError::Timeout)
-    )
+    timeout(end)
 }
 fn envelope_guard(permit: Permit, active: Instant, end: Instant, done: Receiver<()>) {
     if envelope_wait(active, end, &permit, &done) {
@@ -244,42 +248,33 @@ mod tests {
 
     #[test]
     fn decision_envelope_disarms_after_return_and_revokes_at_the_active_deadline() {
-        // Disarmed before the active deadline: no revocation, no expiry.
-        let permit = Permit::new(Instant::now() + Duration::from_secs(60));
-        let (done, rx) = channel();
-        done.send(()).unwrap();
-        assert!(!envelope_wait(
-            Instant::now() + Duration::from_secs(5),
-            Instant::now() + Duration::from_secs(10),
-            &permit,
-            &rx
-        ));
-        assert!(!permit.stopped());
-        // Active deadline passes: the permit is revoked, but a cooperative
-        // return inside the cancellation/accounting window is not an expiry.
-        let permit = Permit::new(Instant::now() + Duration::from_secs(60));
-        let (done, rx) = channel();
-        let active = Instant::now() + Duration::from_millis(40);
-        let end = Instant::now() + Duration::from_millis(400);
-        let returned = done.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(150));
-            let _ = returned.send(());
-        });
-        assert!(!envelope_wait(active, end, &permit, &rx));
-        assert!(permit.stopped());
-        // The absolute deadline arithmetic uses remaining absolute instants:
-        // a parked caller cannot renew a relative timeout.
-        assert!(active.saturating_duration_since(Instant::now()) < end - active);
-        // No disarm inside the envelope: the guard would hard-stop.
-        let permit = Permit::new(Instant::now() + Duration::from_secs(60));
-        let (_done, rx) = channel::<()>();
-        assert!(envelope_wait(
-            Instant::now() + Duration::from_millis(20),
-            Instant::now() + Duration::from_millis(90),
-            &permit,
-            &rx
-        ));
-        assert!(permit.stopped());
+        let origin = Instant::now();
+        let active = origin + Duration::from_millis(40000);
+        let end = origin + Duration::from_millis(45000);
+        // The private waiter injects timeout/disarm observations at exact
+        // absolute boundaries; no scheduling sleep can mask a deadline reset.
+        for (first_timeout, final_timeout) in [(false, false), (true, false), (true, true)] {
+            let permit = Permit::new(end);
+            let mut waits = Vec::new();
+            let expired = envelope_wait_with(active, end, &permit, |deadline| {
+                waits.push(deadline);
+                match waits.len() {
+                    1 => {
+                        assert_eq!(deadline, active);
+                        assert!(!permit.stopped());
+                        first_timeout
+                    }
+                    2 => {
+                        assert_eq!(deadline, end);
+                        assert!(permit.stopped());
+                        final_timeout
+                    }
+                    _ => panic!("no renewed envelope or extra grace"),
+                }
+            });
+            assert_eq!(expired, first_timeout && final_timeout);
+            assert_eq!(permit.stopped(), first_timeout);
+            assert_eq!(waits.len(), if first_timeout { 2 } else { 1 });
+        }
     }
 }

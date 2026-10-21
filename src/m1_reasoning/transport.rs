@@ -278,12 +278,14 @@ fn post(h: &mut Easy, b: &BoundCall, key: &str) -> Result<(), curl::Error> {
 pub struct AutonomousProvider {
     prepared: Option<(Easy, String, String)>,
     permit: Permit,
+    pre_send: Box<dyn Fn() -> Res<()> + Send + Sync>,
 }
 impl AutonomousProvider {
-    pub fn new(permit: Permit) -> Self {
+    pub fn new(permit: Permit, pre_send: impl Fn() -> Res<()> + Send + Sync + 'static) -> Self {
         Self {
             prepared: None,
             permit,
+            pre_send: Box::new(pre_send),
         }
     }
 }
@@ -368,10 +370,18 @@ impl AutonomousProvider {
     ) -> Res<Exchange> {
         std::thread::scope(|scope| {
             let permit = self.permit.clone();
+            let pre_send = &self.pre_send;
             let worker = std::thread::Builder::new()
                 .name("autonomous_inference_transport".into())
                 .spawn_scoped(scope, move || {
-                    if !permit.current() {
+                    // Marker-only I/O happens once outside curl callbacks, with
+                    // the independent guard already armed. A late successful
+                    // read cannot revive a stopped/expired permit or call.
+                    if pre_send().is_err() {
+                        permit.stop();
+                        return Err("provider_cancelled_uncertain");
+                    }
+                    if !permit.current() || Instant::now() >= call_end {
                         return Err("provider_cancelled_uncertain");
                     }
                     exchange(&mut handle, &mut || {

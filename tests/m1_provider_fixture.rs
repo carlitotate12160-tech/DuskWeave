@@ -615,7 +615,6 @@ fn diagnose_phase(root: &std::path::Path) -> String {
     let mut child = command()
         .env("DW_M1_RUN_CONTROL_ROOT", root)
         .env("DW_M1_RUN_PROVIDER_DECISION", "1")
-        .env("DW_M1_RUN_PREPARATION_MS", "30000")
         .args([
             "m1-run-phase",
             "--run",
@@ -885,13 +884,29 @@ fn stalled_claim_reply_exits_provider_child_from_the_launch_clock() {
         terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", relay.port());
     let input = path(&q);
     let launched = Instant::now();
-    let (mut parent, log) = deadline_parent(&input, &routed, &root, None);
+    let (mut parent, log) = deadline_parent(&input, &routed, &root, Some("120000"));
     assert!(
         relay.observed(Duration::from_secs(10)),
         "claim query was never withheld: {}",
         parent_log(&log)
     );
     let observed = Instant::now();
+    let (child, child_launch) = phase_child(parent.id(), id(&q));
+    // Observe the actual launch, with at most 500ms OS observation margin.
+    let end = child_launch + Duration::from_millis(5500);
+    let terminated = observe_child_exit(child, end);
+    let assertion = std::panic::catch_unwind(|| {
+        assert!(
+            terminated,
+            "child survived fixed preparation policy with stale override"
+        )
+    });
+    if let Err(failure) = assertion {
+        // Custodian cleanup occurs only after recording the failed assertion.
+        parent.kill().unwrap();
+        parent.wait().unwrap();
+        std::panic::resume_unwind(failure);
+    }
     // The launch-clock preparation bound is 5000ms, well inside the 50s phase
     // ceiling the old post-claim guard allowed a stalled claim to survive.
     let done = wait_parent_exit(&mut parent, observed + Duration::from_secs(14), "claim");
@@ -923,16 +938,77 @@ fn stalled_reservation_reply_hard_stops_at_the_original_decision_envelope() {
         terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", relay.port());
     let input = path(&q);
     let launched = Instant::now();
-    // The readiness bound is relaxed through the owner environment: under
-    // coverage instrumentation claim→readiness legitimately exceeds the fixed
-    // 5000ms policy bound, which must stay the shipped default.
-    let (mut parent, log) = deadline_parent(&input, &routed, &root, Some("30000"));
+    let (mut parent, log) = deadline_parent(&input, &routed, &root, None);
     assert!(
-        relay.observed(Duration::from_secs(30)),
+        relay.observed(Duration::from_secs(8)),
         "reservation query was never withheld: {}",
         parent_log(&log)
     );
     let observed = Instant::now();
+    let (child, child_launch) = phase_child(parent.id(), id(&q));
+    // The original Broker connection remains idle on inference_window_ms
+    // while the separate reservation connection is parked. Read its original
+    // query-completion timestamp through a fresh restricted connection; do not
+    // start a new window or infer a decision anchor from reservation arrival.
+    let mut observer = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
+    let sampled = Instant::now();
+    let row = observer
+        .query_one(
+            "SELECT floor(extract(epoch FROM (clock_timestamp()-state_change))*1000)::bigint, \
+         floor(extract(epoch FROM (state_change-query_start))*1000)::bigint \
+         FROM pg_stat_activity WHERE usename=current_user AND datname=current_database() \
+         AND state='idle' AND query='SELECT execution.inference_window_ms($1,$2,$3)'",
+            &[],
+        )
+        .expect("original decision anchor must be observable");
+    let uncertainty = sampled.elapsed();
+    assert!(
+        uncertainty <= Duration::from_millis(100),
+        "anchor observation round trip unqualified"
+    );
+    // Project server-relative age onto the local monotonic clock. Docker's
+    // wall clock need not agree with the Windows host's clock.
+    let anchor = sampled - Duration::from_millis(u64::try_from(row.get::<_, i64>(0)).unwrap());
+    let query_ms: i64 = row.get(1);
+    assert!(
+        (0..=100).contains(&query_ms),
+        "anchor SQL duration {query_ms}ms is unqualified"
+    );
+    // 500ms total OS observation margin. The server completion observation
+    // precedes the client's original monotonic deadline assignment by local
+    // reply delivery only; it is never shifted to the reservation/readiness.
+    let end = anchor + Duration::from_millis(45500);
+    assert!(
+        end < launched + Duration::from_millis(50000),
+        "phase reaper must be later than this assertion"
+    );
+    println!(
+        "decision anchor from child launch={}ms query={}ms remaining={}ms phase_slack={}ms pid={child}",
+        anchor.duration_since(child_launch).as_millis(),
+        query_ms,
+        end.saturating_duration_since(Instant::now()).as_millis(),
+        (launched + Duration::from_millis(50000))
+            .duration_since(end)
+            .as_millis()
+    );
+    // This relay parks ParseComplete, before the child's reservation can
+    // commit. Seed an existing charge through the actual restricted owner
+    // for this original identity to challenge no-refund recovery as well.
+    // This is explicit test injection, not proof of a lost COMMIT ACK.
+    let rec = broker_store().inspect(id(&q)).unwrap();
+    let reserved = duskweave::m1_inference_budget::reservation(
+        &mut PgInferenceReservationStore::new(native::client("DW_INFERENCE_BROKER_DATABASE_URL")),
+        Some(&mut PgMissionStore::new(native::client(
+            "DW_TEST_DATABASE_URL",
+        ))),
+        duskweave::m1_inference_budget::ReservationAction::Reserve,
+        &rec.request.context.mission,
+        OperationId(rec.decision_one),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(reserved.capacity.calls, 2);
+    assert_eq!(reserved.capacity.wall_time_ms, 45000);
     // Readiness was already sent: a ready inference child must survive past
     // the 5s preparation bound while its decision clock permits work.
     std::thread::sleep(Duration::from_millis(6000));
@@ -941,14 +1017,33 @@ fn stalled_reservation_reply_hard_stops_at_the_original_decision_envelope() {
         "an overbroad 5s kill terminated a ready inference child: {}",
         parent_log(&log)
     );
-    // The decision envelope ends 45s after its original anchor — strictly
-    // inside the 50s phase ceiling the parked reply previously outlived. In a
-    // slower instrumented environment the readiness handoff lands later, so
-    // the ceiling and the envelope converge; the bound leaves room for the
-    // ceiling to be the visible terminator while the exit stays bounded.
+    let terminated = observe_child_exit(child, end);
+    let child_done = Instant::now();
+    println!(
+        "child exit observed={terminated} after anchor={}ms anchor observation uncertainty={}ms",
+        child_done.duration_since(anchor).as_millis(),
+        uncertainty.as_millis()
+    );
+    let assertion = std::panic::catch_unwind(|| {
+        assert!(
+            terminated && child_done <= end,
+            "decision child survived original envelope; phase protection cannot satisfy this assertion"
+        )
+    });
+    if let Err(failure) = assertion {
+        // The fault relay remains parked until after the failed assertion.
+        parent.kill().unwrap();
+        parent.wait().unwrap();
+        std::panic::resume_unwind(failure);
+    }
+    println!(
+        "decision child terminated after anchor={}ms lifetime={}ms; parent accounting observed separately",
+        child_done.duration_since(anchor).as_millis(),
+        child_done.duration_since(child_launch).as_millis()
+    );
     let done = wait_parent_exit(
         &mut parent,
-        launched + Duration::from_millis(60000),
+        child_done + Duration::from_millis(4000),
         "reservation",
     );
     assert!(
@@ -967,10 +1062,30 @@ fn stalled_reservation_reply_hard_stops_at_the_original_decision_envelope() {
     assert_eq!(summary["effect_count"], 0);
     assert_eq!(summary["decision_count"], 0);
     assert_eq!(summary["inference"], json!([]));
+    assert_eq!(summary["status"], "unknown");
+    let before = native::client("DW_INFERENCE_BROKER_DATABASE_URL").query_one(
+        "SELECT operation_id,generation_call_id,repair_call_id,capacity FROM execution.inference_reservations \
+         WHERE operation_id=$1 AND record_revision=1",
+        &[&Uuid::parse_str(summary["decision_one"].as_str().unwrap()).unwrap()],
+    ).expect("charged reservation survives the lost reply");
+    assert_eq!(before.get::<_, Uuid>(1), reserved.generation_call_id);
+    assert_eq!(before.get::<_, Uuid>(2), reserved.repair_call_id);
     for command_name in ["m1-run-recover", "m1-run-recover"] {
         let (ok, after) = cli(command_name, "--run", &id(&q).to_string());
         assert!(ok, "{after}");
         assert_eq!(after["effect_count"], 0);
         assert_eq!(after["inference"], json!([]));
+        for field in ["decision_one", "decision_two", "attempt", "result"] {
+            assert_eq!(after[field], summary[field]);
+        }
     }
+    let after = native::client("DW_INFERENCE_BROKER_DATABASE_URL").query_one(
+        "SELECT operation_id,generation_call_id,repair_call_id,capacity FROM execution.inference_reservations \
+         WHERE operation_id=$1 AND record_revision=1",
+        &[&before.get::<_, Uuid>(0)],
+    ).unwrap();
+    for column in 0..3 {
+        assert_eq!(after.get::<_, Uuid>(column), before.get::<_, Uuid>(column));
+    }
+    assert_eq!(after.get::<_, Value>(3), before.get::<_, Value>(3));
 }
