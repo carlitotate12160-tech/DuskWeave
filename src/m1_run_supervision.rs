@@ -16,6 +16,7 @@ pub(super) struct PhaseChild {
     terminal: Option<mpsc::Receiver<()>>,
     launched: Instant,
     deadline: Instant,
+    readiness_required: bool,
 }
 #[derive(Default)]
 struct Observation {
@@ -87,6 +88,7 @@ impl PhaseChild {
             )?;
         }
         if let Some((expected, pipe)) = ready {
+            self.readiness_required = true;
             self.terminal = Some(monitor_readiness(
                 Arc::clone(&self.child),
                 pipe,
@@ -129,6 +131,7 @@ impl PhaseChild {
             terminal: None,
             launched: Instant::now(),
             deadline,
+            readiness_required: false,
         })
     }
     pub(super) fn finished(&self) -> Res<Option<std::process::ExitStatus>> {
@@ -179,19 +182,25 @@ impl PhaseChild {
         }
         reap(&self.child);
         let exit_code = self.finished().ok().flatten().and_then(|s| s.code());
-        if let Some(terminal) = self.terminal.take()
-            && terminal
-                .recv_timeout(self.deadline.saturating_duration_since(Instant::now()))
-                .is_err()
-        {
-            observed(&self.observation, DiagnosticCause::Unavailable);
+        if let Some(terminal) = self.terminal.take() {
+            // Reader EOF and the deadline-qualified readiness verdict both settle
+            // before snapshot/acceptance. Neither receives a new grace clock.
+            for _ in 0..2 {
+                if terminal
+                    .recv_timeout(self.deadline.saturating_duration_since(Instant::now()))
+                    .is_err()
+                {
+                    observed(&self.observation, DiagnosticCause::Unavailable);
+                    break;
+                }
+            }
         }
         exit_code
     }
     pub(super) fn protocol_valid(&self) -> bool {
-        self.observation
-            .lock()
-            .is_ok_and(|s| s.cause.is_none() && s.error.is_none())
+        self.observation.lock().is_ok_and(|s| {
+            s.cause.is_none() && s.error.is_none() && (!self.readiness_required || s.ready)
+        })
     }
 }
 fn phase_command(
@@ -327,6 +336,7 @@ fn monitor_readiness(
     let prepared_by = prepared_by.min(deadline);
     let (verdict, rx) = mpsc::channel();
     let (finished, terminal) = mpsc::channel();
+    let reader_finished = finished.clone();
     let reader = Arc::clone(&observation);
     std::thread::Builder::new()
         .name("run_readiness_reader".into())
@@ -335,12 +345,15 @@ fn monitor_readiness(
             if let Ok(mut state) = reader.lock() {
                 state.merge(result);
             }
-            let _ = finished.send(());
+            let _ = reader_finished.send(());
         })
         .map_err(|_| Fail::Config("run_control_unqualified"))?;
     std::thread::Builder::new()
         .name("run_readiness_watchdog".into())
-        .spawn(move || readiness_watch(&child, &rx, prepared_by, &observation))
+        .spawn(move || {
+            readiness_watch(&child, &rx, prepared_by, &observation);
+            let _ = finished.send(());
+        })
         .map_err(|_| Fail::Config("run_control_unqualified"))?;
     Ok(terminal)
 }
@@ -513,7 +526,7 @@ mod tests {
         assert!(parsed(b"expected\n").ready);
         assert_eq!(parsed(b"expected\n").error, None);
     }
-    fn terminal_child(frame: &str, exit: i32) -> PhaseChild {
+    fn spawn_terminal(frame: &str, exit: i32) -> Child {
         #[cfg(windows)]
         let mut command = Command::new(
             std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
@@ -531,12 +544,15 @@ mod tests {
         #[cfg(not(windows))]
         command.args(["-c", &format!("printf '{frame}'; exit {exit}")]);
         command.env_remove("DEEPSEEK_API_KEY");
-        let mut spawned = command
+        command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .unwrap();
+            .unwrap()
+    }
+    fn terminal_child(frame: &str, exit: i32) -> PhaseChild {
+        let mut spawned = spawn_terminal(frame, exit);
         let pipe = spawned.stdout.take().unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut child = PhaseChild::supervise(spawned, deadline).unwrap();
@@ -575,6 +591,61 @@ mod tests {
                 Some(-1073741819)
             );
         }
+    }
+    #[test]
+    fn reader_completion_without_a_watchdog_completion_cannot_finalize_success() {
+        let mut child = terminal_child("expected\n", 0);
+        // Synthetic completion ordering: reader has finished, watchdog is still pending.
+        // Keep its sender alive so absence is a wait, not a disconnect.
+        let (finished, rx) = mpsc::channel();
+        finished.send(()).unwrap();
+        child.terminal = Some(rx);
+        child.deadline = Instant::now() + Duration::from_millis(30);
+        let diagnostic = child.diagnostic(uuid::Uuid::from_u128(1), RunPhase::DecisionOne);
+        assert_eq!(diagnostic.cause, DiagnosticCause::Unavailable);
+        assert!(!child.protocol_valid());
+        drop(finished);
+    }
+    #[test]
+    fn gated_late_watchdog_rejects_exact_ready_and_successful_exit_before_snapshot() {
+        let mut spawned = spawn_terminal("expected\n", 0);
+        let pipe = spawned.stdout.take().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut child = PhaseChild::supervise(spawned, deadline).unwrap();
+        child.readiness_required = true;
+        let (verdict, rx) = mpsc::channel();
+        let (finished, terminal) = mpsc::channel();
+        child.terminal = Some(terminal);
+        let result = read_ready(pipe, "expected", &verdict);
+        assert!(result.ready);
+        child.observation.lock().unwrap().merge(result);
+        finished.send(()).unwrap();
+        while child.finished().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(child.finished().unwrap().unwrap().success());
+        assert!(
+            !child.protocol_valid(),
+            "reader alone cannot authorize acceptance"
+        );
+        let (gate, held) = mpsc::channel();
+        let observed = Arc::clone(&child.observation);
+        let process = Arc::clone(&child.child);
+        let prepared_by = Instant::now() - Duration::from_millis(1);
+        let watchdog = std::thread::spawn(move || {
+            held.recv().unwrap();
+            readiness_watch(&process, &rx, prepared_by, &observed);
+            finished.send(()).unwrap();
+        });
+        // The queued exact frame is now processed after its original readiness bound.
+        gate.send(()).unwrap();
+        let diagnostic = child.diagnostic(uuid::Uuid::from_u128(1), RunPhase::DecisionOne);
+        watchdog.join().unwrap();
+        assert_eq!(diagnostic.exit_code, Some(0));
+        assert_eq!(diagnostic.cause, DiagnosticCause::ReadinessDeadline);
+        assert!(!diagnostic.readiness_observed);
+        assert!(!child.protocol_valid());
     }
     #[test]
     fn child_terminal_error_before_ready_preserves_the_safe_code() {

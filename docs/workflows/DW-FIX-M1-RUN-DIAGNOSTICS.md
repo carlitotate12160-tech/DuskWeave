@@ -301,3 +301,37 @@ guide explains configuration, diagnostics/UNKNOWN and database-only recovery.
 No BUILD_ORDER edit is needed: stage/navigation and accepted scope are unchanged.
 PowerShell ACL latency, owner-connection optimization, internal timing gaps,
 owner-view continuation, real provider loop and live qualification remain OPEN.
+
+## 8. Distinct review and correction R1
+
+One distinct agent `/root/diagnostics_review` reviewed committed `ca95f56`
+against the issued base, using the repository adversarial-review skill. It
+performed source/report review only (no build, DB or edits); the author ran the
+reported local tests. The pass found one VALID blocking issue: reader completion
+could precede the readiness watchdog verdict. A fast child could exit zero after
+exact READY while the parent still had no final deadline-qualified verdict;
+`protocol_valid` could accept that pending state. The original source therefore
+remained NOT READY despite its passing focused tests. No other source defect
+survived the full pass; final CI remains separately required.
+
+**R1 RED:** `cargo test --locked --bin duskweave
+reader_completion_without_a_watchdog_completion_cannot_finalize_success --
+--test-threads=1` failed its actual assertion: `ChildExit` was returned instead of
+`Unavailable` when only reader completion was available. This is a synthetic
+completion-order fixture, without a fault added to production.
+
+**One cohesive correction:** both existing reader and watchdog send completion;
+settlement consumes both within the remaining original phase deadline before
+snapshot/protocol acceptance. A required readiness verdict must be positively
+observed; missing completion cannot qualify success. No new thread, grace clock,
+deadline or SQL in a watchdog was added. The gated late-watchdog test uses the
+actual reader, actual successful child, queued exact frame and production
+`readiness_watch`; it proves pending acceptance refuses and the final diagnostic
+is `readiness_deadline` when the watchdog processes the frame after its bound.
+The test first needed a fixture correction to wait for actual process exit after
+pipe EOF; that setup failure is not claimed as product RED.
+
+The R1 focused supervisor run passes 10/10; current-head broader regressions,
+review of this delta and Linux CI/coverage are the remaining delivery evidence.
+The previous committed head's local checks passed 85 Rust/28 helper assertions;
+they are historical candidate evidence, not qualification of this correction.
