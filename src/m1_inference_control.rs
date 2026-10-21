@@ -85,7 +85,10 @@ impl Coordinator {
             c.batch_execute("SET statement_timeout='200ms'; SET lock_timeout='100ms'")
                 .map_err(|_| Fail::Config("inference_control_unavailable"))?;
         }
-        let permit = Permit::new(deadline);
+        // The worker's pre-send and progress gates re-read the marker channel
+        // through this check instead of trusting the last published lease.
+        let watch = binding.clone();
+        let permit = Permit::watched(deadline, move || watch.current().is_ok());
         let mut authority = Authority {
             client,
             terrain,
