@@ -13,6 +13,7 @@ pub fn refresh() {
     for source in [
         include_str!("../../migrations/0017_autonomous_fixture_run.sql"),
         include_str!("../../migrations/0018_issued_fixture_terrain.sql"),
+        include_str!("../../migrations/0019_provider_fixture_feedback.sql"),
     ] {
         let normalized = source.replace("CREATE OR REPLACE FUNCTION ", "CREATE FUNCTION ");
         for function in normalized.split("CREATE FUNCTION ").skip(1) {
@@ -88,7 +89,7 @@ pub fn registered_with(slot: u128, change: impl FnOnce(&mut Value)) -> Value {
     let context = terrain::context_request_for(e, c, &raw, candidates).0;
     let seeds:Vec<_>=raw["m1_permission"]["contact_rules"].as_array().unwrap().iter().map(|r|
         json!({"asset_ref":r["asset_ref"],"name":r["rule"].get("exact").or_else(||r["rule"].get("label_suffix")).unwrap()})).collect();
-    json!({"version":"m1_autonomous_run_request_v1","run_id":consent_id(),"run_profile":"autonomous-dns-fixture-v1",
+    json!({"version":"m1_autonomous_run_request_v1","run_id":consent_id(),"run_profile":raw["m1_inference_permission"]["run_profile"],
         "execution_mode":"controlled_fixture","deadline_at_ms":now*1000+149000,"context":context,
         "seed_names":seeds})
 }
@@ -99,7 +100,7 @@ pub fn consent_id() -> Uuid {
         .get(0)
 }
 pub fn command() -> Command {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_duskweave"));
+    let mut c = Command::new(actual_binary());
     c.env_clear();
     c.env("DW_DATABASE_CONFIG_MODE", "env-local").env(
         "DW_DATABASE_URL",
@@ -119,6 +120,126 @@ pub fn command() -> Command {
     }
     c
 }
+fn actual_binary() -> std::path::PathBuf {
+    // Test custodian only: an isolated negative-control binary must retain
+    // its actual executable identity. This is never a production child flag.
+    std::env::var_os("DW_TEST_RUN_BINARY")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_duskweave").into())
+}
+
+/// Observe the actual direct binary child, independently of its parent's SQL/receipt work.
+#[cfg(windows)]
+pub fn phase_child(parent: u32, run: Uuid) -> (u32, std::time::Instant) {
+    let script = format!(
+        "$ErrorActionPreference='Stop'; $c=Get-CimInstance Win32_Process -Filter \"ParentProcessId={parent}\" | Where-Object {{ $_.CommandLine -like '*{run}*' }}; $p=[Diagnostics.Process]::GetProcessById($c.ProcessId); [Console]::WriteLine(('{{0}} {{1}}' -f $p.Id,([DateTimeOffset]$p.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()))"
+    );
+    let output = Command::new(
+        std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
+            .join("System32/WindowsPowerShell/v1.0/powershell.exe"),
+    )
+    .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+    .output()
+    .unwrap();
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    let (pid, started) = text.trim().split_once(' ').expect("one owned phase child");
+    (pid.parse().unwrap(), wall_instant(started.parse().unwrap()))
+}
+pub fn wall_instant(ms: u64) -> std::time::Instant {
+    let wall = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    std::time::Instant::now() - wall.saturating_sub(std::time::Duration::from_millis(ms))
+}
+#[cfg(not(windows))]
+pub fn phase_child(parent: u32, run: Uuid) -> (u32, std::time::Instant) {
+    let matches: Vec<u32> = std::fs::read_dir("/proc")
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
+        .filter(|pid| {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+            let ppid = stat
+                .rsplit_once(')')
+                .and_then(|(_, s)| s.split_whitespace().nth(1))
+                .and_then(|s| s.parse::<u32>().ok());
+            let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+            ppid == Some(parent) && cmd.windows(36).any(|s| s == run.to_string().as_bytes())
+        })
+        .collect();
+    assert_eq!(matches.len(), 1, "one owned phase child");
+    let pid = matches[0];
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+    let ticks: f64 = stat
+        .rsplit_once(')')
+        .unwrap()
+        .1
+        .split_whitespace()
+        .nth(19)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let hz = Command::new("getconf").arg("CLK_TCK").output().unwrap();
+    assert!(hz.status.success());
+    let hz: f64 = String::from_utf8(hz.stdout)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    let uptime: f64 = std::fs::read_to_string("/proc/uptime")
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    (
+        pid,
+        std::time::Instant::now()
+            - std::time::Duration::from_secs_f64((uptime - ticks / hz).max(0.0)),
+    )
+}
+
+/// Returns product termination evidence. A timeout is reported before custodian cleanup.
+#[cfg(windows)]
+pub fn observe_child_exit(pid: u32, end: std::time::Instant) -> bool {
+    let wall_end = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        + end
+            .saturating_duration_since(std::time::Instant::now())
+            .as_millis();
+    let script = format!(
+        "$ErrorActionPreference='Stop'; try {{ $p=[Diagnostics.Process]::GetProcessById({pid}); $ms=[Math]::Max(0,{wall_end}-[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()); if ($p.WaitForExit([int]$ms)) {{ 'exited' }} else {{ 'alive' }} }} catch [ArgumentException] {{ 'exited' }}"
+    );
+    let output = Command::new(
+        std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
+            .join("System32/WindowsPowerShell/v1.0/powershell.exe"),
+    )
+    .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+    .output()
+    .unwrap();
+    output.status.success() && output.stdout.starts_with(b"exited")
+}
+#[cfg(not(windows))]
+pub fn observe_child_exit(pid: u32, end: std::time::Instant) -> bool {
+    loop {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+        if stat.is_empty()
+            || stat
+                .rsplit_once(')')
+                .is_some_and(|(_, s)| s.trim_start().starts_with('Z'))
+        {
+            return true;
+        }
+        if std::time::Instant::now() >= end {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
 pub fn cli(command: &str, flag: &str, value: &str) -> (bool, Value) {
     let mut c = self::command();
     let o = c.arg(command).arg(flag).arg(value).output().unwrap();
@@ -136,6 +257,50 @@ pub fn path(q: &Value) -> std::path::PathBuf {
     std::fs::write(&path, serde_json::to_vec(q).unwrap()).unwrap();
     path
 }
+pub fn control_root() -> std::path::PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "dw-provider-control-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        use std::process::Stdio;
+        let system = std::env::var_os("SystemRoot").unwrap();
+        let script = "$ErrorActionPreference='Stop'; \
+            $s=[Security.Principal.WindowsIdentity]::GetCurrent().User; \
+            $a=New-Object Security.AccessControl.DirectorySecurity; $a.SetOwner($s); \
+            $a.SetAccessRuleProtection($true,$false); \
+            $r=New-Object Security.AccessControl.FileSystemAccessRule($s,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); \
+            $a.AddAccessRule($r); Set-Acl -LiteralPath $env:DW_M1_RUN_CONTROL_ROOT -AclObject $a";
+        let status = Command::new(
+            std::path::Path::new(&system).join("System32/WindowsPowerShell/v1.0/powershell.exe"),
+        )
+        .env_clear()
+        .env("SystemRoot", system)
+        .env("DW_M1_RUN_CONTROL_ROOT", &root)
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+        assert!(
+            status.success(),
+            "private test control root ACL prerequisite"
+        );
+    }
+    root
+}
 pub fn id(q: &Value) -> Uuid {
     Uuid::parse_str(q["run_id"].as_str().unwrap()).unwrap()
 }
@@ -147,7 +312,7 @@ pub fn release() -> String {
     RELEASE
         .get_or_init(|| {
             use sha2::{Digest, Sha256};
-            Sha256::digest(std::fs::read(env!("CARGO_BIN_EXE_duskweave")).unwrap())
+            Sha256::digest(std::fs::read(actual_binary()).unwrap())
                 .iter()
                 .map(|b| format!("{b:02x}"))
                 .collect()

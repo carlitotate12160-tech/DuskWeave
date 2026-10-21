@@ -25,10 +25,11 @@ fn accept_issued(run: &RunRecord) -> Res<duskweave::m1_terrain::TerrainAcceptedE
     let q = &run.request.context.mission;
     let mut terrain = PgTerrainStore::new(super::m1_terrain_cli::terrain_connection()?);
     let mut mission = PgMissionStore::new(super::connect()?);
-    let reference = duskweave::m1_terrain_issued::IssuedDnsReference::fixture(
+    let reference = duskweave::m1_terrain_issued::IssuedDnsReference::controlled_fixture(
         q.engagement_id,
         q.campaign_id,
         run.result,
+        &run.request.run_profile,
     )?;
     let (event, _, _, _) = terrain
         .record_issued(&mut mission, &reference)?

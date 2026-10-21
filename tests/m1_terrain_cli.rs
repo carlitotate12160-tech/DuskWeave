@@ -18,6 +18,65 @@ fn write_temp_json(tag: &str, val: &Value) -> PathBuf {
 }
 
 #[test]
+fn local_stop_failure_survives_configuration_failure() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8320);
+    let path = write_temp_json("stop-config", &dns_request_json(e, c, now - 5));
+    let (ok, _, receipt) = cli_run(
+        "m1-terrain-record",
+        &path,
+        "new",
+        &[
+            ("DW_M1_RUN_CONTROL_ROOT", "invalid-relative-root"),
+            ("DW_TERRAIN_DATABASE_URL", "invalid-dsn"),
+        ],
+    );
+    assert!(!ok);
+    assert_eq!(receipt["reason"], "invalid_configuration");
+    assert_eq!(receipt["publication"], "not_committed");
+    assert_eq!(receipt["local_control"], "unresolved");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn local_stop_failure_preserves_durable_record_and_authoritative_refusal() {
+    let _g = db();
+    let (e, c, _, now) = register_m1_campaign(0x8321);
+    let mut raw = dns_request_json(e, c, now - 5);
+    let path = write_temp_json("stop-record", &raw);
+    let invalid = [("DW_M1_RUN_CONTROL_ROOT", "invalid-relative-root")];
+    let (ok, _, receipt) = cli_run("m1-terrain-record", &path, "new", &invalid);
+    assert!(!ok);
+    assert_eq!(receipt["local_control"], "unresolved");
+    assert_eq!(receipt["publication"], "committed");
+    assert_eq!(receipt["history"], "completed");
+    let op = receipt["operation_id"].as_str().unwrap();
+    for command in ["m1-terrain-inspect", "m1-terrain-recover"] {
+        let (ok, _, read) = cli_run(command, &path, op, &invalid);
+        assert!(ok);
+        assert!(read.get("local_control").is_none());
+        for field in [
+            "operation_id",
+            "event_id",
+            "observation_id",
+            "material_id",
+            "evaluation_id",
+            "claim_id",
+        ] {
+            assert_eq!(read[field], receipt[field]);
+        }
+    }
+    raw["answers"][0]["ipv4"] = json!("198.51.100.250");
+    std::fs::write(&path, serde_json::to_vec(&raw).unwrap()).unwrap();
+    let (ok, _, refusal) = cli_run("m1-terrain-record", &path, op, &invalid);
+    assert!(!ok);
+    assert_eq!(refusal["reason"], "input_mismatch");
+    assert_eq!(refusal["local_control"], "unresolved");
+    assert_eq!(refusal["operation_id"], receipt["operation_id"]);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn regression_cli_partial_alias_is_withheld() {
     let _g = db();
     let (e, c, _, now) = register_m1_campaign(0x8310);

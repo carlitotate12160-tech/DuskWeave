@@ -16,12 +16,20 @@ pub struct IssuedDnsReference {
 }
 impl IssuedDnsReference {
     pub fn fixture(e: EngagementId, c: CampaignId, result: Uuid) -> Res<Self> {
+        Self::controlled_fixture(e, c, result, "autonomous-dns-fixture-v1")
+    }
+    pub fn controlled_fixture(
+        e: EngagementId,
+        c: CampaignId,
+        result: Uuid,
+        run_profile: &str,
+    ) -> Res<Self> {
         let q = Self {
             version: "m1_terrain_dns_issued_observation_v1".into(),
             engagement_id: e,
             campaign_id: c,
             result_ref: result,
-            run_profile: "autonomous-dns-fixture-v1".into(),
+            run_profile: run_profile.into(),
             execution_mode: "controlled_fixture".into(),
         };
         q.validate()?;
@@ -30,7 +38,10 @@ impl IssuedDnsReference {
     pub fn validate(&self) -> Res<()> {
         let valid = [
             self.version == "m1_terrain_dns_issued_observation_v1",
-            self.run_profile == "autonomous-dns-fixture-v1",
+            matches!(
+                self.run_profile.as_str(),
+                "autonomous-dns-fixture-v1" | "autonomous-dns-provider-fixture-v1"
+            ),
             self.execution_mode == "controlled_fixture",
             !self.engagement_id.0.is_nil(),
             !self.campaign_id.0.is_nil(),

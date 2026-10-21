@@ -171,6 +171,9 @@ fn bind_input(c: &mut Client, s: &Scope, hash: &str) -> Res<()> {
         "{}",
         serde_json::json!({"kind":"m1_inference_identity_v1","decision":s.decision,"dispatch_granted":false})
     );
+    store_input_binding(c, s, hash)
+}
+fn store_input_binding(c: &mut Client, s: &Scope, hash: &str) -> Res<()> {
     let mut tx = c
         .transaction()
         .map_err(|_| Fail::Store("inference_input_binding_unknown"))?;
@@ -294,12 +297,17 @@ fn identity(q: &duskweave::m1_context_input::ContextRequest) -> Res<String> {
 #[path = "../tests/support/m1_native_cli.rs"]
 mod tests;
 
-pub(super) fn autonomous_inference<B: reasoning::proposal::ProposalBasis>(
+pub(super) fn autonomous_inference<B, P, G>(
     q: &ContextRequest,
     decision: Uuid,
     a: &duskweave::m1_autonomous_context::AutonomousContext,
     basis: impl FnOnce(reasoning::postgres_terrain::TerrainBasis) -> B,
-) -> Res<()> {
+    provider: impl FnOnce(&Scope, &m1_context::PreparedContext, Instant) -> Res<(P, G)>,
+) -> Res<()>
+where
+    B: reasoning::proposal::ProposalBasis,
+    P: inference::Provider,
+{
     let s = scope(q, decision)?;
     let mut o = autonomous_owners(q, &s)?;
     let p = m1_context::prepare_autonomous(
@@ -309,19 +317,21 @@ pub(super) fn autonomous_inference<B: reasoning::proposal::ProposalBasis>(
         a,
     )?;
     let terrain = prepared_basis(&s, &p, o.broker.deadline)?;
-    infer_fixture(q, &s, &mut o, p, basis(terrain))
+    let (provider, _control) = provider(&s, &p, o.broker.deadline)?;
+    infer_autonomous(q, &s, &mut o, p, basis(terrain), provider)
 }
-fn infer_fixture<B: reasoning::proposal::ProposalBasis>(
+fn infer_autonomous<B: reasoning::proposal::ProposalBasis, P: inference::Provider>(
     q: &ContextRequest,
     s: &Scope,
     o: &mut Owners,
     p: m1_context::PreparedContext,
     mut basis: B,
+    mut provider: P,
 ) -> Res<()> {
     let input = inference_input(q, s, p.utf8().as_bytes())?;
     let receipt = inference::infer(
         &mut o.broker,
-        &mut reasoning::fixture::DeterministicProvider,
+        &mut provider,
         &mut basis,
         &mut o.store,
         &mut o.history,
@@ -372,13 +382,16 @@ pub(super) fn autonomous_recover(q: &ContextRequest, decision: Uuid) -> Res<()> 
 
 fn autonomous_owners(q: &ContextRequest, s: &Scope) -> Res<Owners> {
     let (mut c, store) = open_stores(q)?;
-    if continuation(&mut c, s, &store.input_hash, true)? {
+    if known_identity(&mut c, s, &store.input_hash)? {
         return Err(Fail::State("run_decision_already_started"));
     }
+    // This private phase reserves stdout for the readiness frame. The same
+    // durable identity binding remains mandatory; the public command announces it.
+    store_input_binding(&mut c, s, &store.input_hash)?;
     let deadline = autonomous_deadline(&mut c, s)?;
     owners(c, q, deadline, store)
 }
-fn prepared_basis(
+pub(super) fn prepared_basis(
     s: &Scope,
     p: &m1_context::PreparedContext,
     deadline: Instant,

@@ -163,17 +163,20 @@ proven. Closure is simpler ownership, less duplication/dead code and preserved
 behavior, not a required percentage reduction or smaller files at any cost.
 Do not raise thresholds, remove explanations or fragment helpers to satisfy LOC.
 
-**Current implementation disposition (2026-10-20):** PR #72 merged `ca7d4ef`
-with conservative document classification, sanitized heartbeat and isolated cache
-identities; PR #73 merged `00e5667` preserving this roadmap. The active
-[Walking Skeleton packet](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md)
-repays Terrain `record_dns` 24 → 6 and `load_existing` 17 → 2 in local pinned
-analysis, retains the source/transaction guards and adds automatic issued-result
-intake. Final-head gates and independent review remain delivery requirements.
-The other 11 named hotspots and ambiguous CLI closure stay OPEN at the checkpoint
-above. Shared inference-basis construction is deduplicated; legacy CLI and M0
-paths remain because registration/assessment/withdrawal/inspect/recovery consumers
-still require them. This is not wholesale legacy removal or qualified parallelism.
+**Current implementation disposition (2026-10-20):** the pinned Git baseline
+records PR #72 (`ca7d4ef`), roadmap PR #73 (`00e5667`), Walking Skeleton PR #74
+(`94c240b`) and tracking PR #106 (`2b807d6`). The skeleton's Terrain
+`record_dns` 24 → 6 and `load_existing` 17 → 2 remain its reviewed disposition.
+The active [provider-fixture packet](workflows/DW-IMPLEMENT-M1-PROVIDER-FIXTURE-FEEDBACK.md)
+implements slice 2 offline; no real cognition demonstration or new merge is
+claimed. It shares HTTP/TLS/response mechanics and credential validation between
+native/autonomous transport, retains the existing inference engine and separates
+local revocation, authority coordination and transport permits. The touched CLI
+`command` and its ambiguous closure group are being remeasured after separating
+parsing/receipts from execution and pre-mutation signaling. Untouched
+`connect_qualified`, `run_record` and the other named hotspots remain OPEN.
+Final measurements, restricted-owner regressions, distinct review and exact-head
+CI remain delivery requirements. Legacy CLI/M0 consumers remain supported.
 
 **Measured CI baseline:** PR #71 run
 [39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),

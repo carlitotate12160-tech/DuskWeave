@@ -221,6 +221,7 @@ fn run_inspect_or_recover(
 pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
     let mut req_captured = None;
     let mut op_captured = None;
+    let mut local_control_failure = None;
     let outcome = (|| {
         let (path, op_opt) = parse_args(command, args)?;
         op_captured = op_opt;
@@ -228,12 +229,8 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
             read_terrain_dns_file(Path::new(path)).map_err(|_| Fail::Input("invalid_input"))?;
         req_captured = Some(req);
         let req = req_captured.as_ref().ok_or(Fail::Input("invalid_input"))?;
-        let (rt, tr, tj) = connect_qualified()?;
-        match (command, op_opt) {
-            ("m1-terrain-record", _) => run_record(rt, tr, tj, req, op_opt),
-            (_, Some(op)) => run_inspect_or_recover(command, rt, tr, tj, req, op),
-            _ => Err(Fail::Input("invalid_args")),
-        }
+        local_control_failure = signal_record(command, req).err();
+        execute_request(command, req, op_opt)
     })();
     let (receipt, err_opt) = match outcome {
         Ok(pair) => pair,
@@ -241,7 +238,7 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
             let (res, code, mapped) = map_fail(f);
             let mut receipt =
                 TerrainReceipt::failure(res, code, req_captured.as_ref(), op_captured);
-            if command != "m1-terrain-record" && op_captured.is_some() {
+            if historical_read(command, op_captured) {
                 // A failed read establishes neither rollback nor absence of history.
                 receipt.publication = "unknown".to_string();
                 receipt.history = "unknown".to_string();
@@ -249,10 +246,40 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
             (receipt, Some(mapped))
         }
     };
-    let json = serde_json::to_string(&receipt).map_err(|_| Fail::State("receipt_encode"))?;
+    emit_receipt(&receipt, local_control_failure.is_some())?;
+    err_opt.or(local_control_failure).map_or(Ok(()), Err)
+}
+
+fn signal_record(command: &str, req: &TerrainDnsRequest) -> Res<()> {
+    if command == "m1-terrain-record" {
+        super::m1_run_control::signal_campaign(req.engagement_id.0, req.campaign_id.0)
+    } else {
+        Ok(())
+    }
+}
+
+fn emit_receipt(receipt: &TerrainReceipt, local_control_failed: bool) -> Res<()> {
+    let mut json = serde_json::to_value(receipt).map_err(|_| Fail::State("receipt_encode"))?;
+    if local_control_failed {
+        json["local_control"] = "unresolved".into();
+    }
     println!("{json}");
-    match err_opt {
-        None => Ok(()),
-        Some(f) => Err(f),
+    Ok(())
+}
+
+fn historical_read(command: &str, operation: Option<OperationId>) -> bool {
+    command != "m1-terrain-record" && operation.is_some()
+}
+
+fn execute_request(
+    command: &str,
+    req: &TerrainDnsRequest,
+    op: Option<OperationId>,
+) -> Res<(TerrainReceipt, Option<Fail>)> {
+    let (rt, tr, tj) = connect_qualified()?;
+    match (command, op) {
+        ("m1-terrain-record", _) => run_record(rt, tr, tj, req, op),
+        (_, Some(op)) => run_inspect_or_recover(command, rt, tr, tj, req, op),
+        _ => Err(Fail::Input("invalid_args")),
     }
 }
