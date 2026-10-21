@@ -4,7 +4,6 @@ use duskweave::m1_reasoning::postgres_terrain::TerrainBasis;
 use duskweave::m1_reasoning::proposal::ProposalBasis;
 use duskweave::m1_reasoning::transport_control::Permit;
 use duskweave::{Fail, Res};
-use postgres::Client;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -15,7 +14,6 @@ pub(super) struct Coordinator {
     envelope: Sender<()>,
 }
 struct Authority {
-    client: Client,
     terrain: TerrainBasis,
     binding: Binding,
     run: Uuid,
@@ -45,6 +43,8 @@ impl Authority {
             .as_millis() as i64;
         self.binding.current()?;
         let row = self
+            .terrain
+            .mission
             .client
             .query_one(
                 "SELECT execution.run_current($1),least(x.deadline_at_ms,y.lease_until_ms) \
@@ -74,20 +74,22 @@ impl Authority {
 }
 impl Coordinator {
     pub(super) fn start(
-        mut client: Client,
         mut terrain: TerrainBasis,
         binding: Binding,
         run: Uuid,
         deadline: Instant,
         envelope_end: Instant,
     ) -> Res<Self> {
-        for c in [&mut client, &mut terrain.mission.client] {
-            c.batch_execute("SET statement_timeout='200ms'; SET lock_timeout='100ms'")
-                .map_err(|_| Fail::Config("inference_control_unavailable"))?;
-        }
+        // Both reads run sequentially on this coordinator's qualified Broker
+        // connection. A second connection repeated the same qualification
+        // during preparation without providing an independent control path.
+        terrain
+            .mission
+            .client
+            .batch_execute("SET statement_timeout='200ms'; SET lock_timeout='100ms'")
+            .map_err(|_| Fail::Config("inference_control_unavailable"))?;
         let permit = Permit::new(deadline);
         let mut authority = Authority {
-            client,
             terrain,
             binding,
             run,

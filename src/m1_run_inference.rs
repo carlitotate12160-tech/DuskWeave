@@ -89,7 +89,6 @@ pub(super) fn decide(
         basis,
         |s, p, deadline| {
             let coordinator = super::m1_inference_control::Coordinator::start(
-                super::m1_reasoning_cli::broker_connection()?,
                 super::m1_reasoning_cli::prepared_basis(s, p, deadline)?,
                 binding.clone(),
                 run.request.run_id,
