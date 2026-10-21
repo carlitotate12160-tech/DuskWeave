@@ -1,6 +1,8 @@
 //! Offline owner composition. The scripted Provider is not real cognition or a production fallback.
 #[path = "support/registration_db.rs"]
 mod db_support;
+#[path = "support/database_wait_proxy.rs"]
+mod proxy;
 #[path = "support/m1_terrain_context.rs"]
 mod terrain;
 use terrain::terrain_support::native;
@@ -612,6 +614,7 @@ fn diagnose_phase(root: &std::path::Path) -> String {
         .unwrap();
     let mut child = command()
         .env("DW_M1_RUN_CONTROL_ROOT", root)
+        .env("DW_M1_RUN_PROVIDER_DECISION", "1")
         .args([
             "m1-run-phase",
             "--run",
@@ -815,4 +818,149 @@ fn minimum_wire_fit_failure_precedes_reservation_provider_preparation_and_fixtur
         count, 0,
         "minimum useful context must fit before capacity is charged"
     );
+}
+
+fn wait_parent_exit(parent: &mut std::process::Child, end: Instant, mode: &str) -> Instant {
+    while parent.try_wait().unwrap().is_none() {
+        assert!(
+            Instant::now() < end,
+            "parent survived a parked {mode} session"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let done = Instant::now();
+    assert!(
+        !parent.wait().unwrap().success(),
+        "{mode} must fail honestly"
+    );
+    done
+}
+
+fn deadline_parent(
+    input: &std::path::Path,
+    routed: &str,
+    root: &std::path::Path,
+) -> (std::process::Child, std::path::PathBuf) {
+    use std::process::Stdio;
+    let log = std::env::temp_dir().join(format!(
+        "dw-deadline-parent-{}-{}.log",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let out = std::fs::File::create(&log).unwrap();
+    let err = out.try_clone().unwrap();
+    let parent = command()
+        .env("DW_INFERENCE_BROKER_DATABASE_URL", routed)
+        .env("DW_M1_RUN_CONTROL_ROOT", root)
+        .env("DEEPSEEK_API_KEY", "dw-synthetic-provider-key")
+        .args(["m1-run", "--input", input.to_str().unwrap()])
+        .stdout(Stdio::from(out))
+        .stderr(Stdio::from(err))
+        .spawn()
+        .unwrap();
+    (parent, log)
+}
+fn parent_log(log: &std::path::Path) -> String {
+    String::from_utf8_lossy(&std::fs::read(log).unwrap_or_default()).into_owned()
+}
+
+#[test]
+fn stalled_claim_reply_exits_provider_child_from_the_launch_clock() {
+    let _guard = native::db();
+    refresh();
+    let q = registered_with(0xc960, provider_permission);
+    let root = control_root();
+    let relay = proxy::Relay::start(
+        "127.0.0.1:5432".parse().unwrap(),
+        b"SELECT execution.run_phase_claim",
+    );
+    let routed =
+        terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", relay.port());
+    let input = path(&q);
+    let launched = Instant::now();
+    let (mut parent, log) = deadline_parent(&input, &routed, &root);
+    assert!(
+        relay.observed(Duration::from_secs(10)),
+        "claim query was never withheld: {}",
+        parent_log(&log)
+    );
+    let observed = Instant::now();
+    // The launch-clock preparation bound is 5000ms, well inside the 50s phase
+    // ceiling the old post-claim guard allowed a stalled claim to survive.
+    let done = wait_parent_exit(&mut parent, observed + Duration::from_secs(14), "claim");
+    std::fs::remove_file(&input).unwrap();
+    let summary = broker_store().summary(id(&q)).unwrap();
+    println!(
+        "stalled-claim exit launch={}ms observed={}ms status={} out={}",
+        launched.elapsed().as_millis(),
+        done.duration_since(observed).as_millis(),
+        summary["status"],
+        parent_log(&log)
+    );
+    assert_eq!(summary["effect_count"], 0);
+    assert_eq!(summary["decision_count"], 0);
+    assert_eq!(summary["inference"], json!([]));
+}
+
+#[test]
+fn stalled_reservation_reply_hard_stops_at_the_original_decision_envelope() {
+    let _guard = native::db();
+    refresh();
+    let q = registered_with(0xc961, provider_permission);
+    let root = control_root();
+    // The needle names the function call, not the table: claim, identity,
+    // window and context statements (which read inference_reservations) flow
+    // unimpaired so readiness arms before only the reservation reply is held.
+    let relay = proxy::Relay::start("127.0.0.1:5432".parse().unwrap(), b"inference_reservation(");
+    let routed =
+        terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", relay.port());
+    let input = path(&q);
+    let launched = Instant::now();
+    let (mut parent, log) = deadline_parent(&input, &routed, &root);
+    assert!(
+        relay.observed(Duration::from_secs(30)),
+        "reservation query was never withheld: {}",
+        parent_log(&log)
+    );
+    let observed = Instant::now();
+    // Readiness was already sent: a ready inference child must survive past
+    // the 5s preparation bound while its decision clock permits work.
+    std::thread::sleep(Duration::from_millis(6000));
+    assert!(
+        parent.try_wait().unwrap().is_none(),
+        "an overbroad 5s kill terminated a ready inference child: {}",
+        parent_log(&log)
+    );
+    // The decision envelope ends 45s after its original anchor — strictly
+    // inside the 50s phase ceiling the parked reply previously outlived.
+    let done = wait_parent_exit(
+        &mut parent,
+        launched + Duration::from_millis(50000),
+        "reservation",
+    );
+    assert!(
+        done.duration_since(observed) > Duration::from_secs(30),
+        "termination must come from the parked reservation, not an early refusal"
+    );
+    std::fs::remove_file(&input).unwrap();
+    let summary = broker_store().summary(id(&q)).unwrap();
+    println!(
+        "stalled-reservation exit stalled={}ms launch={}ms status={} out={}",
+        done.duration_since(observed).as_millis(),
+        done.duration_since(launched).as_millis(),
+        summary["status"],
+        parent_log(&log)
+    );
+    assert_eq!(summary["effect_count"], 0);
+    assert_eq!(summary["decision_count"], 0);
+    assert_eq!(summary["inference"], json!([]));
+    for command_name in ["m1-run-recover", "m1-run-recover"] {
+        let (ok, after) = cli(command_name, "--run", &id(&q).to_string());
+        assert!(ok, "{after}");
+        assert_eq!(after["effect_count"], 0);
+        assert_eq!(after["inference"], json!([]));
+    }
 }

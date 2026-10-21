@@ -3,6 +3,7 @@ use duskweave::m1_reasoning::{self as reasoning, proposal::ProposalBasis};
 use duskweave::m1_run::{RunPhase, RunRecord};
 use duskweave::postgres_m1_run::PgRunStore;
 use duskweave::{Fail, Res};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 struct RunBasis {
@@ -93,13 +94,37 @@ pub(super) fn decide(
                 binding,
                 run.request.run_id,
                 deadline,
+                envelope_end(deadline, run)?,
             )?;
             let provider =
                 reasoning::transport::AutonomousProvider::new(coordinator.permit.clone());
+            // Armed transport and the whole-decision envelope now overlap:
+            // report readiness before the preparation cover ends so no
+            // interval remains without a watch.
+            println!(
+                "{}",
+                super::m1_run_control::ready_frame(run.request.run_id, phase.name())
+            );
             drop(preparation);
             Ok((provider, coordinator))
         },
     )
+}
+
+/// Original active deadline plus the bounded cancellation/accounting window,
+/// clamped to the run deadline; never restarted when a coordinator or repair
+/// is constructed.
+fn envelope_end(active: Instant, run: &RunRecord) -> Res<Instant> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| Fail::State("clock_unavailable"))?
+        .as_millis();
+    let remain = run.deadline_at_ms - i64::try_from(now).unwrap_or(i64::MAX);
+    if remain <= 0 {
+        return Err(Fail::State("run_deadline"));
+    }
+    Ok((active + Duration::from_millis(5000))
+        .min(Instant::now() + Duration::from_millis(remain as u64)))
 }
 
 fn decision_context(

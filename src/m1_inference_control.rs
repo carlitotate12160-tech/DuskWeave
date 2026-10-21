@@ -12,6 +12,7 @@ use uuid::Uuid;
 pub(super) struct Coordinator {
     pub(super) permit: Permit,
     done: Sender<()>,
+    envelope: Sender<()>,
 }
 struct Authority {
     client: Client,
@@ -78,6 +79,7 @@ impl Coordinator {
         binding: Binding,
         run: Uuid,
         deadline: Instant,
+        envelope_end: Instant,
     ) -> Res<Self> {
         for c in [&mut client, &mut terrain.mission.client] {
             c.batch_execute("SET statement_timeout='200ms'; SET lock_timeout='100ms'")
@@ -100,7 +102,43 @@ impl Coordinator {
             .name("inference_authority_coordinator".into())
             .spawn(move || renewals(|p| authority.renew(p), owned, first, rx))
             .map_err(|_| Fail::Config("inference_control_unavailable"))?;
-        Ok(Self { permit, done })
+        let (envelope, env_rx) = channel();
+        let guarded = permit.clone();
+        let active = deadline.min(envelope_end);
+        std::thread::Builder::new()
+            .name("inference_decision_envelope".into())
+            .spawn(move || envelope_guard(guarded, active, envelope_end, env_rx))
+            .map_err(|_| Fail::Config("inference_control_unavailable"))?;
+        Ok(Self {
+            permit,
+            done,
+            envelope,
+        })
+    }
+}
+
+/// Whole-decision enforcement: revoke active work at the original active
+/// deadline, allow only cancellation/accounting until `end`, then hard-stop.
+/// Returns true only when the envelope expired without disarm.
+fn envelope_wait(active: Instant, end: Instant, permit: &Permit, done: &Receiver<()>) -> bool {
+    use std::sync::mpsc::RecvTimeoutError;
+    if !matches!(
+        done.recv_timeout(active.saturating_duration_since(Instant::now())),
+        Err(RecvTimeoutError::Timeout)
+    ) {
+        return false;
+    }
+    permit.stop();
+    matches!(
+        done.recv_timeout(end.saturating_duration_since(Instant::now())),
+        Err(RecvTimeoutError::Timeout)
+    )
+}
+fn envelope_guard(permit: Permit, active: Instant, end: Instant, done: Receiver<()>) {
+    if envelope_wait(active, end, &permit, &done) {
+        permit.stop();
+        // Blocked work could not return inside the original envelope.
+        std::process::exit(124);
     }
 }
 fn renewals(
@@ -128,6 +166,7 @@ impl Drop for Coordinator {
     fn drop(&mut self) {
         self.permit.stop();
         let _ = self.done.send(());
+        let _ = self.envelope.send(());
     }
 }
 
@@ -198,5 +237,46 @@ mod tests {
         let (done, rx) = channel();
         done.send(()).unwrap();
         renewals(|_| panic!("disarmed"), permit, Instant::now(), rx);
+    }
+
+    #[test]
+    fn decision_envelope_disarms_after_return_and_revokes_at_the_active_deadline() {
+        // Disarmed before the active deadline: no revocation, no expiry.
+        let permit = Permit::new(Instant::now() + Duration::from_secs(60));
+        let (done, rx) = channel();
+        done.send(()).unwrap();
+        assert!(!envelope_wait(
+            Instant::now() + Duration::from_secs(5),
+            Instant::now() + Duration::from_secs(10),
+            &permit,
+            &rx
+        ));
+        assert!(!permit.stopped());
+        // Active deadline passes: the permit is revoked, but a cooperative
+        // return inside the cancellation/accounting window is not an expiry.
+        let permit = Permit::new(Instant::now() + Duration::from_secs(60));
+        let (done, rx) = channel();
+        let active = Instant::now() + Duration::from_millis(40);
+        let end = Instant::now() + Duration::from_millis(400);
+        let returned = done.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            let _ = returned.send(());
+        });
+        assert!(!envelope_wait(active, end, &permit, &rx));
+        assert!(permit.stopped());
+        // The absolute deadline arithmetic uses remaining absolute instants:
+        // a parked caller cannot renew a relative timeout.
+        assert!(active.saturating_duration_since(Instant::now()) < end - active);
+        // No disarm inside the envelope: the guard would hard-stop.
+        let permit = Permit::new(Instant::now() + Duration::from_secs(60));
+        let (_done, rx) = channel::<()>();
+        assert!(envelope_wait(
+            Instant::now() + Duration::from_millis(20),
+            Instant::now() + Duration::from_millis(90),
+            &permit,
+            &rx
+        ));
+        assert!(permit.stopped());
     }
 }

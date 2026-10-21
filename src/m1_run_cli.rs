@@ -128,14 +128,24 @@ fn claim_child(
     RunPhase,
     Option<super::m1_run_control::Preparation>,
 )> {
+    let hinted = std::env::var_os(super::m1_run_control::PROVIDER_HINT).is_some();
+    let preparation = hinted
+        .then(super::m1_run_control::Preparation::start)
+        .transpose()?;
     let (r, phase) = child_args(args)?;
     let mut store = store()?;
     let record = store.claim_phase(r, phase, &release()?)?;
-    let preparation = (phase != RunPhase::Acquisition
-        && record.request.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE)
-        .then(super::m1_run_control::Preparation::start)
-        .transpose()?;
+    verify_launch_hint(&record, phase, hinted)?;
     Ok((record, phase, preparation))
+}
+/// The launch hint is valid only for the provider profile's decision phases;
+/// a forged, missing or stale hint is refused before any heavier work.
+fn verify_launch_hint(record: &RunRecord, phase: RunPhase, hinted: bool) -> Res<()> {
+    let expected = record.request.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE
+        && phase != RunPhase::Acquisition;
+    (hinted == expected)
+        .then_some(())
+        .ok_or(Fail::State("provider_protocol_refused"))
 }
 fn child(args: &[String]) -> Res<()> {
     let (record, phase, preparation) = claim_child(args)?;

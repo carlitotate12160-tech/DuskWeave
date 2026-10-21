@@ -312,4 +312,24 @@ Before executing a real provider episode, the operator must supply a newly regis
 }
 ```
 
+### 5. Continuous-deadline correction (`DW-FIX-PR107-CONTINUOUS-DEADLINES`, F1/F2 VALID)
+
+External review probes at FIX BASE `a55ff33cfdd31579a7d4a2df47eb38d05dc857b7` demonstrated two real timing gaps with the actual compiled CLI, restricted owners and a loopback reply relay; both are corrected on this branch with repository regressions.
+
+- **F1 — preparation protection started post-claim (VALID, fixed)**: at FIX BASE, a withheld `execution.run_phase_claim` reply left the provider child alive **6621 ms+** with the phase ceiling as the only bound. Fix: the parent supplies a closed launch hint (`DW_M1_RUN_PROVIDER_DECISION`), pipes the provider-decision child's stdout, and runs an independent readiness watchdog armed **at spawn** for 5,000 ms; the child arms its own `Preparation` before its first database wait, verifies the hint against the authoritatively claimed run/phase, and emits the single bounded readiness frame `m1_run_ready_v1 <run> <phase>` only after the coordinator, armed transport and decision envelope exist. Deterministic/acquisition children keep their original 50/60-second ceilings.
+- **F2 — no independent whole-decision guard (VALID, fixed)**: at FIX BASE, a withheld `execution.inference_reservation` reply left the run `running` **46,164 ms+** until the outer phase reaper. Fix: `Coordinator::start` arms a decision-envelope guard on the original deadline — permit revocation at the 40,000 ms active bound, then hard `exit(124)` at the 45,000 ms envelope (2,000 ms cancellation + 3,000 ms accounting), clamped to the run deadline; disarmed only on actual return.
+
+**RED evidence** (fresh restricted fixture `dw_native_fixture_b09f91dfca23cf69`, binary built from `a55ff33` with only the new tests added): both regressions fail as required — "parent survived a parked claim session" (14 s bound) and "parent survived a parked reservation session" (50 s bound).
+
+**GREEN evidence** (fresh restricted fixture `dw_native_pr107_deadline_fix_20261021a`, sequential `--test-threads=1`, Windows `libcurl 8.22.0-DEV`/Schannel):
+
+| Case | FIX BASE | Fixed candidate |
+| --- | --- | --- |
+| Claim reply withheld | parked past 14 s bound (probe: alive 6,621 ms+) | parent exit `5,708 ms` from launch; child reaped by the 5,000 ms launch-clock readiness watchdog; `status="unknown"`, 0 decisions/effects |
+| Reservation reply withheld | parked past 50 s bound (probe: alive 46,164 ms+) | reply withheld `44,314 ms`; parent exit `46,213 ms` from launch — the 45,000 ms decision envelope inside the 50,000 ms phase ceiling; `status="unknown"`, 0 decisions/effects, repeated `m1-run-recover` replays nothing |
+
+- **Unit/protocol checks**: `readiness_frame_contract_accepts_exact_and_refuses_everything_else` (exact frame accepted, unrelated lines skipped; missing/mismatched/prefix-shaped/oversized/EOF refuse), `pending_readiness_expires_and_reapes_parked_child_without_parent_polling` (pending readiness expires from its own absolute deadline and reaps the parked child with no parent polling), and `decision_envelope_disarms_after_return_and_revokes_at_the_active_deadline` (disarm on return; permit revoked at the active bound; no expiry when cooperative return lands inside the cancellation window) all pass.
+- **Compatibility/positive controls**: normal provider preparation still reaches the selected provider and durably reports a missing key without fallback; the ready inference child survives past 5 s when its decision clock permits work; deterministic two-decision orchestration and all pre-existing `m1_provider_fixture`/`m1_run_postgres`/`m1_run_failures` cases pass unchanged (9/9, 2/2, 11/11).
+- **Ratchet**: `check_complexity` gate PASS with 0 regressions after extracting `PhaseChild::arm_guards`, `await_ready` and `verify_launch_hint` from the touched functions.
+
 **Disposition**: **IMPLEMENTED / OFFLINE QUALIFICATION MEASURED; REAL PROVIDER EPISODE NOT EXECUTED** (missing fresh operator disclosure consent and authorized `DEEPSEEK_API_KEY` for a live provider run).

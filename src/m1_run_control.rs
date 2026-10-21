@@ -10,6 +10,20 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 const UNAVAILABLE: Fail = Fail::Config("run_control_unqualified");
+
+/// Closed launch hint: the parent marks provider decision children so the child
+/// can arm preparation protection before its first database wait. It grants no
+/// authority and is verified against the authoritatively claimed run/phase.
+#[allow(dead_code)]
+pub(super) const PROVIDER_HINT: &str = "DW_M1_RUN_PROVIDER_DECISION";
+/// Bounded readiness frame prefix on the fixed child's stdout pipe.
+#[allow(dead_code)]
+pub(super) const READY_PREFIX: &str = "m1_run_ready_v1";
+/// The single readiness frame binding the preallocated run UUID and exact phase.
+#[allow(dead_code)]
+pub(super) fn ready_frame(run: Uuid, phase: &str) -> String {
+    format!("{READY_PREFIX} {run} {phase}")
+}
 #[derive(Clone)]
 pub(super) struct Binding {
     root: PathBuf,
