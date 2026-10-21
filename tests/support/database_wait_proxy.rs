@@ -157,9 +157,8 @@ fn session(
         Ok(server) => server,
         Err(_) => return,
     };
-    for stream in [&client, &server] {
-        let _ = stream.set_read_timeout(Some(POLL));
-        let _ = stream.set_write_timeout(Some(POLL));
+    if configure_streams(&client, &server).is_err() {
+        return;
     }
     loop {
         let mut len = [0u8; 4];
@@ -200,6 +199,16 @@ fn session(
     for thread in threads {
         let _ = thread.join();
     }
+}
+
+/// Configure both directions before forwarding or cloning either socket.
+fn configure_streams(client: &TcpStream, server: &TcpStream) -> std::io::Result<()> {
+    for stream in [client, server] {
+        stream.set_nodelay(true)?;
+        stream.set_read_timeout(Some(POLL))?;
+        stream.set_write_timeout(Some(POLL))?;
+    }
+    Ok(())
 }
 
 /// Client to server: forward every framed message; a Q/P payload matching
@@ -277,4 +286,156 @@ fn s2c(
         }
     }
     let _ = client.shutdown(Shutdown::Both);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    fn pair() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let server = listener.accept().unwrap().0;
+        for stream in [&client, &server] {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            stream
+                .set_write_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+        }
+        (client, server)
+    }
+
+    #[test]
+    fn session_configuration_disables_nagle_on_both_streams() {
+        let (client, _client_peer) = pair();
+        let (server, _server_peer) = pair();
+        client.set_nodelay(false).unwrap();
+        server.set_nodelay(false).unwrap();
+        configure_streams(&client, &server).unwrap();
+        assert!(
+            client.nodelay().unwrap(),
+            "accepted client must use TCP_NODELAY"
+        );
+        assert!(
+            server.nodelay().unwrap(),
+            "upstream server must use TCP_NODELAY"
+        );
+        assert_eq!(client.read_timeout().unwrap(), Some(POLL));
+        assert_eq!(server.write_timeout().unwrap(), Some(POLL));
+    }
+
+    fn frame(tag: u8, payload: &[u8]) -> Vec<u8> {
+        let mut bytes = vec![tag];
+        bytes.extend_from_slice(&((payload.len() + 4) as u32).to_be_bytes());
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    fn read_exact(stream: &mut TcpStream, expected: &[u8]) {
+        let mut actual = vec![0; expected.len()];
+        stream.read_exact(&mut actual).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    fn fragmented(stream: &mut TcpStream, bytes: &[u8]) {
+        for byte in bytes {
+            stream.write_all(&[*byte]).unwrap();
+        }
+    }
+
+    #[test]
+    fn fragmented_startup_and_nonmatching_frames_round_trip_verbatim() {
+        let backend = TcpListener::bind("127.0.0.1:0").unwrap();
+        let relay = Relay::start(backend.local_addr().unwrap(), b"COMMIT");
+        let mut client = TcpStream::connect(("127.0.0.1", relay.port())).unwrap();
+        client.set_nodelay(true).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let startup = [0, 0, 0, 8, 0, 3, 0, 0];
+        let query = frame(b'Q', b"SELECT 1\0");
+        let reply = frame(b'C', b"SELECT 1\0");
+        let worker = std::thread::spawn(move || {
+            let mut server = backend.accept().unwrap().0;
+            server.set_nodelay(true).unwrap();
+            server
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            read_exact(&mut server, &startup);
+            for _ in 0..40 {
+                read_exact(&mut server, &query);
+                fragmented(&mut server, &reply);
+            }
+        });
+        let started = Instant::now();
+        fragmented(&mut client, &startup);
+        for _ in 0..40 {
+            fragmented(&mut client, &frame(b'Q', b"SELECT 1\0"));
+            read_exact(&mut client, &frame(b'C', b"SELECT 1\0"));
+        }
+        println!(
+            "relay synthetic round trips=40 wire_bytes={} elapsed_ms={}",
+            startup.len()
+                + 40 * (frame(b'Q', b"SELECT 1\0").len() + frame(b'C', b"SELECT 1\0").len()),
+            started.elapsed().as_millis()
+        );
+        assert!(!relay.observed(Duration::ZERO));
+        assert!(!relay.consumed(Duration::ZERO));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn matching_query_and_parse_park_replies_and_require_exact_completion() {
+        for tag in [b'Q', b'P'] {
+            let backend = TcpListener::bind("127.0.0.1:0").unwrap();
+            let relay = Relay::start(backend.local_addr().unwrap(), b"COMMIT");
+            let mut client = TcpStream::connect(("127.0.0.1", relay.port())).unwrap();
+            client.set_nodelay(true).unwrap();
+            client.set_read_timeout(Some(POLL)).unwrap();
+            let mut server = backend.accept().unwrap().0;
+            server
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let startup = [0, 0, 0, 8, 0, 3, 0, 0];
+            fragmented(&mut client, &startup);
+            read_exact(&mut server, &startup);
+            // The needle in a non-Q/P message must neither arm nor park replies.
+            let other = frame(b'd', b"COMMIT\0");
+            fragmented(&mut client, &other);
+            read_exact(&mut server, &other);
+            fragmented(&mut server, &frame(b'C', b"COMMIT\0"));
+            read_exact(&mut client, &frame(b'C', b"COMMIT\0"));
+            assert!(!relay.observed(Duration::ZERO));
+            assert!(!relay.consumed(Duration::ZERO));
+
+            let payload = if tag == b'P' {
+                &b"\0COMMIT\0\0\0"[..]
+            } else {
+                &b"COMMIT\0"[..]
+            };
+            let matched = frame(tag, payload);
+            fragmented(&mut client, &matched);
+            read_exact(&mut server, &matched);
+            assert!(relay.observed(Duration::from_secs(2)));
+            // Error, rollback, prefix and non-NUL tags cannot prove completion.
+            for reply in [
+                frame(b'E', b"COMMIT\0"),
+                frame(b'C', b"ROLLBACK\0"),
+                frame(b'C', b"COMMIT extra\0"),
+                frame(b'C', b"COMMIT"),
+            ] {
+                fragmented(&mut server, &reply);
+            }
+            assert!(!relay.consumed(POLL));
+            let mut byte = [0];
+            assert!(blocked(&client.read(&mut byte).unwrap_err()));
+            fragmented(&mut server, &frame(b'C', b"COMMIT\0"));
+            assert!(relay.consumed(Duration::from_secs(2)));
+            // Both sockets stay open and parked after the completion barrier.
+            assert!(blocked(&client.read(&mut byte).unwrap_err()));
+        }
+    }
 }

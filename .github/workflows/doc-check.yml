@@ -267,7 +267,20 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Focused reservation-stall qualification under Linux coverage
+        env:
+          DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
+        run: |
+          set -e
+          cargo llvm-cov clean --workspace
+          python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
+            --database-name "dw_native_pr107_relay_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" \
+            --report "$RUNNER_TEMP/pr107-relay-focus" -- \
+            cargo llvm-cov --locked --test m1_provider_fixture --no-report -- \
+            stalled_reservation_reply_hard_stops_at_the_original_decision_envelope --exact --test-threads=1 --nocapture
+
       - name: Full test suite under coverage instrumentation (real PostgreSQL 17)
+        id: full-coverage
         env:
           DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
         run: |
@@ -288,12 +301,14 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-fix60-test-evidence
-          path: ${{ runner.temp }}/native-fix60/qualification.log
+          path: |
+            ${{ runner.temp }}/native-fix60/qualification.log
+            ${{ runner.temp }}/pr107-relay-focus/qualification.log
           if-no-files-found: warn
           retention-days: 14
 
       - name: Upload coverage report artifact
-        if: always()
+        if: ${{ always() && steps.full-coverage.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: m0a-coverage

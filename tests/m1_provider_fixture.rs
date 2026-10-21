@@ -891,6 +891,10 @@ fn stalled_claim_reply_exits_provider_child_from_the_launch_clock() {
         parent_log(&log)
     );
     let observed = Instant::now();
+    println!(
+        "claim relay launch_to_barrier_ms={}",
+        observed.duration_since(launched).as_millis()
+    );
     let (child, child_launch) = phase_child(parent.id(), id(&q));
     // Observe the actual launch, with at most 500ms OS observation margin.
     let end = child_launch + Duration::from_millis(5500);
@@ -945,6 +949,10 @@ fn stalled_reservation_reply_hard_stops_at_the_original_decision_envelope() {
         parent_log(&log)
     );
     let observed = Instant::now();
+    println!(
+        "reservation relay launch_to_barrier_ms={}",
+        observed.duration_since(launched).as_millis()
+    );
     let (child, child_launch) = phase_child(parent.id(), id(&q));
     // The original Broker connection remains idle on inference_window_ms
     // while the separate reservation connection is parked. Read its original
