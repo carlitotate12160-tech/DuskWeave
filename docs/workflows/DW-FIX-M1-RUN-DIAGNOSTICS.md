@@ -387,7 +387,7 @@ name). This third bounded amendment executes only the assigned test-fixture
 correction inside its editable map: `tests/m1_provider_fixture.rs` plus this
 packet, ENGINEERING_STATE, the roadmap and the operator guide. `src/`,
 migrations, `tests/support/` and `tests/m1_run_failures.rs` stayed read-only.
-No retry policy, role grant, deadline, lease or assertion was changed. The
+No production retry policy, role grant, deadline, lease or assertion was changed. The
 amendment ran on the same branch/worktree at reviewed head `836cf8a` on base
 `b439661`, verified clean at preflight.
 
@@ -536,7 +536,8 @@ The issued instructions above are translated without changing their scope.
 The false historical fresh-UUID assertion is corrected, and the unclassified
 stop/Terrain exits remain UNVERIFIED instead of a proved environment flake.
 
-Final qualification remains blocked on the measured database-clock rollback.
+At this historical checkpoint, final qualification remained blocked on the
+measured database-clock rollback; section 12 records the later disposition.
 Preserve historical uncertainty; closure requires a qualified current clock,
 the unchanged two-target scenarios and final-candidate CI, not an impossible
 reconstruction of every lost historical error. No host/WSL setting is changed
@@ -556,7 +557,7 @@ tests. Thin test entrypoints preserve CI's existing --exact consumer and
 recorded commands; the CI reservation filter still discovers exactly one
 test. These are compatibility entrypoints, not forwarding helpers introduced
 to game runtime metrics. The source sizes are 622 lines for feedback and
-stable test entrypoints, 536 for supervision and 485 for withdrawal.
+stable test entrypoints, 538 for supervision and 486 for withdrawal.
 Advisory crossings retain those cohesive responsibilities.
 
 Windows Rust 1.94.1, fresh restricted database
@@ -575,5 +576,61 @@ the original deadline and stable-operation withdrawal through actual CLI/SQL;
 Q8 keeps key-free fixture evidence separate from cognition, target permission
 and the unresolved clock environment. Production wiring changes, new grants
 and serialization-capacity changes are N/A because production is unchanged.
-Distinct final-delta review and final-candidate CI remain pending. The failed
-Windows expiry qualification is not waived, and no READY/merge/seal is claimed.
+At this historical checkpoint, distinct final-delta review and final-candidate
+CI remained pending. Windows expiry qualification was not waived. Section 12
+records the later qualification and owner merge; no M1 seal is claimed.
+
+## 12. Merge reconciliation (2026-10-22)
+
+PR #109 was squash-merged to master at
+`ef23262184965b81e7103b12371000619e503caa` on 2026-10-22T07:39:31Z,
+from reviewed head `83f33386eff95eb65cf7e3c60df5fc42a61fafc7` against base
+`b439661f82c4cebf1d615629f07eb176dd3a53e8`. This supersedes earlier pending
+delivery statuses while preserving historical failures and FIX-cycle history.
+
+**Final Windows gate:** direct log inspection at
+`D:/DuskWeave-build/rust-1.94.1/reports/pr109-final-serial-20261022a/` confirms:
+
+| Log / target | Result | Duration |
+| --- | --- | --- |
+| provider-fixture.log / m1_provider_fixture | 17 passed, 0 failed/ignored/filtered | 145.52 s |
+| run-failures.log / m1_run_failures | 14 passed, 0 failed/ignored/filtered | 189.39 s |
+
+The owner reports first-attempt serial execution on fresh restricted fixture
+`dw_native_fixture_8d6efa1f3a997171`, migrations 0001-0020, after W32Time
+automatic startup / WSL restart. Those invocation/fixture/maintenance details are
+owner attestation; the two logs independently establish their test results.
+The source was clean at the reviewed head when checked, and Windows reported
+successful NTP synchronization. Both parent-loss cases, expired-lease rejection,
+forced serialization and both settlement controls pass. This satisfies the
+recorded two-target gate, not physical clock-cause proof, continuous stability,
+a Windows full-suite PASS or OCI application qualification. Original discarded
+stop/Terrain errors remain UNVERIFIED. No production timer or assertion changed.
+
+**Exact-head CI and review:** [run 39735029731](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39735029731)
+passed nine jobs with 96.79% production coverage (10902/11263), meeting 90%/80%
+floors. Its Rust checkout `274ac41638542b62459bc11f77c92bba7f535535` binds
+head `83f33386...` to base `b439661f...`. The pinned 0.0.25 analyzer retained ten
+debt items with zero worsening. GitGuardian, CodeQL and ci-ok succeeded; both
+threads were resolved before merge. A separate agent reviewed
+`836cf8a9fa987fbdc17ca6c92387b1f39a3d6eae..83f33386eff95eb65cf7e3c60df5fc42a61fafc7`
+against QUALITY_BAR section 7 and returned READY-for-delta, without blockers.
+It inspected receipt/retry/deadline identity, real consumers and Linux CI evidence;
+Windows log verification was separate. This is distinct agent review, not human
+or institutional independence. Production, SQL and CI were unchanged after R2.
+
+**Tracking - UPDATE:** reconcile this packet, ENGINEERING_STATE, BUILD_ORDER and
+the existing roadmap. Correct nonblocking wording/size nits above; retain the
+test-comment encoding nit for its owning file's next change. This reconciliation
+is documentation-only: runtime wiring, behavior TDD, compiler/coverage reruns and
+fresh local McCabe measurement are N/A. Its own document checks/review and
+required current-head CI belong to its PR; prior CI is not its current-head PASS.
+
+**Next boundary:** prepare one fresh real-provider fixture demonstration through
+m1-run with fresh explicit disclosure/current terms/window and the infrastructure
+key. Decision two must consume the original owner-qualified fixture result;
+legal stop/defer/view outcomes are not forced into success. DNS remains a fixture
+and recovery remains database-only. Linux live-boundary / OCI application
+qualification remain unfinished and do not newly block this controlled demo.
+No provider/target contact, authority acceptance, timer extension or M1 seal is
+authorized by this reconciliation.
