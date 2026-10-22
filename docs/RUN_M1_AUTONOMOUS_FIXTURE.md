@@ -101,6 +101,11 @@ itself cannot be read, a local pending receipt reports `status=unavailable` and
 does not invent effect/history counts. Existing UNKNOWN effect/commit semantics
 remain; a diagnostic record cannot prove success or authorize replay.
 
+After child termination, publication may use the remaining original run budget
+even when the phase deadline has expired. If that budget or the database is
+unavailable, the pending/unavailable distinction above still applies; recovery
+does not reconstruct a missing record.
+
 A single completed provider decision followed by `owner_view_requested` remains
 distinct from `completed` with two decisions, one fixture DNS result, Terrain and
 history. Recovery is database-only and never fabricates missing diagnostics or

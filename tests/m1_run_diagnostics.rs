@@ -9,6 +9,8 @@ mod run_support;
 use duskweave::m1_run::{CauseSource, DiagnosticCause, PhaseDiagnostic, RunPhase};
 use run_support::*;
 use serde_json::{Value, json};
+#[path = "support/database_wait_proxy.rs"]
+mod proxy;
 
 fn diagnostic(run: uuid::Uuid) -> PhaseDiagnostic {
     PhaseDiagnostic {
@@ -298,4 +300,77 @@ fn real_parent_publication_lock_failure_reports_pending_and_fresh_recovery_never
     }
     assert_eq!(after["effect_count"], 0);
     assert_eq!(after["inference"], json!([]));
+}
+
+#[test]
+fn expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget() {
+    use std::{
+        process::Stdio,
+        time::{Duration, Instant},
+    };
+    let _guard = native::db();
+    refresh();
+    let q = registered(0xda05);
+    let r = id(&q);
+    let input = path(&q);
+    let log = std::env::temp_dir().join(format!("dw-phase-expiry-{r}.log"));
+    let relay = proxy::Relay::start(
+        "127.0.0.1:5432".parse().unwrap(),
+        b"SELECT execution.reserve_fixture_dns",
+    );
+    let routed =
+        terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", relay.port());
+    let launched = Instant::now();
+    let mut parent = command()
+        .env("DW_INFERENCE_BROKER_DATABASE_URL", routed)
+        .args(["m1-run", "--input", input.to_str().unwrap()])
+        .stdout(std::fs::File::create(&log).unwrap())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let reached = relay.observed(Duration::from_secs(10));
+    let end = launched + Duration::from_secs(70);
+    while parent.try_wait().unwrap().is_none() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let finished = parent.try_wait().unwrap().is_some();
+    if !finished {
+        let _ = parent.kill();
+    }
+    let status = parent.wait().unwrap();
+    let parent_ms = launched.elapsed().as_millis();
+    drop(relay);
+    let output = std::fs::read_to_string(&log).unwrap();
+    std::fs::remove_file(log).unwrap();
+    std::fs::remove_file(input).unwrap();
+    assert!(
+        reached && finished,
+        "phase publication barrier/parent bound not reached"
+    );
+    assert!(!status.success());
+    let receipt: Value = output
+        .lines()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .unwrap();
+    let (ok, fresh) = cli("m1-run-inspect", "--run", &r.to_string());
+    assert!(ok);
+    assert_eq!(fresh["effect_count"], 0);
+    assert_eq!(fresh["decision_count"], 1);
+    assert_eq!(fresh["diagnostic_publication"], "committed", "{receipt}");
+    let diagnostic = fresh["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["phase"] == "acquisition")
+        .expect("expired phase must be diagnosable from a fresh process");
+    assert!(diagnostic["elapsed_ms"].as_u64().unwrap() >= 59000);
+    assert_eq!(diagnostic["cause"], "phase_deadline");
+    assert_eq!(diagnostic["cause_source"], "parent_observed");
+    assert_eq!(receipt["diagnostics"], fresh["diagnostics"]);
+    let (ok, recovered) = cli("m1-run-recover", "--run", &r.to_string());
+    assert!(ok);
+    for key in ["diagnostics", "effect_count", "decision_count"] {
+        assert_eq!(recovered[key], fresh[key], "{key}");
+    }
+    println!("expired_phase_parent_ms={parent_ms} diagnostic={diagnostic}");
 }

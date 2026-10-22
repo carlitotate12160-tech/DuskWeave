@@ -344,3 +344,80 @@ regressions. PR #109 remains OPEN; ENGINEERING_STATE now points to conditional
 owner review after all current-head required checks, without recording a merge.
 This tracking-only follow-up changes no runtime or test source. Final evidence
 is read from the actual GitHub candidate and local `r1-head-*` reports.
+
+## 9. Resume, correction R2 and qualification limits (2026-10-22)
+
+The interrupted bootstrap ended; its credentials were neither recovered nor
+reused. The owned service/image/version/binding and candidate were reverified.
+The helper created fresh `dw_native_fixture_33acfea53b064b38`, retaining its
+restricted credentials only in the new bootstrap and child environments.
+The key was explicitly removed again. Reports for this session are under
+the issued report directory's `resume-20261022` subdirectory.
+
+Before R2, candidate `59ee86d` passed all nine jobs in Linux CI run
+`39631255466`, including the focused reservation stall and full coverage suite:
+654 passed assertions, zero failed/ignored; total coverage 96.79% (10900/11262),
+with every production file above 80%. The PR merge checkout was `69ac97c`.
+These are that historical candidate's Linux results, not current-head Windows
+qualification or evidence that an unexamined scanner has no findings.
+
+The fresh Windows serial run passed binary 53/53, diagnostics 4/4, PostgreSQL
+skeleton 2/2, CLI 2/2, Clippy and format. However, the full provider target
+failed `production_stop_withdraw_and_manual_terrain_signal_before_blocked_authority_sql`
+at its authoritative `withdraw` writer assertion (11/12 passed), and the full
+failure target failed `hard_parent_loss_during_child_publication_leaves_unknown_and_zero_effect_replay`
+at `store.renew(r).is_err()` (13/14 passed). The latter also failed in the earlier
+R1 run. Focused parent-loss and eight-seed reference runs on the new fixture
+passed, while the earlier full provider run had failed reference eligibility.
+These inconsistent results remain UNVERIFIED root causes and block readiness;
+a focused pass does not erase a failing required target. No assertions, sleeps,
+production policy or read-only fixtures were changed to obtain a pass.
+
+**R2 finding, independently validated:** the CodeRabbit advisory on
+`record_diagnostic` was VALID. The phase deadline also guarded publication,
+so observing a phase timeout necessarily skipped durable publication despite
+remaining run time. This contradicts section 4C's post-termination accounting.
+
+**R2 RED:** added real-entrypoint regression
+`expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget`
+parked acquisition reservation SQL using the existing reply relay. On the
+unchanged production candidate it failed the fresh-inspect assertion:
+`diagnostic_publication=unavailable`, expected `committed`. The local receipt
+retained `phase_deadline`, `parent_observed`, elapsed 60022 ms as pending.
+The first decision was durable, with no fixture effect. Compilation and the
+barrier succeeded; this is behavioral RED, not setup failure. Command:
+`cargo test --locked --test m1_run_diagnostics expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget -- --exact --test-threads=1 --nocapture`.
+
+**R2 correction:** pass the existing absolute run deadline through `wait_phase`
+to diagnostic publication, including launch failure. Child polling, independent
+reaping and terminal settlement retain their original phase deadline; SQL occurs
+after the child is stopped. No deadline, SQL grant, production thread or timer
+was added. The same regression requires a durable parent-observed phase timeout,
+matching fresh inspect/receipt, one decision, zero effects and no recovery replay.
+The publication-start guard uses the run deadline; synchronous SQL retains the
+existing qualified database wait bounds. It does not prove SQL completion before
+that Instant. Accounting cannot revive effect authority. R2 GREEN: diagnostic
+target 8/8 passed; acquisition observation 60018 ms, durable `phase_deadline`.
+The test then gained explicit pre-recovery effect/decision counts and accurate
+parent-only timing. The final committed assertion run is reported separately in
+`resume-20261022/r2-head-phase-expiry.log`. The working R2 source also passed
+binary 53/53, CLI 2/2, PostgreSQL skeleton 2/2, 28 Python helper tests, format,
+Clippy, links, structure and pinned McCabe ratchet (ten unchanged debt items).
+These local working-source results do not automatically qualify a later commit.
+Delta review and final-head CI are read from their actual candidate-bound runs.
+
+Author delta review under QUALITY_BAR section 7: Q1-Q4 preserve the CLI's existing
+composition owner, one run clock and unchanged SQL authority; no abstraction or
+production dependency is added. Q5-Q6 are exercised through actual `m1-run`,
+restricted publication and a fresh inspect process after the fixed phase bound.
+Q7-Q8 retain failed parent exit, immutable diagnostics and zero replay assertions;
+the broader Windows safety-target evidence remains UNVERIFIED and blocking.
+The distinct reviewer inspected only this delta after the original full pass;
+it agreed the accounting-start correction preserves child lifetime and requested
+explicit pre/post recovery counts, now included. Its final SHA-bound disposition
+is separate from author execution and final CI. The new cohesive test stays below
+the test-file size reference point; no count-driven helper split is warranted.
+
+This is the second cohesive FIX cycle. Any retained required-gate failure means
+NOT READY and STOP for bounded root-cause review; green Linux CI cannot waive
+the explicit Windows gate. No merge, seal or provider execution is authorized.

@@ -73,7 +73,7 @@ fn drive_phase(
     store.renew(r)?;
     store.start_phase(r, phase)?;
     let deadline = super::m1_run_supervision::phase_deadline(run_deadline, phase);
-    let outcome = wait_phase(store, run, phase, deadline);
+    let outcome = wait_phase(store, run, phase, deadline, run_deadline);
     if outcome.is_err() {
         let _ = store.unknown(r, phase);
     }
@@ -84,6 +84,7 @@ fn wait_phase(
     run: &RunRecord,
     phase: RunPhase,
     deadline: Instant,
+    run_deadline: Instant,
 ) -> Res<()> {
     let r = run.request.run_id;
     let mut child = match super::m1_run_supervision::PhaseChild::launch(run, phase, deadline) {
@@ -101,7 +102,7 @@ fn wait_phase(
                 readiness_observed: false,
                 elapsed_ms: None,
             };
-            record_diagnostic(store, &diagnostic, deadline)?;
+            record_diagnostic(store, &diagnostic, run_deadline)?;
             return Err(error);
         }
     };
@@ -110,7 +111,7 @@ fn wait_phase(
     let protocol_valid = child.protocol_valid();
     drop(child);
     // Diagnostics cannot delay stopping or qualify an uncertain phase as complete.
-    record_diagnostic(store, &diagnostic, deadline)?;
+    record_diagnostic(store, &diagnostic, run_deadline)?;
     outcome?;
     if !protocol_valid {
         return Err(Fail::Unresolved("run_readiness_refused"));
@@ -120,10 +121,11 @@ fn wait_phase(
 fn record_diagnostic(
     store: &mut PgRunStore,
     diagnostic: &duskweave::m1_run::PhaseDiagnostic,
-    deadline: Instant,
+    run_deadline: Instant,
 ) -> Res<()> {
     store.defer_diagnostic(diagnostic)?;
-    if Instant::now() < deadline {
+    // Phase expiry stops the child; remaining run time may still account for it.
+    if Instant::now() < run_deadline {
         let _ = store.publish_diagnostic(diagnostic);
     }
     Ok(())

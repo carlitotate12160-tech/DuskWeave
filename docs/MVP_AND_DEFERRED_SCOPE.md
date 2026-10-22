@@ -183,7 +183,10 @@ Legacy CLI/M0 consumers remain supported.
 [DW-FIX-M1-RUN-DIAGNOSTICS](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md) connects
 closed child terminal observations to restricted append-only records and fresh
 inspect, with configuration preflight and explicit publication uncertainty.
-Required current-head review/CI remains a delivery gate. This qualifies diagnosis,
+Required current-head review/CI remains a delivery gate. The 2026-10-22 Windows
+serial run retained provider-withdrawal and parent-loss lease assertion failures;
+their root causes remain unverified and the FIX is NOT READY pending bounded
+root-cause review after its second correction cycle. This work targets diagnosis,
 not the historical episode's root cause or a real provider loop. PowerShell ACL
 latency, owner-connection optimization, internal preparation timing and owner-view
 continuation remain OPEN. The separate parent reaper, readiness guard, local STOP,
