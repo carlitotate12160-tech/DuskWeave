@@ -12,6 +12,7 @@
 | Delivery | One documentation-only DESIGN outcome; runtime diff = 0 |
 | Preserved seals | DW-FOUNDATION-001 and DW-M0-001; no full-domain or M1 seal |
 | Autonomous-run amendment | [Section 7](#7-proposed-autonomous-run-amendment-2026-10-19) ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
+| Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 
 ## 1. Outcome and decision boundary
 
@@ -265,6 +266,10 @@ No image/file input, conversation continuation, redirects, automatic transport r
 ambient proxies, provider fallback or model-switch fallback. Normal certificate/hostname
 validation is required. The provider API key stays in adapter-only infrastructure secret
 configuration, outside the pack, request provenance, SQL, diagnostics and receipt.
+The owner-accepted 2026-10-22 provider-neutral lifecycle and freshness revision
+for the successor autonomous lane is recorded in
+[section 7](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22);
+it does not amend this accepted profile, consent or provider selection.
 
 Official [Responses reference](https://api-docs.deepseek.com/api/create-response) and
 [compatibility guide](https://api-docs.deepseek.com/guides/responses_api), checked 2026-10-11,
@@ -888,3 +893,202 @@ An autonomous target-effects packet additionally requires its exact source map,
 measured wire fit and qualified deployment prerequisites. A scoped infrastructure
 IMPLEMENT packet may deliver and test the missing boundary in isolation; its
 completion is not the first operational run. DESIGN completion asserts neither.
+
+### Provider-neutral lifecycle and freshness revision (2026-10-22)
+
+**Status: ACCEPTED — product owner, 2026-10-22 (Asia/Jakarta), by conversation
+approval** of this design scope: provider-neutral profiles and lifecycle,
+freshness separation, immutable timing/screening/termination rules,
+user-owned connections and OpenRouter routing enforcement. Acceptance applies
+through a versioned successor permission/profile after qualified implementation
+and fresh run authorization; it invents no timer values, activates no provider
+and upgrades no old consent. Accepted sections 1–6, the accepted 2026-10-19
+section 7 text and v1/v2/v3 consent semantics are unchanged; in current source,
+TTL still clamps the transport permit. The matching numerical
+lifecycle/accounting revision is recorded in
+[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22);
+numerical lifecycle/accounting authority remains there. The multi-provider
+requirement is owner-directed: DeepSeek is the presently available provider,
+with OpenAI API, Anthropic Claude API, Mistral API, OpenRouter and other
+qualified adapters supported by this architecture. Their operational support is
+reported individually, never inferred from a provider-neutral interface.
+
+Ownership is unchanged: Mission owns approved recipients, disclosures, terms,
+windows and permissions; Broker owns call reservation, release, accounting and
+cancellation; Cognition owns safe ContextPack/proposal semantics and decision
+publication; Terrain owns claim qualification and current-use eligibility;
+Trajectory owns durable history; the existing supervisor owns phase lifecycle
+and observed termination attribution. The `Provider` port in
+`src/m1_reasoning/inference.rs` remains the architectural seam; deployment
+composition supplies one qualified adapter through narrow dependencies. No
+all-domain ProviderManager, routing service or mutable global catalog is added.
+A provider adapter translates approved input and untrusted output; it cannot
+grant execution authority or mutate Terrain.
+
+A versioned deployment profile separates four bindings: the
+user/organization-owned connection (service, approved recipient/endpoint and
+opaque credential reference), the protocol implementation (protocol revision,
+request/response encoding, streaming and cancellation), the model profile
+(exact model ID, provider-native settings, supported features/capabilities,
+capacity and bounded timing class, plus template/schema/adapter versions) and
+the routing policy (approved processing recipients/upstreams and permitted
+behavior). Keys stay in adapter-only secret configuration. The shared contract is
+the safe context, proposal meaning, lifecycle and provenance, not the DeepSeek
+Responses wire format. OpenAI Responses, Claude Messages, Mistral Chat
+Completions and OpenRouter's OpenAI-compatible endpoint may have different
+envelopes, stream events, output controls and usage fields; changing
+`base_url` does not create compatibility. Requested settings must be supported
+by the selected profile or rejected before reservation/send; they are never
+silently dropped, and reasoning effort is not translated as if equivalent
+across vendors. Requested and reported model/revision are recorded separately;
+unavailable metadata remains unavailable. Only supported safe result/error
+categories are normalized, retaining terminal reason and usage availability;
+raw provider text and private reasoning are never persisted, and missing usage
+is not zero. The immutable context/configuration and the actual provider
+request stay bound to the selected profile; adapter-specific encoding cannot
+silently omit mandatory premises, change references or replace the proposal
+schema. Each adapter requires wire-fit qualification, including complete
+generation and repair requests.
+
+The future user-facing flow is: select a supported service, provide that
+service's API key, select an available compatible model, then use the saved
+connection for a campaign. This revision specifies the behavior; it builds no
+web UI, and web delivery or multi-tenant deployment is not a prerequisite for
+the first CLI fixture demonstration — their isolation assertions apply when
+those consumers are delivered. A DeepSeek key belongs to a direct DeepSeek
+connection; an OpenRouter connection uses an OpenRouter key, through which
+GLM, Qwen and Kimi need no separate direct keys. A direct-provider key is
+never submitted to an aggregator, and services are never probed to guess where
+a key belongs. Secret values remain in scoped backend/infrastructure secret
+custody — outside the ContextPack, ordinary campaign persistence/history, logs
+and reports; only opaque credential references persist there, and
+cross-user/organization credential substitution is prohibited. Existing
+Mission/Broker authority governs every release: holding a key widens no
+campaign disclosure permission.
+
+Providers sharing a qualified wire protocol may reuse its implementation while
+keeping their own recipient/authentication/profile bindings; one OpenRouter
+integration can serve compatible GLM, Qwen, Kimi and other models. Compatible
+model additions are validated profile/configuration changes, not new Rust
+modules, PRDs, ADRs or a universal provider rewrite; adapter contract/wire-fit
+tests are reused while model-specific settings, structured proposal behavior,
+context/output limits and timing evidence are qualified per model. A genuine
+protocol or trust-boundary change still requires its owning review. A catalog
+entry establishes availability, not qualification: catalog metadata cannot
+grant authority, silently activate a model or mutate an admitted run.
+
+An aggregated provider adds one more layer: distinguish the connection
+service/aggregator, the model author/model ID and the actual upstream
+inference host; naming only the aggregator as the HTTP recipient does not
+express the processing boundary. Approved provider terms cover the aggregator
+and its upstream routing. Campaign setup approves the aggregator plus a
+bounded set of eligible upstreams and applicable data policies once, with no
+intermediate operator approval added; for the initial no-failover lane, one
+qualified upstream endpoint is resolved from that set before admission and
+pinned with the model/routing profile for the run. An OpenRouter request must
+explicitly enforce `provider.only` restricted to that selected upstream,
+`provider.allow_fallbacks = false`, `provider.require_parameters = true` and
+the approved data-collection/retention constraints through supported controls
+with confirmed policy scope. Specific endpoint/region slugs are used when
+required by the approved boundary; a broad provider slug must not silently
+widen it. If the selected model, parameters, upstream or data policy cannot be
+satisfied, the call refuses/defers without trying another route: no
+auto/latest model router, cross-model fallback list or implicit request
+transform may change the approved model or mandatory context. Requested
+routing constraints and the observed upstream/model are recorded when actually
+available — provider metadata is not independent proof — and defaults are
+applied explicitly rather than relying on account defaults. The ban on ambient
+proxies does not ban an explicitly approved aggregator. A profile such as
+`openrouter-chat-completions-v1` would expose Qwen, GLM, Kimi and other model
+profiles through one endpoint and credential without granting cross-model
+substitution; the selected model profile and pinned upstream stay fixed for
+the admitted run.
+
+The first successor runtime slice permits explicit selection among installed,
+qualified provider profiles at registration/start and pins that selection for
+both decisions and conditional repair in the run, recorded in immutable
+configuration and history. A new qualified provider must not require changes to
+Terrain, Mission's domain meaning, action authority or the supervisor's phase
+algorithm. Only DeepSeek is currently available for real qualification;
+OpenRouter and direct alternatives remain unimplemented/unqualified until
+delivered. Deterministic/local protocol fixtures can test interchangeability
+without keys — the first runtime slice pairs DeepSeek with a different local
+protocol fixture for that proof only; they do not establish real-provider
+qualification. Adding real adapters changes no Terrain or action-authority
+semantics. Multi-provider
+support does not imply automatic failover, hedging, parallel calls or
+role-based model routing; none is selected for this first slice. There is no
+implicit SDK retry, ambient credential discovery, proxy routing, arbitrary
+endpoint string or provider/model switch after failure. A later explicitly
+approved failover policy is bounded: all recipients, field classes, terms and
+windows must already be authorized; each new attempt needs its own durable call
+identity, reservation, release fence and remaining budget; uncertain prior
+consumption stays charged; there is no deadline reset or target-effect replay;
+existing unresolved-obligation barriers are not bypassed. Enabling that policy
+requires its own bounded delivery, not another generic architecture subsystem.
+
+Freshness resolves independently of inference completion. The pack contains a
+source-qualified snapshot eligible when released, with original perception time
+and expiry; packing, inference or publication never refresh freshness. TTL-only
+expiry during an already admitted call removes present routing eligibility but
+does not by itself revoke permission to wait for the screened reasoning result.
+Mission withdrawal/window expiry, STOP, control-lease loss, incompatible owner
+revision, repudiation/conflict or integrity hold still stop affected inference
+under the authorized cancellation bound; separating TTL does not weaken those
+checks. Cognition may durably record a screened reasoning result and its actual
+admission disposition even when a premise has become stale; a stale-dependent
+action is blocked/deferred until owner requalification. The model's selected
+intent is never rewritten into a model-chosen defer, and a stale result never
+claims a currently eligible action. The owner's present premises are
+revalidated before consequential use/dispatch; historical reasoning grants no
+authority. New acquisition, if needed, is a separately admitted effect with
+budget: no automatic DNS refresh, timestamp extension or replay. The DNS expiry
+formula is preserved: `perceived_at + min(lowest applicable DNS TTL,
+60 seconds)`. This revision changes the relationship between expiry and
+inference waiting, not Terrain's TTL.
+
+Timing profiles are coherent, immutable and versioned: connection, transfer
+inactivity where available, semantic-event observation, soft completion, shared
+generation/repair, decision, preparation/phase, run, stop escalation and
+accounting boundaries are separate. Profile values are finite and fixed for the
+admitted run; runtime only clamps to legitimate remaining authority/budget.
+Soft completion leaves room for cooperative cancellation and database-only
+disposition within the original envelope; the independent hard stop remains the
+fallback for blocked transport/callbacks. Semantic events cannot extend a hard
+authority deadline, and no LLM settlement call is required to save already
+committed facts. A model profile reflects model, settings, output capacity and
+measured latency; adequate inference time is not derived solely from prompt
+bytes, fixed durations are not claimed as industry guarantees, and one
+successful sample establishes no percentile. The current guard inventory —
+call/shared/decision/phase/run values, the two-decision reservation and the
+renewal check/lease bounds — is canonical in
+[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22);
+this revision defines qualification and consistency rules and selects no
+successor numbers. Renewal cadence and lease duration are a separate
+revocation/availability contract owned there, preserved pending explicit
+qualification and never enlarged by the LLM deadline.
+
+Internal streaming remains optional transport observability, not mandatory for
+all providers. Connection bytes, keep-alive, semantic provider events and
+completed validated output are distinct; none proves reasoning quality, and
+keep-alive never renews semantic progress or authority. Any streaming
+implementation must assemble the final bounded result before admission and
+apply key exclusion and sensitive-data screening to decoded/assembled content
+as well as relevant raw input; a key can be split across deltas. Cumulative
+wire bytes, decoded content, event sizes and counts are bounded before growth;
+malformed, incomplete, oversized or contradictory terminal results are
+rejected; only allowlisted safe metadata is emitted, never raw deltas or
+private reasoning. Each provider's documented event contract applies; DeepSeek
+terminal events, Anthropic events and Chat Completions `[DONE]` are not
+interchangeable, and automatic SSE reconnect/resubmission is not authorized.
+
+Termination attribution is owned by
+[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22).
+Already committed DNS/Terrain/history outcomes are preserved separately from
+failed inference; recovery remains database-only and never regenerates the
+proposal. Provider-billing reconciliation for `may_send_uncertain` stays
+operational debt, not an assumed available API.
+
+Observable future assertions for this revision are recorded in
+[the assigned packet](../workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md);
+they are requirements for the runtime packet, not tests executed here.

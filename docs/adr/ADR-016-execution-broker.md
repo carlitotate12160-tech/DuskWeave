@@ -11,6 +11,7 @@
 | Direct dependencies | accepted ADR-003/005/013/015; Stage 12 product-input rebind in accepted M1 enabling section 2 |
 | Scope | [M1 enabling lane](../contracts/M1-enabling-architecture.md); no full-stage acceptance |
 | Autonomous-run amendment | Section 4a ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
+| Provider-neutral revision | [Section 4a revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 
 ## 1. Context and problem statement
 
@@ -400,6 +401,90 @@ child, resume unused repair or advance the campaign across an unresolved require
 obligation. Parent death may leave no final receipt; fresh inspection reports
 that limit. Test ordinary timeout, stalled cooperative abort, hard child exit,
 parent loss, authority loss and history failure with zero recovery effects.
+
+### Provider-neutral lifecycle and freshness revision (2026-10-22)
+
+**Status: ACCEPTED — product owner, 2026-10-22 (Asia/Jakarta), by conversation
+approval** of this design scope. Acceptance applies through a versioned
+successor permission/profile after qualified implementation and fresh run
+authorization; it invents no timer values, activates no provider and upgrades
+no old consent. The accepted section 4a text, the v1/v2/v3 accounting profiles
+and all selected timer values are unchanged. The matching contract revision is
+recorded in
+[enabling contract section 7](../contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22);
+connection/model/routing semantics, disclosure and the recorded-reasoning
+versus eligible-action distinction live there while numerical lifecycle and
+accounting authority remains here.
+
+Provider selection is accounting-visible: the installed, qualified profile
+chosen at registration/start (semantics in the enabling contract) is recorded
+in immutable configuration and each
+decision's provenance, and stays pinned for both decisions and conditional
+repair in the run. Reservation, `may_send`, consumption states and release
+fencing apply identically to every qualified profile; an adapter-specific
+envelope changes only wire encoding, never accounting units, identity or
+fencing. Missing reported usage is not zero and is not a refund; provider token
+categories are not automatically comparable or additive, so accounting keeps
+reserved capacity charged and records reported usage as separate evidence.
+Requested versus reported model/revision is recorded separately; unavailable
+metadata stays unavailable.
+
+Multi-profile installation changes no single-call authority: one run still has
+one live decision/call per campaign, one pinned profile, no implicit transport
+retry, no provider/model switch after failure and no ambient credential
+discovery. A later explicitly approved failover policy must still satisfy this
+ADR: every new attempt is a separately admitted call with its own durable call
+identity, reservation, release fence and remaining-budget check; uncertain
+prior consumption stays charged; no deadline or campaign-total reset; and no
+retry of a target effect. Enabling it is its own bounded delivery.
+
+The successor timing profile stays coherent and immutable per admitted run:
+finite versioned values fixed at admission, with runtime clamping only to
+legitimate remaining authority/budget. The separate guard boundaries are
+connection, transfer inactivity where available, semantic-event observation,
+soft completion, shared generation/repair, decision, preparation/phase, run,
+stop escalation and accounting. Soft completion leaves room for cooperative
+cancellation and database-only disposition inside the original envelope; the
+independent hard stop remains the fallback for blocked transport/callbacks, and
+semantic events never extend a hard authority deadline. Admission validates
+finite feasibility against the full reservation — generation, conditional
+repair, stop escalation and accounting reserves; insufficient remainder yields
+a visible defer/stop disposition, never silent truncation. The current
+inventory — 20-second provider call, 40-second shared generation/repair,
+45-second decision envelope, 50-second inference phase, 60-second CLI phase,
+150-second run and the 90000-ms two-decision inference reservation, plus
+campaign/window limits — remains authoritative; each guard begins at its own
+lifecycle point, and a run need not permit every phase to consume its maximum.
+Successor production timer numbers are not selected here; exact values with
+measured margins remain runtime-packet prerequisites. Renewal cadence and
+lease duration — the current 400-ms renewal target, 500-ms check bound and
+2-second lease with their DB/scheduler failure modes — are a separate
+revocation/availability contract, not a function of model thinking time; they
+are not enlarged by the LLM deadline, and DB overload is not inferred from
+query count alone.
+
+Inference lifecycle and Terrain freshness are independent accounting axes. A
+call admitted while premises were eligible may still complete, be screened and
+be charged when a premise later expires by TTL alone; expiry removes
+current-use eligibility, not the obligation to account for the call honestly.
+Withdrawal, window expiry, STOP, control-lease loss, incompatible owner
+revision, repudiation/conflict or integrity hold still cancel in-flight
+transport under the existing bound. A result recorded after TTL-only expiry
+keeps original times and actual intent; its consumption/disposition categories
+are unchanged, and stale-dependent effects receive zero release. In current
+source TTL still clamps the transport permit; this paragraph describes proposed
+successor behavior, not implemented code.
+
+Termination attribution keeps separate accounting: the parent records its own
+deadline/kill, while child guard reasons need an explicit bounded safe signal;
+signal handling never delays stopping or requires database writes before hard
+termination. Exit 124 and elapsed time alone never identify a guard or prove
+provider latency; inspection reports the last durable marker and
+pending/unknown attribution honestly. Recovery remains database-only and never
+regenerates the proposal; already committed DNS/Terrain/history outcomes stay
+preserved separately from failed inference. `may_send_uncertain` reconciliation
+against provider billing remains operational debt, not an assumed available
+API; reservations stay charged with no fabricated usage or refund.
 
 ## Supporting engineering references for section 4a
 

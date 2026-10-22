@@ -45,27 +45,34 @@ Current seal:
 
 Current engineering state:
 
-Pinned merged baseline: diagnostics [PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109)
-(`ef23262184965b81e7103b12371000619e503caa`), after provider-fixture
-[PR #107](https://github.com/carlitotate12160-tech/DuskWeave/pull/107) (`2af7d01`)
+Pinned merged baseline: tracking [PR #114](https://github.com/carlitotate12160-tech/DuskWeave/pull/114)
+(`56039deeb2281ac6149307920ebba9d8d2ae7d3a`), after diagnostics
+[PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109) (`ef23262`),
+provider-fixture [PR #107](https://github.com/carlitotate12160-tech/DuskWeave/pull/107) (`2af7d01`)
 and tracking [PR #108](https://github.com/carlitotate12160-tech/DuskWeave/pull/108)
 (`b439661`). Controlled fixture and real-provider fixture wiring, restricted owner
 persistence, STOP, durable diagnostics and database-only recovery are implemented.
 
-Active documentation delivery `docs/reconcile-pr109` records that merge and final
-qualification without changing runtime, authority or seals. Complete its document
-checks/review and required current-head CI, then prepare one fresh real-provider
-fixture feedback demonstration through `m1-run`, with no intermediate operator
-input. Fresh explicit disclosure, current approved terms/window and the infrastructure
-key remain prerequisites. Historical provider calls do not prove complete feedback.
+Active documentation delivery `docs/m1-provider-neutral-lifecycle` delivers the
+owner-ACCEPTED (2026-10-22, conversation approval) provider-neutral inference
+lifecycle/freshness revision in the enabling contract section 7 and ADR-016
+section 4a, recording the owner-directed multi-provider requirement and the
+unqualified 2026-10-22 provider-fixture feedback outcome. It applies through a
+versioned successor permission/profile after qualified implementation. Complete
+its document checks/review, then prepare one bounded runtime packet and a fresh
+`autonomous-dns-provider-fixture-v1` demonstration under its own
+disclosure/terms/window. Historical provider calls do not prove complete
+feedback.
 
 [ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 owns readiness and next action; the [existing roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
 owns sequencing/debt. Section 7 / ADR-016 section 4a exact text
 `0615fb72c946fd6abf0823692be621096091377c` was owner-accepted on 2026-10-19
-for Walking Skeleton implementation. No real LLM/live acquisition qualification,
-target permission or M1 completion is implied. Linux live-boundary preparation
-may proceed separately; it does not block the controlled provider-fixture demo.
+for Walking Skeleton implementation; the 2026-10-22 provider-neutral revision
+was owner-accepted on 2026-10-22 and changes no other accepted text. No real
+LLM/live acquisition qualification, target permission or M1 completion is
+implied. Linux live-boundary preparation may proceed separately; it does not
+block the controlled provider-fixture demo.
 
 Current design document:
 
