@@ -179,30 +179,31 @@ parsing/receipts from execution and pre-mutation signaling; the packet records
 `connect_qualified`, `run_record` and the other named hotspots remain OPEN.
 Legacy CLI/M0 consumers remain supported.
 
-**Diagnostics FIX disposition (2026-10-21, candidate):**
-[DW-FIX-M1-RUN-DIAGNOSTICS](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md) connects
-closed child terminal observations to restricted append-only records and fresh
-inspect, with configuration preflight and explicit publication uncertainty.
-Required current-head review/CI remains a delivery gate. The bounded root-cause
-review resolved the 2026-10-22 provider-withdrawal failure as a test-harness
-defect — a `session_fences` epoch-bump serialization rejection, mechanically
-proven by fault injection and inferred as the historical concurrent-update
-source, whose receipt was discarded by the old single-attempt test — corrected by a receipt-aware
-bounded-resubmission writer with fault-injection RED→GREEN evidence; production
-code is unchanged. The parent-loss lease failure is attributed to a reproduced
-database-clock rollback and the environment is UNQUALIFIED until host/WSL2 time
-is recovered by the owner. The FIX remains NOT READY pending environment
-re-qualification, one final two-target serial run, amendment-delta review and
-final-head CI. This work targets diagnosis,
-not the historical episode's root cause or a real provider loop. PowerShell ACL
-latency, owner-connection optimization, internal preparation timing and owner-view
-continuation remain OPEN. The separate parent reaper, readiness guard, local STOP,
-child preparation cover, authority coordinator, transport permit and decision
-envelope retain their separate failure responsibilities; the packet records the map.
-The provider fixture now separates feedback, supervision and withdrawal in
-private source modules under one integration target, retaining exact test
-entrypoints. This addresses mixed fixture responsibility only; named runtime
-hotspots remain OPEN.
+**Diagnostics FIX disposition (2026-10-22, merged):**
+[PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109) merged
+at `ef23262184965b81e7103b12371000619e503caa`, delivering
+[bounded run diagnostics](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md#12-merge-reconciliation-2026-10-22).
+The reviewed source head `83f3338` passed final Windows serial targets (31/31),
+exact-head Linux CI (nine jobs, 96.79% production coverage) and a distinct
+closure-delta review. The owner reports W32Time recovery / WSL restart before
+that run. This closes the recorded delivery gate, not platform-wide clock safety
+or a real-provider feedback claim. The old physical clock-adjustment cause and
+unrecorded stop/Terrain errors remain unverified.
+
+The root-cause amendments correct a discarded known serialization rejection,
+preserve same-operation bounded resubmission, separate feedback/supervision/withdrawal
+responsibilities, retain exact CI test entrypoints and enforce their shared
+settlement deadline. They add no production retry policy, grant, timer extension
+or changed expiry assertion. Named runtime complexity debt remains OPEN.
+
+Next: complete merge-tracking document checks/review/CI, then prepare one fresh
+real-provider fixture feedback demonstration under section 1.2. Keep DNS
+deterministic and prove that decision two consumes the original issued result
+through Terrain. Linux capture/egress and OCI application qualification remain
+separate unfinished work before live acquisition. PowerShell ACL latency,
+owner-connection optimization, internal preparation timing and owner-view
+continuation remain OPEN. Existing M0 operational consumers remain supported
+until their tested replacement and explicit disposition exist.
 
 **Measured CI baseline:** PR #71 run
 [39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),
