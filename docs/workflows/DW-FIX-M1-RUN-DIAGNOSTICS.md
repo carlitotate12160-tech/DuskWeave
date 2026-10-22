@@ -522,6 +522,26 @@ a later commit automatically.
 two-target serial run, and (3) final-head CI. No merge, seal, provider
 execution or timer change is authorized.
 
+**Author R3 self-review, QUALITY_BAR section 7:** Q1 ownership: the harness
+lives in the owning provider-fixture test file as private functions; the SQL
+injection uses existing admin helpers, not production seams. Q2 dependencies:
+no new dependency; the writer drives the real CLI and reads its real receipt.
+Q3 simplicity: spawn/settle/parse/classify are separate small functions; the
+~430-line harness is proportionate to the closed receipt contract it enforces.
+Q4 single truth: the classifier mirrors the producer's two-line receipt
+contract; duplication across that trust boundary is deliberate. Q5 requirement
+fit: same-operation UUID minted once, retry only on a proven same-operation
+serialization rejection, bounded attempts inside one shared deadline,
+unknowns terminal — matching the amendment §4/§5 text. Q6 reachability:
+exercised through `m1-run` CLI spawn → local marker → held scope fence →
+restricted withdraw → Trajectory history, with fresh DB assertions. Q7 failure
+integrity: collector, deadline and attempt bounds verified; forged/foreign/
+oversized receipts and all non-serialization outcomes are terminal; the
+replay proof asserts one withdrawal and one history row. Q8 trust/claims:
+the injection proves the rejection mechanically rather than by timing luck;
+the retry-occurrence assertion prevents silent degenerate GREEN. N/A:
+production reachability, migrations and role grants are unchanged by design.
+
 **Amendment-delta review (2026-10-22, distinct reviewer):** one distinct agent
 performed a source/report review of only the working-tree delta versus
 committed `836cf8a` (no builds or database reruns; scope verified by file
