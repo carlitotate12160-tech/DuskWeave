@@ -421,3 +421,118 @@ the test-file size reference point; no count-driven helper split is warranted.
 This is the second cohesive FIX cycle. Any retained required-gate failure means
 NOT READY and STOP for bounded root-cause review; green Linux CI cannot waive
 the explicit Windows gate. No merge, seal or provider execution is authorized.
+
+## 10. Amendment R3: withdrawal fixture correction and clock qualification (2026-10-22)
+
+The bounded root-cause review produced the retained report
+`pr109-rootprobe-20261022a` (outside Git; source evidence references it by
+name). This third bounded amendment executes only the assigned test-fixture
+correction inside its editable map: `tests/m1_provider_fixture.rs` plus this
+packet, ENGINEERING_STATE, the roadmap and the operator guide. `src/`,
+migrations, `tests/support/` and `tests/m1_run_failures.rs` stayed read-only.
+No retry policy, role grant, deadline, lease or assertion was changed. The
+amendment ran on the same branch/worktree at reviewed head `836cf8a` on base
+`b439661`, verified clean at preflight.
+
+**Withdrawal root cause — now evidence-bound.** The retained classification
+`historical-withdrawal-classification.json` shows the failing provider
+withdrawal died from a concurrent update on `INSERT INTO mission.withdrawals`,
+mapped to `serialization_retry`. The mechanism is in accepted production code:
+`execution.guard_mission_writer()` (migrations 0008/0009) takes
+`pg_advisory_xact_lock(scope)` then bumps `session_fences.epoch`; a concurrent
+epoch bump while the child waits on that lock aborts the serializable
+transaction inside the INSERT trigger (statement-path `store_err`) or at
+commit (`commit_err`); both production error mappings classify only
+serialization/deadlock as `serialization_retry` and everything else as
+`commit_unknown`. The test writer resubmitted each rejection as a fresh
+operation UUID, so a provably rejected operation surfaced as an unexplained
+failure. That is a test-harness defect, not a production defect; production
+behavior remains locked and unchanged. The historical episode's specific
+concurrent updater is inferred (the epoch UPDATE inside the trigger is the
+INSERT's only row update), not directly evidenced.
+
+**Correction.** The provider-fixture withdrawal writer is now a receipt-aware
+harness: one bounded 16384-byte stdout collector, a strict withdrawal receipt
+parser, and a disposition classifier. The operation UUID is minted once and
+resubmitted only on a failed exit whose receipt names the same operation with
+result `rejected`/category `serialization_retry`, with the premise re-validated
+by the resubmitted command's own authority path; all other outcomes (unknown,
+storage errors, conflicts, foreign receipts, unreadable output) are terminal
+failures. ADR-005 bounded resubmission is exercised, never assumed. The
+injection scenario additionally asserts at least one retry occurred, so the
+test cannot silently degenerate to durable-on-first-attempt.
+
+**Fault injection and controls.** New scenario
+`fenced_epoch_bump_serializes_first_attempt_then_bounded_resubmission_is_durable_once`
+injects an admin epoch bump so attempt 1 is provably serialized. RED before the
+correction: attempt 1 exited 1 with a 216-byte `serialization_retry` receipt and
+the durable assertion failed. GREEN after: attempt 1 `serialization_retry`,
+attempt 2 durable (1058 bytes), same operation UUID. Added unit controls
+`withdrawal_receipt_parser_bounds_shape_and_size` and
+`withdrawal_retry_classifier_accepts_only_bounded_serialization_rejection`.
+The existing
+`production_stop_withdraw_and_manual_terrain_signal_before_blocked_authority_sql`
+regression passes unchanged through the new harness (attempt 1 durable,
+1029 bytes), proving no behavior was weakened for the pass.
+
+**Clock qualification — ENVIRONMENT_UNQUALIFIED.** `dwpg-r3` was requalified
+(same pinned image, 127.0.0.1:5432, PostgreSQL 17). The bootstrap helper
+generated fresh databases `dw_native_pr109_withdrawal_requal_20261022d` and
+`..._20261022e`; the prescribed `..._a` name was refused on collision and the
+helper-generated names are per-packet fresh isolation, honestly recorded rather
+than renamed. The retained lease-clock probe binary
+(`probe_unsupervised_lease_host_vs_database_clock`, source
+`pr109-rootprobe-20261022a/probe-source/tests/lease_clock_control.rs`) was rerun
+against the new fixture without a key. Iterations 1-8 were clean; iteration 9
+recorded `clock_timestamp()` stepping back 856 ms and 1701 ms mid-observation
+and `renew` was then accepted after 2253 ms host-monotonic with the lease
+unchanged — the same signature as the root-probe summary. Verdict:
+ENVIRONMENT_UNQUALIFIED. The `m1_run_failures.rs:109` renewal-expired failure
+is therefore attributed to the environment, not verified as a product defect,
+and remains unqualified until the environment clock is recovered. Clock
+recovery (WSL2/Docker time sync) is outside this map: no restart, clocksource
+change or service activation was performed; evidence is in
+`reports/pr109-withdrawal-requal-20261022a/lease-clock-requal-summary.json`.
+The required final serial run `--test m1_provider_fixture --test m1_run_failures`
+is deliberately not executed until clock qualification exists; it will run
+once, with failures classified from receipts/clock evidence, not retried.
+
+**Environment flake observation:** during post-review verification on the same
+unqualified host, the unchanged pre-existing `signal_before_sql` path failed
+twice consecutively (`writer exited before signal`, once on `stop`, once on
+`terrain`) — the writer child exited before its local marker appeared, which
+requires an early failure on the control-root qualification (bounded
+PowerShell ACL probe) or store path, not on any amended code. A diagnostic
+rerun that only routed child stderr (no semantic change) passed attempt-1
+durable in 14.97 s. Classification: environment-sensitive transient on a
+pre-existing path; the withdrawn writer's own scenario passed deterministically
+throughout. Recorded as evidence, not chased; consistent with the
+ENVIRONMENT_UNQUALIFIED verdict.
+
+**Checks on the amended working source:** `cargo fmt -- --check`,
+`git diff --check`, `cargo clippy --tests`, `python scripts/check_links.py`,
+`python scripts/check_structure.py` and the pinned analyzer 0.0.25 McCabe
+ratchet (`--base b439661`) all pass — ten retained debt items, none worsened,
+no cap change. Production `src/` is untouched so the ratchet measures only
+unchanged functions. These are working-tree local results; they do not qualify
+a later commit automatically.
+
+**Remaining uncertainty / NOT READY:** the delivery stays NOT READY pending
+(1) environment clock recovery and re-qualification, (2) the single final
+two-target serial run, and (3) final-head CI. No merge, seal, provider
+execution or timer change is authorized.
+
+**Amendment-delta review (2026-10-22, distinct reviewer):** one distinct agent
+performed a source/report review of only the working-tree delta versus
+committed `836cf8a` (no builds or database reruns; scope verified by file
+inspection). Verdict: READY-for-delta modulo one finding. The reviewer
+independently verified the serialization mechanism against migrations
+0008/0009 and the error mapping, the classifier's same-operation
+serialization-only gate, the bounded collector, the shared attempt deadline,
+end-to-end UUID identity, the fence-block attribution check, and the unchanged
+caller's preserved semantics. Its one blocking-grade finding — the injection
+scenario did not assert that a retry actually occurred — was fixed in-place
+(`attempt >= 2` when `bump_epoch`); three wording nits (error-mapping site,
+premise re-check phrasing, "proven" strength for the historical inference)
+were corrected above. It confirmed ENVIRONMENT_UNQUALIFIED is the honest
+verdict and that the deferred final serial run follows the assignment.

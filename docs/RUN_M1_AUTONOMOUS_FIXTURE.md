@@ -71,6 +71,24 @@ redelivery attempts; it does not restart phases, refill quota, repeat inference,
 reacquire DNS or promise a successful outcome. Committed history remains historical.
 An ACK outage can leave a durable result before the caller knows it committed.
 
+Withdrawal and other fenced writers distinguish a *known transaction rejection*
+from an unknown outcome. A failed exit whose receipt names the same operation
+with a serialization rejection (`rejected` / `serialization_retry`) means the
+transaction provably did not commit — for example when a concurrent
+`session_fences` epoch bump aborts the serializable writer. Only that known
+rejection may resubmit the same operation identity, bounded, after the premise
+is re-checked. `commit_unknown`, storage errors, conflicts and unreadable
+output are unknown: the durable state is not proven and resubmission must not
+be assumed. Re-minting the operation UUID turns a known rejection into a false
+new operation and must never be used to force a green result.
+
+Lease and deadline qualification also depends on the database clock agreeing
+with host monotonic time. On this Windows/WSL2 lane `clock_timestamp()` has
+been observed stepping backwards by hundreds of milliseconds, which can admit
+a lease renewal after the host-observed expiry. Such a host is UNQUALIFIED for
+final serial qualification; environment clock recovery is an owner-managed
+operations task, not a test or product change.
+
 ### Start configuration and terminal diagnostics
 
 After input validation, start parses the selected configuration for core, Broker,

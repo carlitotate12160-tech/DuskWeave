@@ -183,10 +183,17 @@ Legacy CLI/M0 consumers remain supported.
 [DW-FIX-M1-RUN-DIAGNOSTICS](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md) connects
 closed child terminal observations to restricted append-only records and fresh
 inspect, with configuration preflight and explicit publication uncertainty.
-Required current-head review/CI remains a delivery gate. The 2026-10-22 Windows
-serial run retained provider-withdrawal and parent-loss lease assertion failures;
-their root causes remain unverified and the FIX is NOT READY pending bounded
-root-cause review after its second correction cycle. This work targets diagnosis,
+Required current-head review/CI remains a delivery gate. The bounded root-cause
+review resolved the 2026-10-22 provider-withdrawal failure as a test-harness
+defect — a `session_fences` epoch-bump serialization rejection, mechanically
+proven by fault injection and inferred as the historical concurrent-update
+source, resubmitted under a fresh operation UUID — corrected by a receipt-aware
+bounded-resubmission writer with fault-injection RED→GREEN evidence; production
+code is unchanged. The parent-loss lease failure is attributed to a reproduced
+database-clock rollback and the environment is UNQUALIFIED until host/WSL2 time
+is recovered by the owner. The FIX remains NOT READY pending environment
+re-qualification, one final two-target serial run, amendment-delta review and
+final-head CI. This work targets diagnosis,
 not the historical episode's root cause or a real provider loop. PowerShell ACL
 latency, owner-connection optimization, internal preparation timing and owner-view
 continuation remain OPEN. The separate parent reaper, readiness guard, local STOP,
