@@ -187,7 +187,7 @@ Required current-head review/CI remains a delivery gate. The bounded root-cause
 review resolved the 2026-10-22 provider-withdrawal failure as a test-harness
 defect — a `session_fences` epoch-bump serialization rejection, mechanically
 proven by fault injection and inferred as the historical concurrent-update
-source, resubmitted under a fresh operation UUID — corrected by a receipt-aware
+source, whose receipt was discarded by the old single-attempt test — corrected by a receipt-aware
 bounded-resubmission writer with fault-injection RED→GREEN evidence; production
 code is unchanged. The parent-loss lease failure is attributed to a reproduced
 database-clock rollback and the environment is UNQUALIFIED until host/WSL2 time
@@ -199,6 +199,10 @@ latency, owner-connection optimization, internal preparation timing and owner-vi
 continuation remain OPEN. The separate parent reaper, readiness guard, local STOP,
 child preparation cover, authority coordinator, transport permit and decision
 envelope retain their separate failure responsibilities; the packet records the map.
+The provider fixture now separates feedback, supervision and withdrawal in
+private source modules under one integration target, retaining exact test
+entrypoints. This addresses mixed fixture responsibility only; named runtime
+hotspots remain OPEN.
 
 **Measured CI baseline:** PR #71 run
 [39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),

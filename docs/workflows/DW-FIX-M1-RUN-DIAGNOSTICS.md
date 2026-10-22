@@ -1,4 +1,4 @@
-# DW-FIX-M1-RUN-DIAGNOSTICS — prompt IDE
+# DW-FIX-M1-RUN-DIAGNOSTICS — IDE execution packet
 
 PROJECT: DuskWeave
 MODE: FIX
@@ -6,160 +6,117 @@ WORKSPACE: D:/DuskWeave-ci-complexity
 BRANCH: fix/m1-run-diagnostics
 BASE: b439661f82c4cebf1d615629f07eb176dd3a53e8
 
-Kerjakan langsung satu FIX PR. Outcome: kegagalan keputusan provider melalui m1-run dapat dijelaskan lewat receipt dan inspect dari proses baru, tanpa data sensitif, efek replay, penambahan pengawas generik, atau pelemahan pengaman. Ini mendukung loop MVP objective → hipotesis → tindakan berizin → bukti → adaptasi, dengan APT41/Lazarus/Volt Typhoon sebagai referensi perilaku, bukan playbook atau izin operasi.
+The issued instructions below are translated into English without changing their accepted outcome. Later bounded amendments govern their explicit deltas. Explain provider-decision failures from a fresh receipt/inspect process without sensitive output, replay, a generic supervisor, or weaker safeguards. This supports the MVP objective → hypothesis → authorized action → evidence → adaptation loop. APT41, Lazarus and Volt Typhoon are behavioral references, not playbooks or execution permission.
 
-## 1. Preflight dan kewenangan
+## 1. Preflight and authority
 
-Baca AGENTS, ENGINEERING_STATE, BUILD_ORDER/00/07, QUALITY_BAR §7, skill build-duskweave, ADR-011/016 dan kontrak M1 yang relevan. Penerimaan §7/§4a pada 0615fb72 tetap berlaku. Periksa git worktree list, identity, branch, HEAD dan status. Base di atas sudah memuat #107/#108. Bila source/authority berubah, rekonsiliasi diff sebelum melanjutkan; jangan memakai lampiran lama sebagai current state.
+Read AGENTS, ENGINEERING_STATE, BUILD_ORDER/00/07, QUALITY_BAR section 7, build-duskweave, ADR-011/016 and the relevant M1 contracts. The section 7 / section 4a acceptance at `0615fb72` remains unchanged. Verify worktrees, identity, branch, HEAD, status and origin; reconcile changed authority/source before proceeding. Preserve unrelated worktrees and do not work on master.
 
-Gunakan branch di atas pada worktree terverifikasi yang bersih; jangan bekerja di master atau membersihkan worktree lain. Verifikasi origin sebelum publish. Tidak ada perubahan produksi dari packet ini yang telah dikerjakan.
+Requalify and reuse `dwpg-r3`: PostgreSQL 17, image `postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f`, loopback binding. Bootstrap fresh `dw_native_run_diagnostics_20261021a` with unique restricted logins. Refuse collisions; use a fresh helper-generated `dw_native_` name when necessary. Preserve existing databases, cluster-wide passwords, roles, container, volume, `.env` and global environment.
 
-Resource yang diperiksa: dwpg-r3 berjalan, PostgreSQL 17, image postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f. Periksa kembali image, versi dan binding loopback; reuse service, jangan recreate. Buat database baru dw_native_run_diagnostics_20261021a dan login restricted unik melalui bootstrap yang ada. Collision harus menolak; gunakan nama dw_native_ baru yang dihasilkan helper bila perlu. Jangan reset password role lama, menyalin/mengedit DB demo, mengubah .env, environment global, volume atau container. Password role bersifat cluster-wide.
+Use Rust 1.94.1 MSVC and ordinary target `D:/DuskWeave-build/rust-1.94.1/normal`, owned by one verification process across builds/tests/children. Reports: `D:/DuskWeave-build/rust-1.94.1/reports/m1-run-diagnostics-20261021a`. If local coverage is required, use the separate `D:/DuskWeave-build/rust-1.94.1/coverage-m1-run-diagnostics-20261021a` target. No cargo clean; never read/copy/edit `.cargo/config.toml`, dump environment, or print keys/DSNs.
 
-Rust 1.94.1 MSVC; ordinary target D:/DuskWeave-build/rust-1.94.1/normal. Satu owner memegang target selama build/test/subprocess; tidak ada cargo clean. Report D:/DuskWeave-build/rust-1.94.1/reports/m1-run-diagnostics-20261021a. Coverage lokal, hanya bila diperlukan, memakai target terpisah D:/DuskWeave-build/rust-1.94.1/coverage-m1-run-diagnostics-20261021a. Tidak boleh membaca/copy/edit .cargo/config.toml. Jangan mencetak key, DSN atau environment dump.
+All work is offline. Remove `DEEPSEEK_API_KEY` from bootstrap/test/probe environments and descendants before launch. No provider contact, target DNS, paid retry or restart of old runs.
 
-Seluruh pengujian packet ini offline: hapus DEEPSEEK_API_KEY dari environment proses bootstrap/test/probe beserta turunannya. Jangan bergantung pada env shell yang diwariskan. Tidak ada provider contact, DNS target, paid retry, atau pengaktifan ulang run lama.
+## 2. Evidence and limits
 
-## 2. Bukti dan batas kesimpulan
+- Original episode `c9c2d22d-945a-409c-95bc-9f3e6d683616`: started→claimed 1280 ms, claimed→UNKNOWN 4751 ms, total 6031 ms. These are parent recording times, not a claim-query benchmark.
+- Retained launch configuration contains all DSNs; missing-env is not proved for that episode.
+- A key-free probe of the same child binary exited 124 at 5148 ms without READY. Multiple watchdogs can produce that code; it does not identify the winner.
+- Diagnostic copy `dw_diag_20261021a` has one completed call and one decision, terminal `owner_view_requested`, zero fixture DNS and zero second decisions. It does not prove the full loop.
+- Confirmed defects: read_ready discarded terminal output and finished flattened unsuccessful exits. Preserve historical evidence.
 
-- Episode asli c9c2d22d-945a-409c-95bc-9f3e6d683616: started→claimed 1280 ms; claimed→UNKNOWN 4751 ms; total 6031 ms. Ini waktu pencatatan parent, bukan benchmark query claim.
-- Environment peluncuran yang tersimpan memuat semua DSN; missing-env belum terbukti sebagai penyebab episode asli.
-- Probe tanpa key pada child binary yang sama: exit 124, 5148 ms, tanpa READY. Ada beberapa sumber exit 124; jangan menetapkan sumber hanya dari angka exit.
-- Copy diagnosis dw_diag_20261021a memiliki satu panggilan completed dan satu keputusan; terminal owner_view_requested, nol DNS fixture dan nol keputusan kedua. Ini bukan bukti loop lengkap.
-- Kelemahan terbukti: read_ready membuang terminal output; finished meratakan semua exit gagal. Jangan mengubah catatan sejarah supaya tampak berhasil.
-
-## 3. Exact editable map
+## 3. Issued editable map
 
 Production:
+
 - src/database_config.rs
 - src/m1_run.rs
 - src/m1_run_cli.rs
 - src/m1_run_supervision.rs
 - src/postgres_m1_run.rs
-- migrations/0020_m1_run_diagnostics.sql (baru)
+- migrations/0020_m1_run_diagnostics.sql (new)
 
 Tests/support:
+
 - tests/m1_run_cli.rs
-- tests/m1_run_diagnostics.rs (baru; skenario diagnosis yang kohesif)
-- tests/m1_provider_fixture.rs (hanya assertion yang terdampak dan bukti regresi)
+- tests/m1_run_diagnostics.rs (new cohesive diagnostic scenarios)
+- tests/m1_provider_fixture.rs (affected assertions/regressions only)
 - tests/support/m1_run.rs
 - tests/support/m1_native_bootstrap.py
 - tests/test_m1_native_helpers.py
 
 Packet/tracking/operator:
-- docs/workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md (baru; salin packet dan tambahkan bukti ringkas)
+
+- docs/workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md (issued instructions and concise evidence)
 - docs/ENGINEERING_STATE.md
 - docs/MVP_AND_DEFERRED_SCOPE.md
 - docs/RUN_M1_AUTONOMOUS_FIXTURE.md
 
-Read-only: main.rs; database_wait.rs; m1_run_control.rs; m1_run_inference.rs; m1_inference_control.rs; m1_reasoning_cli.rs; transport/transport_control; ContextPack/proposal/Terrain producers dan consumers; migrations 0001–0019; CI; accepted PRD/ADR/contracts; tests/support/database_wait_proxy.rs; tests/m1_run_postgres.rs dan tests/m1_run_failures.rs. Kebutuhan edit tambahan harus disebutkan dengan sebab konkret sebelum memperluas map.
+Read-only: main.rs, database_wait.rs, m1_run_control.rs, m1_run_inference.rs, m1_inference_control.rs, m1_reasoning_cli.rs, transport/transport_control, ContextPack/proposal/Terrain producers and consumers, migrations 0001–0019, CI, accepted PRD/ADR/contracts, tests/support/database_wait_proxy.rs, tests/m1_run_postgres.rs and tests/m1_run_failures.rs. State a concrete need before expanding the map.
 
-## 4. Keputusan implementasi
+## 4. Implementation decisions
 
-### A. Preflight konfigurasi, bukan kewenangan baru
+### A. Configuration preflight
 
-Setelah request valid dan sebelum store.start/hash/spawn, parse konfigurasi owner yang diperlukan alur admitted: core, Broker, Cognition, Trajectory dan Terrain. Gunakan parser dan pilihan env-local/file yang sudah ada; jangan mewajibkan URL env pada deployment file, jangan membaca kedua sumber atau menambah fallback. Invalid/missing/conflict harus menolak dengan kategori tetap dan label owner tertutup, tanpa nilai konfigurasi.
+After request validation and before store.start/hash/spawn, parse required core, Broker, Cognition, Trajectory and Terrain configuration through the existing env-local/file selection. Do not require URL environment variables for file deployments, read both sources, add fallback, or open additional preflight connections. Missing/invalid/conflicting configuration yields a closed category/owner label without values.
 
-Periksa SystemRoot pada Windows dan keberadaan konfigurasi control-root untuk provider profile. Kualifikasi root aktual tetap pada boundary yang ada. Preflight bukan pengganti koneksi/role qualification atau pemeriksaan kewenangan saat digunakan. Tidak perlu membuka koneksi tambahan untuk preflight.
+Check Windows SystemRoot and provider-profile control-root configuration. Actual root qualification remains at its current boundary. Preflight does not replace connection/role qualification or current-use authority checks. Start must not require an API key: preserve durable offline live_key_missing. Inspect/recover/stop must not require the key or every start configuration. Preserve argument-validation precedence.
 
-Jangan membuat API key wajib untuk start: regresi offline live_key_missing yang durable tetap didukung. Inspect/recover/stop tetap tidak memerlukan key maupun seluruh konfigurasi start. Jangan mengubah input validation precedence yang sudah diuji.
+### B. Existing stdout pipe and safe terminal errors
 
-### B. Gunakan pipe yang sudah ada untuk terminal error aman
+Successful provider children must emit exact READY first. Never skip prelude, log, stage-marker, receipt or incorrect frames to find READY. Distinguish matching READY, pre-READY terminal error (failure), permitted post-READY terminal error/EOF, and refused invalid/oversized/late/missing frames.
 
-Pertahankan READY persis sebagai frame pertama untuk jalur yang berhasil. Jangan menerima atau melewati prelude, log, stage marker, JSON receipt atau frame salah sebelum READY.
+Bound each frame to 128 bytes including LF and retain the existing total drain bound. Explicit error allowlist: missing_env, invalid_database_config_mode, database_config_conflict, missing_database_url_file, database_file_platform_unqualified, invalid_dsn, non_loopback_host, missing_credentials, connect_failed, unqualified_database_waits, run_control_unqualified, run_control_stopped, run_child_refused, inference_authority_unavailable, run_inference_pending, child_failed. Map unknown values to child_failed without retaining/reflecting the original. Regex shape alone is not evidence that a value is safe.
 
-Pembaca provider stdout membedakan:
-1. exact READY yang cocok run/phase;
-2. satu baris terminal error=<code> sebelum READY: kegagalan child, BUKAN READY;
-3. setelah READY, terminal error yang diizinkan atau EOF;
-4. invalid/oversize/late/absent frame: penolakan protokol.
+Reuse the reader/watchdog; add no diagnostic service/thread. Discard stderr and do not retain full stdout, panic/SQL text, provider content or private reasoning. Keep observed exit status, child-reported category and parent-observed cause distinct. Exit 124 without a cause marker is not preparation_timeout. Parent-observed readiness/phase deadline or local stop may be reported as that observation, without claiming which child watchdog fired.
 
-Gunakan batas 128 byte per frame termasuk LF dan batas drain total yang sudah ada. Code harus berasal dari allowlist eksplisit: missing_env, invalid_database_config_mode, database_config_conflict, missing_database_url_file, database_file_platform_unqualified, invalid_dsn, non_loopback_host, missing_credentials, connect_failed, unqualified_database_waits, run_control_unqualified, run_control_stopped, run_child_refused, inference_authority_unavailable, run_inference_pending, child_failed. Unknown code dipetakan ke child_failed; nilai unknown aslinya tidak disimpan atau dipantulkan. Jangan memakai kecocokan regex sebagai bukti bahwa suatu string aman.
+Settle exit/reader races within the original remaining deadline. No unbounded join or new grace clock; unavailable information stays unavailable. Pipe/diagnostic failure never grants READY or release.
 
-Reuse reader dan watchdog yang sudah ada; jangan menambah service/thread diagnostik. stderr tetap dibuang. Jangan menyimpan stdout utuh, panic text, SQL text, provider response atau private reasoning.
+### C. Restricted immutable diagnostics
 
-Pisahkan observed exit status dari reported child code dan parent-observed cause. Untuk hard exit tanpa frame, alasan child boleh unavailable. Exit 124 saja tidak boleh diterjemahkan menjadi preparation_timeout. Bila parent sendiri mengamati readiness deadline/phase deadline/local stop, laporkan fakta itu dengan sumber parent; jangan mengaku mengetahui watchdog internal mana yang menang.
+Publish one final append-only/idempotent record per (run_id, phase) through PgRunStore and forward migration 0020. The internal `m1_run_phase_diagnostic_v1` payload contains run_id; existing phase enum; cause (child_error, child_exit, readiness_refused, readiness_deadline, phase_deadline, local_stop, supervisor_unavailable, unavailable); cause_source (child_report, parent_observed, unavailable); allowlisted child_error or null; signed 32-bit exit_code or null; boolean readiness_observed; elapsed_ms (parent time since launch, 0..150000 or null). Receipt publication disposition is committed, pending_or_unknown or unavailable. Preserve Windows exception codes outside 0..255.
 
-Tuntaskan race exit-vs-reader dengan drain yang dibatasi sisa deadline asli, bukan join tanpa batas atau grace clock baru. Bila informasi tidak sempat tersedia, laporkan unavailable secara jujur. Kegagalan pipe/diagnostik tidak pernah mengizinkan READY atau release.
+Maximum payload: 1024 UTF-8 bytes with no free text. Child categories are reports, not authority facts. Final cause describes observation, not an unmeasured root cause. SQL checks owning Broker/run/started phase, fixed search_path, closed enums, bounds and unknown-key rejection. No direct-write grants, foreign scope, record replacement or role expansion. Identical publication is idempotent; conflicting publication refuses.
 
-### C. Diagnosis durable kecil dan terpisah dari status efek
+Post-expiry diagnosis records existing obligations only; it cannot alter admission, charges, phase state, history or effect permission. Publish after child termination using the existing wait/run budget. No SQL/logging in reaper/callback/watchdog. Publication failure cannot delay STOP/reap or convert failure to success.
 
-Tambahkan satu record final per (run_id, phase), append-only/idempotent, melalui adapter PgRunStore dan forward migration 0020. Kontrak internal m1_run_phase_diagnostic_v1 berisi:
-- run_id, phase (enum yang ada);
-- cause: child_error | child_exit | readiness_refused | readiness_deadline | phase_deadline | local_stop | supervisor_unavailable | unavailable;
-- cause_source: child_report | parent_observed | unavailable;
-- child_error: allowlisted code di atas atau null;
-- exit_code: signed 32-bit integer sesuai status.code() atau null bila tidak tersedia; jangan membuang Windows exception code yang berada di luar 0..255;
-- readiness_observed: boolean;
-- elapsed_ms: waktu parent sejak phase launch, integer 0..150000 atau null jika tidak tersedia;
-- publication disposition pada receipt: committed | pending_or_unknown | unavailable.
+Extend summary/inspect optionally without changing existing field meanings. Old runs report unavailable; no invented backfill. Preserve UNKNOWN where effects/commit are uncertain. Recovery is bounded database-only work, without relaunch, inference or effect replay. Bootstrap includes 0020 (18 initial / 9 refresh migrations); refresh must not replace the diagnostic summary with the old producer. Use a narrow new function instead of copying an old migration.
 
-Maksimum payload diagnosis 1024 UTF-8 byte, tanpa field/text bebas. Informasi child dilabel sebagai laporan child, bukan fakta authority. Cause final berarti observasi parent, bukan rekonstruksi akar penyebab yang belum diukur.
+### D. Preserve independent failure owners
 
-SQL memverifikasi run/phase dan writer Broker pemilik run, search_path tetap, enum/bounds/unknown-key rejection. Tidak ada direct write grant, cross-campaign write, pengubahan record lama atau perluasan role. Retry identik idempotent, conflict menolak. Diagnosis setelah expiry tidak membutuhkan authority baru untuk bertindak: hanya accountable metadata tentang run yang sudah ada; tidak boleh mengubah admission, charges, phase state atau history.
+No supervisor framework, scheduler, event bus, global pool, tracing subsystem, async conversion or thread per sample. Retain independent parent reaper, readiness guard, local STOP observer, child preparation cover, authority coordinator/transport permit, parent EOF detection and original decision envelope. Record their lifetimes, blocking work and failure responsibilities here.
 
-Parent mencatat setelah child berhenti melalui jalur terminal yang dibatasi wait/run budget yang ada. Jangan melakukan SQL/logging dari reaper, callback atau watchdog. Kegagalan publikasi diagnosis tidak menghambat STOP/reap dan tidak mengubah kegagalan menjadi sukses.
+Do not replace PowerShell ACL checks, remove child hashing, share connections across roles/threads, delete the second prepared_basis or increase deadlines in this FIX. The two TerrainBasis instances have distinct consumers; naive deduplication can couple authority checks.
 
-Tambahkan diagnostic opsional pada summary/inspect tanpa mengubah arti field existing. Run lama tanpa record menampilkan unavailable; jangan backfill penyebab. Pertahankan UNKNOWN bila efek/commit belum pasti. Recovery tetap DB-only tanpa relaunch/inference/effect replay; tidak boleh merekayasa diagnosis yang hilang.
+Measure launch→claim→READY/exit and parent total separately. Missing READY is censored, not internal-stage timing. Warm samples are not cold benchmarks; provider duration does not establish exact overhead or startup below 500 ms. Record concrete profiling gaps without adding production debug modes.
 
-Bootstrap initial/refresh harus menyertakan 0020: 18 initial, 9 refresh. Perbarui helper assertion dan run-support refresh agar definisi run_summary lama tidak menimpa 0020. Gunakan fungsi baru yang sempit; jangan menyalin seluruh migration lama.
+## 5. Acceptance and verification
 
-### D. Supervisor: kurangi pekerjaan yang tidak perlu, jangan menyatukan failure domain
+Use a genuine failing assertion for lost diagnostic behavior; do not fabricate production faults. Synthetic parser/child controls complement actual m1-run configuration/SQL tests. Required assertions:
 
-Tidak ada framework supervisor, scheduler, event bus, pool global, tracing subsystem, async conversion atau thread per sample. Pertahankan pemisahan:
-- parent independent reaper vs SQL loop/pipe;
-- bounded readiness supervision;
-- local STOP observer;
-- child preparation cover;
-- authority coordinator vs transport-local permit guard;
-- parent EOF detection dan whole-decision envelope.
+1. Missing/malformed/conflicting core/history/Terrain config gives safe owner/category with zero new runs/reservations/calls/effects. Missing Windows SystemRoot fails before SQL; invalid arguments retain invalid_args precedence.
+2. Fresh child failure exposes allowlisted terminal category in receipt/fresh inspect when SQL is available. Reader/exit races preserve evidence before and after READY.
+3. Prelude, wrong identity/phase, padding, CRLF, invalid UTF-8, oversized/truncated/late frames and EOF refuse READY. Unknown-code secret sentinel never reaches output or storage.
+4. Exit 124 alone is not claimed as preparation_timeout. Parent deadline facts remain distinct. Blocked pipe/SQL and stop tests preserve independent reap and callback purity.
+5. Restricted SQL rejects foreign writers, wrong run/phase, unknown keys/codes, oversize and conflicting duplicates. Identical publication preserves history, state and charges.
+6. Unavailable diagnostic SQL follows child stop with honest pending_or_unknown/unavailable and no recovery replay.
+7. Keep the two-decision deterministic skeleton through real CLI, Broker, Terrain and history. Missing-key provider fixture remains durable live_key_missing without fallback; fixtures do not prove real cognition.
+8. owner_view_requested remains distinct from completed; no forced DNS choice or operator continuation.
 
-Mekanisme berbeda tidak otomatis redundant: dokumentasikan pemilik, periode hidup, operasi yang dapat block dan failure yang dicakup dalam packet ini, bukan dokumen tracking baru.
+Run fmt; Python native-helper unit tests; m1_run_cli; then binary, m1_run_diagnostics, m1_provider_fixture, m1_run_postgres and m1_run_failures serially in one fresh restricted fixture (--test-threads=1). Use --locked and no key. Run Clippy --all-targets -- -D warnings, links, structure and the verified analyzer 0.0.25 McCabe ratchet against the issued base. No global tool updates or cached PASS for unavailable tools. Reuse fixture refresh only as designed, never a demo DB.
 
-FIX ini tidak mengganti PowerShell ACL, menghapus hash child, membagi koneksi antar-role/thread, menghapus prepared_basis kedua, atau menaikkan deadline. Dua TerrainBasis saat ini dipakai consumer berbeda; deduplikasi naif dapat merusak independensi coordinator.
+CI runs full tests/coverage and the Linux reservation-stall regression. Preserve 90% total / 80% per-production-file floors, the ratchet and all failure assertions. Missing legacy local CREATEROLE qualification is not Windows full-suite PASS. Do not duplicate a full run without a concrete reason or parallelize role-mutating fixtures.
 
-Simpan pengukuran launch→claim→READY/exit dan durasi parent total dari focused offline scenarios. Pisahkan waktu child dari waktu persiapan parent dan accounting; ketidaktersediaan READY adalah censored observation, bukan durasi tahap internal. Jangan menyebut warm run sebagai cold-start benchmark, menghitung overhead pasti dari durasi provider, atau mengklaim startup <500 ms tanpa bukti. Jika diperlukan profiling internal lebih jauh, catat gap konkret; jangan menambah debug mode produksi di luar map.
+## 6. Tracking, review and STOP
 
-## 5. Acceptance dan verifikasi
+Update ENGINEERING_STATE with actual FIX status/next action, roadmap section 1.4 with touched debt disposition, this packet with candidate-bound RED/GREEN/checks/uncertainty, and the operator guide with configuration/diagnostic/UNKNOWN/recovery meanings. Never claim this candidate merged/sealed. ACL latency, owner connections, internal preparation timing and owner-view continuation remain OPEN unless verified. Reference historical evidence instead of duplicating full reports.
 
-Mulai dengan failing assertion asli untuk error yang hilang pada baseline; jangan membuat fault baru di produksi untuk mengarang RED. Gunakan synthetic child/parser tests untuk framing dan actual m1-run entrypoint untuk konfigurasi/DB.
+Use QUALITY_BAR section 7, architecture before style. LOC/diff/span are advisory; McCabe is enforced. No threshold changes, helper fragmentation, or consumer removal without replacement. Perform author self-check and the assigned distinct review honestly, fix valid findings in the same PR, validate the final candidate, and submit without auto-merge. The owner need not adjudicate every code detail.
 
-Wajib:
-1. Core/history/Terrain config hilang, malformed dan conflict: kategori+owner aman; nol run/reservation/call/effect baru. SystemRoot Windows yang hilang gagal sebelum DB; argumen invalid tetap error=invalid_args.
-2. Kasus fresh child setelah start yang memang gagal: kode allowlisted terlihat di terminal receipt dan fresh inspect ketika DB tersedia. Race reader/exit tidak mengubah kode menjadi hasil acak. Protocol parser tested before dan after READY.
-3. Semua exact-readiness negative controls tetap menolak: prelude, wrong UUID/phase, padded, CRLF, invalid UTF-8, oversized, truncated, EOF dan late frame. Terminal error tidak pernah dianggap READY. Synthetic secret sentinel pada unknown code tidak keluar ke receipt/DB/report.
-4. Exit 124 tanpa cause marker tidak diklaim sebagai preparation_timeout. Parent-observed deadline dibedakan. Actual blocked-pipe/SQL/child-stop regressions tetap membuktikan independent reap dan callback purity.
-5. SQL direct-call negative controls: foreign writer, wrong run/phase, unknown code/key, oversize dan conflicting duplicate menolak. Identical publication idempotent; existing history/status/charges utuh.
-6. DB unavailable saat diagnostic publication: child sudah berhenti, hasil pending_or_unknown/unavailable jujur; tidak ada replay saat recovery.
-7. Deterministic skeleton tetap dua keputusan/fixture/Terrain/history lewat real entrypoint. Provider profile offline tetap durable live_key_missing, tanpa fallback. Jangan menulis provider fixture sukses sebagai real LLM cognition.
-8. owner_view_requested tetap terminal yang berbeda dari completed. Jangan memaksa pilihan DNS atau menyisipkan operator continuation.
+STOP for unresolved authority/base drift, required out-of-map dependency, invariant violation or a blocker remaining after two FIX cycles. Routine defects stay in scope. Bring measured preparation failure to architecture review; do not raise timers or replace fixtures to force GREEN.
 
-Urutan hemat waktu:
-- cargo fmt -- --check
-- python -m unittest discover -s tests -p test_m1_native_helpers.py
-- cargo test --locked --test m1_run_cli
-- Dalam satu fresh restricted fixture/bootstrap session, jalankan cargo test --locked --bin duskweave, kemudian target m1_run_diagnostics, m1_provider_fixture, m1_run_postgres, m1_run_failures secara serial (--test-threads=1); reuse database fixture yang sama hanya sesuai mekanisme refresh test, bukan DB demo. Semua command Rust memakai --locked; pastikan tidak ada key dalam environment setiap subprocess.
-- cargo clippy --locked --all-targets -- -D warnings
-- python scripts/check_links.py dan python scripts/check_structure.py
-- complexity ratchet dengan analyzer 0.0.25 yang sudah terverifikasi: --base b439661f82c4cebf1d615629f07eb176dd3a53e8 dan report directory packet. Jangan install/update tool global atau mengganti analyzer; tool unavailable bukan PASS.
-
-CI menjalankan full suite dan coverage yang dipersyaratkan, termasuk focused Linux reservation-stall. Pertahankan 90% total/80% per-file, McCabe ratchet dan semua failure assertions. Lokal bukan full-suite Windows PASS bila legacy CREATEROLE gate tidak tersedia. Jangan mengulang full test lokal tanpa risiko baru; jangan menjalankan role-mutating fixtures paralel.
-
-## 6. Tracking, review dan STOP
-
-Tracking UPDATE:
-- ENGINEERING_STATE: outcome FIX/next action dan remaining provider-loop blocker; tidak mencatat merge/seal diri sendiri.
-- MVP roadmap §1.4: disposition diagnostik/debt yang disentuh; ACL latency, owner-connection optimization, internal timing gap dan owner-view continuation tetap OPEN kecuali terbukti dikerjakan.
-- Guide: config requirements, arti diagnostic/UNKNOWN, no-replay recovery dan perbedaan satu keputusan vs dua keputusan.
-- Packet: RED/GREEN, SHA/platform, exact commands/results, byte bound, supervisor fault map dan remaining uncertainty. Referensikan bukti historis; jangan duplikasi seluruh laporan.
-
-Review arsitektur sebelum style memakai QUALITY_BAR §7. LOC/diff/function span advisory; McCabe enforced. Tidak ada helper fragmentation untuk menurunkan angka, perubahan threshold, atau penghapusan consumer lama yang belum punya replacement.
-
-Satu author self-check lalu satu distinct adversarial pass oleh reviewer berbeda dari implementor; laporkan provenance jujur, bukan self-review berlabel independen. Perbaiki valid findings dalam PR yang sama, final-head checks, lalu kirim PR untuk owner; jangan auto-merge. Bukan kewajiban meminta user menilai setiap detail code.
-
-STOP untuk authority conflict, base drift yang belum direkonsiliasi, kebutuhan file/dependency di luar map, invariant violation atau required gate yang tetap gagal setelah dua FIX cycles. Routine compile/lint/test failure diperbaiki dalam scope. Bila preparation positif tetap gagal, bawa measured failure ke architecture review; jangan menaikkan timer atau mengganti fixture agar hijau.
-
-Definisi selesai: entrypoint→child terminal observation→restricted append-only diagnostic→fresh inspect terbukti, pengaman dan skeleton tidak regresi, required CI green. Klaimnya FIX diagnostik terkualifikasi, bukan root cause episode lama terpecahkan, real loop sukses, izin target atau seal M1.
+Completion proves entrypoint→child observation→restricted immutable diagnosis→fresh inspection with safeguards, skeleton and required checks intact. It does not prove the historical root cause, real provider loop, target authority or M1 completion.
 
 ## 7. Implementation evidence (2026-10-21)
 
@@ -442,11 +399,11 @@ mapped to `serialization_retry`. The mechanism is in accepted production code:
 `pg_advisory_xact_lock(scope)` then bumps `session_fences.epoch`; a concurrent
 epoch bump while the child waits on that lock aborts the serializable
 transaction inside the INSERT trigger (statement-path `store_err`) or at
-commit (`commit_err`); both production error mappings classify only
-serialization/deadlock as `serialization_retry` and everything else as
-`commit_unknown`. The test writer resubmitted each rejection as a fresh
-operation UUID, so a provably rejected operation surfaced as an unexplained
-failure. That is a test-harness defect, not a production defect; production
+commit (`commit_err`); both mappings classify serialization/deadlock as `serialization_retry`.
+Other statement errors map to `storage_error`; other commit errors map to
+`commit_unknown`. The old test submitted once, discarded its receipt, and
+asserted unconditional exit success. It did not retry with a new UUID, so a
+known rejection surfaced without its category. That is a test-harness defect, not a production defect; production
 behavior remains locked and unchanged. The historical episode's specific
 concurrent updater is inferred (the epoch UPDATE inside the trigger is the
 INSERT's only row update), not directly evidenced.
@@ -501,11 +458,11 @@ once, with failures classified from receipts/clock evidence, not retried.
 unqualified host, the unchanged pre-existing `signal_before_sql` path failed
 twice consecutively (`writer exited before signal`, once on `stop`, once on
 `terrain`) — the writer child exited before its local marker appeared, which
-requires an early failure on the control-root qualification (bounded
-PowerShell ACL probe) or store path, not on any amended code. A diagnostic
+localizes failure before marker creation but does not identify its cause.
+Control-root qualification and the store path remain hypotheses. A diagnostic
 rerun that only routed child stderr (no semantic change) passed attempt-1
-durable in 14.97 s. Classification: environment-sensitive transient on a
-pre-existing path; the withdrawn writer's own scenario passed deterministically
+durable in 14.97 s. Classification: cause UNVERIFIED on an unqualified environment; unchanged
+source and a passing rerun do not establish an environmental cause; the withdrawn writer's own scenario passed deterministically
 throughout. Recorded as evidence, not chased; consistent with the
 ENVIRONMENT_UNQUALIFIED verdict.
 
@@ -556,3 +513,67 @@ scenario did not assert that a retry actually occurred — was fixed in-place
 premise re-check phrasing, "proven" strength for the historical inference)
 were corrected above. It confirmed ENVIRONMENT_UNQUALIFIED is the honest
 verdict and that the deferred final serial run follows the assignment.
+
+## 11. Closure simplification (2026-10-22)
+
+The owner requested direct correction and simplification after reviewing R3.
+This is a bounded re-scope following the existing root-cause review, without
+resetting FIX-cycle counts or changing the accepted outcome. The editable
+delta is AGENTS.md, this packet, ENGINEERING_STATE, MVP_AND_DEFERRED_SCOPE,
+tests/m1_provider_fixture.rs and its private supervision.rs/withdrawal.rs
+submodules. Production, SQL, CI and expiry assertions remain read-only.
+
+One integration target keeps the existing database mutex and test inventory.
+Feedback/admission, startup/STOP/deadline supervision, and receipt-aware
+withdrawal have separate private source modules; no generic fixture framework,
+new integration binary, production API or duplicate scenario is introduced.
+The child module split preserves behavior. Separate deadline regressions use
+a terminal child and a delayed collector; these are new failing assertions
+against the R3 helper, not fabricated historical failures.
+
+Repository packets/prose are English; owner conversation may be Indonesian.
+The issued instructions above are translated without changing their scope.
+The false historical fresh-UUID assertion is corrected, and the unclassified
+stop/Terrain exits remain UNVERIFIED instead of a proved environment flake.
+
+Final qualification remains blocked on the measured database-clock rollback.
+Preserve historical uncertainty; closure requires a qualified current clock,
+the unchanged two-target scenarios and final-candidate CI, not an impossible
+reconstruction of every lost historical error. No host/WSL setting is changed
+by this source correction.
+
+**Verification:** the two new deadline assertions failed against the R3 helper
+(0/2), then passed after the shared-deadline correction (2/2). On the final
+working source, six selected scenarios passed: the two deadline controls, two
+receipt/classifier controls, the forced-serialization CLI scenario, and the
+original STOP/withdrawal/Terrain-before-SQL scenario. The fault scenario
+returned a 216-byte serialization rejection, then one 1029-byte durable
+receipt with the same operation. The original pre-SQL scenario passed in
+7.83 seconds; no historical failure is relabeled from that pass.
+
+The original 15 fully qualified test names are retained, with two new deadline
+tests. Thin test entrypoints preserve CI's existing --exact consumer and
+recorded commands; the CI reservation filter still discovers exactly one
+test. These are compatibility entrypoints, not forwarding helpers introduced
+to game runtime metrics. The source sizes are 622 lines for feedback and
+stable test entrypoints, 536 for supervision and 485 for withdrawal.
+Advisory crossings retain those cohesive responsibilities.
+
+Windows Rust 1.94.1, fresh restricted database
+dw_native_pr109_simplify_20261022a, no provider key: fmt, Clippy --all-targets
+-D warnings, links (223 valid / zero broken), structure and diff hygiene pass.
+Evidence is retained outside Git in reports/pr109-simplify-20261022a.
+No src/ or migration bytes changed relative to the previously reviewed source.
+The prior head's Linux CI passed 661 tests; it is not final-candidate CI.
+The analyzer is not on this session's PATH, so no fresh local numerical
+McCabe result is claimed; final CI retains the enforced ratchet.
+
+Author review: Q1/Q2/Q6 preserve owner ports and one integration target;
+Q3 separates failure responsibilities without a new runner or production
+abstraction; Q4 corrects language and false historical claims; Q5/Q7 prove
+the original deadline and stable-operation withdrawal through actual CLI/SQL;
+Q8 keeps key-free fixture evidence separate from cognition, target permission
+and the unresolved clock environment. Production wiring changes, new grants
+and serialization-capacity changes are N/A because production is unchanged.
+Distinct final-delta review and final-candidate CI remain pending. The failed
+Windows expiry qualification is not waived, and no READY/merge/seal is claimed.
