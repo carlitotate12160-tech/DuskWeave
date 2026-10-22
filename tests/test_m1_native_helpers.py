@@ -105,15 +105,16 @@ class MigrationSelectionAndOrder(unittest.TestCase):
 
     def test_initial_setup_includes_0015_after_predecessors(self):
         calls = self.run_migrate(initial=True)
-        self.assertEqual(len(calls), 17)
+        self.assertEqual(len(calls), 18)
         self.assertIn("terrain.accept_dns_observation", calls[11])
         self.assertIn("CREATE FUNCTION terrain.current_dns_context_view", calls[12])
         self.assertIn("autonomous-dns-provider-fixture-v1", calls[16])
         self.assertIn("terrain.issued_dns_request", calls[16])
+        self.assertIn("execution.run_phase_diagnostic", calls[17])
 
     def test_refresh_includes_0015_after_0012_0013_0014_with_replace(self):
         calls = self.run_migrate(initial=False)
-        self.assertEqual(len(calls), 8)
+        self.assertEqual(len(calls), 9)
         self.assertIn("execution.inference_may_send", calls[0])
         self.assertIn("execution.inference_reservation", calls[1])
         self.assertIn("terrain.accept_dns_observation", calls[2])
@@ -122,6 +123,7 @@ class MigrationSelectionAndOrder(unittest.TestCase):
         self.assertIn("execution.run_start", calls[5])
         self.assertIn("terrain.issued_dns_request", calls[6])
         self.assertIn("autonomous-dns-provider-fixture-v1", calls[7])
+        self.assertIn("execution.run_phase_diagnostic", calls[8])
 
     def test_failure_identifies_only_the_fixed_migration_not_sql_or_credentials(self):
         fx = object.__new__(bootstrap.Fixture)
