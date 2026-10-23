@@ -48,6 +48,13 @@ replace implementation with another plan.
 Startup guidance: docs/workflows/START_HERE.md.
 Project Instructions text: docs/workflows/PROJECT_INSTRUCTIONS.md.
 
+## Repository prose
+
+Write IDE execution packets and new or edited repository documentation,
+comments, and docstrings in English. Conversation with the owner may use
+Indonesian. Translate conversational instructions before placing them in the
+repository; preserve technical identifiers and accepted semantics.
+
 ## Walking skeleton delivery
 
 Build the smallest complete entrypoint-to-history behavior first, then replace
