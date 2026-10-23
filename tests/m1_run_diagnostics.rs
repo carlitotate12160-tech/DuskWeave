@@ -23,6 +23,7 @@ fn diagnostic(run: uuid::Uuid) -> PhaseDiagnostic {
         exit_code: Some(124),
         readiness_observed: false,
         elapsed_ms: Some(20),
+        reported_guard: None,
     }
 }
 fn counts() -> Value {

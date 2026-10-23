@@ -3,7 +3,7 @@ use super::inference::{Provider, Received};
 use super::proposal::ProposalBasis;
 use super::provider_diagnostic::ProviderDiagnostic;
 use super::request::BoundCall;
-use super::transport_control::{Permit, TransportGuard};
+use super::transport_control::{CallClock, Permit, ReportedGuard, TransportGuard};
 use curl::easy::{Easy, HttpVersion, List};
 use std::cell::{Cell, RefCell};
 use std::sync::mpsc::{Sender, channel};
@@ -279,6 +279,8 @@ pub struct AutonomousProvider {
     prepared: Option<(Easy, String, String)>,
     permit: Permit,
     pre_send: Box<dyn Fn() -> Res<()> + Send + Sync>,
+    clock: Option<CallClock>,
+    reporter: Option<std::sync::mpsc::SyncSender<ReportedGuard>>,
 }
 impl AutonomousProvider {
     pub fn new(permit: Permit, pre_send: impl Fn() -> Res<()> + Send + Sync + 'static) -> Self {
@@ -286,25 +288,53 @@ impl AutonomousProvider {
             prepared: None,
             permit,
             pre_send: Box::new(pre_send),
+            clock: None,
+            reporter: None,
         }
+    }
+    pub fn with_reporter(
+        mut self,
+        reporter: Option<std::sync::mpsc::SyncSender<ReportedGuard>>,
+    ) -> Self {
+        self.reporter = reporter;
+        self
     }
 }
 fn autonomous_binding(b: &BoundCall) -> Res<()> {
     let p: serde_json::Value = serde_json::from_slice(&b.pack).map_err(|_| "request_encode")?;
     let c: serde_json::Value =
         serde_json::from_slice(&b.configuration).map_err(|_| "request_encode")?;
+    let profile = transport_profile(&p)?;
     let valid = [
-        p["run_profile"] == "autonomous-dns-provider-fixture-v1",
         p["execution_mode"] == "controlled_fixture",
         c["run_profile"] == p["run_profile"],
         c["execution_mode"] == p["execution_mode"],
-        c["profile"] == "deepseek-responses-autonomous-v1",
+        c["profile"] == profile,
         c["recipient"] == "https://api.deepseek.com/responses",
     ];
     if !valid.into_iter().all(|v| v) {
         return Err("inference_transport_unavailable");
     }
     verify_wire_binding(b)
+}
+fn transport_profile(p: &serde_json::Value) -> Res<&'static str> {
+    match (
+        p["version"].as_str(),
+        p["run_profile"].as_str(),
+        p["inference_profile"].as_str(),
+    ) {
+        (
+            Some("m1_context_pack_autonomous_v1"),
+            Some("autonomous-dns-provider-fixture-v1"),
+            None,
+        ) => Ok("deepseek-responses-autonomous-v1"),
+        (
+            Some("m1_context_pack_autonomous_v2"),
+            Some("autonomous-dns-fixture-v2"),
+            Some("deepseek-responses-reasoning-v1"),
+        ) => Ok("deepseek-responses-reasoning-v1"),
+        _ => Err("inference_transport_unavailable"),
+    }
 }
 fn verify_wire_binding(b: &BoundCall) -> Res<()> {
     let body: serde_json::Value = serde_json::from_slice(&b.body).map_err(|_| "request_encode")?;
@@ -319,16 +349,17 @@ fn verify_wire_binding(b: &BoundCall) -> Res<()> {
 impl Provider for AutonomousProvider {
     fn prepare(&mut self, b: &BoundCall, until: Instant) -> Res<()> {
         autonomous_binding(b)?;
+        if self.prepared.is_some() {
+            return Err("inference_transport_unavailable");
+        }
+        let clock = self.prepare_clock(b, until)?;
         if !self.permit.current() {
             return Err("current_authority_unavailable");
         }
         let key = provider_key()?;
-        let left = until
-            .checked_duration_since(Instant::now())
-            .ok_or("inference_deadline")?
-            .min(Duration::from_millis(20000));
-        let handle = configure(b, &key, left).map_err(|_| "inference_transport_unavailable")?;
+        let handle = configure_prepared(b, &key, until, clock.as_ref())?;
         self.prepared = Some((handle, key, b.digest.clone()));
+        self.clock = clock;
         Ok(())
     }
     fn call(
@@ -338,6 +369,9 @@ impl Provider for AutonomousProvider {
         basis: &mut dyn ProposalBasis,
         release: &mut dyn FnMut() -> Res<()>,
     ) -> Res<Received> {
+        if self.clock.is_some() {
+            return self.call_successor(b, until, basis, release);
+        }
         let (handle, key, call_end) = self.take_transfer(b, until)?;
         let _guard = TransportGuard::arm(self.permit.clone(), call_end)
             .map_err(|_| "inference_transport_unavailable")?;
@@ -345,7 +379,67 @@ impl Provider for AutonomousProvider {
         self.admit_received(received, &key, call_end, basis)
     }
 }
+fn configure_prepared(
+    b: &BoundCall,
+    key: &str,
+    until: Instant,
+    clock: Option<&CallClock>,
+) -> Res<Easy> {
+    let now = Instant::now();
+    let left = until
+        .checked_duration_since(now)
+        .ok_or("inference_deadline")?
+        .min(clock.map_or(Duration::from_millis(20000), |c| {
+            c.soft.saturating_duration_since(now)
+        }));
+    configure(b, key, left).map_err(|_| "inference_transport_unavailable")
+}
 impl AutonomousProvider {
+    fn prepare_clock(&self, b: &BoundCall, until: Instant) -> Res<Option<CallClock>> {
+        let config: serde_json::Value =
+            serde_json::from_slice(&b.configuration).map_err(|_| "request_encode")?;
+        if config["profile"] != "deepseek-responses-reasoning-v1" {
+            return Ok(None);
+        }
+        CallClock::arm(self.permit.clone(), until, self.reporter.clone()).map(Some)
+    }
+    fn call_successor(
+        &mut self,
+        b: &BoundCall,
+        until: Instant,
+        basis: &mut dyn ProposalBasis,
+        release: &mut dyn FnMut() -> Res<()>,
+    ) -> Res<Received> {
+        let (handle, key, clock) = self.take_successor_transfer(b, until)?;
+        let transfer = self.exchange_owned(handle, clock.soft, release)?;
+        if Instant::now() >= clock.soft {
+            return Err("provider_cancelled_uncertain");
+        }
+        let elapsed = clock.origin.elapsed();
+        // A complete pre-soft body may screen/account under the original decision clock.
+        drop(clock);
+        let mut received = self.admit_received(transfer, &key, until, basis)?;
+        received.usage.wall_time_ms = elapsed.as_millis() as u64;
+        Ok(received)
+    }
+    fn take_successor_transfer(
+        &mut self,
+        b: &BoundCall,
+        until: Instant,
+    ) -> Res<(Easy, String, CallClock)> {
+        let clock = self.clock.take().ok_or("inference_transport_unavailable")?;
+        let (mut handle, key, digest) = self
+            .prepared
+            .take()
+            .ok_or("inference_transport_unavailable")?;
+        if digest != b.digest {
+            return Err("inference_decision_integrity");
+        }
+        let left = clock.remaining(&self.permit, until)?;
+        timeouts(&mut handle, left).map_err(|_| "inference_transport_unavailable")?;
+        Ok((handle, key, clock))
+    }
+
     fn take_transfer(&mut self, b: &BoundCall, until: Instant) -> Res<(Easy, String, Instant)> {
         let (mut handle, key, digest) = self
             .prepared

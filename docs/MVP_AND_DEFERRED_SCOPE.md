@@ -86,10 +86,17 @@ complete feedback is unqualified and the exact killer is unestablished. The
 owner-accepted
 [provider-neutral lifecycle/freshness revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22)
 defines the successor-lane requirements for that lifecycle blocker. Bounded order: the amendment is
-owner-accepted; complete this documentation candidate's checks/review; prepare
-one runtime packet through the existing CLI/owners with qualified finite
-values, DeepSeek as the first real adapter and a second local protocol fixture
-proving interchangeability; after runtime qualification, prepare one freshly
+owner-accepted and merged in PR #115; execute the issued
+[runtime R2 packet](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md) through the
+existing CLI/owners with its fixed resource-policy ceilings, DeepSeek as the
+first external adapter and two local protocol fixtures. The runtime work is
+implemented, with ordinary Windows scenarios recorded in the
+[T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
+Delivery remains NOT READY pending instrumented Windows qualification,
+committed-candidate CI and distinct review. The owner-issued R2 assignment moves the
+required full-suite/coverage gate to exact-candidate Linux CI without widening
+local/runtime privileges. Partial focused tests do not establish T1-T9
+acceptance. After runtime qualification, prepare one freshly
 authorized real DeepSeek fixture demonstration with no inherited
 consent/window; then add OpenAI/Claude/Mistral adapters and one OpenRouter
 adapter individually through the same contract suite when their credentials

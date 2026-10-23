@@ -9,6 +9,43 @@ use std::sync::mpsc::{Sender, channel};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+use super::control_domain::m1_reasoning::transport_control::ReportedGuard;
+use std::sync::{OnceLock, mpsc::SyncSender};
+#[allow(dead_code)] // This module is also included by the library's private control fixtures.
+static REPORTER: OnceLock<SyncSender<ReportedGuard>> = OnceLock::new();
+
+/// Only the fixed successor inference child installs this bounded output worker.
+#[allow(dead_code)]
+pub(super) fn install_reporter() -> Res<()> {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<ReportedGuard>(4);
+    REPORTER.set(tx).map_err(|_| UNAVAILABLE)?;
+    std::thread::Builder::new()
+        .name("run_guard_reporter".into())
+        .spawn(move || {
+            for guard in rx {
+                if writeln!(
+                    std::io::stdout().lock(),
+                    "m1_run_guard_v1 {}",
+                    guard.as_str()
+                )
+                .is_err()
+                {
+                    return;
+                }
+            }
+        })
+        .map_err(|_| UNAVAILABLE)?;
+    Ok(())
+}
+#[allow(dead_code)]
+pub(super) fn reporter() -> Option<SyncSender<ReportedGuard>> {
+    REPORTER.get().cloned()
+}
+#[allow(dead_code)]
+pub(super) fn report_guard(guard: ReportedGuard) {
+    super::control_domain::m1_reasoning::transport_control::report_guard(REPORTER.get(), guard);
+}
+
 const UNAVAILABLE: Fail = Fail::Config("run_control_unqualified");
 
 /// Closed launch hint: the parent marks provider decision children so the child

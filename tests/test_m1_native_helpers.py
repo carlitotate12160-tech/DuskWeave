@@ -95,6 +95,11 @@ class ExistingDatabaseRefusal(unittest.TestCase):
 
 
 class MigrationSelectionAndOrder(unittest.TestCase):
+    def test_successor_refresh_retains_existing_idempotent_table_guard(self):
+        source = self.run_migrate(initial=False)[-1]
+        self.assertIn("CREATE TABLE IF NOT EXISTS execution.inference_decision_windows", source)
+        self.assertNotIn("IF NOT EXISTS IF NOT EXISTS", source)
+
     def run_migrate(self, initial):
         fx = object.__new__(bootstrap.Fixture)
         fx.migration_actor = "dw_nf60_admin"
@@ -105,7 +110,7 @@ class MigrationSelectionAndOrder(unittest.TestCase):
 
     def test_initial_setup_includes_0015_after_predecessors(self):
         calls = self.run_migrate(initial=True)
-        self.assertEqual(len(calls), 18)
+        self.assertEqual(len(calls), 19)
         self.assertIn("terrain.accept_dns_observation", calls[11])
         self.assertIn("CREATE FUNCTION terrain.current_dns_context_view", calls[12])
         self.assertIn("autonomous-dns-provider-fixture-v1", calls[16])
@@ -114,7 +119,7 @@ class MigrationSelectionAndOrder(unittest.TestCase):
 
     def test_refresh_includes_0015_after_0012_0013_0014_with_replace(self):
         calls = self.run_migrate(initial=False)
-        self.assertEqual(len(calls), 9)
+        self.assertEqual(len(calls), 10)
         self.assertIn("execution.inference_may_send", calls[0])
         self.assertIn("execution.inference_reservation", calls[1])
         self.assertIn("terrain.accept_dns_observation", calls[2])

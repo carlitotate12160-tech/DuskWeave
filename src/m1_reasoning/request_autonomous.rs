@@ -69,10 +69,7 @@ pub(super) fn bind(
 ) -> Result<BoundCall, &'static str> {
     let config = configuration(parsed, ids)?;
     let text = std::str::from_utf8(pack).map_err(|_| "request_encode")?;
-    let mut body = config["requested_settings"].clone();
-    body["instructions"] = config["instructions"].clone();
-    body["input"] = input(text, repair)?;
-    body["text"] = json!({"format":{"type":"json_schema","name":"m1_inference_proposal_v1","schema":config["schema"]}});
+    let body = wire_body(&config, text, repair)?;
     let configuration = bytes(&config, 16384)?;
     let body = bytes(&body, 16384)?;
     Ok(BoundCall {
@@ -82,8 +79,22 @@ pub(super) fn bind(
         body,
     })
 }
+fn wire_body(config: &Value, text: &str, repair: Option<&[&str]>) -> Result<Value, &'static str> {
+    let mut body = config["requested_settings"].clone();
+    if config["protocol"] == "chat-completions-v1" {
+        super::super::chat_completions::request(&mut body, config, text, repair)?;
+    } else {
+        body["instructions"] = config["instructions"].clone();
+        body["input"] = input(text, repair)?;
+        body["text"] = json!({"format":{"type":"json_schema","name":"m1_inference_proposal_v1","schema":config["schema"]}});
+    }
+    Ok(body)
+}
 
 fn configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'static str> {
+    if parsed["version"] == "m1_context_pack_autonomous_v2" {
+        return successor_configuration(parsed, ids);
+    }
     let (mode, profile, recipient, adapter) = profile(parsed)?;
     let schema = autonomous_schema(parsed, ids)?;
     let mut config = template();
@@ -97,6 +108,65 @@ fn configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'static str> 
     }
     config["schema"] = schema;
     Ok(config)
+}
+
+fn successor_configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'static str> {
+    use crate::m1_inference_profile::{self as profiles, Protocol};
+    if parsed["run_profile"] != profiles::RUN_PROFILE
+        || parsed["execution_mode"] != "controlled_fixture"
+    {
+        return Err("request_encode");
+    }
+    let profile = profiles::lookup(
+        parsed["inference_profile"]
+            .as_str()
+            .ok_or("request_encode")?,
+    )
+    .map_err(|_| "request_encode")?;
+    let mut c = template();
+    c["execution_mode"] = json!("controlled_fixture");
+    c["run_profile"] = json!(profiles::RUN_PROFILE);
+    c["profile"] = json!(profile.name);
+    c["recipient"] = json!(profile.connection.recipient);
+    c["credential_reference"] = json!(profile.connection.credential_environment);
+    c["timing_profile"] = json!(profiles::TIMING_PROFILE);
+    c["protocol"] = json!(match profile.protocol {
+        Protocol::Responses => "responses-v1",
+        Protocol::ChatCompletions => "chat-completions-v1",
+    });
+    c["adapter_release"] = json!("inference-lifecycle-v1");
+    c["template_version"] = json!("m1-autonomous-inference-v2");
+    c["schema"] = autonomous_schema(parsed, ids)?;
+    c["requested_settings"] = settings(profile);
+    c["transport"]["redirects"] = json!(profile.routing.redirects);
+    c["transport"]["retries"] = json!(profile.routing.retries);
+    c["transport"]["proxy"] = json!(profile.routing.proxy);
+    let t = profile.timing;
+    for (key, value) in [
+        ("soft_completion_ms", t.soft_ms),
+        ("per_call_wall_time_ms", t.hard_ms),
+        ("shared_wall_time_ms", t.shared_ms),
+        ("decision_wall_time_ms", t.decision_ms),
+        ("phase_wall_time_ms", t.phase_ms),
+    ] {
+        c["limits"][key] = json!(value);
+    }
+    Ok(c)
+}
+
+fn settings(profile: crate::m1_inference_profile::Profile) -> Value {
+    use crate::m1_inference_profile::Protocol;
+    let mut s = json!({"model":profile.settings.model,"stream":profile.settings.stream,
+        "tools":[],"tool_choice":"none"});
+    let output = match profile.protocol {
+        Protocol::Responses => "max_output_tokens",
+        Protocol::ChatCompletions => "max_tokens",
+    };
+    s[output] = json!(profile.settings.output_tokens);
+    if let Some(effort) = profile.settings.reasoning_effort {
+        s["reasoning"] = json!({"effort":effort});
+    }
+    s
 }
 
 type Profile = (&'static str, &'static str, &'static str, &'static str);

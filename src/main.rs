@@ -325,15 +325,14 @@ fn run(command: &str, args: &[String]) -> Res<()> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
-    let outcome = database_wait::CommandGuard::for_command(args.get(1).map(String::as_str))
-        .and_then(|guard| {
-            let outcome = args
-                .get(1)
-                .ok_or(Fail::Input("missing_command"))
-                .and_then(|command| run(command, &args));
-            drop(guard);
-            outcome
-        });
+    let outcome = database_wait::CommandGuard::for_args(&args).and_then(|guard| {
+        let outcome = args
+            .get(1)
+            .ok_or(Fail::Input("missing_command"))
+            .and_then(|command| run(command, &args));
+        drop(guard);
+        outcome
+    });
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(f) => {

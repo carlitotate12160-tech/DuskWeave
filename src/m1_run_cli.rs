@@ -20,21 +20,47 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
     }
 }
 fn read_request(args: &[String]) -> Res<RunRequest> {
-    let flags = super::flags(args, &["input"])?;
+    let (flags, hinted) = launch_flags(args)?;
     let file = std::fs::File::open(super::flag(&flags, "input")?)
         .map_err(|_| Fail::Input("unreadable_input"))?;
     let mut bytes = Vec::new();
     file.take(16385)
         .read_to_end(&mut bytes)
         .map_err(|_| Fail::Input("unreadable_input"))?;
-    RunRequest::parse(&bytes)
+    let q = RunRequest::parse(&bytes)?;
+    if q.successor() != hinted {
+        return Err(Fail::Input("invalid_timing_profile"));
+    }
+    Ok(q)
+}
+
+/// Syntax is checked before file/SQL work; the hint itself grants no authority.
+pub(super) fn timing_hint(args: &[String]) -> Res<bool> {
+    if !args.iter().any(|s| s == "--timing-profile") {
+        return Ok(false);
+    }
+    let (flags, _) = launch_flags(args)?;
+    if super::flag(&flags, "timing-profile")? != duskweave::m1_inference_profile::TIMING_PROFILE {
+        return Err(Fail::Input("invalid_args"));
+    }
+    Ok(true)
+}
+/// One exact flag grammar shared by early watchdog selection and the command consumer.
+fn launch_flags(args: &[String]) -> Res<(Vec<(&str, &str)>, bool)> {
+    let hinted = args.iter().any(|s| s == "--timing-profile");
+    let allowed = match (args.get(1).map(String::as_str), hinted) {
+        (Some("m1-run"), false) => &["input"][..],
+        (Some("m1-run"), true) => &["input", "timing-profile"][..],
+        (Some("m1-run-phase"), false) => &["run", "phase"][..],
+        (Some("m1-run-phase"), true) => &["run", "phase", "timing-profile"][..],
+        _ => return Err(Fail::Input("invalid_args")),
+    };
+    Ok((super::flags(args, allowed)?, hinted))
 }
 
 fn start(args: &[String]) -> Res<()> {
     let q = read_request(args)?;
-    super::database_config::preflight_run(
-        q.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE,
-    )?;
+    super::database_config::preflight_run(q.supervised_inference())?;
     let mut store = store()?;
     let outcome = start_run(&mut store, &q, &release()?);
     let inspected = emit(&mut store, q.run_id);
@@ -60,8 +86,7 @@ fn supervise(store: &mut PgRunStore, run: &RunRecord) -> Res<()> {
 }
 fn first_decision(store: &mut PgRunStore, run: &RunRecord, deadline: Instant) -> Res<NextStep> {
     drive_phase(store, run, RunPhase::DecisionOne, deadline)?;
-    let proposal = store.first_proposal(run)?;
-    duskweave::m1_run::next_step(&proposal, run.request.seed_names.len())
+    store.first_step(run)
 }
 fn drive_phase(
     store: &mut PgRunStore,
@@ -72,7 +97,11 @@ fn drive_phase(
     let r = run.request.run_id;
     store.renew(r)?;
     store.start_phase(r, phase)?;
-    let deadline = super::m1_run_supervision::phase_deadline(run_deadline, phase);
+    let deadline = super::m1_run_supervision::selected_phase_deadline(
+        run_deadline,
+        phase,
+        run.request.successor(),
+    );
     let outcome = wait_phase(store, run, phase, deadline, run_deadline);
     if outcome.is_err() {
         let _ = store.unknown(r, phase);
@@ -92,7 +121,7 @@ fn wait_phase(
         Err(error) => {
             use duskweave::m1_run::{CauseSource, DiagnosticCause, PhaseDiagnostic};
             let diagnostic = PhaseDiagnostic {
-                version: "m1_run_phase_diagnostic_v1".into(),
+                version: PhaseDiagnostic::version_for(run.request.successor()).into(),
                 run_id: r,
                 phase,
                 cause: DiagnosticCause::Unavailable,
@@ -101,6 +130,7 @@ fn wait_phase(
                 exit_code: None,
                 readiness_observed: false,
                 elapsed_ms: None,
+                reported_guard: None,
             };
             record_diagnostic(store, &diagnostic, run_deadline)?;
             return Err(error);
@@ -162,7 +192,15 @@ fn run_deadline(run: &RunRecord) -> Res<Instant> {
     let remain = u128::try_from(run.deadline_at_ms)
         .ok()
         .and_then(|d| d.checked_sub(now))
-        .filter(|d| *d <= 150000)
+        .filter(|d| {
+            *d > 0
+                && *d
+                    <= if run.request.successor() {
+                        400000
+                    } else {
+                        150000
+                    }
+        })
         .ok_or(Fail::State("run_deadline"))?;
     Ok(Instant::now() + Duration::from_millis(remain as u64))
 }
@@ -173,7 +211,7 @@ fn parse_run(raw: &str) -> Res<Uuid> {
         .ok_or(Fail::Input("invalid_args"))
 }
 fn child_args(args: &[String]) -> Res<(Uuid, RunPhase)> {
-    let flags = super::flags(args, &["run", "phase"])?;
+    let (flags, _) = launch_flags(args)?;
     let r = parse_run(super::flag(&flags, "run")?)?;
     let phase = RunPhase::parse(super::flag(&flags, "phase")?)?;
     Ok((r, phase))
@@ -185,24 +223,43 @@ fn claim_child(
     RunPhase,
     Option<super::m1_run_control::Preparation>,
 )> {
-    let hinted = std::env::var_os(super::m1_run_control::PROVIDER_HINT).is_some();
-    let preparation = hinted
-        .then(super::m1_run_control::Preparation::start)
-        .transpose()?;
+    let successor_hint = timing_hint(args)?;
+    let hinted = successor_hint || std::env::var_os(super::m1_run_control::PROVIDER_HINT).is_some();
     let (r, phase) = child_args(args)?;
-    let mut store = store()?;
-    let record = store.claim_phase(r, phase, &release()?)?;
-    verify_launch_hint(&record, phase, hinted)?;
+    let preparation = preparation_cover(phase, hinted)?;
+    let record = claimed_run(r, phase)?;
+    verify_launch_hint(&record, phase, hinted, successor_hint)?;
     Ok((record, phase, preparation))
+}
+fn claimed_run(run: Uuid, phase: RunPhase) -> Res<RunRecord> {
+    store()?.claim_phase(run, phase, &release()?)
 }
 /// The launch hint is valid only for the provider profile's decision phases;
 /// a forged, missing or stale hint is refused before any heavier work.
-fn verify_launch_hint(record: &RunRecord, phase: RunPhase, hinted: bool) -> Res<()> {
-    let expected = record.request.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE
-        && phase != RunPhase::Acquisition;
-    (hinted == expected)
-        .then_some(())
-        .ok_or(Fail::State("provider_protocol_refused"))
+fn verify_launch_hint(
+    record: &RunRecord,
+    phase: RunPhase,
+    hinted: bool,
+    successor_hint: bool,
+) -> Res<()> {
+    let expected = record.request.successor()
+        || (record.request.supervised_inference() && phase != RunPhase::Acquisition);
+    [
+        hinted == expected,
+        record.request.successor() == successor_hint,
+    ]
+    .into_iter()
+    .all(|v| v)
+    .then_some(())
+    .ok_or(Fail::State("provider_protocol_refused"))
+}
+fn preparation_cover(
+    phase: RunPhase,
+    hinted: bool,
+) -> Res<Option<super::m1_run_control::Preparation>> {
+    (hinted && phase != RunPhase::Acquisition)
+        .then(super::m1_run_control::Preparation::start)
+        .transpose()
 }
 fn child(args: &[String]) -> Res<()> {
     let (record, phase, preparation) = claim_child(args)?;

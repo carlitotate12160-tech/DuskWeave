@@ -45,24 +45,20 @@ Current seal:
 
 Current engineering state:
 
-Pinned merged baseline: tracking [PR #114](https://github.com/carlitotate12160-tech/DuskWeave/pull/114)
-(`56039deeb2281ac6149307920ebba9d8d2ae7d3a`), after diagnostics
+Pinned merged baseline: lifecycle design [PR #115](https://github.com/carlitotate12160-tech/DuskWeave/pull/115)
+(`79b0e3ee1bea44b5e5639c1142af45b6c44918b4`), after tracking
+[PR #114](https://github.com/carlitotate12160-tech/DuskWeave/pull/114) and diagnostics
 [PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109) (`ef23262`),
 provider-fixture [PR #107](https://github.com/carlitotate12160-tech/DuskWeave/pull/107) (`2af7d01`)
 and tracking [PR #108](https://github.com/carlitotate12160-tech/DuskWeave/pull/108)
 (`b439661`). Controlled fixture and real-provider fixture wiring, restricted owner
 persistence, STOP, durable diagnostics and database-only recovery are implemented.
 
-Active documentation delivery `docs/m1-provider-neutral-lifecycle` delivers the
-owner-ACCEPTED (2026-10-22, conversation approval) provider-neutral inference
-lifecycle/freshness revision in the enabling contract section 7 and ADR-016
-section 4a, recording the owner-directed multi-provider requirement and the
-unqualified 2026-10-22 provider-fixture feedback outcome. It applies through a
-versioned successor permission/profile after qualified implementation. Complete
-its document checks/review, then prepare one bounded runtime packet and a fresh
-`autonomous-dns-provider-fixture-v1` demonstration under its own
-disclosure/terms/window. Historical provider calls do not prove complete
-feedback.
+Active runtime delivery `feat/m1-inference-lifecycle` executes
+[DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE R2](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md).
+The runtime is implemented; the [T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger) records local assertions and pending qualification. The owner-issued R2 continuation assigns required full-suite/coverage to exact-candidate Linux CI and retains affected Windows native/CLI/transport/control qualification. Finish Windows instrumentation, one candidate PR, exact-candidate CI and distinct review; delivery remains NOT READY. Preserve the historical local role-setup incident and restricted principals. The owner-accepted 2026-10-22 lifecycle/freshness revision remains the
+governing design. Runtime qualification and a subsequent fresh provider-fixture
+demonstration remain required; historical calls do not prove complete feedback.
 
 [ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 owns readiness and next action; the [existing roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)

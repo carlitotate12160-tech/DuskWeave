@@ -6,7 +6,37 @@ fixtures. It sends no provider or target request. A passing run proves the
 connected workflow. The separately bound provider-fixture lane below replaces
 only inference; live acquisition remains a later, independently qualified slice.
 
+The [inference-lifecycle R2 successor](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md)
+is implemented and remains NOT READY while instrumented Windows qualification,
+committed-candidate CI and distinct review continue. The
+[T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger)
+records actual assertions and limits.
+Required full-suite/coverage qualification uses exact-candidate Linux CI;
+affected Windows native/CLI/transport/control checks remain mandatory. The
+v2 run/profile path is not yet qualified for demonstration. The
+existing fixture instructions below describe the previously delivered lane;
+they do not establish successor acceptance or authorize a provider request.
+
 ## What the owner should see
+
+The successor qualification uses `m1_inference_permission_v4`,
+`m1_autonomous_run_request_v2` and the provider-independent
+`autonomous-dns-fixture-v2` run profile in `controlled_fixture` mode. The run
+request explicitly selects `fixture-responses-v1` or
+`fixture-chat-completions-v1`, bound to the registered permission. Its closed
+CLI bootstrap hint is `--timing-profile reasoning-bounded-v1`; it grants no
+authority. Local protocols require no provider key and cannot fall back to a
+network provider. Numerical policy lives in
+[ADR-016](adr/ADR-016-execution-broker.md#selected-successor-timing-policy-reasoning-bounded-v1).
+
+Successor inspect/recover includes `inference_profile` and
+`recorded_decisions`. Each retained proposal keeps its actual intent,
+`disposition`, original times and separate `current_use` limitation. A
+`recorded_stale_premises` first decision defers with zero DNS; a stale second
+decision may complete historical recording. Neither grants current dispatch.
+Diagnostic-v2's optional `reported_guard` records a delivered closed guard
+report, separately from the parent's observed cause and exit code. Missing
+reports and exit 124 do not establish an exact terminating guard.
 
 One start completes two decisions and one fixture action, with no `continue`,
 copying results or intermediate approval. The terminal JSON contains:

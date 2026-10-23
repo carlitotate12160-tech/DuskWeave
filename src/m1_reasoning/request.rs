@@ -128,7 +128,10 @@ fn bytes(value: &Value, cap: usize) -> Result<Vec<u8>, &'static str> {
 pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'static str> {
     let ids = reference_ids(pack)?;
     let parsed: Value = serde_json::from_slice(pack).map_err(|_| "request_encode")?;
-    if parsed["version"] == "m1_context_pack_autonomous_v1" {
+    if matches!(
+        parsed["version"].as_str(),
+        Some("m1_context_pack_autonomous_v1" | "m1_context_pack_autonomous_v2")
+    ) {
         return autonomous::bind(pack, &parsed, &ids, repair_codes);
     }
     bind_legacy(pack, &ids, repair_codes)
@@ -203,7 +206,51 @@ pub fn verify_binding(
     {
         return Err("inference_decision_integrity");
     }
+    let parsed: Value = serde_json::from_str(pack).map_err(|_| "inference_decision_integrity")?;
+    if parsed["version"] == "m1_context_pack_autonomous_v2" {
+        return verify_successor(pack, configuration, body, expected_repair);
+    }
     verify_body_pack(pack, body, expected_repair)
+}
+
+fn verify_successor(
+    pack: &str,
+    configuration: &str,
+    body: &str,
+    repair: bool,
+) -> Result<(), &'static str> {
+    let c: Value =
+        serde_json::from_str(configuration).map_err(|_| "inference_decision_integrity")?;
+    let b: Value = serde_json::from_str(body).map_err(|_| "inference_decision_integrity")?;
+    let codes = successor_repair_codes(&c, &b, repair)?;
+    let refs: Vec<_> = codes.iter().map(String::as_str).collect();
+    let expected = bind(pack.as_bytes(), repair.then_some(refs.as_slice()))?;
+    if expected.configuration != configuration.as_bytes() || expected.body != body.as_bytes() {
+        return Err("inference_decision_integrity");
+    }
+    Ok(())
+}
+fn successor_repair_codes(c: &Value, b: &Value, repair: bool) -> Result<Vec<String>, &'static str> {
+    if !repair {
+        return Ok(Vec::new());
+    }
+    let material = if c["protocol"] == "chat-completions-v1" {
+        &b["messages"][2]["content"]
+    } else {
+        &b["input"][1]["content"]
+    };
+    let v: Value = serde_json::from_str(material.as_str().ok_or("inference_decision_integrity")?)
+        .map_err(|_| "inference_decision_integrity")?;
+    v["repair_error_codes"]
+        .as_array()
+        .ok_or("inference_decision_integrity")?
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .map(str::to_owned)
+                .ok_or("inference_decision_integrity")
+        })
+        .collect::<Result<Vec<_>, _>>()
 }
 
 fn verify_body_pack(pack: &str, body: &str, expected_repair: bool) -> Result<(), &'static str> {
@@ -218,7 +265,7 @@ fn verify_body_pack(pack: &str, body: &str, expected_repair: bool) -> Result<(),
     ok.then_some(()).ok_or("inference_decision_integrity")
 }
 
-fn input(pack: &str, codes: Option<&[&str]>) -> Result<Value, &'static str> {
+pub(super) fn input(pack: &str, codes: Option<&[&str]>) -> Result<Value, &'static str> {
     const REPAIR_CODES: &[&str] = &[
         "json_size",
         "json_structure",
@@ -246,7 +293,10 @@ fn input(pack: &str, codes: Option<&[&str]>) -> Result<Value, &'static str> {
 }
 
 fn pack_limit(value: &Value) -> usize {
-    if value["version"] == "m1_context_pack_autonomous_v1" {
+    if matches!(
+        value["version"].as_str(),
+        Some("m1_context_pack_autonomous_v1" | "m1_context_pack_autonomous_v2")
+    ) {
         8192
     } else {
         4096

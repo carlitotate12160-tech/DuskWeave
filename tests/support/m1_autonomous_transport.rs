@@ -79,6 +79,8 @@ fn provider(server: &Server, b: &BoundCall, permit: Permit) -> AutonomousProvide
     let mut h = configure(b, "synthetic-fixture-token", Duration::from_secs(20)).unwrap();
     h.url(&server.url).unwrap();
     AutonomousProvider {
+        clock: None,
+        reporter: None,
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit,
         pre_send: Box::new(|| Ok(())),
@@ -292,6 +294,9 @@ fn autonomous_control_worker() {
     let preparation = run_control::Preparation::start().unwrap();
     let binding = run_control::Binding::qualify(&request).unwrap();
     drop(preparation);
+    if mode.starts_with("successor_") {
+        return successor_clock_case(&mode, binding);
+    }
     if mode == "stalled_pre_send" {
         return stalled_pre_send_case();
     }
@@ -336,6 +341,8 @@ fn autonomous_control_worker() {
     h.url(&std::env::var("DW_AUTONOMOUS_TEST_URL").unwrap())
         .unwrap();
     let mut provider = AutonomousProvider {
+        clock: None,
+        reporter: None,
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit: p,
         pre_send: Box::new(move || {
@@ -423,6 +430,8 @@ fn stalled_pre_send_case() {
         .unwrap();
     let root = std::env::var_os("DW_M1_RUN_CONTROL_ROOT").unwrap();
     let mut provider = AutonomousProvider {
+        clock: None,
+        reporter: None,
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit: p,
         pre_send: Box::new(move || {
@@ -500,6 +509,187 @@ fn generation_and_repair_stop_after_admission_before_send_refuses_actual_marker(
         let root = private_root();
         let status = child(mode, &root).status().unwrap();
         assert!(status.success(), "{mode}");
+    }
+}
+
+fn successor_bound(repair: bool) -> BoundCall {
+    let mut pack: Value = serde_json::from_slice(&bound(false).pack).unwrap();
+    pack["version"] = json!("m1_context_pack_autonomous_v2");
+    pack["run_profile"] = json!("autonomous-dns-fixture-v2");
+    pack["inference_profile"] = json!("deepseek-responses-reasoning-v1");
+    request::bind(
+        &serde_json::to_vec(&pack).unwrap(),
+        repair.then_some(&["proposal_shape"][..]),
+    )
+    .unwrap()
+}
+
+fn successor_clock_case(mode: &str, binding: run_control::Binding) {
+    let b = successor_bound(false);
+    autonomous_binding(&b).unwrap();
+    let end = Instant::now() + Duration::from_millis(124000);
+    let permit = Permit::new(end);
+    assert!(permit.publish(Instant::now(), end));
+    run_control::read_parent(permit.clone()).unwrap();
+    let owned = permit.clone();
+    let checks = Arc::new(AtomicUsize::new(0));
+    let observed = checks.clone();
+    std::thread::spawn(move || {
+        while !owned.stopped() {
+            let started = Instant::now();
+            if binding.current().is_err() || !owned.publish(started, end) {
+                owned.stop();
+                return;
+            }
+            observed.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(400));
+        }
+    });
+    let mut handle =
+        configure(&b, "synthetic-fixture-token", Duration::from_millis(60000)).unwrap();
+    handle
+        .url(&std::env::var("DW_AUTONOMOUS_TEST_URL").unwrap())
+        .unwrap();
+    let (report, blocked_reader) = std::sync::mpsc::sync_channel(1);
+    report.try_send(ReportedGuard::CommandWatchdog).unwrap();
+    let _blocked_reader = blocked_reader;
+    let clock = CallClock::arm(permit.clone(), end, Some(report)).unwrap();
+    let mut provider = AutonomousProvider {
+        prepared: Some((handle, "synthetic-fixture-token".into(), b.digest.clone())),
+        permit,
+        pre_send: Box::new(|| Ok(())),
+        clock: Some(clock),
+        reporter: None,
+    };
+    let mut basis = Basis {
+        checks: AtomicUsize::new(0),
+        eligible: true,
+    };
+    let entered = Instant::now();
+    let result = provider.call(&b, end, &mut basis, &mut || {
+        if mode == "successor_blocked" {
+            loop {
+                std::thread::park();
+            }
+        }
+        Ok(())
+    });
+    assert_eq!(mode, "successor_response");
+    assert!(matches!(result.unwrap().admission, Admission::Accepted(_)));
+    assert!(
+        checks.load(Ordering::SeqCst) >= 40,
+        "real renewal loop did not run"
+    );
+    assert!(entered.elapsed() > Duration::from_secs(20));
+    assert!(entered.elapsed() < Duration::from_secs(60));
+    println!(
+        "successor response complete after {}ms renewals={}",
+        entered.elapsed().as_millis(),
+        checks.load(Ordering::SeqCst)
+    );
+}
+
+#[test]
+fn successor_real_duration_response_and_blocked_callback_keep_original_soft_hard_bounds() {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    for mode in ["successor_response", "successor_blocked"] {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut worker = child(mode, &private_root())
+            .env(
+                "DW_AUTONOMOUS_TEST_URL",
+                format!("http://{}/responses", listener.local_addr().unwrap()),
+            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let launch = Instant::now();
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        launch.elapsed() < Duration::from_secs(5),
+                        "successor failed to release"
+                    );
+                    assert!(worker.try_wait().unwrap().is_none());
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+        socket.set_nonblocking(false).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        let mut chunk = [0; 4096];
+        loop {
+            let n = socket.read(&mut chunk).unwrap();
+            assert!(n > 0);
+            bytes.extend_from_slice(&chunk[..n]);
+            if let Some(header_end) = bytes.windows(4).position(|v| v == b"\r\n\r\n") {
+                let header = String::from_utf8_lossy(&bytes[..header_end]);
+                let len: usize = header
+                    .lines()
+                    .find_map(|line| {
+                        let (key, value) = line.split_once(':')?;
+                        key.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse().unwrap())
+                    })
+                    .unwrap();
+                if bytes.len() >= header_end + 4 + len {
+                    break;
+                }
+            }
+        }
+        let sent = Instant::now();
+        if mode == "successor_response" {
+            std::thread::sleep(Duration::from_secs(22));
+            let body = envelope();
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            socket.write_all(&body).unwrap();
+        }
+        while worker.try_wait().unwrap().is_none() {
+            if sent.elapsed() > Duration::from_secs(64) {
+                worker.kill().unwrap();
+                worker.wait().unwrap();
+                panic!("custodian cleanup is not a product termination: {mode}");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let elapsed = sent.elapsed();
+        let output = worker.wait_with_output().unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(if mode == "successor_response" { 0 } else { 124 }),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if mode == "successor_blocked" {
+            assert!(
+                elapsed >= Duration::from_millis(60000),
+                "old outer guard terminated the call"
+            );
+            assert!(
+                elapsed <= Duration::from_millis(62200),
+                "original hard bound was reset"
+            );
+        }
+        assert!(listener.accept().is_err(), "one physical request, no retry");
+        println!(
+            "mode={mode} actual stop/complete={}ms physical_requests=1 {}",
+            elapsed.as_millis(),
+            String::from_utf8_lossy(&output.stdout)
+        );
     }
 }
 

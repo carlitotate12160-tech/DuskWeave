@@ -230,6 +230,7 @@ struct StoredDecision {
     publication_obligation: String,
 }
 const DISPOSITIONS: &[&str] = &[
+    "recorded_stale_premises",
     "validated_proposal",
     "schema_repair_exhausted",
     "unsafe_explanation",
@@ -289,7 +290,9 @@ pub fn decode(v: Value) -> Res<Decision> {
     let metadata = [
         d.kind == "reasoning_decision",
         d.producer == "cognition",
-        d.version == 1,
+        matches!(d.version, 1 | 2),
+        d.version == 1 || d.provenance.is_array(),
+        d.disposition != "recorded_stale_premises" || (d.version == 2 && d.proposal.is_some()),
         d.publication_obligation == "trajectory.reasoning_history.v1",
         ["blind", "defender_informed"].contains(&d.source_mode.as_str()),
     ];
@@ -312,7 +315,7 @@ pub fn decode(v: Value) -> Res<Decision> {
         campaign: d.campaign,
         decision: d.decision,
         producer: "cognition",
-        version: 1,
+        version: d.version,
         mission_revision: d.mission_revision,
         permission: d.permission,
         call_ids: d.call_ids,

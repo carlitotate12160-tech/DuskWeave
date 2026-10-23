@@ -155,13 +155,13 @@ class Fixture:
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20)
+        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
         for number in numbers:
             source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
             if not initial:
-                source = source.replace("CREATE SCHEMA ", "CREATE SCHEMA IF NOT EXISTS ")
-                source = source.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")
-                source = source.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ")
+                source = re.sub(r"CREATE SCHEMA (?!IF NOT EXISTS )", "CREATE SCHEMA IF NOT EXISTS ", source)
+                source = re.sub(r"CREATE TABLE (?!IF NOT EXISTS )", "CREATE TABLE IF NOT EXISTS ", source)
+                source = re.sub(r"CREATE UNIQUE INDEX (?!IF NOT EXISTS )", "CREATE UNIQUE INDEX IF NOT EXISTS ", source)
                 source = source.replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION ")
                 source = source.replace("CREATE VIEW ", "CREATE OR REPLACE VIEW ")
                 source = re.sub(r"CREATE TRIGGER\s+(\w+)\s+(.*?);", lambda m:

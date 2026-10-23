@@ -9,6 +9,7 @@ pub struct RunContextBinding {
     pub campaign_id: CampaignId,
     pub run_profile: String,
     pub execution_mode: String,
+    pub inference_profile: Option<String>,
     pub release_sha256: String,
     pub qualification_ref: Uuid,
 }
@@ -19,7 +20,14 @@ pub struct AutonomousContext {
 impl AutonomousContext {
     pub(crate) fn extend(&self, pack: &mut Value) -> Res<()> {
         self.binding.validate()?;
-        pack["version"] = json!("m1_context_pack_autonomous_v1");
+        pack["version"] = json!(if self.binding.inference_profile.is_some() {
+            "m1_context_pack_autonomous_v2"
+        } else {
+            "m1_context_pack_autonomous_v1"
+        });
+        if let Some(profile) = &self.binding.inference_profile {
+            pack["inference_profile"] = json!(profile);
+        }
         pack["execution_mode"] = json!(self.binding.execution_mode);
         pack["run_profile"] = json!(self.binding.run_profile);
         pack["pending_unknown"] = json!(["unloaded_owner_views_not_loaded_by_profile"]);
@@ -51,8 +59,29 @@ impl AutonomousContext {
             "id":"previous_decision","owner":"campaign_trajectory","source":"cognition",
             "entity":metadata["entity"],"event":metadata["event"],"recorded_at":metadata["recorded_at"],"status":"committed_historical_decision"}));
         set_trajectory_view(pack, prior.get("decision_event").cloned())?;
+        fit_optional_summary(pack)?;
         Ok(())
     }
+}
+fn fit_optional_summary(pack: &mut Value) -> Res<()> {
+    if pack["version"] != "m1_context_pack_autonomous_v2"
+        || pack["predecessor"].get("hypothesis_summary").is_none()
+    {
+        return Ok(());
+    }
+    let raw = serde_json::to_vec(pack).map_err(|_| Fail::Store("context_encode"))?;
+    let fits = raw.len() <= 8192
+        && [None, Some(&["unexpected_view_request"; 8][..])]
+            .into_iter()
+            .all(|repair| crate::m1_reasoning::request::bind(&raw, repair).is_ok());
+    if !fits {
+        pack["predecessor"]
+            .as_object_mut()
+            .ok_or(Fail::Store("context_feedback_invalid"))?
+            .remove("hypothesis_summary");
+        pack["predecessor"]["hypothesis_summary_omission"] = json!("byte_bound");
+    }
+    Ok(())
 }
 fn set_trajectory_view(pack: &mut Value, event: Option<Value>) -> Res<()> {
     let evaluated = pack["evaluated_at"].clone();
@@ -77,13 +106,17 @@ impl RunContextBinding {
         }
     }
     fn validate(&self) -> Res<()> {
-        let pair = matches!(
-            (self.run_profile.as_str(), self.execution_mode.as_str()),
-            (
-                "autonomous-dns-fixture-v1" | "autonomous-dns-provider-fixture-v1",
-                "controlled_fixture"
-            ) | ("autonomous-dns-v1", "live")
-        );
+        let pair = if self.inference_profile.is_some() {
+            self.successor_binding()
+        } else {
+            matches!(
+                (self.run_profile.as_str(), self.execution_mode.as_str()),
+                (
+                    "autonomous-dns-fixture-v1" | "autonomous-dns-provider-fixture-v1",
+                    "controlled_fixture"
+                ) | ("autonomous-dns-v1", "live")
+            )
+        };
         let valid = [
             pair,
             !self.engagement_id.0.is_nil(),
@@ -97,6 +130,18 @@ impl RunContextBinding {
             .all(|v| v)
             .then_some(())
             .ok_or(Fail::State("context_basis_mismatch"))
+    }
+
+    fn successor_binding(&self) -> bool {
+        let Some(name) = self.inference_profile.as_deref() else {
+            return false;
+        };
+        let valid = [
+            self.run_profile == crate::m1_inference_profile::RUN_PROFILE,
+            self.execution_mode == "controlled_fixture",
+            crate::m1_inference_profile::lookup(name).is_ok(),
+        ];
+        valid.into_iter().all(|v| v)
     }
 }
 
