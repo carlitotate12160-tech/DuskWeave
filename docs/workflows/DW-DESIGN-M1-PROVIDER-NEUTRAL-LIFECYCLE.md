@@ -8,6 +8,8 @@ BASE: 56039deeb2281ac6149307920ebba9d8d2ae7d3a
 STATUS: Executable DESIGN assignment; proposed amendments are not yet accepted runtime authority.
 TRACKING: UPDATE the three existing navigation/state files listed below.
 
+The R0 assignment and metadata above the Revision R1 heading are historical. Revision R1 below is the active status and tracking record.
+
 Execute this documentation assignment directly. Do not return another architecture plan or implement runtime changes.
 
 ## Outcome and authority

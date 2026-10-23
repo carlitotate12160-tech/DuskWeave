@@ -85,7 +85,7 @@ ended exit 124 with `may_send_uncertain` and no admitted second proposal;
 complete feedback is unqualified and the exact killer is unestablished. The
 owner-accepted
 [provider-neutral lifecycle/freshness revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22)
-resolves that lifecycle blocker. Bounded order: the amendment is
+defines the successor-lane requirements for that lifecycle blocker. Bounded order: the amendment is
 owner-accepted; complete this documentation candidate's checks/review; prepare
 one runtime packet through the existing CLI/owners with qualified finite
 values, DeepSeek as the first real adapter and a second local protocol fixture
