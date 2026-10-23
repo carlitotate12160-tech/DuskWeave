@@ -34,7 +34,8 @@ With no other shared-target or role-fixture owner running, in PowerShell:
 ```powershell
 Set-Location D:/DuskWeave-ci-complexity
 $env:CARGO_TARGET_DIR='D:/DuskWeave-build/rust-1.94.1/normal'
-python tests/support/m1_native_bootstrap.py --database-name dw_native_skeleton_owner_demo_20261020 --report D:/DuskWeave-build/rust-1.94.1/reports/skeleton-owner-demo -- cargo test --test m1_run_postgres -- --test-threads=1 --nocapture
+Remove-Item Env:DEEPSEEK_API_KEY -ErrorAction SilentlyContinue
+python tests/support/m1_native_bootstrap.py --database-name dw_native_skeleton_owner_demo_20261020 --report D:/DuskWeave-build/rust-1.94.1/reports/skeleton-owner-demo -- cargo test --locked --test m1_run_postgres -- --test-threads=1 --nocapture
 ```
 
 The bootstrap qualifies/reuses owned `dwpg-r3`, creates a fresh disposable database
@@ -69,6 +70,64 @@ reports a lost supervisor lease as UNKNOWN. Recovery makes at most three databas
 redelivery attempts; it does not restart phases, refill quota, repeat inference,
 reacquire DNS or promise a successful outcome. Committed history remains historical.
 An ACK outage can leave a durable result before the caller knows it committed.
+
+Withdrawal and other fenced writers distinguish a *known transaction rejection*
+from an unknown outcome. A failed exit whose receipt names the same operation
+with a serialization rejection (`rejected` / `serialization_retry`) means the
+transaction provably did not commit — for example when a concurrent
+`session_fences` epoch bump aborts the serializable writer. Only that known
+rejection may resubmit the same operation identity, bounded, after the premise
+is re-checked. `commit_unknown`, storage errors, conflicts and unreadable
+output are unknown: the durable state is not proven and resubmission must not
+be assumed. Re-minting the operation UUID turns a known rejection into a false
+new operation and must never be used to force a green result.
+
+Lease and deadline qualification also depends on the database clock agreeing
+with host monotonic time. On this Windows/WSL2 lane `clock_timestamp()` has
+been observed stepping backwards by hundreds of milliseconds, which can admit
+a lease renewal after the host-observed expiry. Such a host is UNQUALIFIED for
+final serial qualification; environment clock recovery is an owner-managed
+operations task, not a test or product change.
+
+### Start configuration and terminal diagnostics
+
+After input validation, start parses the selected configuration for core, Broker,
+Cognition, Trajectory and Terrain before opening a connection, hashing the binary
+or creating a run. Keep the existing `file` / `env-local` selection: file deployments
+do not need URL environment variables, and conflicting sources refuse. Failure
+prints only `config_owner` from the closed owner vocabulary and `error` category.
+Windows also requires `SystemRoot`; the provider profile requires the configured
+control root, whose actual ownership/ACL qualification remains at its existing boundary.
+An API key is not a start prerequisite: an offline provider-profile decision can
+durably report `live_key_missing`. Inspect/recover/stop need their existing Broker
+configuration, without the other start configurations or an inference key.
+
+The [diagnostics FIX](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md) adds optional
+`diagnostics` containing closed `m1_run_phase_diagnostic_v1` records. Each phase
+has at most one immutable record. `cause_source=child_report` labels an allowlisted
+child error; `parent_observed` labels a parent observation. `exit_code` is the actual
+signed process status, when available. Exit 124 alone does not identify a watchdog.
+`elapsed_ms` measures parent time from child launch, including bounded terminal
+observation; it does not measure a provider stage or prove an effect.
+
+`diagnostic_publication=committed` means the started phases' diagnostic records are
+available. `pending_or_unknown` means the current receipt has safe
+`pending_diagnostics` whose SQL acknowledgment is unavailable; fresh inspect may
+resolve a committed record. `unavailable` means durable diagnosis is absent or
+incomplete. Old runs are never backfilled with inferred causes. If the summary
+itself cannot be read, a local pending receipt reports `status=unavailable` and
+does not invent effect/history counts. Existing UNKNOWN effect/commit semantics
+remain; a diagnostic record cannot prove success or authorize replay.
+
+After child termination, publication may use the remaining original run budget
+even when the phase deadline has expired. If that budget or the database is
+unavailable, the pending/unavailable distinction above still applies; recovery
+does not reconstruct a missing record.
+
+A single completed provider decision followed by `owner_view_requested` remains
+distinct from `completed` with two decisions, one fixture DNS result, Terrain and
+history. Recovery is database-only and never fabricates missing diagnostics or
+continues an owner view, provider call, repair or fixture effect.
 
 Existing v1/v2 inference, manual operator-reviewed Terrain intake, M0 assessment,
 withdrawal and inspect/recovery commands remain supported. Fixture source labels

@@ -32,6 +32,9 @@ fn read_request(args: &[String]) -> Res<RunRequest> {
 
 fn start(args: &[String]) -> Res<()> {
     let q = read_request(args)?;
+    super::database_config::preflight_run(
+        q.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE,
+    )?;
     let mut store = store()?;
     let outcome = start_run(&mut store, &q, &release()?);
     let inspected = emit(&mut store, q.run_id);
@@ -70,7 +73,7 @@ fn drive_phase(
     store.renew(r)?;
     store.start_phase(r, phase)?;
     let deadline = super::m1_run_supervision::phase_deadline(run_deadline, phase);
-    let outcome = wait_phase(store, run, phase, deadline);
+    let outcome = wait_phase(store, run, phase, deadline, run_deadline);
     if outcome.is_err() {
         let _ = store.unknown(r, phase);
     }
@@ -81,11 +84,66 @@ fn wait_phase(
     run: &RunRecord,
     phase: RunPhase,
     deadline: Instant,
+    run_deadline: Instant,
 ) -> Res<()> {
     let r = run.request.run_id;
-    let child = super::m1_run_supervision::PhaseChild::launch(run, phase, deadline)?;
+    let mut child = match super::m1_run_supervision::PhaseChild::launch(run, phase, deadline) {
+        Ok(child) => child,
+        Err(error) => {
+            use duskweave::m1_run::{CauseSource, DiagnosticCause, PhaseDiagnostic};
+            let diagnostic = PhaseDiagnostic {
+                version: "m1_run_phase_diagnostic_v1".into(),
+                run_id: r,
+                phase,
+                cause: DiagnosticCause::Unavailable,
+                cause_source: CauseSource::Unavailable,
+                child_error: None,
+                exit_code: None,
+                readiness_observed: false,
+                elapsed_ms: None,
+            };
+            record_diagnostic(store, &diagnostic, run_deadline)?;
+            return Err(error);
+        }
+    };
+    let outcome = poll_phase(store, r, &child, deadline);
+    let diagnostic = child.diagnostic(r, phase);
+    let protocol_valid = child.protocol_valid();
+    drop(child);
+    // Diagnostics cannot delay stopping or qualify an uncertain phase as complete.
+    record_diagnostic(store, &diagnostic, run_deadline)?;
+    outcome?;
+    if !protocol_valid {
+        return Err(Fail::Unresolved("run_readiness_refused"));
+    }
+    store.complete_phase(r, phase)
+}
+fn record_diagnostic(
+    store: &mut PgRunStore,
+    diagnostic: &duskweave::m1_run::PhaseDiagnostic,
+    run_deadline: Instant,
+) -> Res<()> {
+    store.defer_diagnostic(diagnostic)?;
+    // Phase expiry stops the child; remaining run time may still account for it.
+    if Instant::now() < run_deadline {
+        let _ = store.publish_diagnostic(diagnostic);
+    }
+    Ok(())
+}
+fn poll_phase(
+    store: &mut PgRunStore,
+    r: Uuid,
+    child: &super::m1_run_supervision::PhaseChild,
+    deadline: Instant,
+) -> Res<()> {
     let mut renewal = Instant::now();
-    while !child.finished()? {
+    loop {
+        if let Some(status) = child.finished()? {
+            return status
+                .success()
+                .then_some(())
+                .ok_or(Fail::Unresolved("run_child_terminal_unknown"));
+        }
         if Instant::now() >= deadline {
             return Err(Fail::Unresolved("run_child_deadline"));
         }
@@ -95,7 +153,6 @@ fn wait_phase(
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    store.complete_phase(r, phase)
 }
 fn run_deadline(run: &RunRecord) -> Res<Instant> {
     let now = std::time::SystemTime::now()

@@ -14,6 +14,7 @@ pub fn refresh() {
         include_str!("../../migrations/0017_autonomous_fixture_run.sql"),
         include_str!("../../migrations/0018_issued_fixture_terrain.sql"),
         include_str!("../../migrations/0019_provider_fixture_feedback.sql"),
+        include_str!("../../migrations/0020_m1_run_diagnostics.sql"),
     ] {
         let normalized = source.replace("CREATE OR REPLACE FUNCTION ", "CREATE FUNCTION ");
         for function in normalized.split("CREATE FUNCTION ").skip(1) {

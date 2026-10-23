@@ -3,6 +3,49 @@ use std::env;
 
 const LIMIT: usize = 16 * 1024;
 
+/// Parse the selected source for every admitted owner before any run write or connection.
+/// Qualification and current authority remain with the actual owner connection.
+pub(super) fn preflight_run(provider: bool) -> Res<()> {
+    for (owner, url, file) in [
+        ("core", "DW_DATABASE_URL", "DW_DATABASE_URL_FILE"),
+        (
+            "broker",
+            "DW_INFERENCE_BROKER_DATABASE_URL",
+            "DW_INFERENCE_BROKER_DATABASE_URL_FILE",
+        ),
+        (
+            "cognition",
+            "DW_COGNITION_DATABASE_URL",
+            "DW_COGNITION_DATABASE_URL_FILE",
+        ),
+        (
+            "trajectory",
+            "DW_TRAJECTORY_DATABASE_URL",
+            "DW_TRAJECTORY_DATABASE_URL_FILE",
+        ),
+        (
+            "terrain",
+            "DW_TERRAIN_DATABASE_URL",
+            "DW_TERRAIN_DATABASE_URL_FILE",
+        ),
+    ] {
+        if let Err(error) = owner_config(url, file) {
+            println!("config_owner={owner}");
+            return Err(error);
+        }
+    }
+    #[cfg(windows)]
+    if env::var_os("SystemRoot").is_none_or(|v| v.is_empty()) {
+        println!("config_owner=system");
+        return Err(Fail::Config("missing_env"));
+    }
+    if provider && env::var_os("DW_M1_RUN_CONTROL_ROOT").is_none_or(|v| v.is_empty()) {
+        println!("config_owner=control");
+        return Err(Fail::Config("run_control_unqualified"));
+    }
+    Ok(())
+}
+
 pub(super) fn runtime_config() -> Res<postgres::Config> {
     owner_config("DW_DATABASE_URL", "DW_DATABASE_URL_FILE")
 }
