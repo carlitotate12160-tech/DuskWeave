@@ -71,7 +71,7 @@ Paths are relative to WORKSPACE; the map is an allowance, not a requirement to e
 
 Read-only: other authority/skills, migrations 0001–0020, legacy wire examples, src/m1_context.rs, src/m1_context_capacity.rs, src/postgres_terrain_view.rs, src/postgres_mission_basis.rs, other existing native/upgrade/continuation fixtures, Cargo/dependency files except the explicit ctutils lockfile correction above, and CI/quality tooling. Inspect unexpected required paths and report the exact need before widening the map.
 
-UPDATE tracking: reconcile #115 and dependency outcomes, name this candidate/next qualification honestly, retain the failed episode and seals. A candidate never records its own future merge or commit SHA. ADR-016 owns the new numerical table; enabling architecture links to it and reconciles implemented/pending statements. Preserve accepted history/anchors. No document split, duplicate roadmap, generic manager, SDK/service migration, dependency change, web UI or unrelated refactor.
+UPDATE tracking: reconcile #115 and dependency outcomes, name this candidate/next qualification honestly, retain the failed episode and seals. A candidate never records its own future merge or commit SHA. ADR-016 owns the new numerical table; enabling architecture links to it and reconciles implemented/pending statements. Preserve accepted history/anchors. No document split, duplicate roadmap, generic manager, SDK/service migration, dependency change beyond the owner-authorized ctutils correction, web UI or unrelated refactor.
 
 ## 4. Implement these decisions
 
@@ -609,3 +609,28 @@ matrices and this contiguous packet/evidence record despite advisory size
 crossings: both preserve one lifecycle contract and its incident chronology.
 Post-correction fmt, all-target Clippy, native-helper 29/29, links, structure
 and whitespace checks passed. Final committed-candidate checks remain pending.
+
+Candidate Windows ordinary and instrumented library runs then passed 44/44
+each (196.95 / 200.27 s). T2 response/blocked samples were 22,006/61,772 ms
+ordinary and 22,006/61,767 ms instrumented, one physical request each and
+55 renewals for the responses. Selected instrumented supervisor/factory tests
+passed 13/13; ordinary wire/CLI parsing passed 2/2 + 3/3. The following
+ordinary binary run had 50 passes and seven setup failures: absent restricted
+fixture configuration poisoned initialization. It is not a whole-run PASS.
+
+[CI run 39973040964](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39973040964)
+passed dependencies, metrics, structure, links, CodeQL and Geiger; mutation
+run 39973041189 also passed. SQL causal ordering assertions passed for inspect
+and repeated recovery. Its new test then failed at custodian shutdown:
+completing Decision 2 revokes the lease, so continued renewal correctly
+returned `run_stopped`. The test now joins its active-work custodian before
+terminal phase completion, preserving all order/history/effect assertions.
+No production timing, renewal policy or SQL behavior changes in this cleanup.
+Final CI/coverage and native fixture qualification remain required.
+
+The CI project audit has 103 dependencies, zero vulnerabilities and zero
+ignores. Its fresher advisory snapshot reports informational `unsound`
+RUSTSEC-2026-0386 for transitive Tokio 1.53.1. Upstream Tokio PR 8587 confirms
+the AsyncFd constructor issue; no direct AsyncFd/AsRawFd use exists in
+repository production/tests, while transitive reachability remains UNVERIFIED.
+This non-gating follow-up does not widen the ctutils-only lockfile allowance.

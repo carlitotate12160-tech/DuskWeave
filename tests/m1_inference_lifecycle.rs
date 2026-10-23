@@ -317,7 +317,10 @@ fn t1_inspection_orders_decisions_causally_when_the_first_uuid_sorts_last() {
         &mut duskweave::m1_reasoning::fixture::ProtocolFixture::new(profile).unwrap(),
     );
     assert_eq!(receipt.history, "completed");
-    run_support::broker_store()
+    let mut store = run_support::broker_store();
+    // Active-work renewal ends before the terminal phase revokes its lease.
+    lease.finish().unwrap();
+    store
         .complete_phase(rec.request.run_id, RunPhase::DecisionTwo)
         .unwrap();
     for operation in ["m1-run-inspect", "m1-run-recover", "m1-run-recover"] {
@@ -332,7 +335,6 @@ fn t1_inspection_orders_decisions_causally_when_the_first_uuid_sorts_last() {
         assert_eq!(summary["effect_count"], 1);
         assert_eq!(summary["decision_history_count"], 2);
     }
-    lease.finish().unwrap();
 }
 
 #[test]
