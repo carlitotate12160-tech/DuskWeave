@@ -280,6 +280,7 @@ pub struct AutonomousProvider {
     permit: Permit,
     pre_send: Box<dyn Fn() -> Res<()> + Send + Sync>,
     clock: Option<CallClock>,
+    admission_guard: Option<TransportGuard>,
     reporter: Option<std::sync::mpsc::SyncSender<ReportedGuard>>,
 }
 impl AutonomousProvider {
@@ -289,6 +290,7 @@ impl AutonomousProvider {
             permit,
             pre_send: Box::new(pre_send),
             clock: None,
+            admission_guard: None,
             reporter: None,
         }
     }
@@ -360,6 +362,8 @@ impl Provider for AutonomousProvider {
         let handle = configure_prepared(b, &key, until, clock.as_ref())?;
         self.prepared = Some((handle, key, b.digest.clone()));
         self.clock = clock;
+        // Replace the prior admission guard only after the next call guard is armed.
+        self.admission_guard = None;
         Ok(())
     }
     fn call(
@@ -417,6 +421,11 @@ impl AutonomousProvider {
         }
         let elapsed = clock.origin.elapsed();
         // A complete pre-soft body may screen/account under the original decision clock.
+        self.admission_guard = Some(TransportGuard::arm_admission(
+            self.permit.clone(),
+            until,
+            self.reporter.clone(),
+        )?);
         drop(clock);
         let mut received = self.admit_received(transfer, &key, until, basis)?;
         received.usage.wall_time_ms = elapsed.as_millis() as u64;

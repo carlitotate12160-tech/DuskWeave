@@ -67,8 +67,9 @@ Paths are relative to WORKSPACE; the map is an allowance, not a requirement to e
 | Contract/scenario tests | tests/m1_inference_lifecycle.rs (new), tests/m1_autonomous_permission.rs, tests/m1_autonomous_wire.rs, tests/m1_run.rs, tests/m1_run_cli.rs, tests/m1_run_postgres.rs, tests/m1_run_failures.rs, tests/m1_run_diagnostics.rs, tests/m1_provider_fixture.rs |
 | Private boundary fixtures/setup | tests/support/m1_run.rs, tests/support/m1_native_transport.rs, tests/support/m1_autonomous_transport.rs, tests/support/m1_inference_lifecycle.rs (new), tests/support/m1_native_bootstrap.py, tests/test_m1_native_helpers.py, tests/faults/m1_command_deadline.rs |
 | Generated successor wire examples | docs/contracts/fixtures/m1-inference-lifecycle-wire-v2.json (new) |
+| Owner-authorized advisory correction (2026-10-23) | Cargo.lock: ctutils 0.4.2 to 0.4.5 and its registry checksum only, for RUSTSEC-2026-0385 |
 
-Read-only: other authority/skills, migrations 0001–0020, legacy wire examples, src/m1_context.rs, src/m1_context_capacity.rs, src/postgres_terrain_view.rs, src/postgres_mission_basis.rs, other existing native/upgrade/continuation fixtures, Cargo/dependency files and CI/quality tooling. Inspect unexpected required paths and report the exact need before widening the map.
+Read-only: other authority/skills, migrations 0001–0020, legacy wire examples, src/m1_context.rs, src/m1_context_capacity.rs, src/postgres_terrain_view.rs, src/postgres_mission_basis.rs, other existing native/upgrade/continuation fixtures, Cargo/dependency files except the explicit ctutils lockfile correction above, and CI/quality tooling. Inspect unexpected required paths and report the exact need before widening the map.
 
 UPDATE tracking: reconcile #115 and dependency outcomes, name this candidate/next qualification honestly, retain the failed episode and seals. A candidate never records its own future merge or commit SHA. ADR-016 owns the new numerical table; enabling architecture links to it and reconciles implemented/pending statements. Preserve accepted history/anchors. No document split, duplicate roadmap, generic manager, SDK/service migration, dependency change, web UI or unrelated refactor.
 
@@ -291,9 +292,9 @@ STOP for a material base/authority conflict, missing required sealed dependency,
 
 **Current R2 disposition:** the owner-issued resume instruction resolves the
 legacy Windows full-suite/coverage environment assignment in section 7.
-The runtime implementation is complete in the retained worktree; Windows
-instrumented qualification, committed-candidate CI and independent review are
-still pending, so the disposition remains NOT READY. Retained bootstrap session
+The initial runtime candidate is [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116).
+Independent review found two valid defects; FIX cycle 1 and final qualification
+remain in progress, so the disposition is NOT READY. Retained bootstrap session
 a ended without credential recovery. The original R1 incident and partial test
 evidence below remain historical, not current acceptance evidence.
 
@@ -527,3 +528,84 @@ structure has advisory size warnings only. Windows instrumentation is running
 in the isolated coverage path. Commit, DRAFT PR, exact-candidate Linux
 full-suite/90%-80% coverage and the different reviewer instance remain required
 before READY FOR REVIEW.
+
+### PR review and FIX cycle 1
+
+Initial [CI run 39939070051](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39939070051)
+passed Rust all-targets and the unchanged coverage gate: 96.73%
+(12,139/12,549 production lines), every production file at least 80%.
+Its log binds the PR head and tested merge checkout; exact identities stay in
+the PR. Metrics/structure/links/CodeQL/Geiger passed. Dependencies and `ci-ok`
+failed on newly published `RUSTSEC-2026-0385`, affecting existing ctutils 0.4.2.
+The owner explicitly authorized committing/pushing their ctutils 0.4.5
+lockfile update on 2026-10-23. Only its version/checksum changed; sha2 remains
+0.11.0. A separate commit in this PR contains that correction. Local
+`cargo audit --json --no-fetch` then passed: 103 dependencies, zero
+vulnerabilities, no ignored advisories or warnings. Candidate CI must still
+verify the dependency gate against its own advisory snapshot.
+
+Initial Windows instrumentation passed 41 library, 57 binary and 16 lifecycle
+tests; response/blocked-transfer samples were 22,008 / 61,675 ms, one request
+each. These are pre-correction results, not final qualification.
+
+The distinct reviewer instance confirmed CodeRabbit's permit-watchdog lifetime
+finding and Codex's causal inspection ordering finding. It found no additional
+independent blocker. The watchdog remedy retains an original-deadline permit
+guard through screening and subsequent owner recording/accounting/publication,
+overlapping the call-clock handoff and keeping both controlled protocols
+equivalent. New network and local post-call regressions demonstrated actual
+custodian-required termination failures before the fix. Qualified ordinary
+GREEN passed four cases: network screening/recording product exits at
+1,959/1,965 ms, local post-call exits at 1,990/1,976 ms, one network request.
+The reviewer accepted that working-source delta; candidate binding and final
+CI remain required. CodeRabbit's 80% docstring warning is advisory, with no
+corresponding DuskWeave acceptance threshold.
+
+The committed deterministic reverse-UUID owner/CLI inspection regression
+failed behaviorally in [CI run 39970114164](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39970114164):
+16 lifecycle cases passed, while the ordering assertion observed the actual
+second UUID before the first. Migration 0021 now orders recorded decisions
+by their bound run phase rather than random UUID value. GREEN and final
+candidate coverage remain required. Bootstrap session b ended during the
+inactive interval; its credentials were not recovered. Databases a/b and
+all evidence remain retained. New fixture c requires a bounded owner
+disposition, requested explicitly; it has not been provisioned.
+
+Post-correction ordinary library requalification failed before transport at
+the unchanged 1,500-ms Windows ACL probe (`run_control_unqualified`); a later
+attempt also exited 124. These are retained failed runs, not PASS. Five
+bounded read-only ACL probes completed at 1,368/1,151/1,347/1,223/959 ms, but
+do not establish reliable platform qualification. Product deadlines, ACLs,
+host settings and runtime privileges are unchanged. Focused instrumentation
+is separate from the unresolved affected Windows gate. Final disposition
+remains DRAFT / NOT READY, with both review threads and the dependency gate
+tracked in PR #116. No merge, provider activation or seal is authorized.
+
+Focused post-correction Windows instrumentation passed both network cases
+(1,960 / 1,967 ms; one physical request each) and both local-protocol cases
+(post-call 2,003 / 1,995 ms; screening 1,989 / 1,982 ms). The subsequent
+real-duration T2 case refused before its physical request; the diagnostic
+rerun records child exit 101 / `run_control_unqualified` during startup
+(1.61 s), so neither attempt is timing qualification. The complete ordinary/instrumented affected gate
+remains unresolved; passing focused controls do not waive it.
+
+After extracting the completed-envelope admission boundary into `admit_raw`,
+the ordinary post-call local-protocol test passed (2,000 / 1,993 ms), but
+the selected screening case exceeded its unchanged 2,300-ms assertion.
+That failed run does not qualify the refactor or the new dependency graph;
+affected rechecks, the McCabe ratchet and final candidate CI remain required.
+
+The subsequent unchanged-bound ordinary recheck passed all four focused cases:
+local post-call 1,974/1,976 ms, local screening 1,985/1,977 ms, network
+screening/recording 1,951/1,951 ms with one physical request each. The
+cohesive-source McCabe remeasurement passed with ten retained debt items and
+zero regressions. These working-source results do not replace final-candidate
+Windows qualification or Linux SQL/coverage evidence.
+
+The distinct reviewer accepted the completed-envelope extraction and SQL
+ordering delta without another valid finding. `admit_raw` measures 23 lines /
+McCabe 6; `ProtocolFixture::call` measures 16 / 7. Retain the private test
+matrices and this contiguous packet/evidence record despite advisory size
+crossings: both preserve one lifecycle contract and its incident chronology.
+Post-correction fmt, all-target Clippy, native-helper 29/29, links, structure
+and whitespace checks passed. Final committed-candidate checks remain pending.

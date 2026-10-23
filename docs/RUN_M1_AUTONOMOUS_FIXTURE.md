@@ -7,8 +7,9 @@ connected workflow. The separately bound provider-fixture lane below replaces
 only inference; live acquisition remains a later, independently qualified slice.
 
 The [inference-lifecycle R2 successor](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md)
-is implemented and remains NOT READY while instrumented Windows qualification,
-committed-candidate CI and distinct review continue. The
+is implemented in [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116)
+and remains NOT READY while final Windows qualification, candidate CI and
+the [review corrections](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1) continue. The
 [T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger)
 records actual assertions and limits.
 Required full-suite/coverage qualification uses exact-candidate Linux CI;

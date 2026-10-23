@@ -1050,7 +1050,8 @@ BEGIN
      WHEN cd.payload->>'disposition'='validated_proposal' THEN 'requires_current_owner_admission' ELSE 'not_admitted' END,
     'history',CASE WHEN EXISTS(SELECT 1 FROM trajectory.reasoning_history h WHERE
      (h.engagement_id,h.campaign_id,h.operation_id,h.event_id,h.status,h.contract)=(cd.e,cd.c,cd.d,cd.event,'accepted',cd.payload))
-     THEN 'completed' ELSE 'pending_unknown' END) ORDER BY cd.d),'[]') FROM cognition.reasoning_decisions cd
+     THEN 'completed' ELSE 'pending_unknown' END)
+      ORDER BY CASE WHEN cd.d=x.decision_one THEN 0 ELSE 1 END),'[]') FROM cognition.reasoning_decisions cd
     WHERE (cd.e,cd.c)=(x.e,x.c) AND cd.d IN(x.decision_one,x.decision_two)));
  END IF;
  RETURN summary;

@@ -80,6 +80,7 @@ fn provider(server: &Server, b: &BoundCall, permit: Permit) -> AutonomousProvide
     h.url(&server.url).unwrap();
     AutonomousProvider {
         clock: None,
+        admission_guard: None,
         reporter: None,
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit,
@@ -342,6 +343,7 @@ fn autonomous_control_worker() {
         .unwrap();
     let mut provider = AutonomousProvider {
         clock: None,
+        admission_guard: None,
         reporter: None,
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit: p,
@@ -431,6 +433,7 @@ fn stalled_pre_send_case() {
     let root = std::env::var_os("DW_M1_RUN_CONTROL_ROOT").unwrap();
     let mut provider = AutonomousProvider {
         clock: None,
+        admission_guard: None,
         reporter: None,
         prepared: Some((h, "synthetic-fixture-token".into(), b.digest.clone())),
         permit: p,
@@ -534,8 +537,14 @@ fn successor_clock_case(mode: &str, binding: run_control::Binding) {
     let owned = permit.clone();
     let checks = Arc::new(AtomicUsize::new(0));
     let observed = checks.clone();
+    let screening = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let screening_started = screening.clone();
+    let stop_at_screening = matches!(mode, "successor_admission" | "successor_recording");
     std::thread::spawn(move || {
         while !owned.stopped() {
+            if stop_at_screening && screening_started.load(Ordering::Acquire) {
+                return;
+            }
             let started = Instant::now();
             if binding.current().is_err() || !owned.publish(started, end) {
                 owned.stop();
@@ -559,14 +568,21 @@ fn successor_clock_case(mode: &str, binding: run_control::Binding) {
         permit,
         pre_send: Box::new(|| Ok(())),
         clock: Some(clock),
+        admission_guard: None,
         reporter: None,
     };
     let mut basis = Basis {
         checks: AtomicUsize::new(0),
         eligible: true,
     };
+    let mut blocked = BlockedScreening(screening);
+    let basis: &mut dyn ProposalBasis = if mode == "successor_admission" {
+        &mut blocked
+    } else {
+        &mut basis
+    };
     let entered = Instant::now();
-    let result = provider.call(&b, end, &mut basis, &mut || {
+    let result = provider.call(&b, end, basis, &mut || {
         if mode == "successor_blocked" {
             loop {
                 std::thread::park();
@@ -574,6 +590,11 @@ fn successor_clock_case(mode: &str, binding: run_control::Binding) {
         }
         Ok(())
     });
+    if mode == "successor_recording" {
+        assert!(matches!(result.unwrap().admission, Admission::Accepted(_)));
+        let _ = blocked.recording_premises();
+        panic!("post-call recording returned without independent termination");
+    }
     assert_eq!(mode, "successor_response");
     assert!(matches!(result.unwrap().admission, Admission::Accepted(_)));
     assert!(
@@ -586,6 +607,95 @@ fn successor_clock_case(mode: &str, binding: run_control::Binding) {
         "successor response complete after {}ms renewals={}",
         entered.elapsed().as_millis(),
         checks.load(Ordering::SeqCst)
+    );
+}
+
+struct BlockedScreening(Arc<std::sync::atomic::AtomicBool>);
+impl ProposalBasis for BlockedScreening {
+    fn reference_eligible(&self, r: &str) -> bool {
+        r == "asset_0"
+    }
+    fn manifest_eligible(&self, r: &str) -> bool {
+        r == "dns_udp"
+    }
+    fn safe_explanation(&self, _: &str) -> bool {
+        true
+    }
+    fn current_authority_and_premises(&mut self) -> Res<()> {
+        self.0.store(true, Ordering::Release);
+        println!("network_admission_blocked");
+        loop {
+            std::thread::park();
+        }
+    }
+}
+
+#[test]
+fn completed_network_body_keeps_a_lease_guard_while_owner_screening_is_blocked() {
+    network_admission_stall("successor_admission");
+}
+
+#[test]
+fn completed_network_call_keeps_a_lease_guard_for_post_call_recording() {
+    network_admission_stall("successor_recording");
+}
+
+fn network_admission_stall(mode: &str) {
+    use std::process::Stdio;
+    let root = private_root();
+    let timing = &crate::m1_inference_profile::REASONING_BOUNDED;
+    let server = Server::start_with_preparation(
+        "200 OK",
+        "Content-Type: application/json\r\n",
+        envelope(),
+        Duration::from_millis(timing.phase_ms - timing.decision_ms),
+    );
+    let mut worker = child(mode, &root)
+        .env("DW_AUTONOMOUS_TEST_URL", &server.url)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    if let Err(error) = server.arrived.recv_timeout(Duration::from_secs(5)) {
+        let _ = worker.kill();
+        let output = worker.wait_with_output().unwrap();
+        panic!(
+            "network fixture did not receive the bound body: {error}: {} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let started = Instant::now();
+    let mut custodian_killed = false;
+    while worker.try_wait().unwrap().is_none() {
+        if started.elapsed() > Duration::from_secs(4) {
+            worker.kill().unwrap();
+            custodian_killed = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let elapsed = started.elapsed();
+    let output = worker.wait_with_output().unwrap();
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("network_admission_blocked"),
+        "the actual completed network body did not enter owner screening"
+    );
+    assert!(
+        !custodian_killed,
+        "lease loss left network admission unguarded"
+    );
+    assert_eq!(output.status.code(), Some(124));
+    assert!(elapsed <= Duration::from_millis(2300));
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        *server.received_body.lock().unwrap(),
+        successor_bound(false).body
+    );
+    println!(
+        "{mode} product exit={}ms physical_requests=1",
+        elapsed.as_millis()
     );
 }
 
@@ -615,7 +725,14 @@ fn successor_real_duration_response_and_blocked_callback_keep_original_soft_hard
                         launch.elapsed() < Duration::from_secs(5),
                         "successor failed to release"
                     );
-                    assert!(worker.try_wait().unwrap().is_none());
+                    if let Some(status) = worker.try_wait().unwrap() {
+                        let output = worker.wait_with_output().unwrap();
+                        panic!(
+                            "successor refused before its physical request: {mode} {status}: {} {}",
+                            String::from_utf8_lossy(&output.stdout),
+                            String::from_utf8_lossy(&output.stderr)
+                        );
+                    }
                     std::thread::sleep(Duration::from_millis(5));
                 }
                 Err(error) => panic!("{error}"),

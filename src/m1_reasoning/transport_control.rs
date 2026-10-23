@@ -89,6 +89,14 @@ impl TransportGuard {
     ) -> Result<Self, &'static str> {
         Self::arm_selected(permit, Some(soft), hard, sink)
     }
+    /// Completed wire output still needs permit-bounded owner work under the original window.
+    pub(super) fn arm_admission(
+        permit: Permit,
+        deadline: Instant,
+        sink: Option<SyncSender<ReportedGuard>>,
+    ) -> Result<Self, &'static str> {
+        Self::arm_selected(permit, None, deadline, sink)
+    }
     fn arm_selected(
         permit: Permit,
         soft: Option<Instant>,

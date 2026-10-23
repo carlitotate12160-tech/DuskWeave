@@ -92,8 +92,10 @@ existing CLI/owners with its fixed resource-policy ceilings, DeepSeek as the
 first external adapter and two local protocol fixtures. The runtime work is
 implemented, with ordinary Windows scenarios recorded in the
 [T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
-Delivery remains NOT READY pending instrumented Windows qualification,
-committed-candidate CI and distinct review. The owner-issued R2 assignment moves the
+Delivery is [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116),
+NOT READY pending final Windows qualification, candidate CI and
+[review corrections](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1).
+The owner-issued R2 assignment moves the
 required full-suite/coverage gate to exact-candidate Linux CI without widening
 local/runtime privileges. Partial focused tests do not establish T1-T9
 acceptance. After runtime qualification, prepare one freshly

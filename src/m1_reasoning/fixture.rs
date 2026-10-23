@@ -2,7 +2,7 @@
 use super::inference::{Provider, Received, Usage};
 use super::proposal::{self, ProposalBasis};
 use super::request::BoundCall;
-use super::transport_control::{CallClock, Permit, ReportedGuard};
+use super::transport_control::{CallClock, Permit, ReportedGuard, TransportGuard};
 use serde_json::{Value, json};
 use std::time::Instant;
 
@@ -100,6 +100,7 @@ struct FixtureControl {
     permit: Permit,
     reporter: Option<std::sync::mpsc::SyncSender<ReportedGuard>>,
     clock: Option<CallClock>,
+    admission_guard: Option<TransportGuard>,
 }
 impl FixtureControl {
     fn prepare(&mut self, deadline: Instant) -> Result<(), &'static str> {
@@ -108,6 +109,7 @@ impl FixtureControl {
             deadline,
             self.reporter.clone(),
         )?);
+        self.admission_guard = None;
         Ok(())
     }
     fn take_clock(&mut self, deadline: Instant) -> Result<CallClock, &'static str> {
@@ -137,6 +139,7 @@ impl ProtocolFixture {
             permit,
             reporter,
             clock: None,
+            admission_guard: None,
         });
         Ok(provider)
     }
@@ -179,21 +182,42 @@ impl ProtocolFixture {
     }
     fn receive(
         &self,
-        pack: &Value,
+        raw: &[u8],
         basis: &mut dyn ProposalBasis,
         elapsed: std::time::Duration,
     ) -> Result<Received, &'static str> {
         use crate::m1_inference_profile::Protocol;
-        let raw = fixture_envelope(self.profile.protocol, pack)?;
         let mut received = match self.profile.protocol {
-            Protocol::Responses => {
-                super::response::admit_envelope(&raw, raw.len(), elapsed, basis)?
-            }
+            Protocol::Responses => super::response::admit_envelope(raw, raw.len(), elapsed, basis)?,
             Protocol::ChatCompletions => {
-                super::chat_completions::admit_envelope(&raw, elapsed, basis)?
+                super::chat_completions::admit_envelope(raw, elapsed, basis)?
             }
         };
         received.usage.requested_model = self.profile.settings.model;
+        Ok(received)
+    }
+    /// Transfer a completed wire envelope to permit-bounded screening and owner work.
+    fn admit_raw(
+        &mut self,
+        raw: &[u8],
+        clock: Option<CallClock>,
+        deadline: Instant,
+        basis: &mut dyn ProposalBasis,
+        elapsed: std::time::Duration,
+    ) -> Result<Received, &'static str> {
+        if let Some(control) = &mut self.control {
+            control.admission_guard = Some(TransportGuard::arm_admission(
+                control.permit.clone(),
+                deadline,
+                control.reporter.clone(),
+            )?);
+        }
+        drop(clock);
+        let received = self.receive(raw, basis, elapsed)?;
+        if Instant::now() >= deadline || self.control.as_ref().is_some_and(|c| !c.permit.current())
+        {
+            return Err("current_authority_unavailable");
+        }
         Ok(received)
     }
 }
@@ -264,9 +288,9 @@ impl Provider for ProtocolFixture {
         let pack = self.request_pack(call)?;
         self.finish_call(&clock, deadline)?;
         release()?;
-        let received = self.receive(&pack, basis, start.elapsed())?;
+        let raw = fixture_envelope(self.profile.protocol, &pack)?;
         self.finish_call(&clock, deadline)?;
-        Ok(received)
+        self.admit_raw(&raw, clock, deadline, basis, start.elapsed())
     }
 }
 
@@ -274,7 +298,7 @@ impl Provider for ProtocolFixture {
 mod tests {
     use super::*;
     use std::time::Duration;
-    struct BlockedBasis;
+    struct BlockedBasis(bool);
     impl ProposalBasis for BlockedBasis {
         fn reference_eligible(&self, r: &str) -> bool {
             r == "asset_0"
@@ -286,6 +310,9 @@ mod tests {
             true
         }
         fn current_authority_and_premises(&mut self) -> Result<(), &'static str> {
+            if !self.0 {
+                return Ok(());
+            }
             println!("screening_blocked");
             loop {
                 std::thread::park();
@@ -310,14 +337,31 @@ mod tests {
             "candidates":[{"reference":"asset_0"}],"manifests":[{"reference":"dns_udp"}]}).to_string();
         let b = super::super::request::bind(pack.as_bytes(), None).unwrap();
         provider.prepare(&b, end).unwrap();
-        let _ = provider.call(&b, end, &mut BlockedBasis, &mut || {
+        let after_call = std::env::var_os("DW_CONTROLLED_PROTOCOL_AFTER_CALL").is_some();
+        let mut basis = BlockedBasis(!after_call);
+        let received = provider.call(&b, end, &mut basis, &mut || {
             println!("fixture_released");
             Ok(())
         });
+        if after_call {
+            assert!(matches!(
+                received.unwrap().admission,
+                super::super::proposal::Admission::Accepted(_)
+            ));
+            basis.0 = true;
+            let _ = basis.recording_premises();
+        }
         panic!("blocked screening returned without the independent guard");
     }
     #[test]
     fn both_controlled_protocols_terminate_blocked_screening_when_lease_and_reporter_are_lost() {
+        controlled_screening_stall(false);
+    }
+    #[test]
+    fn both_controlled_protocols_keep_the_lease_guard_for_post_call_recording() {
+        controlled_screening_stall(true);
+    }
+    fn controlled_screening_stall(after_call: bool) {
         use std::process::{Command, Stdio};
         for name in ["fixture-responses-v1", "fixture-chat-completions-v1"] {
             let mut command = Command::new(std::env::current_exe().unwrap());
@@ -326,6 +370,9 @@ mod tests {
                 if let Some(value) = std::env::var_os(key) {
                     command.env(key, value);
                 }
+            }
+            if after_call {
+                command.env("DW_CONTROLLED_PROTOCOL_AFTER_CALL", "1");
             }
             let started = Instant::now();
             let mut child = command
