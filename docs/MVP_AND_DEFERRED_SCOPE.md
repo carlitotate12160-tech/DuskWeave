@@ -179,6 +179,32 @@ parsing/receipts from execution and pre-mutation signaling; the packet records
 `connect_qualified`, `run_record` and the other named hotspots remain OPEN.
 Legacy CLI/M0 consumers remain supported.
 
+**Diagnostics FIX disposition (2026-10-22, merged):**
+[PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109) merged
+at `ef23262184965b81e7103b12371000619e503caa`, delivering
+[bounded run diagnostics](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md#12-merge-reconciliation-2026-10-22).
+The reviewed source head `83f3338` passed final Windows serial targets (31/31),
+exact-head Linux CI (nine jobs, 96.79% production coverage) and a distinct
+closure-delta review. The owner reports W32Time recovery / WSL restart before
+that run. This closes the recorded delivery gate, not platform-wide clock safety
+or a real-provider feedback claim. The old physical clock-adjustment cause and
+unrecorded stop/Terrain errors remain unverified.
+
+The root-cause amendments correct a discarded known serialization rejection,
+preserve same-operation bounded resubmission, separate feedback/supervision/withdrawal
+responsibilities, retain exact CI test entrypoints and enforce their shared
+settlement deadline. They add no production retry policy, grant, timer extension
+or changed expiry assertion. Named runtime complexity debt remains OPEN.
+
+Next: complete merge-tracking document checks/review/CI, then prepare one fresh
+real-provider fixture feedback demonstration under section 1.2. Keep DNS
+deterministic and prove that decision two consumes the original issued result
+through Terrain. Linux capture/egress and OCI application qualification remain
+separate unfinished work before live acquisition. PowerShell ACL latency,
+owner-connection optimization, internal preparation timing and owner-view
+continuation remain OPEN. Existing M0 operational consumers remain supported
+until their tested replacement and explicit disposition exist.
+
 **Measured CI baseline:** PR #71 run
 [39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),
 source head 0615fb7 (PR merge checkout 157c155), retained qualification artifact:

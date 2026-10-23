@@ -115,6 +115,91 @@ pub enum NextStep {
     Dns { seed_index: usize },
     Terminal(&'static str),
 }
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticCause {
+    ChildError,
+    ChildExit,
+    ReadinessRefused,
+    ReadinessDeadline,
+    PhaseDeadline,
+    LocalStop,
+    SupervisorUnavailable,
+    Unavailable,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CauseSource {
+    ChildReport,
+    ParentObserved,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhaseDiagnostic {
+    pub version: String,
+    pub run_id: Uuid,
+    pub phase: RunPhase,
+    pub cause: DiagnosticCause,
+    pub cause_source: CauseSource,
+    pub child_error: Option<String>,
+    pub exit_code: Option<i32>,
+    pub readiness_observed: bool,
+    pub elapsed_ms: Option<u32>,
+}
+impl PhaseDiagnostic {
+    pub fn validate(&self) -> Res<()> {
+        let expected_source = match self.cause {
+            DiagnosticCause::ChildError => CauseSource::ChildReport,
+            DiagnosticCause::Unavailable => CauseSource::Unavailable,
+            _ => CauseSource::ParentObserved,
+        };
+        let valid = [
+            self.version == "m1_run_phase_diagnostic_v1",
+            !self.run_id.is_nil(),
+            self.cause_source == expected_source,
+            self.child_error
+                .as_ref()
+                .is_none_or(|c| safe_child_error(c) == c),
+            self.cause != DiagnosticCause::ChildError || self.child_error.is_some(),
+            self.elapsed_ms.is_none_or(|ms| ms <= 150000),
+        ];
+        valid
+            .into_iter()
+            .all(|v| v)
+            .then_some(())
+            .ok_or(Fail::Input("invalid_run_diagnostic"))
+    }
+}
+
+/// Closed projection at the child pipe boundary. Unknown text is discarded.
+pub fn safe_child_error(raw: &str) -> &'static str {
+    const CODES: &[&str] = &[
+        "missing_env",
+        "invalid_database_config_mode",
+        "database_config_conflict",
+        "missing_database_url_file",
+        "database_file_platform_unqualified",
+        "invalid_dsn",
+        "non_loopback_host",
+        "missing_credentials",
+        "connect_failed",
+        "unqualified_database_waits",
+        "run_control_unqualified",
+        "run_control_stopped",
+        "run_child_refused",
+        "inference_authority_unavailable",
+        "run_inference_pending",
+        "child_failed",
+    ];
+    CODES
+        .iter()
+        .copied()
+        .find(|code| *code == raw)
+        .unwrap_or("child_failed")
+}
 /// Only typed seed IDs and the qualified manifest can select an effect; prose supplies no parameters.
 pub fn next_step(p: &Proposal, candidate_count: usize) -> Res<NextStep> {
     match p.next_intent.category {

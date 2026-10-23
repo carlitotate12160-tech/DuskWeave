@@ -1,5 +1,8 @@
 //! Independent child reaper. The deadline thread never waits on SQL or output pipes.
-use duskweave::m1_run::{PROVIDER_FIXTURE_PROFILE, RunPhase, RunRecord};
+use duskweave::m1_run::{
+    CauseSource, DiagnosticCause, PROVIDER_FIXTURE_PROFILE, PhaseDiagnostic, RunPhase, RunRecord,
+    safe_child_error,
+};
 use duskweave::{Fail, Res};
 use std::io::Read;
 use std::process::{Child, ChildStdout, Command, Stdio};
@@ -9,37 +12,91 @@ use std::time::{Duration, Instant};
 pub(super) struct PhaseChild {
     child: Arc<Mutex<Child>>,
     done: mpsc::Sender<()>,
+    observation: Arc<Mutex<Observation>>,
+    terminal: Option<mpsc::Receiver<()>>,
+    launched: Instant,
+    deadline: Instant,
+    readiness_required: bool,
+}
+#[derive(Default)]
+struct Observation {
+    cause: Option<DiagnosticCause>,
+    ready: bool,
+    error: Option<&'static str>,
+}
+impl Observation {
+    fn from_readiness(result: &Res<()>) -> Self {
+        match result {
+            Ok(()) => Self {
+                ready: true,
+                ..Self::default()
+            },
+            Err(Fail::Config("run_readiness_refused")) => Self {
+                cause: Some(DiagnosticCause::ReadinessRefused),
+                ..Self::default()
+            },
+            Err(Fail::Config(code)) => Self {
+                cause: Some(DiagnosticCause::ChildError),
+                error: Some(code),
+                ..Self::default()
+            },
+            _ => Self {
+                cause: Some(DiagnosticCause::ReadinessRefused),
+                ..Self::default()
+            },
+        }
+    }
+    fn merge(&mut self, other: Self) {
+        self.error = other.error.or(self.error);
+        if let Some(cause) = other.cause {
+            self.cause.get_or_insert(cause);
+        }
+    }
+}
+fn observed(state: &Arc<Mutex<Observation>>, cause: DiagnosticCause) {
+    if let Ok(mut state) = state.lock() {
+        state.cause.get_or_insert(cause);
+    }
 }
 impl PhaseChild {
     pub(super) fn launch(run: &RunRecord, phase: RunPhase, deadline: Instant) -> Res<Self> {
         let (mut command, control, readiness) = phase_command(run, phase)?;
+        let launched = Instant::now();
         let prepared_by = Instant::now() + super::m1_run_control::preparation_bound();
         let mut spawned = command
             .spawn()
             .map_err(|_| Fail::Store("run_child_start_unknown"))?;
         let pipe = readiness.as_ref().and_then(|_| spawned.stdout.take());
-        let owned = Self::supervise(spawned, deadline)?;
+        let mut owned = Self::supervise(spawned, deadline)?;
+        owned.launched = launched;
         owned.arm_guards(control, readiness.zip(pipe), prepared_by, deadline)?;
         Ok(owned)
     }
     fn arm_guards(
-        &self,
+        &mut self,
         control: Option<super::m1_run_control::Binding>,
         ready: Option<(String, ChildStdout)>,
         prepared_by: Instant,
         deadline: Instant,
     ) -> Res<()> {
         if let Some(binding) = control {
-            monitor_control(Arc::clone(&self.child), binding, deadline)?;
+            monitor_control(
+                Arc::clone(&self.child),
+                binding,
+                deadline,
+                Arc::clone(&self.observation),
+            )?;
         }
         if let Some((expected, pipe)) = ready {
-            monitor_readiness(
+            self.readiness_required = true;
+            self.terminal = Some(monitor_readiness(
                 Arc::clone(&self.child),
                 pipe,
                 expected,
                 prepared_by,
                 deadline,
-            )?;
+                Arc::clone(&self.observation),
+            )?);
         }
         Ok(())
     }
@@ -47,13 +104,19 @@ impl PhaseChild {
         let child = Arc::new(Mutex::new(child));
         let (done, rx) = mpsc::channel();
         let owned = Arc::clone(&child);
+        let observation = Arc::new(Mutex::new(Observation::default()));
+        let watchdog = Arc::clone(&observation);
         std::thread::Builder::new()
             .name("run_phase_deadline".into())
             .spawn(move || {
                 if rx
                     .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                     .is_err()
+                    && owned
+                        .lock()
+                        .is_ok_and(|mut c| matches!(c.try_wait(), Ok(None)))
                 {
+                    observed(&watchdog, DiagnosticCause::PhaseDeadline);
                     reap(&owned);
                 }
             })
@@ -61,21 +124,83 @@ impl PhaseChild {
                 reap(&child);
                 Fail::Store("run_supervisor_unavailable")
             })?;
-        Ok(Self { child, done })
+        Ok(Self {
+            child,
+            done,
+            observation,
+            terminal: None,
+            launched: Instant::now(),
+            deadline,
+            readiness_required: false,
+        })
     }
-    pub(super) fn finished(&self) -> Res<bool> {
+    pub(super) fn finished(&self) -> Res<Option<std::process::ExitStatus>> {
         self.child
             .lock()
             .map_err(|_| Fail::Store("run_child_unknown"))?
             .try_wait()
-            .map_err(|_| Fail::Store("run_child_unknown"))?
-            .map_or(Ok(false), |s| {
-                if s.success() {
-                    Ok(true)
-                } else {
-                    Err(Fail::Unresolved("run_child_terminal_unknown"))
+            .map_err(|_| Fail::Store("run_child_unknown"))
+    }
+    /// Stop before SQL, then drain only within the original phase deadline.
+    pub(super) fn diagnostic(&mut self, run_id: uuid::Uuid, phase: RunPhase) -> PhaseDiagnostic {
+        let exit_code = self.terminal_status();
+        let state = self.observation.lock().ok();
+        let error = state.as_ref().and_then(|s| s.error);
+        let cause = state.as_ref().and_then(|s| s.cause).unwrap_or_else(|| {
+            if error.is_some() {
+                DiagnosticCause::ChildError
+            } else {
+                DiagnosticCause::ChildExit
+            }
+        });
+        let cause_source = match cause {
+            DiagnosticCause::ChildError => CauseSource::ChildReport,
+            DiagnosticCause::Unavailable => CauseSource::Unavailable,
+            _ => CauseSource::ParentObserved,
+        };
+        PhaseDiagnostic {
+            version: "m1_run_phase_diagnostic_v1".into(),
+            run_id,
+            phase,
+            cause,
+            cause_source,
+            child_error: error.map(str::to_owned),
+            exit_code,
+            readiness_observed: state.as_ref().is_some_and(|s| s.ready),
+            elapsed_ms: Some(self.launched.elapsed().as_millis().min(150000) as u32),
+        }
+    }
+    fn terminal_status(&mut self) -> Option<i32> {
+        let _ = self.done.send(());
+        if matches!(self.finished(), Ok(None)) {
+            let cause = if Instant::now() >= self.deadline {
+                DiagnosticCause::PhaseDeadline
+            } else {
+                DiagnosticCause::SupervisorUnavailable
+            };
+            observed(&self.observation, cause);
+        }
+        reap(&self.child);
+        let exit_code = self.finished().ok().flatten().and_then(|s| s.code());
+        if let Some(terminal) = self.terminal.take() {
+            // Reader EOF and the deadline-qualified readiness verdict both settle
+            // before snapshot/acceptance. Neither receives a new grace clock.
+            for _ in 0..2 {
+                if terminal
+                    .recv_timeout(self.deadline.saturating_duration_since(Instant::now()))
+                    .is_err()
+                {
+                    observed(&self.observation, DiagnosticCause::Unavailable);
+                    break;
                 }
-            })
+            }
+        }
+        exit_code
+    }
+    pub(super) fn protocol_valid(&self) -> bool {
+        self.observation.lock().is_ok_and(|s| {
+            s.cause.is_none() && s.error.is_none() && (!self.readiness_required || s.ready)
+        })
     }
 }
 fn phase_command(
@@ -134,14 +259,58 @@ fn install_provider_environment(c: &mut Command, phase: RunPhase) {
 
 /// A dedicated reader owns the fixed child's stdout pipe so neither the
 /// watchdog nor the parent's SQL loop performs a synchronous pipe read.
-fn read_ready(mut pipe: impl Read, expected: &str, verdict: &mpsc::Sender<Res<()>>) {
-    let _ = verdict.send(await_ready(&mut pipe, expected));
+fn read_ready(pipe: impl Read, expected: &str, verdict: &mpsc::Sender<Res<()>>) -> Observation {
+    let mut pipe = pipe.take(16384);
+    let first = await_ready(&mut pipe, expected);
+    let mut state = Observation::from_readiness(&first);
+    let _ = verdict.send(first);
+    if state.ready {
+        match terminal_frame(&mut pipe) {
+            Ok(code) => state.error = code,
+            Err(_) => state.cause = Some(DiagnosticCause::ReadinessRefused),
+        }
+    }
     // Keep draining so the child's terminal/error line cannot hit a closed pipe.
-    let mut chunk = [0u8; 512];
-    let mut terminal = pipe.take(16384);
-    while terminal.read(&mut chunk).map(|n| n > 0).unwrap_or(false) {}
+    if !matches!(std::io::copy(&mut pipe, &mut std::io::sink()), Ok(0)) || pipe.limit() == 0 {
+        state.cause = Some(DiagnosticCause::ReadinessRefused);
+    }
+    state
 }
 fn await_ready(pipe: &mut impl Read, expected: &str) -> Res<()> {
+    let frame = read_frame(pipe)?;
+    if frame == format!("{expected}\n").as_bytes() {
+        return Ok(());
+    }
+    if let Some(code) = error_frame(&frame) {
+        return Err(Fail::Config(code));
+    }
+    Err(Fail::Config("run_readiness_refused"))
+}
+fn error_frame(frame: &[u8]) -> Option<&'static str> {
+    let text = std::str::from_utf8(frame).ok()?;
+    let code = text.strip_prefix("error=")?.strip_suffix('\n')?;
+    // Framing syntax is exact; unknown code content is never reflected.
+    if code.is_empty() || code.bytes().any(|b| b.is_ascii_whitespace()) {
+        return None;
+    }
+    Some(safe_child_error(code))
+}
+fn terminal_frame(pipe: &mut impl Read) -> Res<Option<&'static str>> {
+    let mut first = [0u8; 1];
+    if pipe
+        .read(&mut first)
+        .map_err(|_| Fail::Config("run_readiness_refused"))?
+        == 0
+    {
+        return Ok(None);
+    }
+    let mut prefixed = std::io::Cursor::new(first).chain(pipe);
+    let frame = read_frame(&mut prefixed)?;
+    error_frame(&frame)
+        .map(Some)
+        .ok_or(Fail::Config("run_readiness_refused"))
+}
+fn read_frame(pipe: &mut impl Read) -> Res<Vec<u8>> {
     let mut frame = Vec::with_capacity(128);
     for _ in 0..128 {
         let mut byte = [0u8; 1];
@@ -149,9 +318,7 @@ fn await_ready(pipe: &mut impl Read, expected: &str) -> Res<()> {
             .map_err(|_| Fail::Config("run_readiness_refused"))?;
         frame.push(byte[0]);
         if byte[0] == b'\n' {
-            return (frame == format!("{expected}\n").as_bytes())
-                .then_some(())
-                .ok_or(Fail::Config("run_readiness_refused"));
+            return Ok(frame);
         }
     }
     Err(Fail::Config("run_readiness_refused"))
@@ -164,24 +331,62 @@ fn monitor_readiness(
     expected: String,
     prepared_by: Instant,
     deadline: Instant,
-) -> Res<()> {
+    observation: Arc<Mutex<Observation>>,
+) -> Res<mpsc::Receiver<()>> {
     let prepared_by = prepared_by.min(deadline);
     let (verdict, rx) = mpsc::channel();
+    let (finished, terminal) = mpsc::channel();
+    let reader_finished = finished.clone();
+    let reader = Arc::clone(&observation);
     std::thread::Builder::new()
         .name("run_readiness_reader".into())
-        .spawn(move || read_ready(pipe, &expected, &verdict))
+        .spawn(move || {
+            let result = read_ready(pipe, &expected, &verdict);
+            if let Ok(mut state) = reader.lock() {
+                state.merge(result);
+            }
+            let _ = reader_finished.send(());
+        })
         .map_err(|_| Fail::Config("run_control_unqualified"))?;
     std::thread::Builder::new()
         .name("run_readiness_watchdog".into())
         .spawn(move || {
-            if !ready_before(&rx, prepared_by) {
-                // Cancellation and reaping fit inside the original launch bound.
-                cooperative_stop(&child, prepared_by);
-            }
+            readiness_watch(&child, &rx, prepared_by, &observation);
+            let _ = finished.send(());
         })
         .map_err(|_| Fail::Config("run_control_unqualified"))?;
-    Ok(())
+    Ok(terminal)
 }
+fn readiness_watch(
+    child: &Arc<Mutex<Child>>,
+    rx: &mpsc::Receiver<Res<()>>,
+    prepared_by: Instant,
+    observation: &Arc<Mutex<Observation>>,
+) {
+    let wait = prepared_by
+        .saturating_duration_since(Instant::now())
+        .saturating_sub(Duration::from_millis(50));
+    let result = match rx.recv_timeout(wait) {
+        Ok(result) if Instant::now() < prepared_by => Observation::from_readiness(&result),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Observation {
+            cause: Some(DiagnosticCause::ReadinessRefused),
+            ..Observation::default()
+        },
+        _ => Observation {
+            cause: Some(DiagnosticCause::ReadinessDeadline),
+            ..Observation::default()
+        },
+    };
+    let ready = result.ready;
+    if let Ok(mut state) = observation.lock() {
+        state.ready = ready;
+        state.merge(result);
+    }
+    if !ready {
+        cooperative_stop(child, prepared_by);
+    }
+}
+#[cfg(test)]
 fn ready_before(rx: &mpsc::Receiver<Res<()>>, prepared_by: Instant) -> bool {
     matches!(
         rx.recv_timeout(
@@ -196,6 +401,7 @@ fn monitor_control(
     child: Arc<Mutex<Child>>,
     binding: super::m1_run_control::Binding,
     deadline: Instant,
+    observation: Arc<Mutex<Observation>>,
 ) -> Res<()> {
     std::thread::Builder::new()
         .name("run_local_control".into())
@@ -209,6 +415,7 @@ fn monitor_control(
                     return;
                 }
                 if binding.current().is_err() {
+                    observed(&observation, DiagnosticCause::LocalStop);
                     cooperative_stop(&child, deadline);
                     return;
                 }
@@ -282,6 +489,177 @@ pub(super) fn phase_deadline(run: Instant, phase: RunPhase) -> Instant {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn parsed(bytes: &[u8]) -> Observation {
+        let (tx, _rx) = mpsc::channel();
+        read_ready(std::io::Cursor::new(bytes), "expected", &tx)
+    }
+    #[test]
+    fn terminal_projection_is_closed_before_and_after_ready_and_rejects_extra_frames() {
+        for prefix in ["", "expected\n"] {
+            for code in ["missing_env", "run_child_refused", "run_inference_pending"] {
+                let observed = parsed(format!("{prefix}error={code}\n").as_bytes());
+                assert_eq!(observed.error, Some(code));
+                assert_eq!(observed.ready, !prefix.is_empty());
+            }
+            let state = parsed(format!("{prefix}error=synthetic-sensitive-sentinel\n").as_bytes());
+            assert_eq!(state.error, Some("child_failed"));
+            for bad in [
+                "error=missing_env\r\n",
+                "error=missing_env",
+                "error=missing_env \n",
+                "error=\n",
+                "{}\n",
+                "error=missing_env\nextra\n",
+            ] {
+                let state = parsed(format!("{prefix}{bad}").as_bytes());
+                assert_eq!(state.cause, Some(DiagnosticCause::ReadinessRefused));
+            }
+            let mut bad = format!("{prefix}error=").into_bytes();
+            bad.extend_from_slice(&[0xff, b'\n']);
+            assert_eq!(parsed(&bad).cause, Some(DiagnosticCause::ReadinessRefused));
+            let oversize = format!("{prefix}error={}\n", "x".repeat(128));
+            assert_eq!(
+                parsed(oversize.as_bytes()).cause,
+                Some(DiagnosticCause::ReadinessRefused)
+            );
+        }
+        assert!(parsed(b"expected\n").ready);
+        assert_eq!(parsed(b"expected\n").error, None);
+    }
+    fn spawn_terminal(frame: &str, exit: i32) -> Child {
+        #[cfg(windows)]
+        let mut command = Command::new(
+            std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
+                .join("System32/WindowsPowerShell/v1.0/powershell.exe"),
+        );
+        #[cfg(windows)]
+        command.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!("[Console]::Write('{frame}'); exit {exit}"),
+        ]);
+        #[cfg(not(windows))]
+        let mut command = Command::new("/bin/sh");
+        #[cfg(not(windows))]
+        command.args(["-c", &format!("printf '{frame}'; exit {exit}")]);
+        command.env_remove("DEEPSEEK_API_KEY");
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap()
+    }
+    fn terminal_child(frame: &str, exit: i32) -> PhaseChild {
+        let mut spawned = spawn_terminal(frame, exit);
+        let pipe = spawned.stdout.take().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut child = PhaseChild::supervise(spawned, deadline).unwrap();
+        child
+            .arm_guards(None, Some(("expected".into(), pipe)), deadline, deadline)
+            .unwrap();
+        while child.finished().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        child
+    }
+    #[test]
+    fn immediate_exit_reader_race_retains_code_and_exit_124_does_not_identify_a_watchdog() {
+        for _ in 0..12 {
+            let mut child = terminal_child("error=missing_env\n", 1);
+            let d = child.diagnostic(uuid::Uuid::from_u128(1), RunPhase::DecisionOne);
+            assert_eq!(d.child_error.as_deref(), Some("missing_env"));
+            assert_eq!(d.exit_code, Some(1));
+            assert_eq!(d.cause_source, CauseSource::ChildReport);
+            assert!(!child.protocol_valid());
+        }
+        let mut child = terminal_child("", 124);
+        let d = child.diagnostic(uuid::Uuid::from_u128(1), RunPhase::DecisionOne);
+        assert_eq!(d.exit_code, Some(124));
+        assert_eq!(d.child_error, None);
+        assert_ne!(d.cause, DiagnosticCause::ReadinessDeadline);
+        assert_ne!(d.cause, DiagnosticCause::PhaseDeadline);
+        #[cfg(windows)]
+        {
+            let mut child = terminal_child("", -1073741819);
+            assert_eq!(
+                child
+                    .diagnostic(uuid::Uuid::from_u128(1), RunPhase::DecisionOne)
+                    .exit_code,
+                Some(-1073741819)
+            );
+        }
+    }
+    #[test]
+    fn reader_completion_without_a_watchdog_completion_cannot_finalize_success() {
+        let mut child = terminal_child("expected\n", 0);
+        // Synthetic completion ordering: reader has finished, watchdog is still pending.
+        // Keep its sender alive so absence is a wait, not a disconnect.
+        let (finished, rx) = mpsc::channel();
+        finished.send(()).unwrap();
+        child.terminal = Some(rx);
+        child.deadline = Instant::now() + Duration::from_millis(30);
+        let diagnostic = child.diagnostic(uuid::Uuid::from_u128(1), RunPhase::DecisionOne);
+        assert_eq!(diagnostic.cause, DiagnosticCause::Unavailable);
+        assert!(!child.protocol_valid());
+        drop(finished);
+    }
+    #[test]
+    fn gated_late_watchdog_rejects_exact_ready_and_successful_exit_before_snapshot() {
+        let mut spawned = spawn_terminal("expected\n", 0);
+        let pipe = spawned.stdout.take().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut child = PhaseChild::supervise(spawned, deadline).unwrap();
+        child.readiness_required = true;
+        let (verdict, rx) = mpsc::channel();
+        let (finished, terminal) = mpsc::channel();
+        child.terminal = Some(terminal);
+        let result = read_ready(pipe, "expected", &verdict);
+        assert!(result.ready);
+        child.observation.lock().unwrap().merge(result);
+        finished.send(()).unwrap();
+        while child.finished().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(child.finished().unwrap().unwrap().success());
+        assert!(
+            !child.protocol_valid(),
+            "reader alone cannot authorize acceptance"
+        );
+        let (gate, held) = mpsc::channel();
+        let observed = Arc::clone(&child.observation);
+        let process = Arc::clone(&child.child);
+        let prepared_by = Instant::now() - Duration::from_millis(1);
+        let watchdog = std::thread::spawn(move || {
+            held.recv().unwrap();
+            readiness_watch(&process, &rx, prepared_by, &observed);
+            finished.send(()).unwrap();
+        });
+        // The queued exact frame is now processed after its original readiness bound.
+        gate.send(()).unwrap();
+        let diagnostic = child.diagnostic(uuid::Uuid::from_u128(1), RunPhase::DecisionOne);
+        watchdog.join().unwrap();
+        assert_eq!(diagnostic.exit_code, Some(0));
+        assert_eq!(diagnostic.cause, DiagnosticCause::ReadinessDeadline);
+        assert!(!diagnostic.readiness_observed);
+        assert!(!child.protocol_valid());
+    }
+    #[test]
+    fn child_terminal_error_before_ready_preserves_the_safe_code() {
+        let (tx, rx) = mpsc::channel();
+        read_ready(
+            std::io::Cursor::new(b"error=missing_env\n"),
+            "expected",
+            &tx,
+        );
+        assert!(matches!(
+            rx.recv().unwrap(),
+            Err(Fail::Config("missing_env"))
+        ));
+    }
     #[test]
     fn queued_late_ready_eof_and_refusal_cannot_disarm_the_original_guard() {
         let (tx, rx) = mpsc::channel();
@@ -431,6 +809,7 @@ mod tests {
             "never sent".to_string(),
             Instant::now() + Duration::from_millis(150),
             Instant::now() + Duration::from_secs(60),
+            Arc::new(Mutex::new(Observation::default())),
         )
         .unwrap();
         std::thread::sleep(Duration::from_millis(400));

@@ -45,23 +45,27 @@ Current seal:
 
 Current engineering state:
 
-Pinned merged baseline: Walking Skeleton [PR #74](https://github.com/carlitotate12160-tech/DuskWeave/pull/74)
-(`94c240b`) and tracking [PR #106](https://github.com/carlitotate12160-tech/DuskWeave/pull/106)
-(`2b807d6`), following accepted autonomous DESIGN
-[PR #71](https://github.com/carlitotate12160-tech/DuskWeave/pull/71) (`dca2564`)
-and CI tooling [PR #72](https://github.com/carlitotate12160-tech/DuskWeave/pull/72) (`ca7d4ef`).
-Active implementation: [DW-IMPLEMENT-M1-PROVIDER-FIXTURE-FEEDBACK](workflows/DW-IMPLEMENT-M1-PROVIDER-FIXTURE-FEEDBACK.md),
-the separately bound provider-fixture lane through production `m1-run`, restricted
-owner persistence and durable feedback/history. Local work is not a merged delivery;
-live GitHub state and current-candidate CI remain to be reconciled.
+Pinned merged baseline: diagnostics [PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109)
+(`ef23262184965b81e7103b12371000619e503caa`), after provider-fixture
+[PR #107](https://github.com/carlitotate12160-tech/DuskWeave/pull/107) (`2af7d01`)
+and tracking [PR #108](https://github.com/carlitotate12160-tech/DuskWeave/pull/108)
+(`b439661`). Controlled fixture and real-provider fixture wiring, restricted owner
+persistence, STOP, durable diagnostics and database-only recovery are implemented.
+
+Active documentation delivery `docs/reconcile-pr109` records that merge and final
+qualification without changing runtime, authority or seals. Complete its document
+checks/review and required current-head CI, then prepare one fresh real-provider
+fixture feedback demonstration through `m1-run`, with no intermediate operator
+input. Fresh explicit disclosure, current approved terms/window and the infrastructure
+key remain prerequisites. Historical provider calls do not prove complete feedback.
+
 [ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 owns readiness and next action; the [existing roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
-owns sequencing/debt. The owner accepted section 7 / ADR-016 section 4a exact text
-`0615fb72c946fd6abf0823692be621096091377c` on 2026-10-19 for this implementation.
-No real LLM/live acquisition qualification, target permission or M1 completion is implied.
-Provider contact requires offline deployment qualification and fresh explicit
-disclosure. The real episode is NOT EXECUTED. Linux live-boundary preparation may
-proceed independently.
+owns sequencing/debt. Section 7 / ADR-016 section 4a exact text
+`0615fb72c946fd6abf0823692be621096091377c` was owner-accepted on 2026-10-19
+for Walking Skeleton implementation. No real LLM/live acquisition qualification,
+target permission or M1 completion is implied. Linux live-boundary preparation
+may proceed separately; it does not block the controlled provider-fixture demo.
 
 Current design document:
 

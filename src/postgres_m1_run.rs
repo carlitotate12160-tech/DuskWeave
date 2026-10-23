@@ -8,10 +8,14 @@ use uuid::Uuid;
 
 pub struct PgRunStore {
     client: Client,
+    pending_diagnostics: Vec<Value>,
 }
 impl PgRunStore {
     pub fn new(client: Client) -> Self {
-        Self { client }
+        Self {
+            client,
+            pending_diagnostics: Vec::new(),
+        }
     }
     pub fn start(&mut self, q: &RunRequest, release: &str) -> Res<bool> {
         q.validate()?;
@@ -81,11 +85,59 @@ impl PgRunStore {
         Ok(())
     }
     pub fn summary(&mut self, r: Uuid) -> Res<Value> {
+        let pending: Vec<_> = self
+            .pending_diagnostics
+            .iter()
+            .filter(|v| v["run_id"] == r.to_string())
+            .cloned()
+            .collect();
+        let result = self.durable_summary(r);
+        let mut summary = match result {
+            Ok(summary) => summary,
+            Err(_) if !pending.is_empty() => serde_json::json!({
+                "kind":"m1_autonomous_run_receipt_v1", "run_id":r,
+                "status":"unavailable", "diagnostics":[],
+            }),
+            Err(error) => return Err(error),
+        };
+        if !pending.is_empty() {
+            summary["pending_diagnostics"] = pending.into();
+            summary["diagnostic_publication"] = "pending_or_unknown".into();
+        }
+        Ok(summary)
+    }
+    fn durable_summary(&mut self, r: Uuid) -> Res<Value> {
         self.client
             .query_one("SELECT execution.run_summary($1)", &[&r])
             .map_err(|_| Fail::Store("run_inspect_unknown"))?
             .try_get(0)
             .map_err(|_| Fail::Store("run_decode"))
+    }
+    pub fn publish_diagnostic(&mut self, diagnostic: &crate::m1_run::PhaseDiagnostic) -> Res<()> {
+        self.defer_diagnostic(diagnostic)?;
+        let raw = serde_json::to_value(diagnostic)
+            .map_err(|_| Fail::Store("run_diagnostic_unavailable"))?;
+        self.client
+            .execute("SELECT execution.run_phase_diagnostic($1)", &[&raw])
+            .map_err(|_| Fail::Unresolved("run_diagnostic_pending"))?;
+        self.pending_diagnostics.retain(|v| v != &raw);
+        Ok(())
+    }
+    pub fn defer_diagnostic(&mut self, diagnostic: &crate::m1_run::PhaseDiagnostic) -> Res<()> {
+        diagnostic.validate()?;
+        let raw = serde_json::to_value(diagnostic)
+            .map_err(|_| Fail::Store("run_diagnostic_unavailable"))?;
+        if let Some(old) = self
+            .pending_diagnostics
+            .iter()
+            .find(|v| v["run_id"] == raw["run_id"] && v["phase"] == raw["phase"])
+        {
+            return (old == &raw)
+                .then_some(())
+                .ok_or(Fail::State("run_diagnostic_conflict"));
+        }
+        self.pending_diagnostics.push(raw);
+        Ok(())
     }
     pub fn first_proposal(&mut self, record: &RunRecord) -> Res<Proposal> {
         let q = &record.request.context.mission;
