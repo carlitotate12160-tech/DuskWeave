@@ -63,6 +63,38 @@ used to demonstrate this campaign loop, not a replacement product or fixed strat
 | Complete cognitive M1 | CT, bounded synthesis/evolution, applicable campaign-local feedback and minimum report under the M1 contract. Two LLM calls or DNS/HEAD alone do not seal M1. |
 | After M1 | Bounded access/authorized credential validation through its owning accepted contracts and current permission. |
 
+**Multi-provider direction and lifecycle blocker (owner-directed, 2026-10-22).**
+Provider connection, protocol implementation, model profile and routing policy
+are separate: DeepSeek is the presently available provider; OpenAI, Anthropic
+Claude, Mistral and OpenRouter are planned adapters. The future user-facing
+flow selects a supported service, provides that service's API key, selects a
+compatible model, then uses the saved connection for a campaign; secret values
+stay in scoped backend custody with only opaque credential references
+persisted, and cross-user/organization substitution is prohibited. OpenRouter
+is one aggregated provider identity exposing individually qualified Qwen, GLM,
+Kimi and other model profiles; campaign setup approves the aggregator plus a
+bounded eligible-upstream set and applicable data policies, and each run pins
+one upstream with enforced `provider.only`, `allow_fallbacks = false` and
+`require_parameters = true` controls. Each provider is qualified and reported
+individually; compatible model profiles reuse a qualified wire protocol
+without changing domain behavior, and automatic failover is a separately
+qualified policy, not implied by multi-provider support. The 2026-10-22
+provider-fixture run `4a4ce477-5734-4b92-bb6a-dce74f430114` established the
+first real decision and committed fixture DNS/Terrain but second inference
+ended exit 124 with `may_send_uncertain` and no admitted second proposal;
+complete feedback is unqualified and the exact killer is unestablished. The
+owner-accepted
+[provider-neutral lifecycle/freshness revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22)
+defines the successor-lane requirements for that lifecycle blocker. Bounded order: the amendment is
+owner-accepted; complete this documentation candidate's checks/review; prepare
+one runtime packet through the existing CLI/owners with qualified finite
+values, DeepSeek as the first real adapter and a second local protocol fixture
+proving interchangeability; after runtime qualification, prepare one freshly
+authorized real DeepSeek fixture demonstration with no inherited
+consent/window; then add OpenAI/Claude/Mistral adapters and one OpenRouter
+adapter individually through the same contract suite when their credentials
+and qualification are available.
+
 Manual observation input remains optional with its original source label. Freeze
 one-use demo helper development; historical episodes and failures remain evidence,
 never reusable consent. No tracking-document family, fixed PR count, daemon,
@@ -196,8 +228,12 @@ responsibilities, retain exact CI test entrypoints and enforce their shared
 settlement deadline. They add no production retry policy, grant, timer extension
 or changed expiry assertion. Named runtime complexity debt remains OPEN.
 
-Next: complete merge-tracking document checks/review/CI, then prepare one fresh
-real-provider fixture feedback demonstration under section 1.2. Keep DNS
+Next: complete the owner-accepted provider-neutral lifecycle/freshness
+revision's documentation checks/review under section 1.2, then issue one
+bounded runtime packet and re-attempt the provider-fixture feedback
+demonstration under fresh disclosure/terms/window; the 2026-10-22 run recorded
+the first decision and committed fixture Terrain but second inference ended
+exit 124 with `may_send_uncertain`. Keep DNS
 deterministic and prove that decision two consumes the original issued result
 through Terrain. Linux capture/egress and OCI application qualification remain
 separate unfinished work before live acquisition. PowerShell ACL latency,
