@@ -289,6 +289,53 @@ fn t3_successor_stale_record_retains_the_actual_observe_intent() {
 }
 
 #[test]
+fn t1_inspection_orders_decisions_causally_when_the_first_uuid_sorts_last() {
+    use duskweave::m1_run::RunPhase;
+    let _guard = native::db();
+    run_support::refresh();
+    let q = lifecycle::registered(0xe620, "fixture-responses-v1");
+    let original = run_support::start_only(&q);
+    let first = Uuid::from_u128(u128::MAX - 0xe620);
+    let second = Uuid::from_u128(0xe620);
+    // Private setup selects the adversarial UUID arrangement before any phase or owner input.
+    native::admin()
+        .execute(
+            "UPDATE execution.autonomous_runs SET decision_one=$1,decision_two=$2 WHERE run_id=$3",
+            &[&first, &second, &original.request.run_id],
+        )
+        .unwrap();
+    let rec = run_support::broker_store()
+        .inspect(original.request.run_id)
+        .unwrap();
+    let lease = run_support::LeaseCustodian::start(&rec, run_support::broker_store());
+    lifecycle::seed_claim(&rec, 60);
+    let prepared = lifecycle::prepare(&rec, RunPhase::DecisionTwo);
+    let profile = duskweave::m1_inference_profile::lookup("fixture-responses-v1").unwrap();
+    let receipt = lifecycle::infer(
+        &rec,
+        &prepared,
+        &mut duskweave::m1_reasoning::fixture::ProtocolFixture::new(profile).unwrap(),
+    );
+    assert_eq!(receipt.history, "completed");
+    run_support::broker_store()
+        .complete_phase(rec.request.run_id, RunPhase::DecisionTwo)
+        .unwrap();
+    for operation in ["m1-run-inspect", "m1-run-recover", "m1-run-recover"] {
+        let (ok, summary) = run_support::cli(operation, "--run", q["run_id"].as_str().unwrap());
+        assert!(ok, "{summary}");
+        assert_eq!(
+            summary["recorded_decisions"][0]["decision"],
+            json!(first),
+            "inspection must order the actual first decision before feedback, independent of UUID sort"
+        );
+        assert_eq!(summary["recorded_decisions"][1]["decision"], json!(second));
+        assert_eq!(summary["effect_count"], 1);
+        assert_eq!(summary["decision_history_count"], 2);
+    }
+    lease.finish().unwrap();
+}
+
+#[test]
 fn t3_real_owner_ttl_expiry_and_integrity_controls_record_without_another_dns() {
     use duskweave::m1_reasoning::proposal::ProposalBasis;
     use duskweave::m1_run::RunPhase;
