@@ -81,6 +81,8 @@ class QualificationController(unittest.TestCase):
             if index < 2:
                 self.assertNotIn("CARGO_LLVM_COV_TARGET_DIR", env)
             else:
+                self.assertIn("--no-report", args)
+                self.assertNotIn("--no-clean", args)
                 self.assertEqual(env["CARGO_LLVM_COV_TARGET_DIR"], qualification.COVERAGE)
         self.assertEqual(self.result()["status"], "PASS")
         self.fixture.sql.assert_not_called()

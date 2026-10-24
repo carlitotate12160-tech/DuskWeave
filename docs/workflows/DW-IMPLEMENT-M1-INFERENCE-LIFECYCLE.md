@@ -1043,9 +1043,9 @@ without a new grant. Pausing the owned child produced readiness_deadline at
 ### Qualification plan and current evidence
 
 The [single command](../RUN_M1_AUTONOMOUS_FIXTURE.md#successor-windows-qualification)
-uses fresh `dw_native_lifecycle_qualification_20261024c` and reports under
-`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled`.
-Both names were absent at live preflight. Owned dwpg-r3 was running PostgreSQL
+now uses amendment-authorized `dw_native_lifecycle_qualification_20261024d` and
+`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled-flags`.
+Both new names were rechecked absent; the prior `20261024c` fixture/report is retained. Owned dwpg-r3 was running PostgreSQL
 17.11 on loopback 5432 with the issued digest. Rust 1.94.1 MSVC and
 cargo-llvm-cov 0.9.1 are installed. One owner holds the ordinary and coverage
 targets and cluster-role fixtures for the complete serial sequence. Only
@@ -1061,7 +1061,7 @@ attempts one read-only fresh-fixture snapshot through existing provisioning
 access. Snapshot unavailability never replaces the original failure. No replay,
 SQL polling, provider/target contact or automatic retry is introduced.
 
-| Required Windows action | Required full result | Current disposition |
+| Prior attempt on b440e2c | Required full result | Retained disposition |
 | --- | --- | --- |
 | Ordinary binary | 57 passed, zero failed/ignored/filtered | PASS; test duration 22.58 s |
 | Ordinary lifecycle | 18 passed, zero failed/ignored/filtered | PASS; test duration 328.22 s |
@@ -1083,8 +1083,8 @@ module wiring and one-way wire -> lifecycle dependency. Q3 simplicity PASS:
 the sampler is removed; the qualifier has a fixed plan and directly reuses
 Fixture, with no runner framework. Q4 single truth PASS: existing assertion
 bodies and wire strings are moved; numerical product policy remains ADR-016.
-Q5 requirement fit is FINDING/BLOCKED at the mandated instrumented invocation:
-the pinned tool rejects its flags. Q6 reachability PASS for implemented tooling/
+Q5's instrumented-invocation finding is corrected by the issued coverage-command
+amendment below; new full execution remains pending. Q6 reachability PASS for implemented tooling/
 test scope: Python CLI -> qualifier -> native Fixture -> Cargo consumers ->
 actual CLI and owner assertions -> logs/result. Both ordinary actions passed;
 mandatory instrumented execution is unverified rather than disconnected.
@@ -1114,9 +1114,9 @@ committed qualification outcomes are reconciled below.
 
 Tracking disposition is UPDATE for this ledger, ENGINEERING_STATE and the
 existing run guide. BUILD_ORDER remains navigation-only and unchanged.
-Delivery remains DRAFT / NOT READY. The single sequence stopped at instrumented
-binary command validation without a new FIX cycle, speculative correction,
-automatic retry, publication, merge, acceptance or seal.
+Delivery remains DRAFT / NOT READY. The prior sequence stopped at instrumented
+binary command validation; the issued amendment permits one new fresh sequence
+without a new runtime FIX cycle, speculative correction, merge, acceptance or seal.
 
 ### Single-attempt result and STOP
 
@@ -1140,12 +1140,19 @@ failure-snapshot.json beside redacted action logs/result metadata. No second
 SQL snapshot, replay, new episode or credential recovery occurred.
 
 The packet requires STOP on a failed mandatory action and forbids rerun-until-green.
-The smallest required resolution is a bounded issued amendment reconciling
-the two instrumented command option sets with cargo-llvm-cov 0.9.1, preserving
-profile cleanup/target isolation, and naming fresh database/report resources
-for a newly authorized attempt. The controller source and fixed flags are not
-changed after observing this failure. The historical 5,068 ms cause remains
-UNVERIFIED; no other runtime or timing correction is inferred.
+The subsequent owner-issued `DW-PR116-COVERAGE-COMMAND-AMENDMENT`, starting at
+`74dc0fac6bea89cadf38e0fa72d2dc9bf0852adf`, now authorizes removal of only
+`--no-clean` from both instrumented commands and one fresh `20261024d` attempt.
+The existing serial-plan regression first failed because that flag was present;
+it now requires `--no-report` and excludes `--no-clean` for both selectors.
+Upstream [0.9.1 documentation](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/README.md#merge-coverages-generated-under-different-test-conditions)
+confirms that `--no-report` itself disables automatic cleanup. Preserve the
+explicit coverage-workspace/profile cleanup, targets, one Fixture lifetime,
+900-second harness limit, original exit attribution and all summary checks.
+The amended matrix is pending a clean correction commit. Only five assigned
+Python/tracking files may change; all other source, bootstrap, tests, CI and
+accepted authority remain read-only. Historical 5,068 ms causation remains
+UNVERIFIED; the issued invocation correction establishes no product defect.
 
 Implementation scope from the issued start: 12 allowed files, 1,299 insertions
 and 907 deletions, including responsibility moves. This closure has zero runtime

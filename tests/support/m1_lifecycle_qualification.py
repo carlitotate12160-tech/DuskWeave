@@ -177,7 +177,7 @@ def qualify(database, report):
         action_environment(fixture, target)
         args = ["cargo", "+1.94.1", mode, "--locked"]
         if mode == "llvm-cov":
-            args += ["--no-report", "--no-clean"]
+            args += ["--no-report"]
         args += [selector, name, "--", "--test-threads=1", "--nocapture"]
         try:
             code = fixture.run(label, args, report, max_duration_seconds=900)
