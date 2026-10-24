@@ -56,15 +56,9 @@ class DatabaseNameSelection(unittest.TestCase):
 
 
 def qualified_service_probe(existing=None):
-    """Simulated docker/psql responses for the owned-service qualification."""
+    """Simulated provisioning SQL responses; docker inspection is helper-owned."""
 
     def fake_run(args, data=None):
-        if args[:2] == ["docker", "inspect"]:
-            return json.dumps([{
-                "Config": {"Image": bootstrap.IMAGE},
-                "State": {"Running": True},
-                "NetworkSettings": {"Ports": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": "5432"}]}},
-            }])
         statement = data or ""
         if "SELECT version()" in statement:
             return "PostgreSQL 17.11"
@@ -114,7 +108,8 @@ class ExistingDatabaseRefusal(unittest.TestCase):
 
     def test_existing_database_name_is_refused(self):
         name = "dw_native_fixture_historical01"
-        with mock.patch.object(bootstrap, "private_run", qualified_service_probe(existing=name)):
+        with mock.patch.object(bootstrap, "service_qualified"), \
+             mock.patch.object(bootstrap, "private_run", qualified_service_probe(existing=name)):
             with self.assertRaises(RuntimeError) as ctx:
                 bootstrap.Fixture("dwpg-r3", "fixture", database=name)
         self.assertEqual(str(ctx.exception), "native_database_collision")

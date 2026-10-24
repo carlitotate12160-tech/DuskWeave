@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -115,6 +116,37 @@ class QualificationController(unittest.TestCase):
                 self.assertEqual(self.result()["actions"][0]["status"], status)
                 self.assertEqual(len(self.calls), 1)
 
+    def test_supervision_timeout_exception_retains_harness_timeout_attribution(self):
+        self.fixture.run.side_effect = subprocess.TimeoutExpired("ordinary_binary", 900)
+        result, _ = self.run_plan()
+        self.assertEqual(result, 124)
+        actions = self.result()["actions"]
+        self.assertEqual(actions[0]["status"], "harness_timeout")
+        self.assertEqual([a["status"] for a in actions[1:]], ["NOT_RUN"] * 3)
+
+    def test_actions_inherit_the_exact_supervisor_path(self):
+        helper = "X:/dw-tools/dw-fixture-supervisor.exe"
+        with mock.patch.dict(os.environ, {bootstrap.SUPERVISOR_VARIABLE: helper}):
+            self.run_plan()
+        inherited = {call[2].get(bootstrap.SUPERVISOR_VARIABLE) for call in self.calls}
+        self.assertEqual(inherited, {helper})
+
+    def test_supervisor_prerequisite_is_a_closed_tool_availability_check(self):
+        original = dict(os.environ)
+        try:
+            os.environ.pop(bootstrap.SUPERVISOR_VARIABLE, None)
+            with self.assertRaisesRegex(RuntimeError, "^qualification_tool_unavailable$"):
+                qualification.supervisor_prerequisite()
+            os.environ[bootstrap.SUPERVISOR_VARIABLE] = "relative/tool"
+            with self.assertRaisesRegex(RuntimeError, "^qualification_tool_unavailable$"):
+                qualification.supervisor_prerequisite()
+            helper = "X:/dw-tools/dw-fixture-supervisor.exe"
+            os.environ[bootstrap.SUPERVISOR_VARIABLE] = helper
+            self.assertEqual(qualification.supervisor_prerequisite(), helper)
+        finally:
+            os.environ.clear()
+            os.environ.update(original)
+
     def test_snapshot_failure_preserves_original_result_and_not_run(self):
         self.exit_codes[0] = 9
         self.statuses[0] = "action_failed"
@@ -221,6 +253,39 @@ class OwnedActionSupervision(unittest.TestCase):
         self.assertEqual(metadata["status"], "completed")
         self.assertNotIn("synthetic-secret", output)
         self.assertGreater((self.report / "synthetic.log").stat().st_size, 200000)
+
+    def test_exited_parent_with_descendant_held_pipes_is_bounded_and_terminated(self):
+        pid_file = self.report / "descendant.pid"
+        source = ("import subprocess, sys; from pathlib import Path; "
+                  "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(6)']); "
+                  f"Path({str(pid_file)!r}).write_text(str(child.pid))")
+        outcome = {}
+
+        def supervise():
+            with contextlib.redirect_stdout(io.StringIO()):
+                outcome["value"] = self.fixture.run(
+                    "exited_parent", [sys.executable, "-c", source], self.report,
+                    max_duration_seconds=0.5)
+
+        # The descendant self-expires and this guard bounds the assertion run.
+        worker = threading.Thread(target=supervise, daemon=True)
+        started = time.monotonic()
+        worker.start()
+        worker.join(7)
+        elapsed = time.monotonic() - started
+        self.assertFalse(worker.is_alive(), "supervision must return within the guard")
+        self.assertLess(elapsed, 4, "an exited parent must not delay cleanup until pipe holders exit")
+        self.assertEqual(outcome["value"], 0)
+        metadata = json.loads((self.report / "exited_parent.result.json").read_text())
+        self.assertEqual(metadata["status"], "completed")
+        pid = int(pid_file.read_text())
+        if sys.platform == "win32":
+            probe = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                                   capture_output=True, text=True, timeout=5)
+            self.assertNotIn(f'"{pid}"', probe.stdout)
+        else:
+            stat = Path(f"/proc/{pid}/stat")
+            self.assertTrue(not stat.exists() or stat.read_text().split()[2] == "Z")
 
 
 if __name__ == "__main__":

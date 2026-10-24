@@ -300,14 +300,20 @@ translation must correct that contract rather than reproduce it.
   port remaining CI/quality scripts with their negative controls and unchanged
   gate policy. Until those consumers are removed, do not claim Python-free tooling.
   This is a finite retirement sequence, not authority for an all-at-once rewrite.
+- First seam delivered: [DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md)
+  implements the development executable (owned action tree, bounded wait and
+  cleanup, redacted publication, fixed service check) and rewires the
+  bootstrap/qualifier bridge, T8 and CI. Python supervision of fixture actions
+  is retired; provisioning, live/Terrain wrappers and quality scripts remain
+  Python until their later bounded migrations.
 - Native Windows ACL replacement is a separate production adapter concern;
   it must preserve security semantics and cannot fix harness pipe ownership.
   Linux remains the accepted acquisition deployment under ADR-015. A development
   Job Object does not qualify Windows acquisition or introduce a new Broker.
 
-No implementation, new qualification run, provider/target contact, PR closure,
-acceptance or seal is claimed by this direction. Record later design, migration
-and retirement evidence in the existing delivery ledger and PR.
+Delivery of the first seam supersedes only the no-implementation sentence above;
+direction, retirement sequence and evidence rules are unchanged. Record later
+design, migration and retirement evidence in the existing delivery ledger and PR.
 
 ## 2. Deferred development candidates
 

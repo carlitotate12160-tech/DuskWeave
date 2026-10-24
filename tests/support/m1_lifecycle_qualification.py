@@ -54,6 +54,14 @@ def probe(args):
     return result.stdout.strip()
 
 
+def supervisor_prerequisite():
+    """The development supervisor helper is a required qualification tool."""
+    path = os.environ.get(bootstrap.SUPERVISOR_VARIABLE, "")
+    if not path or not Path(path).is_absolute():
+        raise RuntimeError("qualification_tool_unavailable")
+    return path
+
+
 def preflight():
     """Closed Windows/toolchain/service checks; never export container configuration."""
     if sys.platform != "win32" or platform.machine().lower() not in ("amd64", "x86_64"):
@@ -67,19 +75,13 @@ def preflight():
     head = probe(["git", "rev-parse", "HEAD"])
     if probe(["git", "status", "--porcelain", "--untracked-files=normal"]):
         raise RuntimeError("qualification_source_dirty")
-    info = json.loads(bootstrap.private_run(["docker", "inspect", "dwpg-r3"]))[0]
-    ports = info["NetworkSettings"]["Ports"].get("5432/tcp", [])
-    valid_port = any(p["HostIp"] == "127.0.0.1" and p["HostPort"] == "5432" for p in ports)
-    if info["Config"]["Image"] != bootstrap.IMAGE or not info["State"]["Running"] or not valid_port:
-        raise RuntimeError("qualification_service_refused")
-    version = bootstrap.private_run(["docker", "exec", "dwpg-r3", "psql", "-X", "-U", "postgres",
-                                     "-d", "postgres", "-At", "-c", "SHOW server_version"]).strip()
-    if version.split()[0] != "17.11":
-        raise RuntimeError("qualification_service_refused")
+    supervisor = supervisor_prerequisite()
+    bootstrap.service_qualified("dwpg-r3", version_exact="17.11")
     return {"head": head, "platform": sys.platform, "architecture": platform.machine(),
             "rust": rust.splitlines()[0], "host": "x86_64-pc-windows-msvc", "llvm_cov": cov,
             "python": platform.python_version(), "postgres": "17.11", "image": bootstrap.IMAGE,
             "ordinary_target": NORMAL, "instrumented_target": COVERAGE,
+            "fixture_supervisor": supervisor,
             "harness_ceiling_seconds": 900, "policy": "conservative supervision; not measured fit"}
 
 
@@ -90,6 +92,9 @@ def action_environment(fixture, target):
     fixture.env["CARGO_TARGET_DIR"] = target
     fixture.env["DW_TEST_RUN_BINARY"] = str(Path(target) / "debug/duskweave.exe")
     fixture.env["DW_TEST_PYTHON"] = sys.executable
+    supervisor = os.environ.get(bootstrap.SUPERVISOR_VARIABLE)
+    if supervisor:
+        fixture.env[bootstrap.SUPERVISOR_VARIABLE] = supervisor
     if target == COVERAGE:
         fixture.env["CARGO_LLVM_COV_TARGET_DIR"] = target
 
@@ -182,6 +187,10 @@ def qualify(database, report):
         try:
             code = fixture.run(label, args, report, max_duration_seconds=900)
             status, code = action_result(report, label, code, expected)
+        except subprocess.TimeoutExpired:
+            # A defensive legacy timeout must retain harness_timeout attribution;
+            # a bare exit 124 from the child alone proves no product guard.
+            status, code = "harness_timeout", 124
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError):
             status, code = "action_failed", 1
         result["actions"][index].update(status=status, exit=code)

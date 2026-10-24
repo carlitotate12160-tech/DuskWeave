@@ -1209,13 +1209,13 @@ candidate Linux CI is still required and cannot waive the independent finding.
 
 The owner requests Rust tooling in place of continued Python maintenance. The
 [existing roadmap section 1.5](../MVP_AND_DEFERRED_SCOPE.md#15-rust-tooling-direction-owner-request-2026-10-24)
-now owns the bounded migration/retirement sequence and its process-lifetime
+owns the bounded migration/retirement sequence and its process-lifetime
 contract. This supersedes the recommendation to issue another Python bootstrap
 supervision patch; the demonstrated defect and NOT READY disposition remain.
 
-No runtime redesign, PR closure, FIX-cycle reset or new qualification run was
-performed. The four Windows results retain their tested-source provenance.
-The replacement must cover bootstrap, qualification, real T8 and CI consumers
-before it can retire those Python entrypoints. Platform adapter dependency and
-safety placement still require resolution before an executable packet; this
-record is direction, not implementation or qualification evidence.
+The executable replacement is delivered by
+[DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md),
+which owns the supervisor/service-check seam, the bootstrap/qualifier bridge and
+the T8/CI consumers; its evidence and remaining gates live there. This ledger is
+frozen as the historical record of the lifecycle delivery, the two runtime FIX
+cycles and the `5d769d2` Windows qualification under superseded supervision.

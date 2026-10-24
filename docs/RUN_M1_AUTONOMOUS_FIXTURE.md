@@ -63,6 +63,10 @@ printing these counts. An eight-seed scenario checks real producer/consumer fit.
 With a clean committed source, Rust 1.94.1 x86_64-pc-windows-msvc,
 cargo-llvm-cov 0.9.1, existing Python and owned `dwpg-r3` PostgreSQL 17.11,
 hold both build targets and cluster-role fixtures under one serial owner.
+Build the fixture supervisor helper into its dedicated target and export its
+absolute path in the owning shell first; every supervised action and the
+service qualification now run through it (see
+[native inference helper build](RUN_M1_NATIVE_INFERENCE.md#native-fixture-qualification)).
 Before starting, clean only the selected coverage workspace profiles using
 `cargo +1.94.1 llvm-cov clean --workspace` with both coverage target variables
 set to `D:/DuskWeave-build/rust-1.94.1/coverage/inference-lifecycle` in that
@@ -93,12 +97,15 @@ ignored or filtered tests. T8's nested one-test worker does not replace the
 full lifecycle summary. No key, observer or stale binary override is forwarded.
 
 The configured 900-second supervision policy per Cargo action includes compilation
-and tests; it is not measured fit or a product timeout. A distinct review found
-that cleanup is not yet a reliable bound when the action parent has exited but
-a descendant still holds inherited pipes: the synthetic 0.5-second case waited
-60.125 seconds and lost its redacted log/result metadata. This out-of-map
-bootstrap finding keeps delivery NOT READY; the four completed Windows PASS
-results do not qualify this failure boundary.
+and tests; it is not measured fit or a product timeout. A distinct review had found
+that cleanup was not a reliable bound when the action parent exited while a
+descendant still held inherited pipes; the Rust fixture supervisor replacement
+([DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md))
+now owns that boundary, and the recorded finding stays historical evidence. A
+fresh full four-action Windows qualification on the replaced mechanism remains
+pending; until it passes, delivery stays NOT READY. The four earlier Windows
+PASS results were produced under the superseded Python supervision and are
+retained with their provenance, not relabeled.
 `harness_timeout` is separate from an ordinary child exit 124. The first failed
 action ends qualification with its nonzero result; subsequent actions remain
 `NOT_RUN`. One read-only provisioning snapshot is attempted after failure.
