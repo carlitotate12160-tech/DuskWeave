@@ -903,8 +903,14 @@ user-owned connections and OpenRouter routing enforcement. Acceptance applies
 through a versioned successor permission/profile after qualified implementation
 and fresh run authorization; it invents no timer values, activates no provider
 and upgrades no old consent. Accepted sections 1–6, the accepted 2026-10-19
-section 7 text and v1/v2/v3 consent semantics are unchanged; in current source,
-TTL still clamps the transport permit. The matching numerical
+section 7 text and v1/v2/v3 consent semantics are unchanged; those legacy
+profiles retain their TTL clamp. The successor implementation is being
+qualified under the [R2 runtime packet](../workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md),
+including both local wire protocols, retained stale reasoning and independent
+current-use refusal. Its selected numerical resource policy is owned by
+[ADR-016's successor table](../adr/ADR-016-execution-broker.md#selected-successor-timing-policy-reasoning-bounded-v1).
+This working-source status does not establish completed qualification, provider
+activation or a seal. The matching numerical
 lifecycle/accounting revision is recorded in
 [ADR-016 section 4a](../adr/ADR-016-execution-broker.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22);
 numerical lifecycle/accounting authority remains there. The multi-provider
@@ -1089,6 +1095,8 @@ failed inference; recovery remains database-only and never regenerates the
 proposal. Provider-billing reconciliation for `may_send_uncertain` stays
 operational debt, not an assumed available API.
 
-Observable future assertions for this revision are recorded in
-[the assigned packet](../workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md);
-they are requirements for the runtime packet, not tests executed here.
+The [design packet](../workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md)
+retains the accepted assertions. Their successor runtime implementation,
+T1-T9 execution evidence and pending candidate gates are recorded in the
+[runtime ledger](../workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
+These records establish neither live-provider qualification nor an M1 seal.

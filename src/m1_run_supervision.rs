@@ -1,7 +1,7 @@
 //! Independent child reaper. The deadline thread never waits on SQL or output pipes.
+use duskweave::m1_reasoning::transport_control::ReportedGuard;
 use duskweave::m1_run::{
-    CauseSource, DiagnosticCause, PROVIDER_FIXTURE_PROFILE, PhaseDiagnostic, RunPhase, RunRecord,
-    safe_child_error,
+    CauseSource, DiagnosticCause, PhaseDiagnostic, RunPhase, RunRecord, safe_child_error,
 };
 use duskweave::{Fail, Res};
 use std::io::Read;
@@ -17,12 +17,14 @@ pub(super) struct PhaseChild {
     launched: Instant,
     deadline: Instant,
     readiness_required: bool,
+    successor: bool,
 }
 #[derive(Default)]
 struct Observation {
     cause: Option<DiagnosticCause>,
     ready: bool,
     error: Option<&'static str>,
+    reported_guard: Option<ReportedGuard>,
 }
 impl Observation {
     fn from_readiness(result: &Res<()>) -> Self {
@@ -48,6 +50,7 @@ impl Observation {
     }
     fn merge(&mut self, other: Self) {
         self.error = other.error.or(self.error);
+        self.reported_guard = other.reported_guard.or(self.reported_guard);
         if let Some(cause) = other.cause {
             self.cause.get_or_insert(cause);
         }
@@ -69,6 +72,7 @@ impl PhaseChild {
         let pipe = readiness.as_ref().and_then(|_| spawned.stdout.take());
         let mut owned = Self::supervise(spawned, deadline)?;
         owned.launched = launched;
+        owned.successor = run.request.successor();
         owned.arm_guards(control, readiness.zip(pipe), prepared_by, deadline)?;
         Ok(owned)
     }
@@ -132,6 +136,7 @@ impl PhaseChild {
             launched: Instant::now(),
             deadline,
             readiness_required: false,
+            successor: false,
         })
     }
     pub(super) fn finished(&self) -> Res<Option<std::process::ExitStatus>> {
@@ -159,7 +164,7 @@ impl PhaseChild {
             _ => CauseSource::ParentObserved,
         };
         PhaseDiagnostic {
-            version: "m1_run_phase_diagnostic_v1".into(),
+            version: PhaseDiagnostic::version_for(self.successor).into(),
             run_id,
             phase,
             cause,
@@ -168,6 +173,7 @@ impl PhaseChild {
             exit_code,
             readiness_observed: state.as_ref().is_some_and(|s| s.ready),
             elapsed_ms: Some(self.launched.elapsed().as_millis().min(150000) as u32),
+            reported_guard: state.as_ref().and_then(|s| s.reported_guard),
         }
     }
     fn terminal_status(&mut self) -> Option<i32> {
@@ -212,7 +218,7 @@ fn phase_command(
     Option<String>,
 )> {
     run.request.validate()?;
-    let provider = run.request.run_profile == PROVIDER_FIXTURE_PROFILE;
+    let provider = run.request.supervised_inference();
     let control = if provider {
         Some(super::m1_run_control::Binding::qualify(&run.request)?)
     } else {
@@ -230,10 +236,10 @@ fn phase_command(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    install_owner_environment(&mut command);
+    install_launch_environment(&mut command, run);
     let mut readiness = None;
     if provider {
-        install_provider_environment(&mut command, phase);
+        install_provider_environment(&mut command, phase, run);
         if phase != RunPhase::Acquisition {
             readiness = Some(super::m1_run_control::ready_frame(
                 run.request.run_id,
@@ -243,7 +249,7 @@ fn phase_command(
     }
     Ok((command, control, readiness))
 }
-fn install_provider_environment(c: &mut Command, phase: RunPhase) {
+fn install_provider_environment(c: &mut Command, phase: RunPhase, run: &RunRecord) {
     if let Some(root) = std::env::var_os("DW_M1_RUN_CONTROL_ROOT") {
         c.env("DW_M1_RUN_CONTROL_ROOT", root);
     }
@@ -255,6 +261,14 @@ fn install_provider_environment(c: &mut Command, phase: RunPhase) {
             c.env("DEEPSEEK_API_KEY", key);
         }
     }
+    if run
+        .request
+        .inference_profile
+        .as_deref()
+        .is_some_and(|p| p != "deepseek-responses-reasoning-v1")
+    {
+        c.env_remove("DEEPSEEK_API_KEY");
+    }
 }
 
 /// A dedicated reader owns the fixed child's stdout pipe so neither the
@@ -264,17 +278,41 @@ fn read_ready(pipe: impl Read, expected: &str, verdict: &mpsc::Sender<Res<()>>) 
     let first = await_ready(&mut pipe, expected);
     let mut state = Observation::from_readiness(&first);
     let _ = verdict.send(first);
-    if state.ready {
-        match terminal_frame(&mut pipe) {
-            Ok(code) => state.error = code,
-            Err(_) => state.cause = Some(DiagnosticCause::ReadinessRefused),
-        }
+    if state.ready && read_reports(&mut pipe, &mut state).is_err() {
+        state.reported_guard = None;
+        state.cause = Some(DiagnosticCause::ReadinessRefused);
     }
     // Keep draining so the child's terminal/error line cannot hit a closed pipe.
     if !matches!(std::io::copy(&mut pipe, &mut std::io::sink()), Ok(0)) || pipe.limit() == 0 {
         state.cause = Some(DiagnosticCause::ReadinessRefused);
     }
     state
+}
+fn read_reports(pipe: &mut impl Read, state: &mut Observation) -> Res<()> {
+    let mut reports = 0;
+    for _ in 0..8 {
+        let Some(frame) = optional_frame(pipe)? else {
+            return Ok(());
+        };
+        if let Some(guard) = guard_frame(&frame) {
+            reports += 1;
+            state.reported_guard = (reports == 1).then_some(guard);
+        } else {
+            state.error = Some(error_frame(&frame).ok_or(Fail::Config("run_readiness_refused"))?);
+            if optional_frame(pipe)?.is_some() {
+                return Err(Fail::Config("run_readiness_refused"));
+            }
+            return Ok(());
+        }
+    }
+    Err(Fail::Config("run_readiness_refused"))
+}
+fn guard_frame(frame: &[u8]) -> Option<ReportedGuard> {
+    let text = std::str::from_utf8(frame)
+        .ok()?
+        .strip_prefix("m1_run_guard_v1 ")?
+        .strip_suffix('\n')?;
+    serde_json::from_value(serde_json::Value::String(text.into())).ok()
 }
 fn await_ready(pipe: &mut impl Read, expected: &str) -> Res<()> {
     let frame = read_frame(pipe)?;
@@ -295,7 +333,7 @@ fn error_frame(frame: &[u8]) -> Option<&'static str> {
     }
     Some(safe_child_error(code))
 }
-fn terminal_frame(pipe: &mut impl Read) -> Res<Option<&'static str>> {
+fn optional_frame(pipe: &mut impl Read) -> Res<Option<Vec<u8>>> {
     let mut first = [0u8; 1];
     if pipe
         .read(&mut first)
@@ -305,10 +343,7 @@ fn terminal_frame(pipe: &mut impl Read) -> Res<Option<&'static str>> {
         return Ok(None);
     }
     let mut prefixed = std::io::Cursor::new(first).chain(pipe);
-    let frame = read_frame(&mut prefixed)?;
-    error_frame(&frame)
-        .map(Some)
-        .ok_or(Fail::Config("run_readiness_refused"))
+    read_frame(&mut prefixed).map(Some)
 }
 fn read_frame(pipe: &mut impl Read) -> Res<Vec<u8>> {
     let mut frame = Vec::with_capacity(128);
@@ -455,7 +490,13 @@ impl Drop for PhaseChild {
         reap(&self.child);
     }
 }
-fn install_owner_environment(c: &mut Command) {
+fn install_launch_environment(c: &mut Command, run: &RunRecord) {
+    if run.request.successor() {
+        c.args([
+            "--timing-profile",
+            duskweave::m1_inference_profile::TIMING_PROFILE,
+        ]);
+    }
     // Base owner allowlist; selected inference key/control are added separately, never PATH/proxies/flags.
     for key in [
         "DW_DATABASE_CONFIG_MODE",
@@ -486,12 +527,64 @@ pub(super) fn phase_deadline(run: Instant, phase: RunPhase) -> Instant {
     run.min(Instant::now() + Duration::from_millis(ceiling))
 }
 
+pub(super) fn selected_phase_deadline(run: Instant, phase: RunPhase, successor: bool) -> Instant {
+    if successor && phase != RunPhase::Acquisition {
+        return run.min(
+            Instant::now()
+                + Duration::from_millis(
+                    duskweave::m1_inference_profile::REASONING_BOUNDED.phase_ms,
+                ),
+        );
+    }
+    phase_deadline(run, phase)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn successor_phase_selection_keeps_acquisition_and_original_run_bounds() {
+        let now = Instant::now();
+        let run = now + Duration::from_millis(400000);
+        let successor = selected_phase_deadline(run, RunPhase::DecisionOne, true);
+        assert!(successor >= now + Duration::from_millis(134000));
+        assert!(successor <= Instant::now() + Duration::from_millis(134000));
+        let acquisition = selected_phase_deadline(run, RunPhase::Acquisition, true);
+        assert!(acquisition <= Instant::now() + Duration::from_millis(60000));
+        let legacy = selected_phase_deadline(run, RunPhase::DecisionTwo, false);
+        assert!(legacy <= Instant::now() + Duration::from_millis(50000));
+        let remainder = Instant::now() + Duration::from_millis(10);
+        assert_eq!(
+            selected_phase_deadline(remainder, RunPhase::DecisionTwo, true),
+            remainder
+        );
+    }
     fn parsed(bytes: &[u8]) -> Observation {
         let (tx, _rx) = mpsc::channel();
         read_ready(std::io::Cursor::new(bytes), "expected", &tx)
+    }
+    #[test]
+    fn guard_reports_never_change_parent_cause_and_competing_or_malformed_reports_are_unknown() {
+        let one = parsed(b"expected\nm1_run_guard_v1 transport_hard_deadline\n");
+        assert_eq!(
+            one.reported_guard,
+            Some(ReportedGuard::TransportHardDeadline)
+        );
+        assert_eq!(one.cause, None);
+        assert!(one.ready);
+        let competing = parsed(
+            b"expected\nm1_run_guard_v1 transport_hard_deadline\nm1_run_guard_v1 permit_expiry\n",
+        );
+        assert_eq!(competing.reported_guard, None);
+        assert_eq!(competing.cause, None);
+        for bad in ["timeout", "permit_expiry\r", "synthetic-sensitive-sentinel"] {
+            let malformed = parsed(format!("expected\nm1_run_guard_v1 {bad}\n").as_bytes());
+            assert_eq!(malformed.reported_guard, None);
+            assert_eq!(malformed.cause, Some(DiagnosticCause::ReadinessRefused));
+        }
+        let missing = parsed(b"expected\nerror=child_failed\n");
+        assert_eq!(missing.reported_guard, None);
+        assert_eq!(missing.error, Some("child_failed"));
     }
     #[test]
     fn terminal_projection_is_closed_before_and_after_ready_and_rejects_extra_frames() {

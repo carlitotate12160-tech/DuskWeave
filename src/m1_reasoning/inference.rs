@@ -161,7 +161,9 @@ pub fn infer(
             Ok(value) => value,
             Err(code) => (Admission::Rejected(code), Vec::new(), Vec::new()),
         };
-    let (proposal, disposition) = admitted_proposal(admission);
+    let successor = serde_json::from_slice::<serde_json::Value>(pack)
+        .is_ok_and(|v| v["version"] == "m1_context_pack_autonomous_v2");
+    let (proposal, disposition) = recorded_proposal(admission, successor, basis);
     let event = Decision {
         kind: "reasoning_decision",
         occurred_at_ms,
@@ -176,7 +178,7 @@ pub fn infer(
         campaign: scope.campaign,
         decision: scope.decision,
         producer: "cognition",
-        version: 1,
+        version: if successor { 2 } else { 1 },
         mission_revision: scope.mission_revision,
         permission: scope.permission,
         call_ids: ids,
@@ -270,6 +272,29 @@ fn admitted_proposal(admission: Admission) -> (Option<Proposal>, &'static str) {
         Admission::Accepted(p) => (Some(*p), "validated_proposal"),
         Admission::Repairable(_) => (None, "schema_repair_exhausted"),
         Admission::Rejected(code) => (None, code),
+    }
+}
+
+fn recorded_proposal(
+    admission: Admission,
+    successor: bool,
+    basis: &mut impl ProposalBasis,
+) -> (Option<Proposal>, &'static str) {
+    use super::proposal::{RecordedProposal, RecordingPremises};
+    let Admission::Accepted(proposal) = admission else {
+        return admitted_proposal(admission);
+    };
+    if !successor {
+        return admitted_proposal(Admission::Accepted(proposal));
+    }
+    let recorded = match basis.recording_premises() {
+        Ok(RecordingPremises::Fresh) => RecordedProposal::Current(proposal),
+        Ok(RecordingPremises::ExpiredByTtl) => RecordedProposal::StalePremises(proposal),
+        Err(code) => return (None, code),
+    };
+    match recorded {
+        RecordedProposal::Current(p) => (Some(*p), "validated_proposal"),
+        RecordedProposal::StalePremises(p) => (Some(*p), "recorded_stale_premises"),
     }
 }
 fn publish(

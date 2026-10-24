@@ -4,6 +4,7 @@
 pub mod input;
 pub mod m1_inference_budget;
 pub mod m1_inference_permission;
+pub mod m1_inference_profile;
 pub mod m1_permission;
 pub mod m1_policy;
 pub mod m1_policy_input;

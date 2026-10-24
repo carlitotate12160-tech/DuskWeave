@@ -11,6 +11,7 @@ struct RunBasis {
     control: PgRunStore,
     run: Uuid,
     local: Option<super::m1_run_control::Binding>,
+    successor: bool,
 }
 impl RunBasis {
     fn current_run(&mut self) -> Result<(), &'static str> {
@@ -44,7 +45,16 @@ impl ProposalBasis for RunBasis {
     }
     fn current_authority_for_references(&mut self, refs: &[String]) -> Result<(), &'static str> {
         self.current_run()?;
+        if self.successor {
+            return self.terrain.recording_references(refs);
+        }
         self.terrain.current_authority_for_references(refs)
+    }
+    fn recording_premises(
+        &mut self,
+    ) -> Result<reasoning::proposal::RecordingPremises, &'static str> {
+        self.current_run()?;
+        self.terrain.recording_integrity()
     }
 }
 
@@ -53,7 +63,7 @@ pub(super) fn decide(
     phase: RunPhase,
     preparation: Option<super::m1_run_control::Preparation>,
 ) -> Res<()> {
-    let local = if run.request.run_profile == duskweave::m1_run::PROVIDER_FIXTURE_PROFILE {
+    let local = if run.request.supervised_inference() {
         Some(super::m1_run_control::Binding::qualify(&run.request)?)
     } else {
         None
@@ -65,7 +75,11 @@ pub(super) fn decide(
         control,
         run: run.request.run_id,
         local: basis_binding,
+        successor: run.request.successor(),
     };
+    if run.request.successor() {
+        return successor_decision(run, phase, preparation, local, a, decision, basis);
+    }
     if run.request.run_profile == duskweave::m1_run::FIXTURE_PROFILE {
         return super::m1_reasoning_cli::autonomous_inference(
             &run.request.context,
@@ -78,9 +92,8 @@ pub(super) fn decide(
             },
         );
     }
-    if run.request.run_profile != duskweave::m1_run::PROVIDER_FIXTURE_PROFILE {
-        return Err(Fail::State("invalid_run_request"));
-    }
+    // The fixed child claimed a validated RunRequest. The remaining legacy
+    // profile requires the qualified provider control binding below.
     let binding = local.ok_or(Fail::Config("run_control_unqualified"))?;
     super::m1_reasoning_cli::autonomous_inference(
         &run.request.context,
@@ -114,6 +127,104 @@ pub(super) fn decide(
             Ok((provider, coordinator))
         },
     )
+}
+
+enum SelectedProvider {
+    Local(reasoning::fixture::ProtocolFixture),
+    Network(reasoning::transport::AutonomousProvider),
+}
+impl reasoning::inference::Provider for SelectedProvider {
+    fn prepare(
+        &mut self,
+        b: &reasoning::request::BoundCall,
+        end: Instant,
+    ) -> Result<(), &'static str> {
+        match self {
+            Self::Local(p) => p.prepare(b, end),
+            Self::Network(p) => p.prepare(b, end),
+        }
+    }
+    fn call(
+        &mut self,
+        b: &reasoning::request::BoundCall,
+        end: Instant,
+        basis: &mut dyn ProposalBasis,
+        release: &mut dyn FnMut() -> Result<(), &'static str>,
+    ) -> Result<reasoning::inference::Received, &'static str> {
+        match self {
+            Self::Local(p) => p.call(b, end, basis, release),
+            Self::Network(p) => p.call(b, end, basis, release),
+        }
+    }
+}
+
+fn successor_decision<B: ProposalBasis>(
+    run: &RunRecord,
+    phase: RunPhase,
+    preparation: Option<super::m1_run_control::Preparation>,
+    local: Option<super::m1_run_control::Binding>,
+    a: duskweave::m1_autonomous_context::AutonomousContext,
+    decision: Uuid,
+    basis: impl FnOnce(reasoning::postgres_terrain::TerrainBasis) -> B,
+) -> Res<()> {
+    let profile = duskweave::m1_inference_profile::lookup(
+        run.request
+            .inference_profile
+            .as_deref()
+            .ok_or(Fail::Input("invalid_run_request"))?,
+    )?;
+    super::m1_run_control::install_reporter()?;
+    let binding = local.ok_or(Fail::Config("run_control_unqualified"))?;
+    super::m1_reasoning_cli::autonomous_inference(
+        &run.request.context,
+        decision,
+        &a,
+        basis,
+        |s, p, end| {
+            let coordinator = super::m1_inference_control::Coordinator::start(
+                super::m1_reasoning_cli::prepared_basis(s, p, end)?,
+                binding.clone(),
+                run.request.run_id,
+                end,
+                envelope_end(end, run)?,
+            )?;
+            let provider = if profile.connection.credential_environment.is_some() {
+                SelectedProvider::Network(
+                    reasoning::transport::AutonomousProvider::new(
+                        coordinator.permit.clone(),
+                        move || {
+                            binding
+                                .current()
+                                .map_err(|_| "current_authority_unavailable")
+                        },
+                    )
+                    .with_reporter(super::m1_run_control::reporter()),
+                )
+            } else {
+                local_provider(
+                    profile,
+                    coordinator.permit.clone(),
+                    super::m1_run_control::reporter(),
+                )?
+            };
+            println!(
+                "{}",
+                super::m1_run_control::ready_frame(run.request.run_id, phase.name())
+            );
+            drop(preparation);
+            Ok((provider, coordinator))
+        },
+    )
+}
+fn local_provider(
+    profile: duskweave::m1_inference_profile::Profile,
+    permit: reasoning::transport_control::Permit,
+    reporter: Option<std::sync::mpsc::SyncSender<reasoning::transport_control::ReportedGuard>>,
+) -> Res<SelectedProvider> {
+    Ok(SelectedProvider::Local(
+        reasoning::fixture::ProtocolFixture::controlled(profile, permit, reporter)
+            .map_err(Fail::Config)?,
+    ))
 }
 
 /// Original active deadline plus the bounded cancellation/accounting window,
@@ -156,6 +267,7 @@ fn decision_context(
         campaign_id: run.request.context.mission.campaign_id,
         run_profile: run.request.run_profile.clone(),
         execution_mode: run.request.execution_mode.clone(),
+        inference_profile: run.request.inference_profile.clone(),
         release_sha256: run.release_sha256.clone(),
         qualification_ref: run.qualification_ref,
     };
@@ -174,4 +286,32 @@ pub(super) fn recover(run: &RunRecord) -> Res<()> {
         super::m1_reasoning_cli::autonomous_recover(&run.request.context, decision)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reasoning::inference::Provider;
+    #[test]
+    fn selected_local_profiles_cannot_prepare_after_control_revocation() {
+        for name in ["fixture-responses-v1", "fixture-chat-completions-v1"] {
+            let end = Instant::now() + Duration::from_millis(124000);
+            let permit = reasoning::transport_control::Permit::new(end);
+            assert!(permit.publish(Instant::now(), end));
+            permit.stop();
+            let pack=serde_json::json!({"version":"m1_context_pack_autonomous_v2","run_profile":"autonomous-dns-fixture-v2",
+                "execution_mode":"controlled_fixture","inference_profile":name,"references":[{"id":"asset_0"}],"manifests":[{"reference":"dns_udp"}]}).to_string();
+            let bound = reasoning::request::bind(pack.as_bytes(), None).unwrap();
+            let mut provider = local_provider(
+                duskweave::m1_inference_profile::lookup(name).unwrap(),
+                permit,
+                None,
+            )
+            .unwrap();
+            assert!(
+                provider.prepare(&bound, end).is_err(),
+                "local protocol ignored the production control permit"
+            );
+        }
+    }
 }

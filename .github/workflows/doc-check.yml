@@ -85,13 +85,6 @@ jobs:
       - name: Coverage-gate regression tests
         run: python tests/check_coverage_gate.py --selftest
 
-      - name: Native helper unit tests
-        run: |
-          python -m unittest discover -s tests -p test_m1_bootstrap_progress.py
-          python -m unittest discover -s tests -p test_m1_native_helpers.py
-          python -m unittest discover -s tests -p test_m1_terrain_live.py
-          python -m unittest discover -s tests -p test_m1_terrain_live_contract.py
-
   metrics:
     # Required metrics gate: McCabe ratchet enforced (exit 1 on regression);
     # runtime diff budget and LOC remain advisory reporting.
@@ -265,7 +258,14 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features fixture-supervisor -- -D warnings
+
+      - name: Fixture supervisor tests and Python bridge tests
+        run: |
+          cargo test --locked --features fixture-supervisor --target-dir "$RUNNER_TEMP/fixture-supervisor" --bin dw-fixture-supervisor --test fixture_supervisor
+          export DW_TEST_FIXTURE_SUPERVISOR="$RUNNER_TEMP/fixture-supervisor/debug/dw-fixture-supervisor"
+          echo "DW_TEST_FIXTURE_SUPERVISOR=$DW_TEST_FIXTURE_SUPERVISOR" >> "$GITHUB_ENV"
+          for suite in bootstrap_progress native_helpers lifecycle_qualification terrain_live terrain_live_contract; do python3 -m unittest discover -s tests -p "test_m1_${suite}.py"; done
 
       - name: Focused reservation-stall qualification under Linux coverage
         env:
@@ -289,7 +289,7 @@ jobs:
           mkdir -p target/llvm-cov
           python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
             --report "$RUNNER_TEMP/native-fix60" -- \
-            cargo llvm-cov --locked --all-targets --json --output-path target/llvm-cov/m0a-coverage.json -- --test-threads=1
+            cargo llvm-cov --locked --all-targets --features fixture-supervisor --json --output-path target/llvm-cov/m0a-coverage.json -- --test-threads=1
           cargo llvm-cov report --text --output-path target/llvm-cov/m0a-coverage.txt
           cat target/llvm-cov/m0a-coverage.txt
 
@@ -409,7 +409,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/geiger"
           rustc --version && cargo --version
           set +e
-          "$RUNNER_TEMP/dw-tools/bin/cargo-geiger" geiger --locked --all-targets \
+          "$RUNNER_TEMP/dw-tools/bin/cargo-geiger" geiger --locked --all-targets --features fixture-supervisor \
             --output-format Json > "$RUNNER_TEMP/geiger/geiger.json" \
             2> "$RUNNER_TEMP/geiger/geiger.log"
           status=$?

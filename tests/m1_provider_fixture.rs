@@ -295,6 +295,7 @@ fn infer(rec: &RunRecord, phase: RunPhase) -> Vec<u8> {
         .unwrap();
     let a = duskweave::m1_autonomous_context::AutonomousContext {
         binding: duskweave::m1_autonomous_context::RunContextBinding {
+            inference_profile: None,
             engagement_id: q.mission.engagement_id,
             campaign_id: q.mission.campaign_id,
             run_profile: rec.request.run_profile.clone(),

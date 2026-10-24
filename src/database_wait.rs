@@ -118,6 +118,9 @@ fn monitor(mut budget: Budget, controls: Receiver<Control>) {
             }
         }
     }
+    super::m1_run_control::report_guard(
+        duskweave::m1_reasoning::transport_control::ReportedGuard::CommandWatchdog,
+    );
     std::process::exit(WATCHDOG_EXIT);
 }
 
@@ -141,6 +144,19 @@ fn installed_controls() -> &'static Mutex<Option<Sender<Control>>> {
 pub(super) struct CommandGuard;
 
 impl CommandGuard {
+    pub(super) fn for_args(args: &[String]) -> Res<Self> {
+        if super::m1_run_cli::timing_hint(args)? {
+            let t = &duskweave::m1_inference_profile::REASONING_BOUNDED;
+            let ms = match args.get(1).map(String::as_str) {
+                Some("m1-run") => t.parent_watchdog_ms,
+                Some("m1-run-phase") => child_watchdog_ms(args),
+                _ => return Err(Fail::Input("invalid_args")),
+            };
+            return Self::with_budget(Duration::from_millis(ms));
+        }
+        Self::for_command(args.get(1).map(String::as_str))
+    }
+
     pub(super) fn for_command(command: Option<&str>) -> Res<Self> {
         match command {
             Some("m1-run") => Self::with_budget(Duration::from_millis(150000)),
@@ -158,6 +174,16 @@ impl CommandGuard {
             .map_err(|_| GUARD_FAILED)?
             .replace(tx);
         Ok(Self)
+    }
+}
+fn child_watchdog_ms(args: &[String]) -> u64 {
+    if args
+        .windows(2)
+        .any(|w| w[0] == "--phase" && w[1] == "acquisition")
+    {
+        60000
+    } else {
+        duskweave::m1_inference_profile::REASONING_BOUNDED.child_watchdog_ms
     }
 }
 

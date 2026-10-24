@@ -140,11 +140,27 @@ impl PgRunStore {
         Ok(())
     }
     pub fn first_proposal(&mut self, record: &RunRecord) -> Res<Proposal> {
+        if self.first_disposition(record)? != "validated_proposal" {
+            return Err(Fail::State("run_proposal_ineligible"));
+        }
         let q = &record.request.context.mission;
         let raw:Value=self.client.query_one("SELECT payload->'proposal' FROM cognition.reasoning_decisions WHERE e=$1 AND c=$2 AND d=$3",
             &[&q.engagement_id.0,&q.campaign_id.0,&record.decision_one])
             .map_err(|_|Fail::Store("run_decision_unavailable"))?.try_get(0).map_err(|_|Fail::Store("run_decode"))?;
         serde_json::from_value(raw).map_err(|_| Fail::State("run_proposal_unavailable"))
+    }
+    pub fn first_step(&mut self, record: &RunRecord) -> Res<crate::m1_run::NextStep> {
+        if self.first_disposition(record)? == "recorded_stale_premises" {
+            return Ok(crate::m1_run::NextStep::Terminal("deferred"));
+        }
+        let proposal = self.first_proposal(record)?;
+        crate::m1_run::next_step(&proposal, record.request.seed_names.len())
+    }
+    pub fn first_disposition(&mut self, record: &RunRecord) -> Res<String> {
+        let q = &record.request.context.mission;
+        self.client.query_one("SELECT payload->>'disposition' FROM cognition.reasoning_decisions WHERE e=$1 AND c=$2 AND d=$3",
+            &[&q.engagement_id.0,&q.campaign_id.0,&record.decision_one])
+            .map_err(|_|Fail::Store("run_decision_unavailable"))?.try_get(0).map_err(|_|Fail::Store("run_decode"))
     }
     pub fn terminal(&mut self, r: Uuid, reason: &str) -> Res<()> {
         self.client

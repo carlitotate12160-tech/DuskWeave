@@ -1,19 +1,36 @@
 """Own one fresh native fixture and keep credentials in this process and children."""
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
 import secrets
+import signal
 import subprocess
 import sys
+import threading
 import time
 from urllib.parse import quote
 
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 NAMESPACE = "dw_native_"
 KINDS = ("fixture", "live")
+SCHEMA_REVISIONS = ("0020", "0021")
 ROOT = Path(__file__).resolve().parents[2]
+SUPERVISOR_VARIABLE = "DW_TEST_FIXTURE_SUPERVISOR"
+# Development-tool policy ceiling for legacy no-ceiling callers; selected
+# policy, not measured fit and not a product timer.
+LEGACY_CEILING_MS = 3_600_000
+SUPERVISOR_GRACE_SECONDS = 120
+RESULT_STATUSES = ("completed", "action_failed", "harness_timeout")
+CLOSED_CATEGORIES = frozenset((
+    "native_service_unqualified", "native_supervisor_usage_refused",
+    "native_supervisor_request_refused", "native_report_collision",
+    "native_action_spawn_failed", "native_report_write_failed",
+    "native_supervisor_unavailable", "native_supervisor_protocol_refused",
+    "native_supervisor_result_inconsistent", "native_supervisor_unresponsive",
+))
 
 
 def identifier(value):
@@ -37,19 +54,95 @@ def private_run(args, data=None):
     return result.stdout
 
 
-def wait_with_progress(process, label):
-    """Drain both pipes privately; emit only bounded, non-content progress."""
-    started = time.monotonic()
-    while True:
+def supervisor_path(environment):
+    """The development supervisor is selected by absolute path only."""
+    value = environment.get(SUPERVISOR_VARIABLE, "")
+    if not value or not Path(value).is_absolute():
+        raise RuntimeError("native_supervisor_unavailable")
+    return Path(value)
+
+
+def protocol_category(stdout):
+    """Validate one closed refusal token; never echo helper diagnostics."""
+    try:
+        category = json.loads(stdout.strip().splitlines()[-1]).get("category")
+    except (ValueError, IndexError, AttributeError):
+        category = None
+    return category if category in CLOSED_CATEGORIES else "native_supervisor_protocol_refused"
+
+
+def supervisor_request(arguments, environment):
+    """One closed helper invocation; failures map to closed categories."""
+    path = supervisor_path(environment)
+    try:
+        result = subprocess.run([str(path), *arguments], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        raise RuntimeError("native_supervisor_unavailable") from None
+    if result.returncode:
+        raise RuntimeError(protocol_category(result.stdout))
+    return result.stdout
+
+
+def service_qualified(container, ci=False, version_prefix=None, version_exact=None):
+    """Delegate the fixed Docker/PostgreSQL service qualification to the helper."""
+    arguments = ["service-check", "--container", container]
+    if ci:
+        arguments.append("--ci")
+    if version_prefix is not None:
+        arguments += ["--version-prefix", version_prefix]
+    else:
+        arguments += ["--version-exact", version_exact]
+    return supervisor_request(arguments, os.environ)
+
+
+def relay_progress(stream):
+    """Forward only closed progress lines from the helper's private channel."""
+    for line in stream:
         try:
-            return process.communicate(timeout=15)
-        except subprocess.TimeoutExpired:
-            print(json.dumps({"action": label, "status": "running",
-                              "elapsed_seconds": int(time.monotonic() - started)}), flush=True)
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if set(record) == {"action", "status", "elapsed_seconds"} and record.get("status") == "running":
+            print(json.dumps(record), flush=True)
+
+
+def stop_supervisor(process):
+    """Last-resort bound when the helper itself fails to return; never a product guard."""
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                       capture_output=True, timeout=10)
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        process.kill()
+
+
+def validate_publication(protocol_line, report, label):
+    """Validate the closed result line against the published metadata."""
+    try:
+        result = json.loads(protocol_line.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raise RuntimeError("native_supervisor_protocol_refused") from None
+    if result.get("ok") is False and result.get("category") in CLOSED_CATEGORIES:
+        raise RuntimeError(result["category"])
+    if (result.get("ok") is not True or result.get("status") not in RESULT_STATUSES
+            or not isinstance(result.get("exit"), int)):
+        raise RuntimeError("native_supervisor_protocol_refused")
+    try:
+        metadata = json.loads((report / f"{label}.result.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise RuntimeError("native_supervisor_result_inconsistent") from None
+    if metadata.get("status") != result["status"] or metadata.get("exit") != result["exit"]:
+        raise RuntimeError("native_supervisor_result_inconsistent")
+    return result
 
 
 class Fixture:
-    def __init__(self, container, kind, ci=False, database=None):
+    def __init__(self, container, kind, ci=False, database=None, schema_revision="0021"):
+        if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
+            raise RuntimeError("native_schema_revision_refused")
+        self.schema_revision = schema_revision
         if container not in ("dwpg-r3", "dwpg"):
             raise RuntimeError("native_service_unqualified")
         if ci and container != "dwpg":
@@ -63,14 +156,9 @@ class Fixture:
         self.env.pop("DEEPSEEK_API_KEY", None)
         self.env["PYTHONDONTWRITEBYTECODE"] = "1"
         self.secrets = []
-        info = json.loads(private_run(["docker", "inspect", container]))[0]
-        ports = info["NetworkSettings"]["Ports"].get("5432/tcp", [])
-        if info["Config"]["Image"] != IMAGE or not info["State"]["Running"]:
-            raise RuntimeError("native_service_unqualified")
-        if not any(p["HostIp"] == "127.0.0.1" and p["HostPort"] == "5432" for p in ports):
-            raise RuntimeError("native_service_unqualified")
-        if not self.sql("SELECT version()", database="postgres").startswith("PostgreSQL 17."):
-            raise RuntimeError("native_service_unqualified")
+        # The helper owns inspect/port/version qualification; null port
+        # metadata and unsafe bindings are refused there as one closed category.
+        service_qualified(container, ci=ci, version_prefix="17.")
         if self.sql(f"SELECT 1 FROM pg_database WHERE datname='{self.database}'", database="postgres").strip():
             raise RuntimeError("native_database_collision")
         suffix = secrets.token_hex(6)
@@ -155,13 +243,15 @@ class Fixture:
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20)
+        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
         for number in numbers:
+            if number > int(self.schema_revision):
+                continue
             source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
             if not initial:
-                source = source.replace("CREATE SCHEMA ", "CREATE SCHEMA IF NOT EXISTS ")
-                source = source.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")
-                source = source.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ")
+                source = re.sub(r"CREATE SCHEMA (?!IF NOT EXISTS )", "CREATE SCHEMA IF NOT EXISTS ", source)
+                source = re.sub(r"CREATE TABLE (?!IF NOT EXISTS )", "CREATE TABLE IF NOT EXISTS ", source)
+                source = re.sub(r"CREATE UNIQUE INDEX (?!IF NOT EXISTS )", "CREATE UNIQUE INDEX IF NOT EXISTS ", source)
                 source = source.replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION ")
                 source = source.replace("CREATE VIEW ", "CREATE OR REPLACE VIEW ")
                 source = re.sub(r"CREATE TRIGGER\s+(\w+)\s+(.*?);", lambda m:
@@ -172,22 +262,61 @@ class Fixture:
             except RuntimeError:
                 raise RuntimeError(f"native_migration_{number:04d}_failed") from None
 
-    def run(self, label, args, report):
+    def run(self, label, args, report, max_duration_seconds=None):
+        """Delegate action execution to the development supervisor selected by
+        DW_TEST_FIXTURE_SUPERVISOR; there is no Python supervision fallback."""
         if not re.fullmatch(r"[a-z0-9_-]+", label) or not isinstance(args, list) or not args:
             raise RuntimeError("native_action_refused")
-        path = report / f"{label}.log"
-        if path.exists():
+        supervised = max_duration_seconds is not None
+        if supervised and (not math.isfinite(max_duration_seconds) or max_duration_seconds <= 0):
+            raise RuntimeError("native_action_refused")
+        if any(not isinstance(arg, str) or len(arg.encode()) > 8192 for arg in args):
+            raise RuntimeError("native_action_refused")
+        if (report / f"{label}.log").exists() or (report / f"{label}.result.json").exists():
             raise RuntimeError("native_report_collision")
-        with subprocess.Popen(args, cwd=ROOT, env=self.env, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True) as process:
-            stdout, stderr = wait_with_progress(process, label)
-        output = stderr + "\n" + stdout
-        for value in self.secrets:
-            output = output.replace(value, "[REDACTED]")
-        path.write_text(output, encoding="utf-8")
-        print(json.dumps({"action": label, "exit": process.returncode}), flush=True)
-        print("\n".join(output.splitlines()[-35:]), flush=True)
-        return process.returncode
+        budget_ms = LEGACY_CEILING_MS if not supervised else int(max_duration_seconds * 1000)
+        result = self.supervised_result(label, args, report, budget_ms)
+        print(json.dumps({"action": label, "exit": result["exit"]}), flush=True)
+        tail = (report / f"{label}.log").read_text(encoding="utf-8", errors="replace")
+        print("\n".join(tail.splitlines()[-35:]), flush=True)
+        return result["exit"]
+
+    def supervised_result(self, label, args, report, budget_ms):
+        request = json.dumps({"version": 1, "argv": args, "cwd": str(ROOT), "label": label,
+                              "report_root": str(report), "action_budget_ms": budget_ms,
+                              "redactions": self.secrets})
+        protocol = self.invoke_supervisor(request, budget_ms)
+        return validate_publication(protocol, report, label)
+
+    def invoke_supervisor(self, request, budget_ms):
+        path = supervisor_path(self.env)
+        options = {} if sys.platform == "win32" else {"start_new_session": True}
+        child = subprocess.Popen([str(path), "run-action"], cwd=ROOT, env=self.env,
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True, **options)
+        threading.Thread(target=relay_progress, args=(child.stderr,), daemon=True).start()
+        collected = []
+        reader = threading.Thread(target=lambda: collected.append(child.stdout.read()), daemon=True)
+        reader.start()
+        try:
+            child.stdin.write(request)
+            child.stdin.close()
+        except (OSError, ValueError):
+            pass
+        self.await_supervisor(child, reader, budget_ms / 1000 + SUPERVISOR_GRACE_SECONDS)
+        return collected[0]
+
+    def await_supervisor(self, child, reader, limit_seconds):
+        deadline = time.monotonic() + limit_seconds
+        reader.join(max(0.0, deadline - time.monotonic()))
+        if reader.is_alive():
+            stop_supervisor(child)
+            raise RuntimeError("native_supervisor_unresponsive")
+        try:
+            child.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            stop_supervisor(child)
+            raise RuntimeError("native_supervisor_unresponsive") from None
 
 
 def main():
@@ -195,13 +324,19 @@ def main():
     parser.add_argument("--container", default="dwpg-r3")
     parser.add_argument("--database", choices=KINDS, default="fixture")
     parser.add_argument("--database-name", default=None)
+    parser.add_argument("--schema-revision", choices=SCHEMA_REVISIONS, default="0021")
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--ci", action="store_true")
     parser.add_argument("--session", action="store_true")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     options = parser.parse_args()
+    if options.database == "live" and options.schema_revision != "0021":
+        raise RuntimeError("native_schema_revision_refused")
+    if not options.session and (options.report / "qualification.log").exists():
+        raise RuntimeError("native_report_collision")
     options.report.mkdir(parents=True, exist_ok=True)
-    fixture = Fixture(options.container, options.database, options.ci, database=options.database_name)
+    fixture = Fixture(options.container, options.database, options.ci, database=options.database_name,
+                      schema_revision=options.schema_revision)
     print(json.dumps({"fixture": fixture.database, "status": "ready"}), flush=True)
     if options.session:
         for line in sys.stdin:

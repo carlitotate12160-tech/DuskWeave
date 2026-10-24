@@ -170,6 +170,10 @@ live acquisition, deployment qualification, ContextPack integration or an M1 sea
 
 ## Running Focused Native Tests
 
+Build the fixture supervisor helper and export its absolute path first; the
+bootstrap delegates action supervision and service qualification to it and has
+no Python fallback (see [native inference](RUN_M1_NATIVE_INFERENCE.md#native-fixture-qualification)).
+
 Provision a fresh disposable `dw_native_fixture_<random>` database on the owned `dwpg-r3` service and run the four Terrain test suites:
 
 ```bash

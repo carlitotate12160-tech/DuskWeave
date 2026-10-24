@@ -4,6 +4,14 @@ use serde_json::{Value, json};
 use std::process::Command;
 use uuid::Uuid;
 pub fn refresh() {
+    refresh_legacy();
+    native::admin()
+        .batch_execute(include_str!(
+            "../../migrations/0021_inference_lifecycle.sql"
+        ))
+        .unwrap();
+}
+pub fn refresh_legacy() {
     let mut a = native::admin();
     a.batch_execute(
         &include_str!("../../migrations/0016_autonomous_inference_profile.sql")
@@ -392,7 +400,13 @@ fn run_deadline(record: &duskweave::m1_run::RunRecord) -> std::time::Instant {
     let remain = u128::try_from(record.deadline_at_ms)
         .ok()
         .and_then(|d| d.checked_sub(now))
-        .filter(|d| *d <= 150000)
+        .filter(|d| {
+            *d <= if record.request.successor() {
+                400000
+            } else {
+                150000
+            }
+        })
         .expect("run_deadline");
     Instant::now() + Duration::from_millis(remain as u64)
 }

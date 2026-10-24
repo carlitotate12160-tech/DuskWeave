@@ -60,6 +60,18 @@ pub enum Admission {
     Rejected(&'static str),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecordingPremises {
+    Fresh,
+    ExpiredByTtl,
+}
+
+/// Successor history preserves the screened proposal separately from current use.
+pub enum RecordedProposal {
+    Current(Box<Proposal>),
+    StalePremises(Box<Proposal>),
+}
+
 // Concrete current-use and safe-text admission remain unmeasured dependencies.
 pub trait ProposalBasis: Send {
     fn reference_eligible(&self, reference: &str) -> bool;
@@ -75,6 +87,10 @@ pub trait ProposalBasis: Send {
         self.current_authority_and_premises()
     }
     fn safe_explanation(&self, text: &str) -> bool;
+    fn recording_premises(&mut self) -> Result<RecordingPremises, &'static str> {
+        self.current_authority_and_premises()?;
+        Ok(RecordingPremises::Fresh)
+    }
 }
 
 fn structural(value: Value) -> Result<Proposal, &'static str> {

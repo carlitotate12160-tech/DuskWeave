@@ -86,10 +86,19 @@ complete feedback is unqualified and the exact killer is unestablished. The
 owner-accepted
 [provider-neutral lifecycle/freshness revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22)
 defines the successor-lane requirements for that lifecycle blocker. Bounded order: the amendment is
-owner-accepted; complete this documentation candidate's checks/review; prepare
-one runtime packet through the existing CLI/owners with qualified finite
-values, DeepSeek as the first real adapter and a second local protocol fixture
-proving interchangeability; after runtime qualification, prepare one freshly
+owner-accepted and merged in PR #115; execute the issued
+[runtime R2 packet](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md) through the
+existing CLI/owners with its fixed resource-policy ceilings, DeepSeek as the
+first external adapter and two local protocol fixtures. The runtime work is
+implemented, with ordinary Windows scenarios recorded in the
+[T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
+Delivery is [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116),
+NOT READY pending final Windows qualification, candidate CI and
+[review corrections](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1).
+The owner-issued R2 assignment moves the
+required full-suite/coverage gate to exact-candidate Linux CI without widening
+local/runtime privileges. Partial focused tests do not establish T1-T9
+acceptance. After runtime qualification, prepare one freshly
 authorized real DeepSeek fixture demonstration with no inherited
 consent/window; then add OpenAI/Claude/Mistral adapters and one OpenRouter
 adapter individually through the same contract suite when their credentials
@@ -252,6 +261,59 @@ latency percentile or promised speedup. The bootstrap captures child output unti
 completion, so a silent UI interval alone does not prove a hung test. Final
 job/check status must be read separately; a completed log or earlier head is not
 a substitute for current ci-ok.
+
+### 1.5 Rust tooling direction (owner request, 2026-10-24)
+
+The owner requests Rust for DuskWeave-owned execution/qualification tooling and
+retains the accepted Go adapter boundary. This records delivery direction, not
+an implemented migration, accepted platform expansion or reset of FIX cycles.
+At inspected source 776421d, src/ and Cargo.toml contain no Python invocation.
+Python remains in fixture provisioning, qualification, live/Terrain wrappers,
+the T8 upgrade worker, an inline TLS test server and CI/quality tooling.
+
+The demonstrated blocker is process-tree/pipe lifetime and timeout attribution,
+not proof that Python itself caused the historical readiness incident. A Rust
+translation must correct that contract rather than reproduce it.
+
+- Keep #116 DRAFT / NOT READY and preserve its runtime, migration, accepted
+  lifecycle contracts and completed Windows evidence. Current evidence does not
+  justify dropping those changes or redesigning Mission/Terrain/Broker owners.
+  Replace the previous next-action recommendation to patch Python supervision;
+  do not add another Python feature/fix cycle for this outcome.
+- First design one Rust development executable outside the shipped runtime:
+  fixture provisioning -> owned action tree -> bounded wait/cleanup -> redacted
+  result -> fixed qualification consumer. Keep privileged provisioning credentials
+  out of production APIs/processes. Rewire bootstrap/qualification consumers,
+  T8 and CI before retiring their Python entrypoints; no parallel permanent runner.
+- Own Windows descendants independently of the initial parent PID, using a
+  reviewed Job Object boundary established before the action can spawn children;
+  use a separately owned Unix process group for the trusted fixture tree. Bound
+  output collection and cleanup, retain timeout cause when cleanup fails, and
+  report unresolved termination honestly. Resolve dependency/safety placement
+  before an executable packet; preserve the core's forbid(unsafe_code).
+- Required regressions include an exited parent with inherited pipes held by a
+  descendant, a live stalled parent, cleanup failure, secret-bearing output,
+  first-failure/no-retry behavior and the real T8/CI consumers. Preserve restricted
+  roles, migration semantics, full test summaries and separate build targets.
+- Subsequent bounded migrations retire legacy live/Terrain wrappers after their
+  operational consumers have replacements, replace the inline TLS fixture, then
+  port remaining CI/quality scripts with their negative controls and unchanged
+  gate policy. Until those consumers are removed, do not claim Python-free tooling.
+  This is a finite retirement sequence, not authority for an all-at-once rewrite.
+- First seam delivered: [DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md)
+  implements the development executable (owned action tree, bounded wait and
+  cleanup, redacted publication, fixed service check) and rewires the
+  bootstrap/qualifier bridge, T8 and CI. Python supervision of fixture actions
+  is retired; provisioning, live/Terrain wrappers and quality scripts remain
+  Python until their later bounded migrations.
+- Native Windows ACL replacement is a separate production adapter concern;
+  it must preserve security semantics and cannot fix harness pipe ownership.
+  Linux remains the accepted acquisition deployment under ADR-015. A development
+  Job Object does not qualify Windows acquisition or introduce a new Broker.
+
+Delivery of the first seam supersedes only the no-implementation sentence above;
+direction, retirement sequence and evidence rules are unchanged. Record later
+design, migration and retirement evidence in the existing delivery ledger and PR.
 
 ## 2. Deferred development candidates
 
