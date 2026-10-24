@@ -928,19 +928,32 @@ waits; `class=other` for a masked row identifies no SQL component. Parent and
 child role sharing and intervals between samples remain unattributed.
 Observed runs are diagnostics, not clean Windows qualification.
 
-**Disposition: UNVERIFIED.** None of these runs reproduces or explains the
-original `eeed8cc2-9fa2-4dc7-a882-cc20ceb767ac` 5,068 ms parent-observed
-readiness deadline. Its one binding/window and absent decision reservation,
-call, decision, history and effect still bound durable startup progress only.
-The missing evidence is which child operation occupied the preparation
-interval, and whether/when READY was emitted relative to parent receipt.
-Current fixture-admin privileges cannot expose the sampled runtime SQL/waits;
-no scheduling, database-I/O, ACL or provider-latency cause is established.
-No runtime correction is justified. The smallest next action is an owner
-disposition of that observation boundary (separately authorized read-only
-visibility or bounded process/startup evidence), followed by a newly issued
-causal regression/correction if warranted and required clean qualification.
-The 5 s preparation and 1.5 s ACL contracts remain unchanged.
+**Reconciled disposition (architecture review, 2026-10-24): historical cause
+UNVERIFIED.** The original 5,068 ms incident is not explained by the selected
+passing diagnostics. A subsequent bounded architecture probe on source
+07348549179614055ec23ec088484346251421ea observed other restricted sessions
+through existing provisioning access, without a new grant. Ordinary and
+instrumented Responses passed once; decision-child lifetimes were 1.56-1.86 s,
+not READY timestamps or a latency distribution. Deliberately pausing the owned
+instrumented child after one binding/window produced parent-observed
+readiness_deadline at 5,011 ms with zero decision reservation/call/decision/
+history/effect. Thus the footprint alone cannot attribute a database stall.
+The injected control proves its bounded stop, not the old physical cause.
+
+Sanitized probe evidence is retained at
+`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/architect-startup-probe-20261024a/DW-PR116-WINDOWS-STARTUP-PROBE.md`.
+The source worktree remained unchanged throughout those experiments.
+
+The selected next scope is test/tooling closure: remove the Rust SQL sampler,
+separate existing contract/upgrade/wire responsibilities, and reuse the native
+Fixture in one fail-fast four-action Windows qualification process. Session
+custody alone does not aggregate action failures; the qualifier must do so.
+No startup checkpoint protocol, diagnostic-v3/schema, timer, privilege, ACL,
+warm-up or Windows-runner change is justified by this evidence. The 5 s
+preparation and 1.5 s ACL policies remain unchanged. This is a bounded re-scope
+after the preserved cycle-2 STOP, not a counter reset or acceptance. Clean
+Windows gates, candidate Linux CI and final review remain required; the owner
+must not be told that all future Windows tail events are eliminated.
 
 **Retained gates and delta review.** The earlier ordinary binary 57/57,
 ordinary lifecycle 17/17, instrumented binary 57/57 and instrumented lifecycle
@@ -956,13 +969,14 @@ Final source fmt, all-target Clippy with warnings denied, dependency direction,
 links, structure and whitespace checks pass. Pinned rust-code-analysis-cli
 0.0.25 against the original PR base reports zero regressions and ten retained
 debt items (`readiness-root-cause/metrics`). This delta has zero production
-changed lines. The cohesive existing test/support files retain the common
-real-CLI assertion path and its private observer; the ledger retains required
-incident chronology. Their advisory size crossings justify no exception or
-count-driven file split. The observer startup function is retained cohesively
-for connection qualification and thread ownership; no dispatch exception is used.
+changed lines. The earlier author review retained the observer in the existing test
+support file. Architecture reconciliation rejects that cohesion disposition:
+observation, migration custody and inference/wire qualification have distinct
+consumers and reasons to change. The assigned closure will remove the sampler and
+moves existing responsibilities without deleting assertions or count-driven
+forwarding helpers. No dispatch exception is used.
 
-Author QUALITY_BAR section 7: Q1–Q4 PASS for test-only ownership, dependency
+Earlier author QUALITY_BAR section 7: Q1–Q4 PASS for test-only ownership, dependency
 direction, necessary private observation and unchanged product truth/timers.
 Q5 PASS for the bounded correction/matrix, while the original lifecycle
 qualification remains blocked. Q6 PASS: split tests -> existing real `m1-run`
