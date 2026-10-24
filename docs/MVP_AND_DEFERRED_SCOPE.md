@@ -262,6 +262,53 @@ completion, so a silent UI interval alone does not prove a hung test. Final
 job/check status must be read separately; a completed log or earlier head is not
 a substitute for current ci-ok.
 
+### 1.5 Rust tooling direction (owner request, 2026-10-24)
+
+The owner requests Rust for DuskWeave-owned execution/qualification tooling and
+retains the accepted Go adapter boundary. This records delivery direction, not
+an implemented migration, accepted platform expansion or reset of FIX cycles.
+At inspected source 776421d, src/ and Cargo.toml contain no Python invocation.
+Python remains in fixture provisioning, qualification, live/Terrain wrappers,
+the T8 upgrade worker, an inline TLS test server and CI/quality tooling.
+
+The demonstrated blocker is process-tree/pipe lifetime and timeout attribution,
+not proof that Python itself caused the historical readiness incident. A Rust
+translation must correct that contract rather than reproduce it.
+
+- Keep #116 DRAFT / NOT READY and preserve its runtime, migration, accepted
+  lifecycle contracts and completed Windows evidence. Current evidence does not
+  justify dropping those changes or redesigning Mission/Terrain/Broker owners.
+  Replace the previous next-action recommendation to patch Python supervision;
+  do not add another Python feature/fix cycle for this outcome.
+- First design one Rust development executable outside the shipped runtime:
+  fixture provisioning -> owned action tree -> bounded wait/cleanup -> redacted
+  result -> fixed qualification consumer. Keep privileged provisioning credentials
+  out of production APIs/processes. Rewire bootstrap/qualification consumers,
+  T8 and CI before retiring their Python entrypoints; no parallel permanent runner.
+- Own Windows descendants independently of the initial parent PID, using a
+  reviewed Job Object boundary established before the action can spawn children;
+  use a separately owned Unix process group for the trusted fixture tree. Bound
+  output collection and cleanup, retain timeout cause when cleanup fails, and
+  report unresolved termination honestly. Resolve dependency/safety placement
+  before an executable packet; preserve the core's forbid(unsafe_code).
+- Required regressions include an exited parent with inherited pipes held by a
+  descendant, a live stalled parent, cleanup failure, secret-bearing output,
+  first-failure/no-retry behavior and the real T8/CI consumers. Preserve restricted
+  roles, migration semantics, full test summaries and separate build targets.
+- Subsequent bounded migrations retire legacy live/Terrain wrappers after their
+  operational consumers have replacements, replace the inline TLS fixture, then
+  port remaining CI/quality scripts with their negative controls and unchanged
+  gate policy. Until those consumers are removed, do not claim Python-free tooling.
+  This is a finite retirement sequence, not authority for an all-at-once rewrite.
+- Native Windows ACL replacement is a separate production adapter concern;
+  it must preserve security semantics and cannot fix harness pipe ownership.
+  Linux remains the accepted acquisition deployment under ADR-015. A development
+  Job Object does not qualify Windows acquisition or introduce a new Broker.
+
+No implementation, new qualification run, provider/target contact, PR closure,
+acceptance or seal is claimed by this direction. Record later design, migration
+and retirement evidence in the existing delivery ledger and PR.
+
 ## 2. Deferred development candidates
 
 Deferred means outside initial scope; evaluate means a possible direction, not a commitment to build it. Revisit using evidence and the stated trigger.
