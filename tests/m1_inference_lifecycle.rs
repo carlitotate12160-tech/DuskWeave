@@ -1,6 +1,4 @@
 //! Successor contracts use fresh explicit profiles; legacy records retain their wire semantics.
-use duskweave::input::parse_register;
-use duskweave::mission::{CampaignId, EngagementId};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -11,209 +9,16 @@ mod db_support;
 #[path = "support/m1_terrain_context.rs"]
 mod terrain;
 use terrain::terrain_support::native;
+#[path = "support/m1_lifecycle_contract_cases.rs"]
+mod contract_cases;
 #[path = "support/m1_inference_lifecycle.rs"]
 mod lifecycle;
 #[path = "support/m1_run.rs"]
 mod run_support;
-
-#[test]
-fn t7_reported_guard_is_optional_closed_evidence_separate_from_parent_cause() {
-    let raw = json!({"version":"m1_run_phase_diagnostic_v2","run_id":Uuid::from_u128(17),
-        "phase":"decision_one","cause":"child_exit","cause_source":"parent_observed",
-        "child_error":null,"exit_code":124,"readiness_observed":true,"elapsed_ms":61950,
-        "reported_guard":"transport_hard_deadline"});
-    let diagnostic: duskweave::m1_run::PhaseDiagnostic = serde_json::from_value(raw.clone())
-        .expect("a received closed report must survive the diagnostic boundary");
-    diagnostic.validate().unwrap();
-    for value in [
-        json!("timeout"),
-        json!("synthetic-sensitive-sentinel"),
-        json!(3),
-        Value::Null,
-    ] {
-        let mut bad = raw.clone();
-        bad["reported_guard"] = value;
-        assert!(serde_json::from_value::<duskweave::m1_run::PhaseDiagnostic>(bad).is_err());
-    }
-    let mut absent = raw;
-    absent.as_object_mut().unwrap().remove("reported_guard");
-    serde_json::from_value::<duskweave::m1_run::PhaseDiagnostic>(absent)
-        .unwrap()
-        .validate()
-        .unwrap();
-}
-
-fn successor(profile: &str, recipient: &str) -> Value {
-    let mut raw = consent::registration(
-        EngagementId(Uuid::from_u128(1)),
-        CampaignId(Uuid::from_u128(2)),
-    );
-    let p = &mut raw["m1_inference_permission"];
-    p["version"] = json!("m1_inference_permission_v4");
-    p["profile"] = json!(profile);
-    p["recipient"] = json!(recipient);
-    p["execution_mode"] = json!("controlled_fixture");
-    p["run_profile"] = json!("autonomous-dns-fixture-v2");
-    p["field_classes"] = json!([
-        "mission_question_constraints",
-        "scoped_opaque_references",
-        "owner_qualified_summaries",
-        "admitted_operator_premises",
-        "manifest_availability",
-        "omissions_unknown",
-        "capacity",
-        "admitted_repair_fields_codes",
-        "admitted_campaign_decision_feedback"
-    ]);
-    p["campaign_limits"] = json!({"calls":4,"request_bytes":65536,"response_bytes":262144,"output_token_capacity":16384,"wall_time_ms":258000});
-    for (name, value) in [
-        ("context_bytes", 8192),
-        ("json_depth", 32),
-        ("decision_wall_time_ms", 129000),
-        ("per_call_wall_time_ms", 62000),
-        ("soft_completion_ms", 60000),
-        ("shared_wall_time_ms", 124000),
-        ("phase_wall_time_ms", 134000),
-        ("cancel_grace_ms", 2000),
-        ("accounting_window_ms", 3000),
-    ] {
-        p["operation_limits"][name] = json!(value);
-    }
-    raw
-}
-
-#[test]
-fn successor_permission_admits_only_the_three_explicit_bound_profiles() {
-    for (profile, recipient) in [
-        ("fixture-responses-v1", "urn:duskweave:fixture:responses:v1"),
-        (
-            "fixture-chat-completions-v1",
-            "urn:duskweave:fixture:chat-completions:v1",
-        ),
-        (
-            "deepseek-responses-reasoning-v1",
-            "https://api.deepseek.com/responses",
-        ),
-    ] {
-        let raw = successor(profile, recipient);
-        assert!(
-            parse_register(&serde_json::to_vec(&raw).unwrap()).is_ok(),
-            "a fresh v4 permission with the selected finite allocation must register: {profile}"
-        );
-        for (field, value) in [
-            ("profile", json!("unknown")),
-            ("recipient", json!("https://unapproved.invalid")),
-            ("run_profile", json!("autonomous-dns-fixture-v1")),
-            ("version", json!("m1_inference_permission_v3")),
-        ] {
-            let mut bad = raw.clone();
-            bad["m1_inference_permission"][field] = value;
-            assert!(
-                parse_register(&serde_json::to_vec(&bad).unwrap()).is_err(),
-                "{field}"
-            );
-        }
-    }
-}
-
-#[test]
-fn successor_permission_refuses_missing_or_rebound_timer_values() {
-    let raw = successor("fixture-responses-v1", "urn:duskweave:fixture:responses:v1");
-    assert!(parse_register(&serde_json::to_vec(&raw).unwrap()).is_ok());
-    for name in [
-        "soft_completion_ms",
-        "per_call_wall_time_ms",
-        "shared_wall_time_ms",
-        "decision_wall_time_ms",
-        "phase_wall_time_ms",
-        "cancel_grace_ms",
-        "accounting_window_ms",
-    ] {
-        for value in [json!(0), json!(-1), json!(1e300), Value::Null, json!(60001)] {
-            let mut bad = raw.clone();
-            bad["m1_inference_permission"]["operation_limits"][name] = value;
-            assert!(
-                parse_register(&serde_json::to_vec(&bad).unwrap()).is_err(),
-                "{name}"
-            );
-        }
-        let mut bad = raw.clone();
-        bad["m1_inference_permission"]["operation_limits"]
-            .as_object_mut()
-            .unwrap()
-            .remove(name);
-        assert!(
-            parse_register(&serde_json::to_vec(&bad).unwrap()).is_err(),
-            "missing {name}"
-        );
-    }
-}
-
-#[test]
-fn successor_run_requires_explicit_profile_and_preserves_it_in_custody() {
-    let id = Uuid::from_u128(1);
-    let raw = json!({"version":"m1_autonomous_run_request_v2","run_id":id,
-        "run_profile":"autonomous-dns-fixture-v2","execution_mode":"controlled_fixture",
-        "inference_profile":"fixture-chat-completions-v1","deadline_at_ms":1700000400000i64,
-        "context":{"version":"m1_context_prepare_request_v1","mission":{
-            "version":"m1_inference_reservation_request_v1","engagement_id":id,"campaign_id":id,
-            "operator_ref":id,"expected_mission_revision":1,"permission_id":id,"goal_ref":id,
-            "exercise_mode":"blind"},"candidates":[{"asset_ref":id,"priority":"high"}]},
-        "seed_names":[{"asset_ref":id,"name":"www.example.invalid"}]});
-    let parsed = duskweave::m1_run::RunRequest::parse(&serde_json::to_vec(&raw).unwrap());
-    assert!(
-        parsed.is_ok(),
-        "v2 run must admit the explicit selected profile"
-    );
-    assert_eq!(serde_json::to_value(parsed.unwrap()).unwrap(), raw);
-    let mut missing = raw.clone();
-    missing.as_object_mut().unwrap().remove("inference_profile");
-    assert!(duskweave::m1_run::RunRequest::parse(&serde_json::to_vec(&missing).unwrap()).is_err());
-    let mut old = raw;
-    old["version"] = json!("m1_autonomous_run_request_v1");
-    assert!(duskweave::m1_run::RunRequest::parse(&serde_json::to_vec(&old).unwrap()).is_err());
-}
-
-#[test]
-fn both_successor_protocols_bind_the_same_pack_and_conditional_repair() {
-    use duskweave::m1_reasoning::request;
-    for profile in ["fixture-responses-v1", "fixture-chat-completions-v1"] {
-        let p = json!({"version":"m1_context_pack_autonomous_v2","run_profile":"autonomous-dns-fixture-v2",
-            "execution_mode":"controlled_fixture","inference_profile":profile,
-            "references":[{"id":"asset_0"}],"manifests":[{"reference":"dns_udp"}]});
-        let pack = serde_json::to_string(&p).unwrap();
-        for repair in [None, Some(&["proposal_shape"][..])] {
-            let bound = request::bind(pack.as_bytes(), repair).unwrap();
-            assert!(
-                request::verify_binding(
-                    &pack,
-                    std::str::from_utf8(&bound.configuration).unwrap(),
-                    std::str::from_utf8(&bound.body).unwrap(),
-                    &bound.digest,
-                    repair.is_some()
-                )
-                .is_ok(),
-                "both real codecs must verify the bound request: {profile}"
-            );
-            let mut config: Value = serde_json::from_slice(&bound.configuration).unwrap();
-            config["recipient"] = json!("urn:unapproved");
-            let forged = serde_json::to_string(&config).unwrap();
-            let forged_digest =
-                request::compute_binding(pack.as_bytes(), forged.as_bytes(), &bound.body);
-            assert!(
-                request::verify_binding(
-                    &pack,
-                    &forged,
-                    std::str::from_utf8(&bound.body).unwrap(),
-                    &forged_digest,
-                    repair.is_some()
-                )
-                .is_err(),
-                "a recomputed hash grants no profile rebinding"
-            );
-        }
-    }
-}
+#[path = "support/m1_lifecycle_upgrade.rs"]
+mod upgrade;
+#[path = "support/m1_lifecycle_wire.rs"]
+mod wire;
 
 #[test]
 fn t1_responses_real_cli_completes_feedback_and_key_free_recovery() {
@@ -239,7 +44,7 @@ fn assert_real_cli_feedback(slot: u128, profile: &str) {
         "--timing-profile",
         "reasoning-bounded-v1",
     ]);
-    let output = lifecycle::readiness_cli(&q, command);
+    let output = command.output().unwrap();
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
@@ -491,7 +296,7 @@ fn t9_real_producers_fit_both_protocols_and_restricted_sql_rejects_recomputed_fo
         {
             let q = lifecycle::registered_with(0xe200 + (i * 10 + j) as u128, profile, |raw| {
                 if kind.starts_with("eight_seeds") || kind == "exact_limit" {
-                    lifecycle::eight_seeds(raw);
+                    wire::eight_seeds(raw);
                 }
             });
             let rec = run_support::start_only(&q);
@@ -502,7 +307,7 @@ fn t9_real_producers_fit_both_protocols_and_restricted_sql_rejects_recomputed_fo
                 "exact_limit" => "x".repeat(exact_width),
                 _ => "A bounded fixture hypothesis.".into(),
             };
-            let mut provider = lifecycle::WireFixture {
+            let mut provider = wire::WireFixture {
                 hypothesis,
                 fault: "none",
                 entries: 0,
@@ -552,15 +357,12 @@ fn t9_real_producers_fit_both_protocols_and_restricted_sql_rejects_recomputed_fo
                     "byte_bound"
                 );
             }
-            cases.push(lifecycle::wire_case(
-                &format!("{profile}_{kind}_first"),
-                &first,
-            ));
-            cases.push(lifecycle::wire_case(
+            cases.push(wire::wire_case(&format!("{profile}_{kind}_first"), &first));
+            cases.push(wire::wire_case(
                 &format!("{profile}_{kind}_feedback"),
                 prepared.pack.utf8(),
             ));
-            lifecycle::restricted_wire_checks(&rec, &prepared);
+            wire::restricted_wire_checks(&rec, &prepared);
             lease.finish().unwrap();
         }
     }
@@ -587,7 +389,7 @@ fn t3_first_stale_owner_disposition_defers_normal_consumer_and_direct_sql_keeps_
     let prepared = lifecycle::prepare(&rec, RunPhase::DecisionOne);
     let mut broker = lifecycle::broker(&rec, &prepared);
     let mut basis = lifecycle::ExpiredAtRecording(lifecycle::basis(&prepared, broker.deadline));
-    let mut provider = lifecycle::WireFixture {
+    let mut provider = wire::WireFixture {
         hypothesis: "A safe historical hypothesis.".into(),
         fault: "none",
         entries: 0,
@@ -719,7 +521,7 @@ fn t9_generated_successor_examples_reproduce_exact_utf8_and_bound_wires() {
     assert_eq!(artifact["cases"].as_array().unwrap().len(), 24);
     for case in artifact["cases"].as_array().unwrap() {
         assert_eq!(
-            lifecycle::wire_case(
+            wire::wire_case(
                 case["name"].as_str().unwrap(),
                 case["pack"].as_str().unwrap()
             ),
@@ -744,7 +546,7 @@ fn t6_successor_failures_never_retry_and_only_real_repairable_codec_output_opens
         let prepared = lifecycle::prepare(&rec, RunPhase::DecisionOne);
         let mut broker = lifecycle::broker(&rec, &prepared);
         let mut basis = lifecycle::basis(&prepared, broker.deadline);
-        let mut provider = lifecycle::WireFixture {
+        let mut provider = wire::WireFixture {
             hypothesis: if fault == "unsafe" {
                 "password synthetic sentinel"
             } else {
@@ -955,13 +757,13 @@ fn t5_profile_matrix_and_raw_sql_run_admission_are_closed_and_share_one_window_o
 
 #[test]
 fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_refresh() {
-    if !lifecycle::upgrade_worker() {
+    if !upgrade::upgrade_worker() {
         return;
     }
     let _guard = native::db();
-    lifecycle::assert_predecessor_catalog();
+    upgrade::assert_predecessor_catalog();
     run_support::refresh_legacy();
-    lifecycle::assert_predecessor_catalog();
+    upgrade::assert_predecessor_catalog();
     let q = run_support::registered(0xe600);
     let rec = run_support::start_only(&q);
     let lease = run_support::LeaseCustodian::start(&rec, run_support::broker_store());
@@ -983,8 +785,8 @@ fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_re
         .unwrap()
         .get(0);
     assert_eq!(payload["version"], 1);
-    lifecycle::assert_predecessor_catalog();
-    let snapshot = lifecycle::legacy_snapshot();
+    upgrade::assert_predecessor_catalog();
+    let snapshot = upgrade::legacy_snapshot();
     for table in [
         "execution.autonomous_runs",
         "execution.inference_calls",
@@ -1040,7 +842,7 @@ fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_re
             assert_eq!(summary["decision_history_count"], 1);
             assert_eq!(summary["inference"], before["inference"]);
             assert_eq!(
-                lifecycle::legacy_snapshot(),
+                upgrade::legacy_snapshot(),
                 snapshot,
                 "upgrade/recovery changed legacy owner rows or charges"
             );

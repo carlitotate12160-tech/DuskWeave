@@ -57,6 +57,45 @@ printing these counts. An eight-seed scenario checks real producer/consumer fit.
 
 ## Isolated demonstration on the owned Windows fixture service
 
+### Successor Windows qualification
+
+With a clean committed source, Rust 1.94.1 x86_64-pc-windows-msvc,
+cargo-llvm-cov 0.9.1, existing Python and owned `dwpg-r3` PostgreSQL 17.11,
+hold both build targets and cluster-role fixtures under one serial owner.
+Before starting, clean only the selected coverage workspace profiles using
+`cargo +1.94.1 llvm-cov clean --workspace` with both coverage target variables
+set to `D:/DuskWeave-build/rust-1.94.1/coverage/inference-lifecycle` in that
+process. Preserve compiled artifacts and all previous evidence. Then run:
+
+```powershell
+python tests/support/m1_lifecycle_qualification.py --database-name dw_native_lifecycle_qualification_20261024c --report D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled
+```
+
+The command refuses existing output/database names and unsuitable prerequisites.
+It reuses native bootstrap custody once at schema 0021, with provisioning
+`postgres` distinct from restricted fixture-admin and runtime owners. It runs
+ordinary binary, ordinary lifecycle, instrumented binary and instrumented
+lifecycle actions serially, binding the CLI to the corresponding target.
+Each full action requires 57 binary or 18 lifecycle tests, with no failures,
+ignored or filtered tests. T8's nested one-test worker does not replace the
+full lifecycle summary. No key, observer or stale binary override is forwarded.
+
+The 900-second ceiling per Cargo action includes compilation and tests. This is
+a conservative harness policy, not measured fit or a product timeout.
+`harness_timeout` is separate from an ordinary child exit 124. The first failed
+action ends qualification with its nonzero result; subsequent actions remain
+`NOT_RUN`. One read-only provisioning snapshot is attempted after failure.
+Redacted action logs, result metadata, `qualification.json` and any available
+snapshot are retained. Snapshot failure never replaces the original result.
+Credentials stay in the process and children; no session recovery or automatic
+retry is offered. Preserve databases and reports after either outcome.
+
+A successful sequence qualifies that source and environment only. It does not
+explain the historical 5,068 ms startup incident, establish a latency distribution,
+eliminate future Windows tail events, qualify a real provider or seal M1.
+
+### Previously delivered skeleton demonstration
+
 Use the qualified Rust 1.94.1 / PostgreSQL 17 setup described in
 [the implementation packet](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md).
 No production/client database or old live consent is usable for this fixture.

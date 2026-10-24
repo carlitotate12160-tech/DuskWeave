@@ -1,10 +1,12 @@
 """Own one fresh native fixture and keep credentials in this process and children."""
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
 import secrets
+import signal
 import subprocess
 import sys
 import time
@@ -47,6 +49,35 @@ def wait_with_progress(process, label):
         except subprocess.TimeoutExpired:
             print(json.dumps({"action": label, "status": "running",
                               "elapsed_seconds": int(time.monotonic() - started)}), flush=True)
+
+
+def stop_action_tree(process):
+    """Stop only this action's descendants; this is harness cleanup, not a product guard."""
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                       capture_output=True, timeout=10)
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    if process.poll() is None:
+        process.kill()
+
+
+def wait_supervised(process, label, deadline):
+    """communicate drains both pipes, including while a supervision wait expires."""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            stop_action_tree(process)
+            stdout, stderr = process.communicate(timeout=10)
+            return stdout, stderr, True
+        try:
+            stdout, stderr = process.communicate(timeout=min(15, remaining))
+            return stdout, stderr, False
+        except subprocess.TimeoutExpired:
+            print(json.dumps({"action": label, "status": "running"}), flush=True)
 
 
 class Fixture:
@@ -178,22 +209,40 @@ class Fixture:
             except RuntimeError:
                 raise RuntimeError(f"native_migration_{number:04d}_failed") from None
 
-    def run(self, label, args, report):
+    def run(self, label, args, report, max_duration_seconds=None):
         if not re.fullmatch(r"[a-z0-9_-]+", label) or not isinstance(args, list) or not args:
             raise RuntimeError("native_action_refused")
         path = report / f"{label}.log"
-        if path.exists():
+        metadata = report / f"{label}.result.json"
+        supervised = max_duration_seconds is not None
+        if supervised and (not math.isfinite(max_duration_seconds) or max_duration_seconds <= 0):
+            raise RuntimeError("native_action_refused")
+        if path.exists() or (supervised and metadata.exists()):
             raise RuntimeError("native_report_collision")
+        options = {}
+        if supervised and sys.platform != "win32":
+            options["start_new_session"] = True
+        started = time.monotonic()
+        timed_out = False
         with subprocess.Popen(args, cwd=ROOT, env=self.env, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True) as process:
-            stdout, stderr = wait_with_progress(process, label)
+                              stderr=subprocess.PIPE, text=True, **options) as process:
+            if supervised:
+                stdout, stderr, timed_out = wait_supervised(process, label, started + max_duration_seconds)
+            else:
+                stdout, stderr = wait_with_progress(process, label)
         output = stderr + "\n" + stdout
         for value in self.secrets:
             output = output.replace(value, "[REDACTED]")
         path.write_text(output, encoding="utf-8")
-        print(json.dumps({"action": label, "exit": process.returncode}), flush=True)
+        result = 124 if timed_out else process.returncode
+        if supervised:
+            status = "harness_timeout" if timed_out else ("action_failed" if result else "completed")
+            metadata.write_text(json.dumps({"status": status, "exit": result,
+                                "child_exit": process.returncode,
+                                "elapsed_seconds": round(time.monotonic() - started, 3)}), encoding="utf-8")
+        print(json.dumps({"action": label, "exit": result}), flush=True)
         print("\n".join(output.splitlines()[-35:]), flush=True)
-        return process.returncode
+        return result
 
 
 def main():

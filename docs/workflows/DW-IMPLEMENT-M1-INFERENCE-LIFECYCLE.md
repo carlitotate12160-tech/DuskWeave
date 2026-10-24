@@ -993,3 +993,124 @@ Delivery remains **DRAFT / NOT READY**. The known test correction is qualified
 in its selected scope; original lifecycle delivery remains undelivered pending
 causal disposition and clean mandatory gates. No new FIX cycle, automatic
 retry, real provider/target request, merge, acceptance or seal is claimed.
+
+## Native qualification closure (2026-10-24)
+
+The owner-issued `DW-PR116-NATIVE-QUALIFICATION-CLOSURE` continues this DRAFT PR
+from `56c780d9e4f56d779f89c8404709eca51b5bac12`, preserving its reconciliation
+commit and both recorded FIX cycles. The original PR base remains
+`79b0e3ee1bea44b5e5639c1142af45b6c44918b4`. This supporting slice makes the
+Mission -> decision one -> Broker-admitted synthetic DNS -> owner-qualified
+Terrain -> decision two -> history/inspect path reproducibly qualifiable.
+APT41, Lazarus and Volt Typhoon remain behavioral reference lenses only.
+
+The architecture probe above remains diagnostic evidence: ordinary/instrumented
+Responses passed once each; 1.56-1.86 s child lifetimes are not READY times or a
+latency distribution. Existing provisioning access observed the fresh database
+without a new grant. Pausing the owned child produced readiness_deadline at
+5,011 ms and zero decision reservation/call/decision/history/effect. Historical
+5,068 ms causation remains UNVERIFIED. Neither result replaces mandatory gates.
+
+### Changed responsibilities and characterization
+
+- Removed `READINESS_ACTIVITY`, `READINESS_STATE`, `ReadinessObserver` and its
+  sampling/bridge code. The shared real-CLI assertion calls `Command::output`
+  directly. Historical evidence remains above; no replacement observer exists.
+- Moved five existing pure tests and their private successor factory into
+  `tests/support/m1_lifecycle_contract_cases.rs`, staged-0020 catalog/worker/
+  snapshot ownership into `m1_lifecycle_upgrade.rs`, and encoded provider/wire
+  qualification into `m1_lifecycle_wire.rs`. Integration callers address these
+  owners directly. Wire consumes lifecycle's prepared fixture and broker;
+  lifecycle has no reverse dependency, facade or blanket re-export.
+- Executable `--list` comparison retained exactly 18 tests; exactly five names
+  gained `contract_cases::`. T8's top-level name and exact child filter remain
+  unchanged. All five pure contracts passed before and after their move.
+  Immutable fixture strings and serialized wire examples are unchanged.
+- `m1_lifecycle_qualification.py` owns one native `Fixture` lifetime at 0021,
+  fixed four-action ordering, separate targets and matching CLI paths, clean
+  source/environment provenance, summary validation and aggregate failure.
+  Bootstrap's optional action ceiling defaults to None and preserves existing
+  callers/session behavior. Supervised metadata distinguishes completed,
+  action_failed and harness_timeout; exit 124 alone identifies no product guard.
+- New controller tests first produced seven assertion failures for missing
+  fail-fast/collision/summary/custody behavior. Three initial missing-interface
+  errors are scaffolding evidence only, not behavioral RED. The implemented
+  controller suite passes 13 tests, including owned process-tree timeout,
+  both-pipe draining/redaction and ordinary exit-124 distinction. Unchanged
+  bootstrap progress and native-helper tests pass 3/3 and 35/35. CI adds only
+  this discovery command to the existing Native helper unit tests step.
+
+### Qualification plan and current evidence
+
+The [single command](../RUN_M1_AUTONOMOUS_FIXTURE.md#successor-windows-qualification)
+uses fresh `dw_native_lifecycle_qualification_20261024c` and reports under
+`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled`.
+Both names were absent at live preflight. Owned dwpg-r3 was running PostgreSQL
+17.11 on loopback 5432 with the issued digest. Rust 1.94.1 MSVC and
+cargo-llvm-cov 0.9.1 are installed. One owner holds the ordinary and coverage
+targets and cluster-role fixtures for the complete serial sequence. Only
+coverage workspace/profile cleanup is permitted; compiled artifacts are reused.
+Provisioning postgres, restricted fixture-admin and runtime owners remain
+distinct; no runtime privilege is widened. Keys/observer/stale binary overrides
+are removed from action environments, and no ended credentials are recovered.
+
+The 900-second per-action limit is conservative harness supervision, not
+measured latency fit or a product timer. Both pipes are drained continuously.
+The first failure preserves its result, marks remaining actions NOT_RUN and
+attempts one read-only fresh-fixture snapshot through existing provisioning
+access. Snapshot unavailability never replaces the original failure. No replay,
+SQL polling, provider/target contact or automatic retry is introduced.
+
+| Required Windows action | Required full result | Current disposition |
+| --- | --- | --- |
+| Ordinary binary | 57 passed, zero failed/ignored/filtered | Pending clean committed-source sequence |
+| Ordinary lifecycle | 18 passed, zero failed/ignored/filtered | Pending same sequence |
+| Instrumented binary | 57 passed, zero failed/ignored/filtered | Pending same sequence |
+| Instrumented lifecycle | 18 passed, zero failed/ignored/filtered | Pending same sequence |
+
+T1/T3/T5/T6/T7/T8/T9 stay in the full lifecycle target; moved T8 still creates
+its real populated predecessor fixture and retains its report reference.
+Unchanged library 44/44, real-duration T2, controls, incident/probe evidence and
+earlier distinct review retain their original source provenance above. They are
+not relabeled as new execution. Current Linux full-suite/coverage, required CI
+and reviewer-instance review remain pending publication of the final candidate.
+
+### Author delta review and tracking
+
+QUALITY_BAR section 7: Q1 ownership and Q2 dependencies PASS by direct private
+module wiring and one-way wire -> lifecycle dependency. Q3 simplicity PASS:
+the sampler is removed; the qualifier has a fixed plan and directly reuses
+Fixture, with no runner framework. Q4 single truth PASS: existing assertion
+bodies and wire strings are moved; numerical product policy remains ADR-016.
+Q5 requirement fit and Q6 reachability PASS for implemented tooling/test scope:
+Python CLI -> qualifier -> native Fixture -> four Cargo consumers -> actual CLI
+and owner assertions -> logs/result; mandatory full execution is still pending.
+Q7 failure integrity PASS in controller/synthetic tests for first-failure stop,
+no replay, owned-tree cleanup and original-result preservation. Q8 trust/claims
+PASS for closed setup/result categories and process-only credential custody;
+historical physical causation and pending platform gates remain UNVERIFIED.
+This is author review, not a new independent-review claim.
+
+Working-source fmt and all-target Clippy pass. Dependency direction reports
+22 protected modules and zero violations; structure reports no forbidden path,
+conflict or Rust hygiene failure. Pinned rust-code-analysis-cli 0.0.25 against
+the original PR base reports zero regressions and ten retained debt items.
+The delta changes no production source, migrations, dependency or timer.
+The integration matrix and historical ledger remain large cohesive scenario/
+provenance owners; advisory size alone establishes no architectural correctness.
+Measured organization: integration scenarios 1,098 -> 900 lines, retained
+inference support 1,086 -> 406, contract cases 205, upgrade 203 and wire 220.
+Bootstrap is 290 lines, qualifier 207 and controller tests 225. No new Python
+function crosses the 50-line review trigger; the unchanged bootstrap constructor
+retains its cohesive provisioning responsibility. The moved upgrade worker and
+large integration scenarios retain their existing complete custody/assertion
+flows rather than splitting for counts. Final focused preflight passed 13/13
+controller, 3/3 progress and 35/35 helper tests; link checks found 245 valid relative
+links, zero broken links/anchors; whitespace passed. Final diff accounting and
+committed qualification outcomes are reconciled below when known.
+
+Tracking disposition is UPDATE for this ledger, ENGINEERING_STATE and the
+existing run guide. BUILD_ORDER remains navigation-only and unchanged.
+Delivery remains DRAFT / NOT READY pending the clean sequence and final-candidate
+Linux/review gates. A real failure stops this assignment without a new FIX
+cycle, speculative correction, merge, acceptance or seal.

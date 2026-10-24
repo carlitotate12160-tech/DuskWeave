@@ -89,6 +89,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_m1_bootstrap_progress.py
           python -m unittest discover -s tests -p test_m1_native_helpers.py
+          python -m unittest discover -s tests -p test_m1_lifecycle_qualification.py
           python -m unittest discover -s tests -p test_m1_terrain_live.py
           python -m unittest discover -s tests -p test_m1_terrain_live_contract.py
 
