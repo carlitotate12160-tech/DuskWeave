@@ -712,3 +712,83 @@ this correction and 3,483 cumulatively against the original PR base; the
 original cohesive-runtime advisory disposition remains applicable. Delivery
 stays DRAFT / NOT READY; no
 provider activation, target contact, merge or seal is claimed.
+
+### Qualification STOP and root-cause disposition (2026-10-24)
+
+The owner authorized replacement fixture `dw_native_lifecycle_20261024b`
+after the previous session's stdin EOF. A TTY-backed bootstrap captured the
+ordinary target and absolute existing Python path before provisioning; keys
+were absent. All four assigned actions ran serially on Windows x86_64 MSVC,
+Rust 1.94.1, cargo-llvm-cov 0.9.1 and the retained owned PostgreSQL 17.11
+`dwpg-r3`. Each action's exit value and retained log were checked separately.
+
+| Action log | Executed Cargo command | Result / test duration |
+| --- | --- | --- |
+| `fix2b-native-bin.log` | `cargo +1.94.1 test --locked --bin duskweave -- --test-threads=1` | Exit 0; 57 PASS, zero failed/ignored; 40.66 s |
+| `fix2b-native-lifecycle.log` | `cargo +1.94.1 test --locked --test m1_inference_lifecycle -- --test-threads=1` | Exit 0; 17 PASS, zero failed/ignored; 380.56 s |
+| `fix2b-cov-bin.log` | `cargo +1.94.1 llvm-cov --locked --bin duskweave --no-report -- --test-threads=1` | Exit 0; 57 PASS, zero failed/ignored; 44.00 s |
+| `fix2b-cov-lifecycle.log` | `cargo +1.94.1 llvm-cov --locked --test m1_inference_lifecycle --no-report -- --test-threads=1` | Exit 101; 15 PASS / 2 FAIL, zero ignored; 469.95 s |
+
+Logs remain under
+`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/fix-qualification`.
+The two instrumented actions used a per-action Python subprocess that set
+both `CARGO_TARGET_DIR` and `CARGO_LLVM_COV_TARGET_DIR` to the isolated
+coverage path. Ordinary executables remained in the normal path. No global
+environment, local Cargo configuration, privilege or deadline changed.
+The session exited normally after the failed action; shutdown exit 0 is not
+a qualification PASS. Both current-schema fixtures and all nested upgrade
+fixtures/reports remain retained; ended-session credentials were not recovered.
+
+The mandatory instrumented lifecycle gate exposed two distinct blockers:
+
+1. **Platform qualification UNVERIFIED / blocking.** The real Responses CLI
+   stopped at Decision 1 with durable parent-observed `readiness_deadline`,
+   elapsed 5,068 ms, `readiness_observed=false`, `child_error=null` and
+   `run_child_terminal_unknown`. It recorded zero decisions, history or effects.
+   A read-only query confirmed that diagnostic. This identifies the parent's
+   observation, not the underlying child guard or an ACL/SQL/scheduler cause.
+   The exact internal cause remains UNVERIFIED; no envelope was enlarged and
+   no retry was performed.
+2. **Fixture repeatability defect VALID / blocking.** The reverse-UUID causal
+   inspection test assigns fixed `MAX - 0xe620` and `0xe620` decision IDs.
+   Its ordinary invocation retained those IDs in this same fixture. The
+   required instrumented invocation therefore failed with SQLSTATE 23505 on
+   `autonomous_runs_decision_one_key` before the ordering assertion. A
+   read-only catalog query confirmed the retained original pair. This is a
+   test identity collision, not a demonstrated production ordering failure.
+   The smallest future remedy is unique per-run identities that preserve the
+   adversarial first-greater-than-second ordering, inside the existing test
+   file. It was not silently patched or rerun past this cycle's STOP boundary.
+
+The qualification-source [Linux CI run 40056489936](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/40056489936)
+passed all nine required jobs, including full-suite real PostgreSQL execution
+and 96.75% production coverage (12,198/12,608), every file at least 80%.
+Its tested merge checkout has the same tree as the qualification head;
+exact identities remain in verification output. The downloaded sanitized
+artifact confirms automatic staged T8 and lifecycle 17/17 (221.47 s).
+Parser mutation run 40056489947 also passed. Linux success does not waive
+the failed mandatory Windows gate. Current-head CI is read from the PR;
+later tracking-only commits do not automatically inherit a prior run's PASS.
+
+Current T1-T9 disposition supersedes the initial qualification table above:
+
+| Assertion | Current executed evidence / limit |
+| --- | --- |
+| T1 | Ordinary two-protocol CLI and causal inspection PASS; instrumented real CLI readiness and repeated-fixture UUID collision FAIL. Blocking. |
+| T2 | Unchanged ordinary/instrumented 44/44 library timing evidence remains source/consumer/environment-bound; Linux full-suite PASS. No new timing claim. |
+| T3 | Ordinary and instrumented stale-intent, actual TTL/integrity and independent zero-DNS SQL cases PASS; Linux PASS. |
+| T4 | Ordinary/instrumented binary 57/57 PASS, with unchanged source-bound library/selected-control evidence retained; Linux PASS. |
+| T5 | Ordinary/instrumented profile, admission/window and no-key/no-fallback cases PASS; Linux PASS. |
+| T6 | Ordinary/instrumented failure, accounting and bounded repair cases PASS; Linux PASS. |
+| T7 | Ordinary/instrumented diagnostic boundary/publication cases PASS; Linux PASS. |
+| T8 | Genuine staged populated-0020 upgrade PASS ordinarily, instrumented and automatically in Linux CI; original payloads, bindings, charges and history retained after repeated migration/recovery. |
+| T9 | Ordinary/instrumented producer/wire examples and restricted SQL controls PASS; Linux PASS. |
+
+The distinct reviewer independently read all four action logs and confirmed
+both blockers, preserving the earlier source review and the bounded reuse of
+unchanged library/T2/control evidence. Q1-Q4/Q6 remain PASS for the examined
+correction; Q5/Q7 are FINDING for qualification/fixture repeatability and Q8
+remains UNVERIFIED for the unexplained readiness failure. No production or
+migration source changed. FIX cycle 2 has reached its explicit STOP: delivery
+is **DRAFT / NOT READY**, requiring a bounded owner root-cause disposition.
+There is no new cycle, automatic replay, provider/target contact, merge or seal.
