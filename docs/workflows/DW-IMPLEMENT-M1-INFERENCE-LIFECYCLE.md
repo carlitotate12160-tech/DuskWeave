@@ -1063,17 +1063,18 @@ SQL polling, provider/target contact or automatic retry is introduced.
 
 | Required Windows action | Required full result | Current disposition |
 | --- | --- | --- |
-| Ordinary binary | 57 passed, zero failed/ignored/filtered | Pending clean committed-source sequence |
-| Ordinary lifecycle | 18 passed, zero failed/ignored/filtered | Pending same sequence |
-| Instrumented binary | 57 passed, zero failed/ignored/filtered | Pending same sequence |
-| Instrumented lifecycle | 18 passed, zero failed/ignored/filtered | Pending same sequence |
+| Ordinary binary | 57 passed, zero failed/ignored/filtered | PASS; test duration 22.58 s |
+| Ordinary lifecycle | 18 passed, zero failed/ignored/filtered | PASS; test duration 328.22 s |
+| Instrumented binary | 57 passed, zero failed/ignored/filtered | action_failed; exit 1 before tests; incompatible mandated flags |
+| Instrumented lifecycle | 18 passed, zero failed/ignored/filtered | NOT_RUN after first failure |
 
 T1/T3/T5/T6/T7/T8/T9 stay in the full lifecycle target; moved T8 still creates
 its real populated predecessor fixture and retains its report reference.
 Unchanged library 44/44, real-duration T2, controls, incident/probe evidence and
 earlier distinct review retain their original source provenance above. They are
-not relabeled as new execution. Current Linux full-suite/coverage, required CI
-and reviewer-instance review remain pending publication of the final candidate.
+not relabeled as new execution. New-candidate Linux full-suite/coverage, required
+CI and reviewer-instance review were not obtained: the Windows failure stopped
+this assignment before publication.
 
 ### Author delta review and tracking
 
@@ -1082,9 +1083,11 @@ module wiring and one-way wire -> lifecycle dependency. Q3 simplicity PASS:
 the sampler is removed; the qualifier has a fixed plan and directly reuses
 Fixture, with no runner framework. Q4 single truth PASS: existing assertion
 bodies and wire strings are moved; numerical product policy remains ADR-016.
-Q5 requirement fit and Q6 reachability PASS for implemented tooling/test scope:
-Python CLI -> qualifier -> native Fixture -> four Cargo consumers -> actual CLI
-and owner assertions -> logs/result; mandatory full execution is still pending.
+Q5 requirement fit is FINDING/BLOCKED at the mandated instrumented invocation:
+the pinned tool rejects its flags. Q6 reachability PASS for implemented tooling/
+test scope: Python CLI -> qualifier -> native Fixture -> Cargo consumers ->
+actual CLI and owner assertions -> logs/result. Both ordinary actions passed;
+mandatory instrumented execution is unverified rather than disconnected.
 Q7 failure integrity PASS in controller/synthetic tests for first-failure stop,
 no replay, owned-tree cleanup and original-result preservation. Q8 trust/claims
 PASS for closed setup/result categories and process-only credential custody;
@@ -1107,10 +1110,49 @@ large integration scenarios retain their existing complete custody/assertion
 flows rather than splitting for counts. Final focused preflight passed 13/13
 controller, 3/3 progress and 35/35 helper tests; link checks found 245 valid relative
 links, zero broken links/anchors; whitespace passed. Final diff accounting and
-committed qualification outcomes are reconciled below when known.
+committed qualification outcomes are reconciled below.
 
 Tracking disposition is UPDATE for this ledger, ENGINEERING_STATE and the
 existing run guide. BUILD_ORDER remains navigation-only and unchanged.
-Delivery remains DRAFT / NOT READY pending the clean sequence and final-candidate
-Linux/review gates. A real failure stops this assignment without a new FIX
-cycle, speculative correction, merge, acceptance or seal.
+Delivery remains DRAFT / NOT READY. The single sequence stopped at instrumented
+binary command validation without a new FIX cycle, speculative correction,
+automatic retry, publication, merge, acceptance or seal.
+
+### Single-attempt result and STOP
+
+The clean tested source was `b440e2cdb1b6e7ab98e701df4081e518ca77b45c` on the
+named branch/worktree. Python 3.12.10, Windows AMD64/MSVC Rust 1.94.1,
+cargo-llvm-cov 0.9.1 and PostgreSQL 17.11 were recorded in qualification.json.
+The command ran once with the exact four-action plan. Ordinary binary passed
+57/57 and ordinary lifecycle passed all 18, with no failed/ignored/filtered tests.
+T8's real populated-0020 upgrade worker passed and retained
+`C:/Users/ekoku/AppData/Local/Temp/dw-t8-upgrade-1d68_18e17c3d17fac3a8`.
+
+The third action returned exit 1 in 0.078 s with the exact installed-tool error:
+`error: --no-report may not be used together with --no-clean`.
+No instrumented tests executed. The fixed action follows the issued packet
+literally; its required option combination conflicts with the pinned CLI.
+This is a qualification-tool invocation blocker, not a product assertion failure,
+a timeout, a Windows readiness failure or evidence of historical causation.
+Instrumented lifecycle remains NOT_RUN; the aggregate process returned 1.
+One read-only provisioning snapshot succeeded and is retained as
+failure-snapshot.json beside redacted action logs/result metadata. No second
+SQL snapshot, replay, new episode or credential recovery occurred.
+
+The packet requires STOP on a failed mandatory action and forbids rerun-until-green.
+The smallest required resolution is a bounded issued amendment reconciling
+the two instrumented command option sets with cargo-llvm-cov 0.9.1, preserving
+profile cleanup/target isolation, and naming fresh database/report resources
+for a newly authorized attempt. The controller source and fixed flags are not
+changed after observing this failure. The historical 5,068 ms cause remains
+UNVERIFIED; no other runtime or timing correction is inferred.
+
+Implementation scope from the issued start: 12 allowed files, 1,299 insertions
+and 907 deletions, including responsibility moves. This closure has zero runtime
+production changed lines; cumulative original-PR runtime scope remains 3,483
+lines, an advisory cohesion-review trigger. Existing full vertical behavior
+and original review provenance own that cumulative scope; size is not correctness
+proof. Subsequent closure reconciliation edits only the three assigned tracking/
+guide documents and cannot qualify a different runtime/test/tooling source.
+Final local HEAD/remote publication state is reported separately; the tested
+source is not mistaken for a merged or Linux-qualified final candidate.

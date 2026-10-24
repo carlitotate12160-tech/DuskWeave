@@ -71,6 +71,15 @@ process. Preserve compiled artifacts and all previous evidence. Then run:
 python tests/support/m1_lifecycle_qualification.py --database-name dw_native_lifecycle_qualification_20261024c --report D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled
 ```
 
+**Current disposition: blocked after one attempt.** Ordinary binary 57/57 and
+lifecycle 18/18 passed; installed cargo-llvm-cov 0.9.1 rejected the issued
+`--no-report --no-clean` combination before instrumented binary tests.
+Instrumented lifecycle is NOT_RUN. Preserve these now-occupied database/report
+names. The [ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#native-qualification-closure-2026-10-24)
+records the STOP; reconcile the packet command and fresh-resource authority
+before another attempt. The controller has not been silently changed to bypass
+the issued command.
+
 The command refuses existing output/database names and unsuitable prerequisites.
 It reuses native bootstrap custody once at schema 0021, with provisioning
 `postgres` distinct from restricted fixture-admin and runtime owners. It runs
