@@ -792,3 +792,190 @@ remains UNVERIFIED for the unexplained readiness failure. No production or
 migration source changed. FIX cycle 2 has reached its explicit STOP: delivery
 is **DRAFT / NOT READY**, requiring a bounded owner root-cause disposition.
 There is no new cycle, automatic replay, provider/target contact, merge or seal.
+
+### Bounded readiness disposition (2026-10-24)
+
+The owner-issued `PR116-READINESS-DISPOSITION` re-scopes the existing STOP:
+correct the established test identity collision and collect bounded startup
+evidence. It does not reset the two substantive FIX cycles or authorize a
+speculative runtime correction. Preflight verified the clean selected worktree,
+branch `feat/m1-inference-lifecycle`, origin and starting commit
+`f46c1d2aecd83e755095a64276771335c763e51d`; the PR base remains
+`79b0e3ee1bea44b5e5639c1142af45b6c44918b4`. Exact-start-head
+[CI 40059942732](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/40059942732)
+was completed SUCCESS, including Rust and all nine required jobs; parser
+mutation and the external checks were also SUCCESS. This qualifies that
+starting candidate, not the later test changes or a new coverage percentage.
+
+Only `tests/m1_inference_lifecycle.rs`, its existing support file, this ledger,
+`docs/ENGINEERING_STATE.md` and `docs/BUILD_ORDER.md` change. Tracking disposition
+is UPDATE: name the correction, observation limits and next owner action.
+Production, migrations, permissions, protocol allowlists and deadlines do not
+change. The existing same-PR workflow remains DRAFT / NOT READY.
+
+**Correction A / RED provenance.** The retained
+`fix-qualification/fix2b-cov-lifecycle.log` records genuine SQLSTATE 23505 on
+`autonomous_runs_decision_one_key`, before any history assertion. The corrected
+test takes the two distinct decision UUIDs already allocated by the fresh run,
+assigns their maximum to `decision_one` and minimum to `decision_two`, and
+asserts strict descending order. The private update, causal inspect/history,
+one-effect and twice-repeated recovery assertions remain. No retained record
+is removed and no uniqueness constraint changes. The two protocol tests now
+have independently selectable names and one private common assertion helper;
+neither failure can suppress the other test.
+
+Owned `dwpg-r3` was requalified running on loopback 127.0.0.1:5432,
+PostgreSQL 17.11, with the issued digest
+`postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f`.
+Immediately before creation the named database was absent; the unchanged
+TTY-backed native bootstrap created `dw_native_lifecycle_readiness_20261024a`
+with fresh restricted owners. The same database served both UUID regressions
+and all three diagnostic runs. Windows x86_64 MSVC Rust 1.94.1,
+cargo-llvm-cov 0.9.1 and the existing Python 3.12 installation were used.
+One owner serialized targets and fixtures. No provider key was needed.
+The bootstrap session ended normally after its action exits were inspected;
+the database and reports remain retained, and its credentials are not recovered.
+
+New action logs are under
+`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/readiness-root-cause`.
+Ordinary actions used `D:/DuskWeave-build/rust-1.94.1/normal`. Each instrumented
+action's Python subprocess set both `CARGO_TARGET_DIR` and
+`CARGO_LLVM_COV_TARGET_DIR` to
+`D:/DuskWeave-build/rust-1.94.1/coverage/inference-lifecycle` before Cargo.
+The isolated instrumented workspace profiles were cleaned once with
+`cargo +1.94.1 llvm-cov clean --workspace`; no `cargo clean` ran.
+
+| Action log | Exit / executed result | Test duration |
+| --- | --- | --- |
+| `causal-ordinary.log` | 0; 1 PASS, 17 filtered, zero failed/ignored | 5.38 s |
+| `causal-instrumented-exact.log` | 0; 1 PASS, 17 filtered, zero failed/ignored | 5.51 s |
+| `observed-ordinary-responses.log` | 0; 1 PASS, 17 filtered, zero failed/ignored | 9.87 s |
+| `observed-instrumented-responses.log` | 0; 1 PASS, 17 filtered, zero failed/ignored | 10.16 s |
+| `observed-instrumented-chat.log` | 0; 1 PASS, 17 filtered, zero failed/ignored | 9.95 s |
+
+An earlier `causal-instrumented.log` records exit 1: the initial llvm-cov
+invocation put the filter before `--` and was rejected as an unrecognized
+subcommand. No test ran; this is neither product RED nor a failed scenario.
+The corrected invocation above is the single executed instrumented regression.
+All three subsequent diagnostic cases executed once, with new run identities;
+there was no readiness retry or complete Windows-suite rerun.
+
+The exact Cargo action commands, run through the existing bootstrap session,
+were:
+
+```text
+cargo +1.94.1 test --locked --test m1_inference_lifecycle t1_inspection_orders_decisions_causally_when_the_first_uuid_sorts_last -- --exact --test-threads=1 --nocapture
+cargo +1.94.1 llvm-cov --locked --test m1_inference_lifecycle --no-report -- t1_inspection_orders_decisions_causally_when_the_first_uuid_sorts_last --exact --test-threads=1 --nocapture
+cargo +1.94.1 test --locked --test m1_inference_lifecycle t1_responses_real_cli_completes_feedback_and_key_free_recovery -- --exact --test-threads=1 --nocapture
+cargo +1.94.1 llvm-cov --locked --test m1_inference_lifecycle --no-report -- t1_responses_real_cli_completes_feedback_and_key_free_recovery --exact --test-threads=1 --nocapture
+cargo +1.94.1 llvm-cov --locked --test m1_inference_lifecycle --no-report -- t1_chat_completions_real_cli_completes_feedback_and_key_free_recovery --exact --test-threads=1 --nocapture
+```
+
+For commands 3–5 only, their action subprocess set
+`DW_TEST_READINESS_OBSERVE=1`; `run_support::command` still clears the child
+environment and does not forward that test variable. The corrected descending
+pairs and distinct run identities were:
+
+| Mode / run | Decision one | Decision two |
+| --- | --- | --- |
+| Ordinary `2d4bfbb7-824c-433c-8043-4797584cb251` | `660a6539-3dc3-4475-8386-5e1bfd90bac4` | `427d551b-18bd-4662-99a2-81eb00839988` |
+| Instrumented `d9bec730-6ca3-4bb8-8f12-3b767cf8a6c3` | `a259143c-5362-4de0-a206-3a118065e49f` | `4fa655a7-966f-4d0c-a995-f8361c6e64df` |
+
+**Diagnostic B / observed versus inferred.** The opt-in support observer
+preconnects one existing fixture-admin client, checks the selected database,
+and samples only that database while excluding its own backend. Every query
+uses a fresh read-only transaction with 250 ms statement, 50 ms lock and
+1,000 ms idle-in-transaction timeouts. Sampling targets 100 ms, ends on CLI
+exit or the 410 s fixture episode envelope, and is stopped/joined by RAII
+before any CLI assertion can fail. Records contain only monotonic time, PID,
+closed owner alias, state/wait labels and server-side startup-SQL classification.
+The classification follows `autonomous_owners`, `owners`, `prepared_basis`,
+`PgContextReader` and `PgRunStore`; SQL/binds/content never leave the server.
+Before/after snapshots contain only run-scoped counts and existing closed
+readiness diagnostics. No grant, server logging or profiler was added.
+
+The first ordinary control exposed an observer defect: filtering on
+`backend_type='client backend'` excluded other owners' masked statistics rows.
+Its empty activity samples and `status=observed` are **INVALIDATED**, not
+evidence of inactivity. The observer was corrected before either instrumented
+case: retain masked rows and explicitly check existing stats visibility.
+No ordinary run was repeated. Its CLI assertions and durable snapshots remain
+valid control evidence, but it did not execute the final observer source.
+The two instrumented cases executed the final support source; unchanged
+ordinary causal assertions used the observer-disabled path.
+
+| Diagnostic / run | CLI launch–exit from observer origin | Decision 1 / 2 readiness diagnostics | Observation availability |
+| --- | --- | --- | --- |
+| Ordinary Responses `d7a1230f-2c8a-4821-9a2a-56743a1d3b72` | 56–5,630 ms | READY received; child exit 0 at 1,499 / 1,756 ms | Activity samples invalidated as above |
+| Instrumented Responses `01a1f847-c5cf-4e8c-b7bb-ffce746243dc` | 63–6,062 ms | READY received; child exit 0 at 1,585 / 1,942 ms | UNAVAILABLE: 55 of 56 samples contained masked backend fields |
+| Instrumented Chat `e24a9939-84c1-4537-ada8-343594ad9191` | 57–5,954 ms | READY received; child exit 0 at 1,636 / 1,794 ms | UNAVAILABLE: 54 of 55 samples contained masked backend fields |
+
+All before snapshots have no run and zero bindings/windows/reservations/calls/
+decisions/history/effects. All after snapshots have two bindings, windows,
+decision-specific reservations, calls, decisions and history rows, with one
+synthetic DNS result. Common assertions additionally qualify bound protocol
+bytes, feedback consumption, owner-qualified Terrain, real inspect and two
+key-free recoveries preserving counts. Acquisition requires no READY frame;
+its recorded `readiness_observed=false` is not an inference-startup failure.
+
+Observer query wall totals were 388,880 / 471,769 / 465,426 microseconds for
+52 / 56 / 55 queries; maxima were 16,154 / 20,836 / 13,125 microseconds.
+Maximum sample gaps were 112 / 111 / 117 ms. Stop/join/report intervals were
+13 / 21 / 15 ms; no query failed or observer envelope expired. These are
+observer work measurements, not a measured slowdown relative to an unobserved
+run. Instrumented samples expose PID/owner presence but mask SQL, state and
+waits; `class=other` for a masked row identifies no SQL component. Parent and
+child role sharing and intervals between samples remain unattributed.
+Observed runs are diagnostics, not clean Windows qualification.
+
+**Disposition: UNVERIFIED.** None of these runs reproduces or explains the
+original `eeed8cc2-9fa2-4dc7-a882-cc20ceb767ac` 5,068 ms parent-observed
+readiness deadline. Its one binding/window and absent decision reservation,
+call, decision, history and effect still bound durable startup progress only.
+The missing evidence is which child operation occupied the preparation
+interval, and whether/when READY was emitted relative to parent receipt.
+Current fixture-admin privileges cannot expose the sampled runtime SQL/waits;
+no scheduling, database-I/O, ACL or provider-latency cause is established.
+No runtime correction is justified. The smallest next action is an owner
+disposition of that observation boundary (separately authorized read-only
+visibility or bounded process/startup evidence), followed by a newly issued
+causal regression/correction if warranted and required clean qualification.
+The 5 s preparation and 1.5 s ACL contracts remain unchanged.
+
+**Retained gates and delta review.** The earlier ordinary binary 57/57,
+ordinary lifecycle 17/17, instrumented binary 57/57 and instrumented lifecycle
+15 PASS / 2 FAIL remain source/environment-bound historical results; selected
+passes above do not convert the last full gate to PASS. T8 ordinary/instrumented/
+Linux upgrade evidence, 44/44 library, real-duration T2 and unchanged controls
+remain retained. Linux 96.75% belongs to its recorded qualification source;
+no new production-coverage percentage is claimed. Final committed-head Linux
+full-suite/coverage and required checks must be read from the PR before any
+later readiness claim. Local checks are working-source evidence.
+
+Final source fmt, all-target Clippy with warnings denied, dependency direction,
+links, structure and whitespace checks pass. Pinned rust-code-analysis-cli
+0.0.25 against the original PR base reports zero regressions and ten retained
+debt items (`readiness-root-cause/metrics`). This delta has zero production
+changed lines. The cohesive existing test/support files retain the common
+real-CLI assertion path and its private observer; the ledger retains required
+incident chronology. Their advisory size crossings justify no exception or
+count-driven file split. The observer startup function is retained cohesively
+for connection qualification and thread ownership; no dispatch exception is used.
+
+Author QUALITY_BAR section 7: Q1–Q4 PASS for test-only ownership, dependency
+direction, necessary private observation and unchanged product truth/timers.
+Q5 PASS for the bounded correction/matrix, while the original lifecycle
+qualification remains blocked. Q6 PASS: split tests -> existing real `m1-run`
+producer -> supervisor/inference/SQL owners -> both decisions/Terrain/history/
+inspect; the optional observer is called only by that harness, with no new
+production component or island. Q7 PASS for distinct retained per-run IDs,
+unchanged recovery/effect assertions and observer shutdown on CLI failure.
+Q8 UNVERIFIED for historical startup causation; the invalid ordinary activity
+claim is explicitly withdrawn and masked instrumented fields are unavailable.
+The existing distinct review and unchanged T8/control evidence remain retained;
+no additional reviewer agent or independent-review claim is introduced here.
+
+Delivery remains **DRAFT / NOT READY**. The known test correction is qualified
+in its selected scope; original lifecycle delivery remains undelivered pending
+causal disposition and clean mandatory gates. No new FIX cycle, automatic
+retry, real provider/target request, merge, acceptance or seal is claimed.

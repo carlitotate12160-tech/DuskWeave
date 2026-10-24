@@ -216,49 +216,51 @@ fn both_successor_protocols_bind_the_same_pack_and_conditional_repair() {
 }
 
 #[test]
-fn t1_both_real_cli_protocols_complete_feedback_and_key_free_recovery() {
+fn t1_responses_real_cli_completes_feedback_and_key_free_recovery() {
+    assert_real_cli_feedback(0x1c000, "fixture-responses-v1");
+}
+
+#[test]
+fn t1_chat_completions_real_cli_completes_feedback_and_key_free_recovery() {
+    assert_real_cli_feedback(0x1c001, "fixture-chat-completions-v1");
+}
+
+fn assert_real_cli_feedback(slot: u128, profile: &str) {
     let _guard = native::db();
     run_support::refresh();
-    for (index, profile) in ["fixture-responses-v1", "fixture-chat-completions-v1"]
-        .iter()
-        .enumerate()
-    {
-        let q = lifecycle::registered(0x1c000 + index as u128, profile);
-        let path = run_support::path(&q);
-        let root = run_support::control_root();
-        let output = run_support::command()
-            .env("DW_M1_RUN_CONTROL_ROOT", &root)
-            .args([
-                "m1-run",
-                "--input",
-                path.to_str().unwrap(),
-                "--timing-profile",
-                "reasoning-bounded-v1",
-            ])
-            .output()
-            .unwrap();
-        let text = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success(),
-            "real successor CLI must complete {profile}: {text}"
-        );
-        let receipt: Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
-        assert_eq!(receipt["status"], "completed");
-        assert_eq!(receipt["decision_count"], 2);
-        assert_eq!(receipt["decision_history_count"], 2);
-        assert_eq!(receipt["effect_count"], 1);
-        assert_eq!(receipt["terrain_history_count"], 1);
-        assert_eq!(receipt["inference_profile"], *profile);
-        assert_eq!(receipt["recorded_decisions"].as_array().unwrap().len(), 2);
-        lifecycle::assert_bound_calls(&q, profile);
-        for operation in ["m1-run-inspect", "m1-run-recover", "m1-run-recover"] {
-            let (ok, r) = run_support::cli(operation, "--run", q["run_id"].as_str().unwrap());
-            assert!(ok, "{r}");
-            assert_eq!(r["effect_count"], 1);
-            assert_eq!(r["decision_count"], 2);
-        }
-        std::fs::remove_file(path).unwrap();
+    let q = lifecycle::registered(slot, profile);
+    let path = run_support::path(&q);
+    let root = run_support::control_root();
+    let mut command = run_support::command();
+    command.env("DW_M1_RUN_CONTROL_ROOT", &root).args([
+        "m1-run",
+        "--input",
+        path.to_str().unwrap(),
+        "--timing-profile",
+        "reasoning-bounded-v1",
+    ]);
+    let output = lifecycle::readiness_cli(&q, command);
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "real successor CLI must complete {profile}: {text}"
+    );
+    let receipt: Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
+    assert_eq!(receipt["status"], "completed");
+    assert_eq!(receipt["decision_count"], 2);
+    assert_eq!(receipt["decision_history_count"], 2);
+    assert_eq!(receipt["effect_count"], 1);
+    assert_eq!(receipt["terrain_history_count"], 1);
+    assert_eq!(receipt["inference_profile"], profile);
+    assert_eq!(receipt["recorded_decisions"].as_array().unwrap().len(), 2);
+    lifecycle::assert_bound_calls(&q, profile);
+    for operation in ["m1-run-inspect", "m1-run-recover", "m1-run-recover"] {
+        let (ok, r) = run_support::cli(operation, "--run", q["run_id"].as_str().unwrap());
+        assert!(ok, "{r}");
+        assert_eq!(r["effect_count"], 1);
+        assert_eq!(r["decision_count"], 2);
     }
+    std::fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -295,8 +297,16 @@ fn t1_inspection_orders_decisions_causally_when_the_first_uuid_sorts_last() {
     run_support::refresh();
     let q = lifecycle::registered(0xe620, "fixture-responses-v1");
     let original = run_support::start_only(&q);
-    let first = Uuid::from_u128(u128::MAX - 0xe620);
-    let second = Uuid::from_u128(0xe620);
+    let first = original.decision_one.max(original.decision_two);
+    let second = original.decision_one.min(original.decision_two);
+    assert!(
+        first > second,
+        "the per-run pair must preserve reverse UUID ordering"
+    );
+    println!(
+        "causal_uuid_pair run={} first={first} second={second}",
+        original.request.run_id
+    );
     // Private setup selects the adversarial UUID arrangement before any phase or owner input.
     native::admin()
         .execute(

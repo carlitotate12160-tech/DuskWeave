@@ -12,6 +12,282 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+// Classification follows m1_reasoning_cli::autonomous_owners/owners/prepared_basis,
+// PgContextReader and PgRunStore. Only closed labels leave PostgreSQL, never SQL.
+const READINESS_ACTIVITY: &str = r#"
+SELECT coalesce(jsonb_agg(jsonb_build_object(
+ 'pid',a.pid,'owner',CASE a.usename
+   WHEN $1 THEN 'core' WHEN $2 THEN 'broker' WHEN $3 THEN 'cognition'
+   WHEN $4 THEN 'trajectory' WHEN $5 THEN 'terrain' ELSE 'other' END,
+ 'state',CASE WHEN a.state IN ('active','idle','idle in transaction',
+   'idle in transaction (aborted)','fastpath function call','disabled')
+   THEN a.state ELSE 'unavailable' END,
+ 'wait_event_type',CASE WHEN a.query IS NULL OR a.query='<insufficient privilege>' THEN 'unavailable'
+   WHEN a.wait_event_type IN
+   ('Activity','BufferPin','Client','Extension','IO','IPC','Lock','LWLock','Timeout')
+   THEN a.wait_event_type WHEN a.wait_event_type IS NULL THEN 'none' ELSE 'other' END,
+ 'wait_event',CASE WHEN a.query IS NULL OR a.query='<insufficient privilege>' THEN 'unavailable'
+   WHEN a.wait_event IN
+   ('ClientRead','ClientWrite','DataFileRead','DataFileWrite','WALSync','WALWrite',
+    'BufferIO','BufferMapping','transactionid','tuple','relation','advisory')
+   THEN a.wait_event WHEN a.wait_event IS NULL THEN 'none' ELSE 'other' END,
+ 'class',CASE
+   WHEN a.query LIKE 'SELECT pg_has_role(session_user,%' THEN 'owner_qualification'
+   WHEN a.query LIKE 'SELECT execution.bind_inference_input(%' THEN 'input_binding'
+   WHEN a.query LIKE 'SELECT execution.inference_window_ms(%' THEN 'decision_window'
+   WHEN a.query LIKE 'SELECT mission.current_inference_publication(%'
+     OR a.query LIKE 'SELECT terrain.current_dns_context_view(%' THEN 'context_terrain_read'
+   WHEN a.query LIKE 'SELECT execution.run_%' THEN 'run_control_check'
+   WHEN a.query LIKE 'SELECT execution.inference_reservation(%' THEN 'reservation'
+   ELSE 'other' END) ORDER BY a.pid),'[]'::jsonb),
+ count(*) FILTER (WHERE a.query IS NULL OR a.query='<insufficient privilege>')::bigint
+FROM pg_stat_activity a
+WHERE a.datname=current_database() AND a.pid<>pg_backend_pid()
+"#;
+
+const READINESS_STATE: &str = r#"
+WITH r AS (SELECT * FROM execution.autonomous_runs WHERE run_id=$1)
+SELECT jsonb_build_object('run_known',EXISTS(SELECT 1 FROM r),
+ 'bindings',(SELECT count(*) FROM execution.native_input_bindings x,r
+   WHERE (x.e,x.c)=(r.e,r.c) AND x.d IN(r.decision_one,r.decision_two)),
+ 'windows',(SELECT count(*) FROM execution.inference_decision_windows x,r
+   WHERE (x.e,x.c)=(r.e,r.c) AND x.d IN(r.decision_one,r.decision_two)),
+ 'reservations',(SELECT count(*) FROM execution.inference_reservations x,r
+   WHERE (x.engagement_id,x.campaign_id)=(r.e,r.c) AND x.operation_id IN(r.decision_one,r.decision_two)),
+ 'calls',(SELECT count(*) FROM execution.inference_calls x,r
+   WHERE (x.e,x.c)=(r.e,r.c) AND x.d IN(r.decision_one,r.decision_two)),
+ 'decisions',(SELECT count(*) FROM cognition.reasoning_decisions x,r
+   WHERE (x.e,x.c)=(r.e,r.c) AND x.d IN(r.decision_one,r.decision_two)),
+ 'history',(SELECT count(*) FROM trajectory.reasoning_history x,r
+   WHERE (x.engagement_id,x.campaign_id)=(r.e,r.c) AND x.operation_id IN(r.decision_one,r.decision_two)),
+ 'effects',(SELECT count(*) FROM execution.fixture_dns_results WHERE run_id=$1),
+ 'diagnostics',(SELECT coalesce(jsonb_agg(payload ORDER BY phase),'[]')
+   FROM execution.run_phase_diagnostics WHERE run_id=$1))
+"#;
+
+fn observer_transaction(c: &mut postgres::Client) -> Result<postgres::Transaction<'_>, ()> {
+    let mut tx = c
+        .build_transaction()
+        .read_only(true)
+        .start()
+        .map_err(|_| ())?;
+    tx.batch_execute("SET LOCAL statement_timeout='250ms'; SET LOCAL lock_timeout='50ms'; SET LOCAL idle_in_transaction_session_timeout='1000ms'")
+        .map_err(|_| ())?;
+    Ok(tx)
+}
+
+fn readiness_state(c: &mut postgres::Client, run: Uuid) -> Value {
+    let result = (|| {
+        let mut tx = observer_transaction(c)?;
+        let value: Value = tx
+            .query_one(READINESS_STATE, &[&run])
+            .map_err(|_| ())?
+            .get(0);
+        tx.commit().map_err(|_| ())?;
+        Ok::<_, ()>(value)
+    })();
+    result.unwrap_or_else(|_| json!({"status":"unavailable"}))
+}
+
+struct ReadinessSamples {
+    client: postgres::Client,
+    records: Vec<Value>,
+    unavailable: bool,
+    hidden_samples: u64,
+    failed_queries: u64,
+    queries: u64,
+    query_us: u128,
+    max_query_us: u128,
+    max_gap_ms: u128,
+    envelope_expired: bool,
+}
+
+fn sample_readiness(s: &mut ReadinessSamples, roles: &[String], origin: Instant) {
+    let started = Instant::now();
+    let sample = (|| {
+        let mut tx = observer_transaction(&mut s.client)?;
+        let row = tx
+            .query_one(
+                READINESS_ACTIVITY,
+                &[&roles[0], &roles[1], &roles[2], &roles[3], &roles[4]],
+            )
+            .map_err(|_| ())?;
+        let records: Value = row.get(0);
+        let hidden: i64 = row.get(1);
+        tx.commit().map_err(|_| ())?;
+        Ok::<_, ()>((records, hidden))
+    })();
+    let cost = started.elapsed().as_micros();
+    s.queries += 1;
+    s.query_us += cost;
+    s.max_query_us = s.max_query_us.max(cost);
+    match sample {
+        Ok((mut records, hidden)) => {
+            s.unavailable |= hidden > 0;
+            s.hidden_samples += u64::from(hidden > 0);
+            for record in records.as_array_mut().unwrap() {
+                record["elapsed_ms"] = json!(origin.elapsed().as_millis());
+            }
+            s.records.push(records);
+        }
+        Err(()) => {
+            s.unavailable = true;
+            s.failed_queries += 1;
+        }
+    }
+}
+
+/// One preconnected fixture-admin connection, never forwarded to product children.
+/// Drop stops and joins sampling even when a CLI/assertion path unwinds.
+struct ReadinessObserver {
+    run: Uuid,
+    origin: Instant,
+    launched_ms: u128,
+    exited_ms: Option<u128>,
+    stop: std::sync::mpsc::Sender<()>,
+    worker: Option<std::thread::JoinHandle<ReadinessSamples>>,
+}
+impl ReadinessObserver {
+    fn start(q: &Value) -> Self {
+        let origin = Instant::now();
+        let run = run_support::id(q);
+        let mut client = native::admin();
+        let expected = std::env::var("DW_NATIVE_FIXTURE_DATABASE").unwrap();
+        let mut tx = observer_transaction(&mut client)
+            .unwrap_or_else(|_| panic!("observer_preflight_unavailable"));
+        let qualification = tx.query_one(
+            "SELECT current_database(), pg_has_role(current_user,'pg_read_all_stats','USAGE') OR (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)", &[]).unwrap();
+        let actual: String = qualification.get(0);
+        let full_visibility: bool = qualification.get(1);
+        tx.commit()
+            .unwrap_or_else(|_| panic!("observer_preflight_unavailable"));
+        assert_eq!(
+            actual, expected,
+            "observer must stay in the fresh fixture database"
+        );
+        println!(
+            "readiness_before {}",
+            json!({"run":run,"state":readiness_state(&mut client,run)})
+        );
+        let roles: Vec<String> = [
+            "DW_TEST_DATABASE_URL",
+            "DW_INFERENCE_BROKER_DATABASE_URL",
+            "DW_COGNITION_DATABASE_URL",
+            "DW_TRAJECTORY_DATABASE_URL",
+            "DW_TERRAIN_DATABASE_URL",
+        ]
+        .iter()
+        .map(|key| {
+            let cfg: postgres::Config = std::env::var(key).unwrap().parse().unwrap();
+            cfg.get_user().unwrap().to_owned()
+        })
+        .collect();
+        let (stop, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let mut s = ReadinessSamples {
+                client,
+                records: Vec::new(),
+                // No privilege is granted for diagnostics. Missing visibility is
+                // unavailable even if every short-lived backend escaped sampling.
+                unavailable: !full_visibility,
+                hidden_samples: 0,
+                failed_queries: 0,
+                queries: 0,
+                query_us: 0,
+                max_query_us: 0,
+                max_gap_ms: 0,
+                envelope_expired: false,
+            };
+            let end = origin + Duration::from_secs(410);
+            let mut previous = Instant::now();
+            while Instant::now() < end {
+                let sampled = Instant::now();
+                s.max_gap_ms = s
+                    .max_gap_ms
+                    .max(sampled.duration_since(previous).as_millis());
+                previous = sampled;
+                sample_readiness(&mut s, &roles, origin);
+                if rx
+                    .recv_timeout(
+                        (sampled + Duration::from_millis(100))
+                            .saturating_duration_since(Instant::now()),
+                    )
+                    .is_ok()
+                {
+                    return s;
+                }
+            }
+            s.envelope_expired = true;
+            s.unavailable = true;
+            s
+        });
+        Self {
+            run,
+            origin,
+            launched_ms: 0,
+            exited_ms: None,
+            stop,
+            worker: Some(worker),
+        }
+    }
+}
+impl Drop for ReadinessObserver {
+    fn drop(&mut self) {
+        let stopped = Instant::now();
+        let _ = self.stop.send(());
+        if let Some(Ok(mut s)) = self.worker.take().map(|worker| worker.join()) {
+            for sample in s.records {
+                println!("readiness_sample {sample}");
+            }
+            println!(
+                "readiness_after {}",
+                json!({"run":self.run,
+                "state":readiness_state(&mut s.client,self.run)})
+            );
+            println!(
+                "readiness_observer {}",
+                json!({"run":self.run,
+                "status":if s.unavailable {"unavailable"} else {"observed"},
+                "launch_ms":self.launched_ms,"exit_ms":self.exited_ms,
+                "queries":s.queries,"query_total_us":s.query_us,"max_query_us":s.max_query_us,
+                "hidden_samples":s.hidden_samples,"failed_queries":s.failed_queries,
+                "max_sample_gap_ms":s.max_gap_ms,"envelope_expired":s.envelope_expired,
+                "stop_join_report_ms":stopped.elapsed().as_millis()})
+            );
+        } else {
+            println!(
+                "readiness_observer {}",
+                json!({"run":self.run,"status":"unavailable"})
+            );
+        }
+    }
+}
+
+pub fn readiness_cli(q: &Value, mut command: std::process::Command) -> std::process::Output {
+    let mut observer =
+        (std::env::var("DW_TEST_READINESS_OBSERVE").as_deref() == Ok("1")).then(|| {
+            match std::panic::catch_unwind(|| ReadinessObserver::start(q)) {
+                Ok(observer) => observer,
+                Err(failure) => {
+                    println!(
+                        "readiness_observer {}",
+                        json!({"run":run_support::id(q),"status":"unavailable"})
+                    );
+                    std::panic::resume_unwind(failure)
+                }
+            }
+        });
+    if let Some(o) = &mut observer {
+        o.launched_ms = o.origin.elapsed().as_millis();
+    }
+    let output = command.output();
+    if let Some(o) = &mut observer {
+        o.exited_ms = Some(o.origin.elapsed().as_millis());
+    }
+    drop(observer);
+    output.unwrap_or_else(|_| panic!("lifecycle_cli_launch_unavailable"))
+}
+
 pub fn assert_predecessor_catalog() {
     let row = native::admin()
         .query_one(
