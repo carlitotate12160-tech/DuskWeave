@@ -13,6 +13,7 @@ from urllib.parse import quote
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 NAMESPACE = "dw_native_"
 KINDS = ("fixture", "live")
+SCHEMA_REVISIONS = ("0020", "0021")
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -49,7 +50,10 @@ def wait_with_progress(process, label):
 
 
 class Fixture:
-    def __init__(self, container, kind, ci=False, database=None):
+    def __init__(self, container, kind, ci=False, database=None, schema_revision="0021"):
+        if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
+            raise RuntimeError("native_schema_revision_refused")
+        self.schema_revision = schema_revision
         if container not in ("dwpg-r3", "dwpg"):
             raise RuntimeError("native_service_unqualified")
         if ci and container != "dwpg":
@@ -157,6 +161,8 @@ class Fixture:
     def migrate(self, initial=False):
         numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
         for number in numbers:
+            if number > int(self.schema_revision):
+                continue
             source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
             if not initial:
                 source = re.sub(r"CREATE SCHEMA (?!IF NOT EXISTS )", "CREATE SCHEMA IF NOT EXISTS ", source)
@@ -195,13 +201,19 @@ def main():
     parser.add_argument("--container", default="dwpg-r3")
     parser.add_argument("--database", choices=KINDS, default="fixture")
     parser.add_argument("--database-name", default=None)
+    parser.add_argument("--schema-revision", choices=SCHEMA_REVISIONS, default="0021")
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--ci", action="store_true")
     parser.add_argument("--session", action="store_true")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     options = parser.parse_args()
+    if options.database == "live" and options.schema_revision != "0021":
+        raise RuntimeError("native_schema_revision_refused")
+    if not options.session and (options.report / "qualification.log").exists():
+        raise RuntimeError("native_report_collision")
     options.report.mkdir(parents=True, exist_ok=True)
-    fixture = Fixture(options.container, options.database, options.ci, database=options.database_name)
+    fixture = Fixture(options.container, options.database, options.ci, database=options.database_name,
+                      schema_revision=options.schema_revision)
     print(json.dumps({"fixture": fixture.database, "status": "ready"}), flush=True)
     if options.session:
         for line in sys.stdin:

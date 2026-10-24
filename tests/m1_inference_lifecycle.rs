@@ -945,12 +945,22 @@ fn t5_profile_matrix_and_raw_sql_run_admission_are_closed_and_share_one_window_o
 
 #[test]
 fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_refresh() {
+    if !lifecycle::upgrade_worker() {
+        return;
+    }
     let _guard = native::db();
+    lifecycle::assert_predecessor_catalog();
     run_support::refresh_legacy();
+    lifecycle::assert_predecessor_catalog();
     let q = run_support::registered(0xe600);
     let rec = run_support::start_only(&q);
     let lease = run_support::LeaseCustodian::start(&rec, run_support::broker_store());
     run_support::complete_first(&rec);
+    lease.finish().unwrap();
+    let mut store = run_support::broker_store();
+    store
+        .terminal(rec.request.run_id, "capability_gap")
+        .unwrap();
     let before = run_support::broker_store()
         .summary(rec.request.run_id)
         .unwrap();
@@ -963,10 +973,40 @@ fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_re
         .unwrap()
         .get(0);
     assert_eq!(payload["version"], 1);
+    lifecycle::assert_predecessor_catalog();
+    let snapshot = lifecycle::legacy_snapshot();
+    for table in [
+        "execution.autonomous_runs",
+        "execution.inference_calls",
+        "execution.native_input_bindings",
+        "cognition.reasoning_decisions",
+        "cognition.reasoning_outbox",
+        "trajectory.reasoning_history",
+    ] {
+        assert_eq!(
+            snapshot[table].as_array().unwrap().len(),
+            1,
+            "populated predecessor: {table}"
+        );
+    }
+    assert!(
+        !snapshot["execution.inference_reservations"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     for _ in 0..2 {
         native::admin()
             .batch_execute(include_str!("../migrations/0021_inference_lifecycle.sql"))
             .unwrap();
+        let catalog = native::admin()
+            .query_one(
+                "SELECT to_regclass('execution.inference_decision_windows') IS NOT NULL,
+            to_regprocedure('execution.inference_window_ms(uuid,uuid,uuid)') IS NOT NULL",
+                &[],
+            )
+            .unwrap();
+        assert!(catalog.get::<_, bool>(0) && catalog.get::<_, bool>(1));
         let after = run_support::broker_store()
             .summary(rec.request.run_id)
             .unwrap();
@@ -983,12 +1023,20 @@ fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_re
             retained, payload,
             "forward migration changed a legacy decision"
         );
-        let (ok, summary) =
-            run_support::cli("m1-run-recover", "--run", q["run_id"].as_str().unwrap());
-        assert!(ok, "{summary}");
-        assert_eq!(summary["effect_count"], 0);
+        for operation in ["m1-run-inspect", "m1-run-recover", "m1-run-recover"] {
+            let (ok, summary) = run_support::cli(operation, "--run", q["run_id"].as_str().unwrap());
+            assert!(ok, "{summary}");
+            assert_eq!(summary["effect_count"], 0);
+            assert_eq!(summary["decision_history_count"], 1);
+            assert_eq!(summary["inference"], before["inference"]);
+            assert_eq!(
+                lifecycle::legacy_snapshot(),
+                snapshot,
+                "upgrade/recovery changed legacy owner rows or charges"
+            );
+        }
     }
-    lease.finish().unwrap();
+    println!("t8_upgrade_worker_complete");
 }
 
 #[test]

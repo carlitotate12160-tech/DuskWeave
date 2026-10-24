@@ -634,3 +634,81 @@ RUSTSEC-2026-0386 for transitive Tokio 1.53.1. Upstream Tokio PR 8587 confirms
 the AsyncFd constructor issue; no direct AsyncFd/AsRawFd use exists in
 repository production/tests, while transitive reachability remains UNVERIFIED.
 This non-gating follow-up does not widen the ctutils-only lockfile allowance.
+
+### Qualification FIX cycle 2 (2026-10-24)
+
+The owner-issued `DW-FIX-PR116-QUALIFICATION` closes two evidence gaps in this
+same outcome: the affected Windows native/CLI execution lacked a valid
+process-scoped fixture, and the original T8 started after 0021 DDL existed.
+These are qualification findings, not newly demonstrated production defects.
+Starting-candidate [CI run 39976038653](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39976038653)
+passed full-suite PostgreSQL execution and 96.75% production coverage
+(12,198/12,608), every file at least 80%. Its tested merge tree matches the
+reviewed source; that result does not qualify this correction automatically.
+
+Bootstrap now selects only schema revision `0020` or `0021` (default `0021`).
+The predecessor selection is fixture-only and applies to both initial
+migrations and refresh; invalid/live combinations refuse before provisioning.
+One-shot report collisions also refuse before provisioning. Provisioning,
+restricted logins, migration ordering and CI administrative separation retain
+their existing owners. The helper suite passes 35/35 and unchanged progress
+controls 3/3. The initial helper RED observed 19 migrations instead of 18;
+the missing constructor argument was a setup error, not behavioral RED.
+
+T8 selects its private child branch before `native::db` or any refresh. Its
+outer branch launches the same already-built executable, with the exact T8
+filter, under a fresh `dw_native_lifecycle_upgrade_<unique>` 0020 database and
+distinct restricted logins. Windows uses owned `dwpg-r3`; Linux uses the
+existing `dwpg --ci` path automatically in the all-targets suite. Each nested
+bootstrap has its own retained temporary report directory. No Cargo runs
+inside the test, LLVM profile/executable identity is inherited, malformed
+child markers fail, and both worker completion and exactly one passing test
+are required. The 240-second test custodian fails on timeout; cleanup is not
+product termination evidence.
+
+The catalog RED on a fresh 0021 arrangement failed at `successor table already
+exists`. Staging then checks the absent successor table/functions, existing
+0020 diagnostics and version-1 history constraint before setup and again
+after actual restricted registration/inference/history population. The final
+ordinary focused T8 passed 1/1 in 42.62 s using the existing legacy CLI phase
+consumer. It ends active-work lease renewal before terminal disposition,
+snapshots actual run/call/binding/reservation/closure/outbox/history rows, then
+applies the unchanged 0021 migration twice as the isolated migration owner.
+Fresh restricted connections and fresh inspect/recover processes preserve
+the complete snapshot, payloads, original identities, charges and counts;
+each upgrade has two recoveries with zero additional calls/DNS/refunds.
+Earlier staging-development failures and all generated fixtures remain
+retained; they are not PASS. No production or migration source changed.
+
+The Windows current-schema fixture `dw_native_lifecycle_20261024a` was
+provisioned, but the tool closed stdin and the bootstrap session ended before
+an action ran. Its credentials were not recovered; the fixture is retained.
+A fresh replacement fixture requires a bounded owner disposition. Until
+that disposition and the four required ordinary/instrumented binary/lifecycle
+actions execute successfully, the affected Windows gate is BLOCKED, not PASS.
+Ordinary artifacts remain at `D:/DuskWeave-build/rust-1.94.1/normal`;
+instrumented artifacts remain separately owned at
+`D:/DuskWeave-build/rust-1.94.1/coverage/inference-lifecycle`.
+
+Source-bound reuse: the earlier 44/44 ordinary and instrumented library runs,
+real-duration T2 observations and selected 13/13 supervisor/factory controls
+remain evidence for their unchanged production/test consumers and baseline
+environment. They do not substitute for the assigned Windows binary and
+lifecycle runs or this correction's exact-candidate Linux CI.
+
+Working-source fmt, all-target Clippy, links, structure and whitespace checks
+passed. Author Q1-Q4/Q6: PASS for the examined delta (one staged-fixture
+owner, closed schema selection, existing native consumer paths and no new
+production component). Q5/Q7/Q8: PASS for executed T8 assertions and
+synthetic refusal/redaction controls; final platform/CI qualification remains
+UNVERIFIED. Retain the cohesive lifecycle scenario/helper files and incident
+chronology despite advisory size crossings; no count-driven extraction or
+threshold change is justified. The distinct delta reviewer independently ran
+the 35 helper tests, inspected retained catalog RED/T8 GREEN logs and the
+seven-file delta, and found no new VALID defect. Its bounded source review
+passes; final committed-candidate binding and Linux CI remain required.
+Existing runtime-budget reporting measures zero production changed lines in
+this correction and 3,483 cumulatively against the original PR base; the
+original cohesive-runtime advisory disposition remains applicable. Delivery
+stays DRAFT / NOT READY; no
+provider activation, target contact, merge or seal is claimed.

@@ -77,6 +77,41 @@ def qualified_service_probe(existing=None):
 
 
 class ExistingDatabaseRefusal(unittest.TestCase):
+    def test_default_revision_remains_current_schema(self):
+        with tempfile.TemporaryDirectory() as report:
+            with mock.patch.object(sys, "argv", ["bootstrap", "--report", report, "--", "unused"]), \
+                 mock.patch.object(bootstrap, "Fixture") as fixture, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                fixture.return_value.database = "dw_native_fixture_synthetic"
+                fixture.return_value.run.return_value = 0
+                self.assertEqual(bootstrap.main(), 0)
+                self.assertEqual(fixture.call_args.kwargs["schema_revision"], "0021")
+
+    def test_live_predecessor_cli_error_is_safe(self):
+        result = subprocess.run([sys.executable, str(REPO / "tests/support/m1_native_bootstrap.py"),
+                                 "--database", "live", "--schema-revision", "0020", "--report", "unused"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr.strip(), "native_fixture_bootstrap_failed")
+        self.assertEqual(result.stdout, "")
+
+    def test_one_shot_report_collision_refused_before_fixture(self):
+        with tempfile.TemporaryDirectory() as report:
+            (Path(report) / "qualification.log").write_text("retained", encoding="utf-8")
+            with mock.patch.object(sys, "argv", ["bootstrap", "--report", report, "--", "unused"]), \
+                 mock.patch.object(bootstrap, "Fixture") as fixture:
+                with self.assertRaisesRegex(RuntimeError, "^native_report_collision$"):
+                    bootstrap.main()
+                fixture.assert_not_called()
+
+    def test_live_predecessor_cli_refused_before_fixture(self):
+        with mock.patch.object(sys, "argv", ["bootstrap", "--database", "live",
+                                             "--schema-revision", "0020", "--report", "unused"]), \
+             mock.patch.object(bootstrap, "Fixture") as fixture:
+            with self.assertRaisesRegex(RuntimeError, "^native_schema_revision_refused$"):
+                bootstrap.main()
+            fixture.assert_not_called()
+
     def test_existing_database_name_is_refused(self):
         name = "dw_native_fixture_historical01"
         with mock.patch.object(bootstrap, "private_run", qualified_service_probe(existing=name)):
@@ -100,13 +135,28 @@ class MigrationSelectionAndOrder(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS execution.inference_decision_windows", source)
         self.assertNotIn("IF NOT EXISTS IF NOT EXISTS", source)
 
-    def run_migrate(self, initial):
+    def run_migrate(self, initial, revision="0021"):
         fx = object.__new__(bootstrap.Fixture)
         fx.migration_actor = "dw_nf60_admin"
+        fx.schema_revision = revision
         calls = []
         fx.sql = calls.append
         fx.migrate(initial=initial)
         return calls
+
+    def test_predecessor_initial_and_refresh_never_install_successor(self):
+        for initial, expected in ((True, 18), (False, 9)):
+            calls = self.run_migrate(initial, "0020")
+            self.assertEqual(len(calls), expected)
+            self.assertIn("execution.run_phase_diagnostic", calls[-1])
+            self.assertNotIn("inference_decision_windows", "\n".join(calls))
+
+    def test_invalid_and_live_predecessor_refused_before_provisioning(self):
+        for kind, revision in (("fixture", "0019"), ("fixture", "21"), ("live", "0020")):
+            with mock.patch.object(bootstrap, "private_run") as provision:
+                with self.assertRaisesRegex(RuntimeError, "^native_schema_revision_refused$"):
+                    bootstrap.Fixture("dwpg-r3", kind, schema_revision=revision)
+                provision.assert_not_called()
 
     def test_initial_setup_includes_0015_after_predecessors(self):
         calls = self.run_migrate(initial=True)
@@ -133,6 +183,7 @@ class MigrationSelectionAndOrder(unittest.TestCase):
     def test_failure_identifies_only_the_fixed_migration_not_sql_or_credentials(self):
         fx = object.__new__(bootstrap.Fixture)
         fx.migration_actor = "dw_nf60_admin"
+        fx.schema_revision = "0021"
         fx.sql = mock.Mock(side_effect=RuntimeError("synthetic-sensitive-diagnostic"))
         with self.assertRaisesRegex(RuntimeError, "^native_migration_0012_failed$"):
             fx.migrate(initial=False)
