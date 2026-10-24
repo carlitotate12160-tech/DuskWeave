@@ -1045,7 +1045,8 @@ without a new grant. Pausing the owned child produced readiness_deadline at
 The [single command](../RUN_M1_AUTONOMOUS_FIXTURE.md#successor-windows-qualification)
 now uses amendment-authorized `dw_native_lifecycle_qualification_20261024d` and
 `D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled-flags`.
-Both new names were rechecked absent; the prior `20261024c` fixture/report is retained. Owned dwpg-r3 was running PostgreSQL
+Both new names were rechecked absent before this one successful attempt; the
+prior `20261024c` fixture/report is retained. Owned dwpg-r3 was running PostgreSQL
 17.11 on loopback 5432 with the issued digest. Rust 1.94.1 MSVC and
 cargo-llvm-cov 0.9.1 are installed. One owner holds the ordinary and coverage
 targets and cluster-role fixtures for the complete serial sequence. Only
@@ -1061,20 +1062,29 @@ attempts one read-only fresh-fixture snapshot through existing provisioning
 access. Snapshot unavailability never replaces the original failure. No replay,
 SQL polling, provider/target contact or automatic retry is introduced.
 
-| Prior attempt on b440e2c | Required full result | Retained disposition |
+| Amended Windows action on 5d769d2 | Actual full result | Test duration |
 | --- | --- | --- |
-| Ordinary binary | 57 passed, zero failed/ignored/filtered | PASS; test duration 22.58 s |
-| Ordinary lifecycle | 18 passed, zero failed/ignored/filtered | PASS; test duration 328.22 s |
-| Instrumented binary | 57 passed, zero failed/ignored/filtered | action_failed; exit 1 before tests; incompatible mandated flags |
-| Instrumented lifecycle | 18 passed, zero failed/ignored/filtered | NOT_RUN after first failure |
+| Ordinary binary | PASS 57/57; zero failed/ignored/filtered | 40.62 s |
+| Ordinary lifecycle | PASS 18/18; zero failed/ignored/filtered | 309.03 s |
+| Instrumented binary | PASS 57/57; zero failed/ignored/filtered | 37.17 s |
+| Instrumented lifecycle | PASS 18/18; zero failed/ignored/filtered | 276.56 s |
+
+The tested clean source is `5d769d25d7236bf882faa8538e0ee6a285df18e8`;
+qualification.json records aggregate PASS/exit 0, Python 3.12.10 and the pinned
+Windows AMD64/MSVC, Rust, coverage and PostgreSQL environment. T8 passed both
+ways and retained `C:/Users/ekoku/AppData/Local/Temp/` reports
+`dw-t8-upgrade-2ab4_18e17d605a56efc8` (ordinary) and
+`dw-t8-upgrade-4cb0_18e17db70b04c63c` (instrumented). No failure snapshot or
+second amended attempt was needed. This is fixture orchestration evidence;
+it neither identifies the historical startup cause nor eliminates tail events.
 
 T1/T3/T5/T6/T7/T8/T9 stay in the full lifecycle target; moved T8 still creates
 its real populated predecessor fixture and retains its report reference.
 Unchanged library 44/44, real-duration T2, controls, incident/probe evidence and
 earlier distinct review retain their original source provenance above. They are
-not relabeled as new execution. New-candidate Linux full-suite/coverage, required
-CI and reviewer-instance review were not obtained: the Windows failure stopped
-this assignment before publication.
+not relabeled as new execution. Final-candidate Linux full-suite/coverage and
+required checks are read from the live PR by exact head; historical CI/coverage
+is not transferred. The distinct delta review disposition is recorded below.
 
 ### Author delta review and tracking
 
@@ -1083,15 +1093,17 @@ module wiring and one-way wire -> lifecycle dependency. Q3 simplicity PASS:
 the sampler is removed; the qualifier has a fixed plan and directly reuses
 Fixture, with no runner framework. Q4 single truth PASS: existing assertion
 bodies and wire strings are moved; numerical product policy remains ADR-016.
-Q5's instrumented-invocation finding is corrected by the issued coverage-command
-amendment below; new full execution remains pending. Q6 reachability PASS for implemented tooling/
-test scope: Python CLI -> qualifier -> native Fixture -> Cargo consumers ->
-actual CLI and owner assertions -> logs/result. Both ordinary actions passed;
-mandatory instrumented execution is unverified rather than disconnected.
-Q7 failure integrity PASS in controller/synthetic tests for first-failure stop,
-no replay, owned-tree cleanup and original-result preservation. Q8 trust/claims
+Q5 requirement fit PASS for the issued command amendment: the regression was
+RED then GREEN and all four mandatory Windows actions passed. Q6 reachability
+PASS: Python CLI -> qualifier -> native Fixture -> four Cargo consumers ->
+actual CLI and owner assertions -> logs/result; all 18 lifecycle scenarios and
+both real populated-upgrade workers executed. No new runtime component exists.
+Q7 failure integrity FINDING: first-failure stop/no replay and the parent-alive
+timeout control pass, but the distinct parent-exited/descendant-holds-pipes
+counterexample below invalidates general cleanup/timeout-attribution closure. Q8 trust/claims
 PASS for closed setup/result categories and process-only credential custody;
-historical physical causation and pending platform gates remain UNVERIFIED.
+historical physical causation remains UNVERIFIED and final-head Linux status
+is checked separately.
 This is author review, not a new independent-review claim.
 
 Working-source fmt and all-target Clippy pass. Dependency direction reports
@@ -1103,7 +1115,7 @@ The integration matrix and historical ledger remain large cohesive scenario/
 provenance owners; advisory size alone establishes no architectural correctness.
 Measured organization: integration scenarios 1,098 -> 900 lines, retained
 inference support 1,086 -> 406, contract cases 205, upgrade 203 and wire 220.
-Bootstrap is 290 lines, qualifier 207 and controller tests 225. No new Python
+Bootstrap is 290 lines, qualifier 207 and controller tests 227. No new Python
 function crosses the 50-line review trigger; the unchanged bootstrap constructor
 retains its cohesive provisioning responsibility. The moved upgrade worker and
 large integration scenarios retain their existing complete custody/assertion
@@ -1114,9 +1126,11 @@ committed qualification outcomes are reconciled below.
 
 Tracking disposition is UPDATE for this ledger, ENGINEERING_STATE and the
 existing run guide. BUILD_ORDER remains navigation-only and unchanged.
-Delivery remains DRAFT / NOT READY. The prior sequence stopped at instrumented
-binary command validation; the issued amendment permits one new fresh sequence
-without a new runtime FIX cycle, speculative correction, merge, acceptance or seal.
+The PR remains DRAFT / NOT READY and unmerged. Windows qualification is complete;
+the distinct review's out-of-map bootstrap finding blocks final review readiness,
+independently of exact-head Linux gates.
+The prior STOP and both runtime FIX cycles remain recorded; no acceptance,
+provider/target/resolver contact, merge or seal is implied.
 
 ### Single-attempt result and STOP
 
@@ -1149,9 +1163,10 @@ Upstream [0.9.1 documentation](https://github.com/taiki-e/cargo-llvm-cov/blob/v0
 confirms that `--no-report` itself disables automatic cleanup. Preserve the
 explicit coverage-workspace/profile cleanup, targets, one Fixture lifetime,
 900-second harness limit, original exit attribution and all summary checks.
-The amended matrix is pending a clean correction commit. Only five assigned
-Python/tracking files may change; all other source, bootstrap, tests, CI and
-accepted authority remain read-only. Historical 5,068 ms causation remains
+The amended matrix passed once on committed source 5d769d2 as recorded above.
+Only the five assigned Python/tracking files changed; subsequent qualification
+reconciliation changes only the three assigned documents. Git comparison to
+5d769d2 proves that tested runtime/test/tooling sources remain identical. Historical 5,068 ms causation remains
 UNVERIFIED; the issued invocation correction establishes no product defect.
 
 Implementation scope from the issued start: 12 allowed files, 1,299 insertions
@@ -1161,5 +1176,31 @@ lines, an advisory cohesion-review trigger. Existing full vertical behavior
 and original review provenance own that cumulative scope; size is not correctness
 proof. Subsequent closure reconciliation edits only the three assigned tracking/
 guide documents and cannot qualify a different runtime/test/tooling source.
-Final local HEAD/remote publication state is reported separately; the tested
-source is not mistaken for a merged or Linux-qualified final candidate.
+Final HEAD, required Linux checks and OPEN/DRAFT state are read from the PR;
+the tested source is not mistaken for a merged or automatically qualified final
+candidate. The separate qualification-closure reviewer inspected source 5d769d2
+and the subsequent three-document reconciliation, verified all four reports and
+T8 references, and reproduced one VALID blocking harness defect:
+
+- Boundary: `tests/support/m1_native_bootstrap.py` stop_action_tree,
+  wait_supervised and Fixture.run (lines 54-75, 227-242 in the reviewed source).
+- Counterexample: an owned synthetic parent exits while its 60-second descendant
+  retains inherited stdout/stderr. With a 0.5-second supervision ceiling,
+  Fixture.run waited 60.125 seconds and raised TimeoutExpired; no redacted log or
+  result metadata was written. The descendant self-expired; final tasklist
+  verification confirmed its absence. No DB/build/provider/target action occurred.
+- Cause/consumer: taskkill of an exited parent cannot stop the orphaned pipe holder;
+  the Popen context can then wait on its reader while unwinding. The qualifier's
+  exception path reports action_failed/1 rather than harness_timeout, losing the
+  observed timeout attribution. This affects the supervised Fixture boundary used
+  by the four fixed actions, not a production deadline or the historical incident.
+- Disposition: NOT READY for failure-complete harness closure. Bootstrap is
+  explicitly read-only in this five-file amendment; no source fix or new runtime
+  FIX cycle was attempted. The smallest follow-up must authorize bootstrap and
+  its controller regression, retain owned-tree custody after parent exit, and
+  preserve redacted evidence/timeout attribution through cleanup failure.
+
+Q1-Q6 remain supported by direct wiring, unchanged moved assertion bodies,
+18-test inventory and the completed matrix. Q7 is blocking as above; Q8's general
+closed-result claim is limited by that demonstrated attribution loss. Final
+candidate Linux CI is still required and cannot waive the independent finding.

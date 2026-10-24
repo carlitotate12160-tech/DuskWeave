@@ -8,10 +8,11 @@ only inference; live acquisition remains a later, independently qualified slice.
 
 The [inference-lifecycle R2 successor](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md)
 is implemented in [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116)
-and remains NOT READY while final Windows qualification, candidate CI and
-the [review corrections](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1) continue. The
+and has completed the amended Windows qualification. Final Linux CI is checked
+on the exact PR candidate; the
+[review record](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1) and
 [T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger)
-records actual assertions and limits.
+record actual assertions and limits.
 Required full-suite/coverage qualification uses exact-candidate Linux CI;
 affected Windows native/CLI/transport/control checks remain mandatory. The
 v2 run/profile path is not yet qualified for demonstration. The
@@ -77,7 +78,10 @@ instrumented actions. In [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo
 cleanup above remains required. The prior `20261024c` database/report and
 flag-conflict STOP are retained in the
 [ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#native-qualification-closure-2026-10-24).
-The amended fresh sequence remains pending; no prior PASS qualifies it.
+The amended sequence passed 57/57, 18/18, 57/57 and 18/18 once on clean
+source `5d769d25d7236bf882faa8538e0ee6a285df18e8`, including ordinary/instrumented
+T8, with zero failed/ignored/filtered tests and aggregate exit 0. Its database
+and report names are now retained evidence, so this command refuses reuse.
 
 The command refuses existing output/database names and unsuitable prerequisites.
 It reuses native bootstrap custody once at schema 0021, with provisioning
@@ -88,8 +92,13 @@ Each full action requires 57 binary or 18 lifecycle tests, with no failures,
 ignored or filtered tests. T8's nested one-test worker does not replace the
 full lifecycle summary. No key, observer or stale binary override is forwarded.
 
-The 900-second ceiling per Cargo action includes compilation and tests. This is
-a conservative harness policy, not measured fit or a product timeout.
+The configured 900-second supervision policy per Cargo action includes compilation
+and tests; it is not measured fit or a product timeout. A distinct review found
+that cleanup is not yet a reliable bound when the action parent has exited but
+a descendant still holds inherited pipes: the synthetic 0.5-second case waited
+60.125 seconds and lost its redacted log/result metadata. This out-of-map
+bootstrap finding keeps delivery NOT READY; the four completed Windows PASS
+results do not qualify this failure boundary.
 `harness_timeout` is separate from an ordinary child exit 124. The first failed
 action ends qualification with its nonzero result; subsequent actions remain
 `NOT_RUN`. One read-only provisioning snapshot is attempted after failure.
