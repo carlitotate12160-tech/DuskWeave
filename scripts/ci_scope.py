@@ -9,6 +9,12 @@ import subprocess
 ROOT_DOCS = {"README.md", "SECURITY.md", "AGENTS.md", "QUALITY_BAR.md"}
 INDEX_DOCS = {"docs/BUILD_ORDER.md", "docs/ENGINEERING_STATE.md",
               "docs/MVP_AND_DEFERRED_SCOPE.md"}
+SKILL_DOCS = {
+    ".agents/skills/build-duskweave/SKILL.md",
+    ".agents/skills/duskweave-engineering/SKILL.md",
+    ".agents/skills/duskweave-engineering/references/packet-template.md",
+    ".agents/skills/duskweave-adversarial-review/SKILL.md",
+}
 DOC_PATTERN = r"docs/(?:adr|prd|contracts|build-order|workflows)/[A-Za-z0-9_./-]+\.md"
 REQUIRED = {"changes", "links", "structure", "metrics", "rust", "codeql", "dependencies"}
 
@@ -21,7 +27,8 @@ def git(*args):
 def document(path):
     if ".." in path.split("/"):
         return False
-    return path in ROOT_DOCS | INDEX_DOCS or re.fullmatch(DOC_PATTERN, path) is not None
+    return (path in ROOT_DOCS | INDEX_DOCS | SKILL_DOCS or
+            re.fullmatch(DOC_PATTERN, path) is not None)
 
 
 def plain_file_at(revision, path):
