@@ -56,56 +56,22 @@ used to demonstrate this campaign loop, not a replacement product or fixed strat
 | --- | --- |
 | Resolve autonomous-run runtime contracts | Publish the bounded [run amendment](contracts/M1-enabling-architecture.md#7-proposed-autonomous-run-amendment-2026-10-19); section 7 and ADR-016 section 4a were accepted by the owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`, for Walking Skeleton implementation. Preserve existing sections and seals; runtime/deployment remains unqualified. |
 | Walking skeleton (slice 1): prove autonomous orchestration in a controlled fixture | First runtime slice: `autonomous-dns-fixture-v1`, production `m1-run`/owner ports and restricted PostgreSQL, deterministic inference and Broker effect fixtures, distinct source/mode and no external egress. Mission → proposal → authorized fixture effect → Terrain → second proposal → durable history/inspect; no intermediate input. Qualify idempotency, stop, UNKNOWN and database-only recovery here. No real LLM/live DNS or M1 seal claim. |
-| Real inference (slice 2): prove cognitive feedback with the real provider | After qualifying the new inference boundary, `autonomous-dns-provider-fixture-v1` uses actual LLM calls with the same deterministic Broker effect/source and fresh provider consent. No target egress; not blocked on Go capture/nft qualification. Require the second admitted proposal to consume the fixture result; a scripted replacement does not qualify real cognition. |
+| Real inference (slice 2): prove cognitive feedback with the real provider | The original slice used `autonomous-dns-provider-fixture-v1`; new episodes use the [current successor bindings](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent). Use actual LLM calls with the same deterministic Broker effect/source and fresh provider consent. No target egress; not blocked on Go capture/nft qualification. Require the second admitted proposal to consume the fixture result; a scripted replacement does not qualify real cognition. |
 | Qualify live boundaries (may proceed independently of fixture wiring) | New inference timing/cancellation and ADR-015 Linux core/Broker/capture/exporter/host STOP, ADR-016 admission/accounting, ADR-017 real producer/consumer IPC. A running Docker/WSL installation alone is insufficient. Infrastructure work supports the loop; it is not a prerequisite for the isolated fixture above. |
 | Real Broker egress (slice 3): first operational autonomous live run | Mission → real LLM proposal → authorized DNS → owner-qualified Terrain → real second LLM decision → durable history/inspect, with no operator input between start and terminal receipt. Requires accepted profiles, qualified live boundaries and fresh explicit client/inference authorization; fixture or old consent cannot satisfy them. |
 | Validation and adaptation | Admitted HTTPS validation in the same loop; new evidence materially changes or supports the next hypothesis/action with visible rationale. No forced DNS/HEAD/subdomain playbook. |
 | Complete cognitive M1 | CT, bounded synthesis/evolution, applicable campaign-local feedback and minimum report under the M1 contract. Two LLM calls or DNS/HEAD alone do not seal M1. |
 | After M1 | Bounded access/authorized credential validation through its owning accepted contracts and current permission. |
 
-**Multi-provider direction and lifecycle blocker (owner-directed, 2026-10-22).**
-Provider connection, protocol implementation, model profile and routing policy
-are separate: DeepSeek is the presently available provider; OpenAI, Anthropic
-Claude, Mistral and OpenRouter are planned adapters. The future user-facing
-flow selects a supported service, provides that service's API key, selects a
-compatible model, then uses the saved connection for a campaign; secret values
-stay in scoped backend custody with only opaque credential references
-persisted, and cross-user/organization substitution is prohibited. OpenRouter
-is one aggregated provider identity exposing individually qualified Qwen, GLM,
-Kimi and other model profiles; campaign setup approves the aggregator plus a
-bounded eligible-upstream set and applicable data policies, and each run pins
-one upstream with enforced `provider.only`, `allow_fallbacks = false` and
-`require_parameters = true` controls. Each provider is qualified and reported
-individually; compatible model profiles reuse a qualified wire protocol
-without changing domain behavior, and automatic failover is a separately
-qualified policy, not implied by multi-provider support. The 2026-10-22
-provider-fixture run `4a4ce477-5734-4b92-bb6a-dce74f430114` established the
-first real decision and committed fixture DNS/Terrain but second inference
-ended exit 124 with `may_send_uncertain` and no admitted second proposal;
-complete feedback is unqualified and the exact killer is unestablished. The
-owner-accepted
-[provider-neutral lifecycle/freshness revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22)
-defines the successor-lane requirements for that lifecycle blocker. Bounded order: the amendment is
-owner-accepted and merged in PR #115; execute the issued
-[runtime R2 packet](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md) through the
-existing CLI/owners with its fixed resource-policy ceilings, DeepSeek as the
-first external adapter and two local protocol fixtures. The runtime work is
-implemented, with ordinary Windows scenarios recorded in the
-[T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
-Delivery is [PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116),
-merged to `master` at `618c885346ccf5e5b645bb63aee51b9e827be748` on 2026-10-25
-with final Windows qualification and exact-master CI.
-[DW-FIX-M1-INFERENCE-RELEASE-INTEGRITY](workflows/DW-FIX-M1-INFERENCE-RELEASE-INTEGRITY.md)
-delivers the bounded release-integrity correction on that base; then the freshly
-authorized real-provider fixture demonstration remains the next action.
-The owner-issued R2 assignment moves the
-required full-suite/coverage gate to exact-candidate Linux CI without widening
-local/runtime privileges. Partial focused tests do not establish T1-T9
-acceptance. After runtime qualification, prepare one freshly
-authorized real DeepSeek fixture demonstration with no inherited
-consent/window; then add OpenAI/Claude/Mistral adapters and one OpenRouter
-adapter individually through the same contract suite when their credentials
-and qualification are available.
+**Multi-provider direction (owner-directed, 2026-10-22):** support user-owned
+connections and individually qualified provider/model profiles; DeepSeek is the
+first real adapter, followed by OpenAI/Claude/Mistral and one OpenRouter adapter
+when credentials and qualification are available. OpenRouter is an approved
+aggregator direction, not automatic failover or permission to change upstream.
+Connection/protocol/model/routing, key isolation, disclosure and freshness rules
+belong to the [accepted revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22).
+Current delivery and missing demonstration evidence live only in
+[ENGINEERING_STATE](ENGINEERING_STATE.md#6-current-slices-and-next-action).
 
 Manual observation input remains optional with its original source label. Freeze
 one-use demo helper development; historical episodes and failures remain evidence,
@@ -145,15 +111,15 @@ record, not another report/ADR/tracking family.
 
 ### 1.3 Audit disposition attached to these deliveries
 
-The numerical debt below is the retained baseline recorded in ENGINEERING_STATE,
-not a fresh complexity measurement or proof of a runtime defect.
+Historical measurements below are debt provenance, not fresh measurements or
+proof of runtime defects. Current metrics/CI establish each candidate's status.
 
 | Owner / trigger | Concrete work and closure evidence |
 | --- | --- |
-| Application/domain boundary; first cross-context runtime wiring | Add a CI-executed dependency check for the actual protected owner modules and inward adapter direction. Baseline allowed contracts pass; an injected forbidden infrastructure/sibling-implementation dependency fails, including alias/re-export and qualified-path cases. No blanket baseline allowlist. |
-| Terrain persistence; automatic issued-result intake | Repay `PgTerrainStore::record_dns` (24) and `load_existing` (17) cohesively to ≤7 per resulting function; include `read_current_claim` (10) if changed. Candidate-bound measurement plus real SQL tests must preserve source binding, atomicity, conflicts, role separation and commit-unknown. Renaming or forwarding helpers do not close debt. |
-| Application/Broker/transport; run supervision and inference integration | Persist safe phase/outcome evidence for admission, generation, conditional repair, termination and publication separately from acquisition/Terrain. Inject deadline/cancel/child-exit/history faults. A may-send marker never proves a send; hard parent loss cannot promise a final receipt. Recovery makes zero provider/DNS calls. |
-| Terrain/CLI/history; when the named function is changed | Retained debt: `inspect_dns` (9), `verify_mission_permission` (13), `TerrainReceipt::from_event` (10), `map_policy_reason` (10), `connect_qualified` (8), `run_record` (8), `command` (8), `EvaluationOutcome::as_str` (8), `record_terrain_history` (12), `inspect_terrain_history` (13), plus the ambiguous `m1_terrain_cli::command::<anonymous>` group. Preserve the ratchet; repay changed responsibility, leave untouched debt explicitly open. |
+| Application/domain boundary; first cross-context runtime wiring | Preserve the existing CI-executed dependency check for protected owner modules and inward adapter direction. Baseline allowed contracts pass; an injected forbidden infrastructure/sibling-implementation dependency fails, including alias/re-export and qualified-path cases. No blanket baseline allowlist. |
+| Terrain persistence; automatic issued-result intake | #74 repaid `PgTerrainStore::record_dns` (24 -> 6) and `load_existing` (17 -> 2); retain their SQL assertions and repay `read_current_claim` (10) when changed. Candidate-bound measurement plus real SQL tests must preserve source binding, atomicity, conflicts, role separation and commit-unknown. Renaming or forwarding helpers do not close debt. |
+| Application/Broker/transport; run supervision and inference integration | Preserve delivered safe phase/outcome evidence for admission, generation, conditional repair, termination and publication separately from acquisition/Terrain. Inject deadline/cancel/child-exit/history faults. A may-send marker never proves a send; hard parent loss cannot promise a final receipt. Recovery makes zero provider/DNS calls. |
+| Terrain/CLI/history; when the named function is changed | Ten retained named debts at #117: `read_current_claim` (10), `inspect_dns` (9), `verify_mission_permission` (13), `TerrainReceipt::from_event` (10), `map_policy_reason` (10), `connect_qualified` (8), `run_record` (8), `EvaluationOutcome::as_str` (8), `record_terrain_history` (12), `inspect_terrain_history` (13). #107 closed `command`/its ambiguous closure; preserve the ratchet and leave untouched debts open. |
 
 Large files trigger ownership/cohesion review; size alone is not a God Object.
 Single-crate design, `#[path]`, alleged absence of threads/timeouts and alleged
@@ -170,7 +136,7 @@ Cleanup decisions from current source inspection (2026-10-19):
 | Granular public CLI | Freeze test-only expansion. Deprecate individually after m1-run is stable and real callers/tests have replacements. Stop/withdrawal, inspect/recover and accepted M0 behavior remain operational contracts, not automatically obsolete scaffolding. Test support consumes production use cases; it must not duplicate their logic. |
 | PostgreSQL adapters | Current root inventory has 20 postgres_*.rs files, not 18. Review duplication/cohesion when touched; consolidate proven duplication within the same owner. Do not compress Mission, Broker/authority and Trajectory responsibilities or qualified roles into three broad repositories. Preserve session-lock lifetime and transaction/fence semantics before considering pooling. No rename-only sweep before the skeleton. |
 | M0 planning | Production authority_confirmation, PgMissionStore, PgTrajectory and withdrawal paths still depend on planning contracts. Preserve them now. Retire only after caller/history compatibility, withdrawal/refusal and fresh recovery have tested replacements and an explicit disposition of accepted M0 behavior. An M1 seal alone is insufficient. |
-| SQL and McCabe | SQL string size does not directly create Rust control-flow complexity. Terrain already uses database acceptance/conflict functions. Repay record_dns/load_existing by cohesive orchestration/decoding responsibilities and measured behavior; do not move business authority into SQL merely to lower Rust McCabe. A new view/function needs a real ownership/atomicity reason, new migration and role/integrity/commit-unknown tests. |
+| SQL and McCabe | SQL string size does not directly create Rust control-flow complexity. Terrain already uses database acceptance/conflict functions. Preserve the record_dns/load_existing orchestration/decoding refactor and measured behavior; do not move business authority into SQL merely to lower Rust McCabe. A new view/function needs a real ownership/atomicity reason, new migration and role/integrity/commit-unknown tests. |
 | Accepted PRD/ADR and evidence | Preserve authoritative semantics, seals and referenced historical evidence. Simplify current navigation and genuinely superseded duplication; do not delete authority to reduce the document count. |
 
 The minimal-loop approach follows [Anthropic's agent engineering guidance](https://www.anthropic.com/engineering/building-effective-agents):
@@ -186,137 +152,64 @@ A green scripted fixture is necessary wiring evidence, not real LLM evaluation.
 
 These are delivery obligations, not a new milestone or authority to start a later
 runtime stage. Keep the Walking Skeleton -> real-provider fixture -> qualified
-live sequence in section 1.2. Record closure in the existing PR and this roadmap;
-do not create another tracker or count a retained warning as repaid debt.
+live sequence in section 1.2. Record execution/review in the existing PR; update
+this roadmap only if a priority or retirement trigger changes. Do not create
+another tracker or count a retained warning as repaid debt.
 
 | Order / owner | Bounded outcome | Closure evidence |
 | --- | --- | --- |
-| After PR #71 disposition; CI/test tooling | First optimize documentation-only delivery: a conservative changed-path classifier avoids full Rust/coverage only for explicitly qualified documentation inputs. Source, migrations, tests, manifests, build/security configuration, CI changes, unknown paths or classification failure require full verification. Keep required check identities and an explicit fail-closed ci-ok decision; do not silently convert missing/skipped execution into PASS. | Positive documentation cases and negative runtime/configuration/unknown-path cases; no dropped applicable check; compare exact-candidate cold/warm wall time with the baseline below. |
+| After PR #71 disposition; CI/test tooling | Maintain conservative documentation-only routing: avoid full Rust/coverage only for explicitly qualified inputs. Root-level RUN/qualification Markdown currently remains unclassified and requires full CI. Source, migrations, tests, manifests, build/security configuration, CI changes, unknown paths or classification failure require full verification. Keep required check identities and an explicit fail-closed ci-ok decision; do not silently convert missing/skipped execution into PASS. | Positive documentation cases and negative runtime/configuration/unknown-path cases; no dropped applicable check; compare exact-candidate cold/warm wall time with the baseline below. |
 | Same tooling owner; measured follow-up | Expose sanitized phase/target progress without raw credentials or unrestricted child output. Cache compilation with separate normal/coverage identities bound to platform, toolchain, dependency/build inputs and instrumentation. Preserve fresh coverage profiles and actual current-candidate execution; cached binaries/results are not cached PASS. | Secret-bearing negative controls, failed-child exit propagation, unchanged assertions/test inventory and coverage floors; measured cache hit/miss and build-versus-test time. No routine cargo clean. |
 | Test-fixture owner; only after isolation qualification | Parallelize proven independent tests with bounded concurrency. Keep shared PostgreSQL role/permission/migration fixtures serialized; separate databases do not isolate cluster roles. Do not merely remove --test-threads=1 or introduce a new runner/framework before measuring its need. | Same test inventory/outcomes and coverage; repeated isolated runs without cross-fixture interference, role leakage or hidden retries; measured end-to-end improvement. |
-| Terrain owner; first automatic issued-result intake | Close record_dns=24 and load_existing=17 when the skeleton changes that intake; include read_current_claim=10 if changed. Apply section 1.3's real SQL, source-binding, conflict, role, atomicity and commit-unknown checks. | Every resulting function <=7 under the pinned ratchet; passing baseline characterization and entrypoint/consumer regression. No renamed debt, forwarding helpers or branches shifted into SQL solely to game metrics. |
-| Existing owner modules; checkpoint after the real-provider fixture demo and before optional capability expansion | Reconcile every remaining named hotspot and the ambiguous closure group in section 1.3 into bounded owner-specific repayment/removal work. Keep untouched items explicitly OPEN until verified closure; essential inference/live qualification is not replaced by a general cleanup rewrite. | Candidate-bound function identity/complexity and consumer-path evidence for each closed item; unchanged function allowances are not closure. |
+| Terrain owner; first automatic issued-result intake | Preserve the closed record_dns/load_existing refactor; repay read_current_claim=10 if changed. Apply section 1.3's real SQL, source-binding, conflict, role, atomicity and commit-unknown checks. | Every resulting function <=7 under the pinned ratchet; passing baseline characterization and entrypoint/consumer regression. No renamed debt, forwarding helpers or branches shifted into SQL solely to game metrics. |
+| Existing owner modules; checkpoint after the real-provider fixture demo and before optional capability expansion | Reconcile remaining named hotspots in section 1.3 into bounded owner-specific repayment/removal work. Keep untouched items explicitly OPEN until verified closure; essential inference/live qualification is not replaced by a general cleanup rewrite. | Candidate-bound function identity/complexity and consumer-path evidence for each closed item; unchanged function allowances are not closure. |
 | CLI/application and persistence owners; after a tested replacement exists | Retire obsolete commands/helpers individually, migrate their real tests/callers to existing application contracts, and remove unreachable production code. Consolidate proven SQL/error-mapping duplication only within the same owner. Preserve production-used M0 assessment/history/withdrawal until accepted compatibility has a tested replacement and authorized disposition. | Before/after caller/consumer inventory, tested replacement, stop/inspect/recover and M0 compatibility evidence; no orphan exports or duplicate test-only business implementation. Do not delete accepted authority, historical evidence or migrations to lower counts. |
 
 **LOC disposition:** keep QUALITY_BAR's advisory file/diff/span references and
 the enforced McCabe ratchet unchanged. Re-inventory the touched large files
-listed in ENGINEERING_STATE, including the ContextPack/Terrain adapters and large
+in the actual candidate, including the ContextPack/Terrain adapters and large
 Terrain test suites. Retain a large cohesive responsibility only with a concrete
 review reason; consolidate duplication or split mixed responsibilities when
 proven. Closure is simpler ownership, less duplication/dead code and preserved
 behavior, not a required percentage reduction or smaller files at any cost.
 Do not raise thresholds, remove explanations or fragment helpers to satisfy LOC.
 
-**Current implementation disposition (2026-10-21):** the pinned Git baseline
-records PR #72 (`ca7d4ef`), roadmap PR #73 (`00e5667`), Walking Skeleton PR #74
-(`94c240b`), tracking PR #106 (`2b807d6`) and provider-fixture PR #107
-(`2af7d01`). The skeleton's Terrain
-`record_dns` 24 → 6 and `load_existing` 17 → 2 remain its reviewed disposition.
-The delivered [provider-fixture packet](workflows/DW-IMPLEMENT-M1-PROVIDER-FIXTURE-FEEDBACK.md)
-implements slice 2 offline; no real cognition demonstration is
-claimed. It shares HTTP/TLS/response mechanics and credential validation between
-native/autonomous transport, retains the existing inference engine and separates
-local revocation, authority coordination and transport permits. The touched CLI
-`command` and its ambiguous closure group were remeasured after separating
-parsing/receipts from execution and pre-mutation signaling; the packet records
-`command` at 5 against its original PR-base 8. Untouched
-`connect_qualified`, `run_record` and the other named hotspots remain OPEN.
-Legacy CLI/M0 consumers remain supported.
+**Retained debt disposition:** #74 reduced Terrain `record_dns` 24 -> 6 and
+`load_existing` 17 -> 2; #107 reduced CLI `command` 8 -> 5 and resolved its
+ambiguous closure. Ten named debts remain under section 1.3. Existing M0/CLI
+consumers stay supported; an allowance or documentation cleanup is not repayment.
 
-**Diagnostics FIX disposition (2026-10-22, merged):**
-[PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109) merged
-at `ef23262184965b81e7103b12371000619e503caa`, delivering
-[bounded run diagnostics](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md#12-merge-reconciliation-2026-10-22).
-The reviewed source head `83f3338` passed final Windows serial targets (31/31),
-exact-head Linux CI (nine jobs, 96.79% production coverage) and a distinct
-closure-delta review. The owner reports W32Time recovery / WSL restart before
-that run. This closes the recorded delivery gate, not platform-wide clock safety
-or a real-provider feedback claim. The old physical clock-adjustment cause and
-unrecorded stop/Terrain errors remain unverified.
-
-The root-cause amendments correct a discarded known serialization rejection,
-preserve same-operation bounded resubmission, separate feedback/supervision/withdrawal
-responsibilities, retain exact CI test entrypoints and enforce their shared
-settlement deadline. They add no production retry policy, grant, timer extension
-or changed expiry assertion. Named runtime complexity debt remains OPEN.
-
-Next: complete the owner-accepted provider-neutral lifecycle/freshness
-revision's documentation checks/review under section 1.2, then issue one
-bounded runtime packet and re-attempt the provider-fixture feedback
-demonstration under fresh disclosure/terms/window; the 2026-10-22 run recorded
-the first decision and committed fixture Terrain but second inference ended
-exit 124 with `may_send_uncertain`. Keep DNS
-deterministic and prove that decision two consumes the original issued result
-through Terrain. Linux capture/egress and OCI application qualification remain
-separate unfinished work before live acquisition. PowerShell ACL latency,
-owner-connection optimization, internal preparation timing and owner-view
-continuation remain OPEN. Existing M0 operational consumers remain supported
-until their tested replacement and explicit disposition exist.
-
-**Measured CI baseline:** PR #71 run
-[39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676),
-source head 0615fb7 (PR merge checkout 157c155), retained qualification artifact:
-instrumented test build 1m23s; 101 test binaries report 869.94 seconds total and
-549 passing tests; coverage 96.74%. Slowest target totals are
-m1_inference_budget_limits 105.76s, m1_session_cli 67.09s and
-m1_prepared_withdrawal_commit_ack 40.98s. These are one-run measurements, not a
-latency percentile or promised speedup. The bootstrap captures child output until
-completion, so a silent UI interval alone does not prove a hung test. Final
-job/check status must be read separately; a completed log or earlier head is not
-a substitute for current ci-ok.
+**Measured CI evidence:** [#71 run 39276753676](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/39276753676)
+recorded 1m23s instrumented compilation and 869.94s test-summary time. Later
+[#118 run 40183470790](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/40183470790)
+restored both existing caches: full coverage compiled in 1m06s while test
+summaries totaled 21m58s. Keep `actions/cache`; changing cache wrappers does not
+remove test execution time. Qualified docs routing is delivered in #118.
+Future cancellation/isolation/parallelism changes need measured benefit and
+preserved gates, not another cache framework or a promised speedup.
 
 ### 1.5 Rust tooling direction (owner request, 2026-10-24)
 
-The owner requests Rust for DuskWeave-owned execution/qualification tooling and
-retains the accepted Go adapter boundary. This records delivery direction, not
-an implemented migration, accepted platform expansion or reset of FIX cycles.
-At inspected source 776421d, src/ and Cargo.toml contain no Python invocation.
-Python remains in fixture provisioning, qualification, live/Terrain wrappers,
-the T8 upgrade worker, an inline TLS test server and CI/quality tooling.
+The owner requests Rust for owned execution/qualification tooling while retaining
+the accepted Go adapter boundary. The first seam is delivered by the
+[fixture supervisor](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md): Windows Job
+Object / Unix process-group custody, bounded collection/cleanup, redacted results
+and bootstrap/qualifier/T8/CI consumers replace Python action supervision.
+This corrects process/pipe ownership; it does not prove the historical startup cause.
 
-The demonstrated blocker is process-tree/pipe lifetime and timeout attribution,
-not proof that Python itself caused the historical readiness incident. A Rust
-translation must correct that contract rather than reproduce it.
+Retire remaining mechanisms in bounded consumer-complete changes:
+- Provisioning and live/Terrain wrappers: migrate their real operational consumers
+  before deleting Python entrypoints; no permanent parallel runner.
+- Inline TLS fixture, then CI/quality scripts: retain negative controls, actual
+  test summaries and unchanged gate policy. Until migrated, report Python honestly.
+- Resolve dependency/safety placement before handoff; preserve `forbid(unsafe_code)`.
+  Privileged provisioning stays outside production processes. Preserve exited-parent
+  descendant, stalled-parent, cleanup-failure, secret-output and no-retry regressions.
+- Native Windows ACL replacement is a separate production concern. Linux remains
+  ADR-015's acquisition deployment; a development Job Object does not qualify
+  Windows acquisition. This is no all-at-once rewrite or reset of FIX cycles.
 
-- Keep #116 DRAFT / NOT READY and preserve its runtime, migration, accepted
-  lifecycle contracts and completed Windows evidence. Current evidence does not
-  justify dropping those changes or redesigning Mission/Terrain/Broker owners.
-  Replace the previous next-action recommendation to patch Python supervision;
-  do not add another Python feature/fix cycle for this outcome.
-- First design one Rust development executable outside the shipped runtime:
-  fixture provisioning -> owned action tree -> bounded wait/cleanup -> redacted
-  result -> fixed qualification consumer. Keep privileged provisioning credentials
-  out of production APIs/processes. Rewire bootstrap/qualification consumers,
-  T8 and CI before retiring their Python entrypoints; no parallel permanent runner.
-- Own Windows descendants independently of the initial parent PID, using a
-  reviewed Job Object boundary established before the action can spawn children;
-  use a separately owned Unix process group for the trusted fixture tree. Bound
-  output collection and cleanup, retain timeout cause when cleanup fails, and
-  report unresolved termination honestly. Resolve dependency/safety placement
-  before an executable packet; preserve the core's forbid(unsafe_code).
-- Required regressions include an exited parent with inherited pipes held by a
-  descendant, a live stalled parent, cleanup failure, secret-bearing output,
-  first-failure/no-retry behavior and the real T8/CI consumers. Preserve restricted
-  roles, migration semantics, full test summaries and separate build targets.
-- Subsequent bounded migrations retire legacy live/Terrain wrappers after their
-  operational consumers have replacements, replace the inline TLS fixture, then
-  port remaining CI/quality scripts with their negative controls and unchanged
-  gate policy. Until those consumers are removed, do not claim Python-free tooling.
-  This is a finite retirement sequence, not authority for an all-at-once rewrite.
-- First seam delivered: [DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md)
-  implements the development executable (owned action tree, bounded wait and
-  cleanup, redacted publication, fixed service check) and rewires the
-  bootstrap/qualifier bridge, T8 and CI. Python supervision of fixture actions
-  is retired; provisioning, live/Terrain wrappers and quality scripts remain
-  Python until their later bounded migrations.
-- Native Windows ACL replacement is a separate production adapter concern;
-  it must preserve security semantics and cannot fix harness pipe ownership.
-  Linux remains the accepted acquisition deployment under ADR-015. A development
-  Job Object does not qualify Windows acquisition or introduce a new Broker.
-
-Delivery of the first seam supersedes only the no-implementation sentence above;
-direction, retirement sequence and evidence rules are unchanged. Record later
-design, migration and retirement evidence in the existing delivery ledger and PR.
+Record migration evidence in its existing PR; closed packets stay historical.
 
 ## 2. Deferred development candidates
 
@@ -342,11 +235,10 @@ Existing Terrain and Pathing contracts own environmental relationships and candi
 
 Before moving a candidate into implementation: identify the real mission need and owning context, resolve material ambiguity, amend only conflicting accepted decisions, accept the necessary architecture/contracts, and issue one bounded entrypoint-to-consumer packet with failure-path verification.
 
-The owner approved the selected ADR-008 review refinements and the limited relationship-aware MVP direction on 2026-09-30. The roadmap direction and selected refinements are accepted; [full ADR-008](adr/ADR-008-observation-fact-separation.md) was explicitly accepted by the owner on 2026-09-30. Engineering/adversarial skills and current status now reflect targeted research, source eligibility and stage-appropriate evidence. The [minimum M0 contract and sequencing proposal](contracts/M0-mission-authority-history.md) and its bounded sequencing exception were accepted by the owner on 2026-09-30. It defers ADR-009..012 for the limited local behavior while retaining required history. M0 needs no language amendment; future integration responsibilities still require component-specific assessment.
-
-M0 is **SEALED (`DW-M0-001`)** at `669f2f36bf2909f3c28f4018a6ae69e76364b286` by explicit product-owner action on 2026-10-05 after owner acceptance of the Work-reviewed bounded demo. [PR #34](https://github.com/carlitotate12160-tech/DuskWeave/pull/34) merged the recording at `d421c776da2d030d344338181628d5852b3bbe81`. [Engineering state](ENGINEERING_STATE.md) sections 5a and 6 preserve the sealed scope, predecessor evidence and limits; older DEMO_PENDING wording is superseded.
-
-The owner accepted the [M1 external orientation contract](contracts/M1-external-orientation-decision-loop.md) and sequential delivery flow on 2026-10-06: DuskWeave acquires sourced external observations, reconciles one decision-relevant DNS relationship, performs an admitted bounded HTTPS validation and revises the next campaign decision. Reuse one verified source worktree, qualified local resources and unchanged M0 evidence; preserve per-candidate verification. The next preparation resolves the common enabling design and explicit sequencing under contract section 11 before IMPLEMENT. Scope acceptance grants no target/pilot execution, automatic acceptance, M1 seal or change to DW-FOUNDATION-001.
+Acceptance and seal evidence is indexed in
+[ENGINEERING_STATE](ENGINEERING_STATE.md); use the accepted M0/M1 contracts for
+their scoped sequencing exceptions. Scope acceptance grants no target/pilot
+execution, automatic acceptance, M1 seal or change to DW-FOUNDATION-001.
 
 On 2026-10-07 the owner approved the R2 cognitive direction for M1: evidence-led reasoning, bounded runtime capability synthesis/evolution, campaign-local feedback learning and the minimum report are inside the M1 outcome, replacing the deterministic-only selection. Retained for later selection — not hidden M1 criteria, mandatory providers or a fixed sequence — are additional passive sources (Wayback, OTX, VT, Shodan/Censys and further CT), scheduled episodes with change-diff, bounded GET/fingerprinting/takeover heuristics, and throughput optimizations such as parallel episodes or warm workers; each activates only for a concrete mission need under its owning contract. Online model-weight training and actor-persona playbooks remain unselected; self-granted permission, mutable audit history and self-certified success stay rejected. The accepted post-M1 access/credential pull is unchanged, and no new milestone promises or provider checklist are created.
 

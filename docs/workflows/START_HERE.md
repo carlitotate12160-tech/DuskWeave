@@ -50,13 +50,16 @@ current-candidate test results.
 - AGENTS.md: contributor protocol and authority-loading rules.
 - QUALITY_BAR.md: gates, evidence requirements and budgets.
 - BUILD_ORDER.md: dependency navigation.
-- ENGINEERING_STATE.md: acceptance/seal status.
+- ENGINEERING_STATE.md: active work, next action and milestone/seal evidence index.
+- GitHub: actual PR/candidate/CI state; each PRD/ADR owns its acceptance scope.
 - Skills: role-specific workflows, never runtime campaign agents.
 - Packet: exact current task, edit map, tests and completion boundary.
 
 Repository copies govern repository procedure. Use
 [skill maintenance](SKILL_MAINTENANCE.md) to publish and verify installed copies.
 Keep only short domain anchors in skills; do not copy current stage/HEAD/seals.
+Follow AGENTS.md's documentation lifecycle: ordinary assignments/review evidence
+stay in their PR; completed packet records are historical, not startup reading.
 
 ## Next permitted work
 

@@ -1097,6 +1097,6 @@ operational debt, not an assumed available API.
 
 The [design packet](../workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md)
 retains the accepted assertions. Their successor runtime implementation,
-T1-T9 execution evidence and pending candidate gates are recorded in the
+T1-T9 execution evidence and source-bound qualification are indexed in the
 [runtime ledger](../workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
 These records establish neither live-provider qualification nor an M1 seal.

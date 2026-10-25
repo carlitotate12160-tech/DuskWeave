@@ -175,7 +175,9 @@ blocker; do not repeatedly probe it or substitute cached evidence.
 
 ## Mode: DESIGN
 
-Produce only the documents explicitly assigned by the packet.
+Produce only documents assigned by the packet. Apply AGENTS.md's documentation
+lifecycle: ordinary packet/review evidence belongs in its existing PR, not a new
+permanent ledger. Do not append to closed packets or duplicate mutable status.
 Use build-order authoring permission when the packet is creating new authority.
 Do not demand an existing accepted copy of a PRD being authored.
 Write proposed/draft content using the registry's conventions; never self-accept.

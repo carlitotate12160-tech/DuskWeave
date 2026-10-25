@@ -6,18 +6,10 @@ fixtures. It sends no provider or target request. A passing run proves the
 connected workflow. The separately bound provider-fixture lane below replaces
 only inference; live acquisition remains a later, independently qualified slice.
 
-The [inference-lifecycle R2 successor](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md)
-is implemented in [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116)
-and has completed the amended Windows qualification. Final Linux CI is checked
-on the exact PR candidate; the
-[review record](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1) and
-[T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger)
-record actual assertions and limits.
-Required full-suite/coverage qualification uses exact-candidate Linux CI;
-affected Windows native/CLI/transport/control checks remain mandatory. The
-v2 run/profile path is not yet qualified for demonstration. The
-existing fixture instructions below describe the previously delivered lane;
-they do not establish successor acceptance or authorize a provider request.
+Use the delivered successor v4 permission / v2 run bindings below for new
+qualification. [ENGINEERING_STATE](ENGINEERING_STATE.md#6-current-slices-and-next-action)
+owns delivery/readiness; [the lifecycle record](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger)
+indexes tested assertions. Neither a guide nor old qualification grants new consent.
 
 ## What the owner should see
 
@@ -60,73 +52,26 @@ printing these counts. An eight-seed scenario checks real producer/consumer fit.
 
 ### Successor Windows qualification
 
-With a clean committed source, Rust 1.94.1 x86_64-pc-windows-msvc,
-cargo-llvm-cov 0.9.1, existing Python and owned `dwpg-r3` PostgreSQL 17.11,
-hold both build targets and cluster-role fixtures under one serial owner.
-Build the fixture supervisor helper into its dedicated target and export its
-absolute path in the owning shell first; every supervised action and the
-service qualification now run through it (see
-[native inference helper build](RUN_M1_NATIVE_INFERENCE.md#native-fixture-qualification)).
-Before starting, clean only the selected coverage workspace profiles using
-`cargo +1.94.1 llvm-cov clean --workspace` with both coverage target variables
-set to `D:/DuskWeave-build/rust-1.94.1/coverage/inference-lifecycle` in that
-process. Preserve compiled artifacts and all previous evidence. Then run:
+The [final source-bound matrix](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md#final-windows-qualification-2026-10-25)
+records the completed four-action Rust-supervised Windows qualification. Do not
+repeat it for documentation changes or reuse its evidence names. A future assigned
+qualification uses fresh database/report names, one owner for normal/instrumented
+targets and cluster-role fixtures, the rebuilt native helper's absolute path and
+the existing `tests/support/m1_lifecycle_qualification.py` consumer.
 
-```powershell
-python tests/support/m1_lifecycle_qualification.py --database-name dw_native_lifecycle_qualification_20261024d --report D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled-flags
-```
-
-The issued coverage-command amendment removes only `--no-clean` from both
-instrumented actions. In [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/README.md#merge-coverages-generated-under-different-test-conditions),
-`--no-report` already disables automatic cleanup; explicit selected-workspace
-cleanup above remains required. The prior `20261024c` database/report and
-flag-conflict STOP are retained in the
-[ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#native-qualification-closure-2026-10-24).
-The amended sequence passed 57/57, 18/18, 57/57 and 18/18 once on clean
-source `5d769d25d7236bf882faa8538e0ee6a285df18e8`, including ordinary/instrumented
-T8, with zero failed/ignored/filtered tests and aggregate exit 0. Its database
-and report names are now retained evidence, so this command refuses reuse.
-
-The command refuses existing output/database names and unsuitable prerequisites.
-It reuses native bootstrap custody once at schema 0021, with provisioning
-`postgres` distinct from restricted fixture-admin and runtime owners. It runs
-ordinary binary, ordinary lifecycle, instrumented binary and instrumented
-lifecycle actions serially, binding the CLI to the corresponding target.
-Each full action requires 57 binary or 18 lifecycle tests, with no failures,
-ignored or filtered tests. T8's nested one-test worker does not replace the
-full lifecycle summary. No key, observer or stale binary override is forwarded.
-
-The configured 900-second supervision policy per Cargo action includes compilation
-and tests; it is not measured fit or a product timeout. A distinct review had found
-that cleanup was not a reliable bound when the action parent exited while a
-descendant still held inherited pipes; the Rust fixture supervisor replacement
-([DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md))
-now owns that boundary, and the recorded finding stays historical evidence. The
-fresh full four-action Windows qualification on the replaced mechanism ran once
-on tested head `ef49780bd32ca19383cf6f7bd49c87aa5fd94f96` and passed 57/57,
-18/18, 57/57 and 18/18 with zero failed/ignored/filtered tests and aggregate
-exit 0; its retained evidence is report
-`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-rust-final-20261025a`
-with database `dw_native_lifecycle_rust_final_20261025a` ([qualification
-record](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md#final-windows-qualification-2026-10-25)).
-The four earlier Windows PASS results were produced under the superseded Python
-supervision and are retained with their provenance, not relabeled.
-`harness_timeout` is separate from an ordinary child exit 124. The first failed
-action ends qualification with its nonzero result; subsequent actions remain
-`NOT_RUN`. One read-only provisioning snapshot is attempted after failure.
-Redacted action logs, result metadata, `qualification.json` and any available
-snapshot are retained. Snapshot failure never replaces the original result.
-Credentials stay in the process and children; no session recovery or automatic
-retry is offered. Preserve databases and reports after either outcome.
-
-A successful sequence qualifies that source and environment only. It does not
-explain the historical 5,068 ms startup incident, establish a latency distribution,
-eliminate future Windows tail events, qualify a real provider or seal M1.
+Follow [native helper setup](RUN_M1_NATIVE_INFERENCE.md#native-fixture-qualification).
+Clean only selected coverage workspace profiles, preserve compiled artifacts and
+historical evidence, then run the qualifier with the assigned `--database-name`
+and `--report`. It requires all four full action summaries and nested T8, stops
+on first failure and preserves redacted logs/metadata and truthful cleanup/omissions.
+The 900s Cargo-action policy is not a product timer or measured latency guarantee.
+Pinned llvm-cov 0.9.1 refuses `--no-report` with `--no-clean`; the qualifier's
+current tested commands own that invocation, not historical snippets.
 
 ### Previously delivered skeleton demonstration
 
-Use the qualified Rust 1.94.1 / PostgreSQL 17 setup described in
-[the implementation packet](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md).
+Use the Rust 1.94.1 / PostgreSQL 17 [native setup guide](RUN_M1_NATIVE_INFERENCE.md#native-fixture-qualification).
+[The skeleton record](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md) is historical implementation evidence.
 No production/client database or old live consent is usable for this fixture.
 With no other shared-target or role-fixture owner running, in PowerShell:
 
@@ -145,7 +90,14 @@ heartbeat while building/testing, then the test result and terminal receipt.
 
 ## Operational commands
 
-A deployed fixture run requires an already registered Mission with current
+For new v2 runs use v4 permission and explicit `inference_profile`, as exercised
+by `tests/m1_inference_lifecycle.rs` and its private support. Launch with
+`m1-run --timing-profile reasoning-bounded-v1 --input <registered-v2-run.json>`;
+the timing hint is a CLI flag, not a request/context JSON field. Keep the registered
+profile/recipient/settings and request binding identical. The following v1/v3
+shape remains a supported legacy lane, not a v2 example.
+
+A deployed legacy fixture run requires an already registered Mission with current
 contact permission, all nine v3 disclosure classes, fixture profile/mode and
 finite budgets for both decisions. Infrastructure connections remain the
 existing [native-inference configuration boundary](RUN_M1_NATIVE_INFERENCE.md).
@@ -235,19 +187,20 @@ there is no new M1 acceptance, deployment qualification or target authorization.
 
 ## Provider-fixture lane: opt-in, not inherited consent
 
-[The provider-fixture packet](workflows/DW-IMPLEMENT-M1-PROVIDER-FIXTURE-FEEDBACK.md)
-governs `autonomous-dns-provider-fixture-v1` / `controlled_fixture`. Only inference
-may contact `https://api.deepseek.com/responses`, under
-`deepseek-responses-autonomous-v1`. The existing fixed request selects
-`deepseek-flash`, high reasoning effort, text-only non-streaming output, no tools
-and 4096 output-token capacity. There is no endpoint/model fallback.
-DNS remains `dns-routing-fixture-v1`, with no target resolver/socket. Terrain
-source is `fixture_dns_acquisition`, never a live observation.
+For the delivered successor, bind `m1_inference_permission_v4` and
+`m1_autonomous_run_request_v2` to `autonomous-dns-fixture-v2`, `controlled_fixture`,
+`inference_profile: deepseek-responses-reasoning-v1`. Pass the CLI timing hint
+`--timing-profile reasoning-bounded-v1` at start. Only inference contacts
+`https://api.deepseek.com/responses`. The closed profile selects `deepseek-flash`,
+high reasoning effort, text-only non-streaming output, no tools and 4096 output
+tokens. There is no endpoint/model fallback. DNS stays `dns-routing-fixture-v1`
+with no target/resolver socket; Terrain source stays `fixture_dns_acquisition`.
+Local protocol profiles never consume the key or fall back to DeepSeek.
 
 Before any provider contact:
 - Finish offline qualification on the actual candidate/platform and review the
   packet's measured limits, uncertainty and unresolved checks.
-- Register a new campaign with explicit `m1_inference_permission_v3` binding that
+- Register a new campaign with explicit `m1_inference_permission_v4` binding that
   exact run/profile/mode/recipient, all nine permitted classes, current non-nil
   terms reference and explicit terms approval, finite capacity and UTC window.
 - Review the actual initial Mission/seeds, disclosure and window. This guide,
@@ -273,13 +226,13 @@ not commit authenticated SQL authority and cannot resume a run. Direct SQL
 writers still require their common fence; their fallback is permit loss, not an
 assumed shared in-process flag. Inspection/recovery does not emit a new stop.
 
-The application reserves four call slots, 65536 request bytes, 262144 response
-bytes, 16384 output-token capacity and 90000 inference wall-time ms. Each decision
-has one original 40000 ms generation/conditional-repair clock and 45000 ms full
-reservation. Each actual call is capped at 20000 ms including <=5000 ms connect;
-preparation <=5000 ms, inference phase <=50000 ms and run <=150000 ms, all clamped
-by original current authority, premise and run deadlines. Cancellation/accounting
-never extends permission to send. These are policy ceilings, not latency fits.
+The canonical finite successor allocations and independent clocks are in
+[ADR-016's timing table](adr/ADR-016-execution-broker.md#selected-successor-timing-policy-reasoning-bounded-v1),
+implemented by `src/m1_inference_profile.rs`. Bind that profile and full two-decision
+capacity before start; insufficient original campaign/window/run remainder refuses.
+No lease, repair, cancellation or accounting step renews permission or refreshes TTL.
+Legacy v1/v3 profiles keep their original allocations; never mix their consent
+or timer values into a successor request.
 
 The second immutable pack must resolve to the actual first decision and issued
 owner-qualified fixture result, retaining original perception/expiry. A genuine
@@ -292,7 +245,8 @@ Inspect durable generation/repair identities and states when attributing calls:
 Unknown consumption remains charged. Inspect/recover with the key absent must
 make zero further provider/effect requests; recovery is database-only.
 
-Current operational disposition: **REAL PROVIDER EPISODE NOT EXECUTED**.
-Fresh disclosure/key and complete candidate/platform qualification are separate
-prerequisites. Offline scripted inference tests prove owner wiring and failure
-semantics, not actual LLM cognition, live target facts or an M1 seal.
+For current demonstration evidence and missing prerequisites, read
+[ENGINEERING_STATE](ENGINEERING_STATE.md#6-current-slices-and-next-action).
+Offline fixtures prove owner wiring/failure semantics, not LLM cognition,
+live target facts or an M1 seal. A failed/partial paid episode stays recorded;
+do not replay it to obtain a preferred strategy or a successful-looking report.

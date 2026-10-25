@@ -39,66 +39,21 @@ Only read the packet required by the active engineering state, plus packet 00 an
 
 ## Current permitted work
 
-Current seal:
+[ENGINEERING_STATE section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
+owns active work, next action and milestone evidence. Read PR/candidate/CI state
+from GitHub; this index does not repeat mutable delivery status or merge history.
 
-`DW-FOUNDATION-001; DW-M0-001 (M0 sealed 2026-10-05 at 669f2f3 — scope/limits in ENGINEERING_STATE.md section 5a)`
+The selected M1 lane is governed by the accepted
+[external-orientation contract](contracts/M1-external-orientation-decision-loop.md)
+and [enabling architecture](contracts/M1-enabling-architecture.md), including its
+bounded sequencing substitutions. [ADR-016](adr/ADR-016-execution-broker.md)
+owns execution/lifecycle admission and [ADR-015](adr/ADR-015-execution-boundary.md)
+owns deployment boundaries. Selected-lane acceptance does not accept missing
+full-stage dependencies or qualify a deployment, provider, target action or seal.
 
-Current engineering state:
-
-Pinned merged baseline: lifecycle design [PR #115](https://github.com/carlitotate12160-tech/DuskWeave/pull/115)
-(`79b0e3ee1bea44b5e5639c1142af45b6c44918b4`), after tracking
-[PR #114](https://github.com/carlitotate12160-tech/DuskWeave/pull/114) and diagnostics
-[PR #109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109) (`ef23262`),
-provider-fixture [PR #107](https://github.com/carlitotate12160-tech/DuskWeave/pull/107) (`2af7d01`)
-and tracking [PR #108](https://github.com/carlitotate12160-tech/DuskWeave/pull/108)
-(`b439661`). Controlled fixture and real-provider fixture wiring, restricted owner
-persistence, STOP, durable diagnostics and database-only recovery are implemented.
-
-Active runtime delivery `feat/m1-inference-lifecycle` executes
-[DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE R2](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md).
-The runtime is implemented in [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116).
-Delivery remains DRAFT / NOT READY. Evidence and the bounded readiness disposition
-are in the [workflow ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#bounded-readiness-disposition-2026-10-24).
-The accepted 2026-10-22 lifecycle/freshness revision remains governing authority;
-current head/checks are read from the PR. A fresh provider-fixture demonstration
-remains separately required; historical calls do not prove complete feedback.
-
-[ENGINEERING_STATE.md section 6](ENGINEERING_STATE.md#6-current-slices-and-next-action)
-owns readiness and next action; the [existing roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
-owns sequencing/debt. Section 7 / ADR-016 section 4a exact text
-`0615fb72c946fd6abf0823692be621096091377c` was owner-accepted on 2026-10-19
-for Walking Skeleton implementation; the 2026-10-22 provider-neutral revision
-was owner-accepted on 2026-10-22 and changes no other accepted text. No real
-LLM/live acquisition qualification, target permission or M1 completion is
-implied. Linux live-boundary preparation may proceed separately; it does not
-block the controlled provider-fixture demo.
-
-Current design document:
-
-The [M1 external orientation and bounded decision-loop contract](contracts/M1-external-orientation-decision-loop.md) is ACCEPTED by the product owner on 2026-10-06 for product/behavior scope and linear delivery. It selects one passive CT source, bounded DNS/HTTPS acquisition, owner-qualified Terrain/Pathing reasoning and evidence-led feedback. It does not accept missing ADRs, grant target permission, or seal M1.
-
-The [M1 enabling architecture/owner/sequencing contract](contracts/M1-enabling-architecture.md)
-defines the scoped owner boundaries and sequencing. Its
-[fixed execution decisions](contracts/M1-enabling-architecture.md#4-fixed-execution-and-sensitive-decisions)
-require qualified admission: the actual effect-start path is integrated and exercised
-under [ADR-016](adr/ADR-016-execution-broker.md). Worker isolation, START/renewal,
-host STOP and the restricted stop-writer fallback remain distinct execution
-prerequisites under ADR-015/016.
-
-[ADR-008](adr/ADR-008-observation-fact-separation.md) and the [M0 contract](contracts/M0-mission-authority-history.md) remain ACCEPTED. M0 is SEALED at `669f2f3`; [ENGINEERING_STATE.md](ENGINEERING_STATE.md) sections 5a and 6 hold its merged deliveries, owner demo acceptance and evidence limits. Eligible v4 remains historical eligibility, not current dispatch permission.
-
-[MVP direction and deferred scope](MVP_AND_DEFERRED_SCOPE.md) records owner-approved direction and the bounded CODE/TEST -> DEMO -> REVIEW/FIX -> SEAL rhythm. The accepted M0 contract identifies which evidence/proof/custody decisions can wait for their actual behavior. Its bounded sequencing exception is accepted; each local M0 runtime packet must contain resolved contracts and an exact file map. Existing dependencies for the full domain/evidence/execution stages are preserved.
-
-DW-DESIGN-001 produced and accepted PRD-000 Product Thesis, PRD-001 Campaign Lifecycle, and PRD-002 Cyber Terrain. Its prior execution prompt is historical.
-
-DW-DESIGN-002 authored four linked PRDs, accepted by the product owner on 2026-09-27 after reconciliation:
-
-- PRD-003 Access & Footholds
-- PRD-004 Expansion Loop
-- PRD-005 Objective Loop
-- PRD-006 Adaptation
-
-PRD-000 INV-004 now defines tier-proportionate corroboration, and INV-007 retains the current campaign position boundary. PRD-002..006 preserve provenance, epistemic limits, authorized action, and reversible proof. PRD-000..010 and ADR-001..008 are ACCEPTED. ADR-001 acceptance on 2026-09-27 includes the core-plus-workers alternative and shared-failure/recovery clarification; PRD-001 distinguishes presumed from confirmed loss consistently with PRD-003. ADR-002 was accepted on 2026-09-27 after the product owner's four requested boundary clarifications. ADR-003 was accepted on 2026-09-28 after its B1-B7 revision. ADR-004 was accepted on 2026-09-28 with the revised reasoning/inference boundaries. ADR-005 was accepted by the product owner on 2026-09-28 for PostgreSQL as the sole initial campaign-core system of record; no SQLite deployment mode was selected. ADR-006 was accepted by the product owner on 2026-09-28 after freshness, mode/causal eligibility, historical-view, Observer-boundary and STALE/PROVISIONAL clarifications. ADR-007 was accepted by the product owner on 2026-09-28 after clarifying the parallel-attempt review case and the ownership of intent-weighted selection. DW-FOUNDATION-COHERENCE-001 reconciled F1–F5 and reran the cross-foundation document checks. The product-owner-approved F6 duration clarification subsequently established operator-authorized rapid, bounded, and persistent engagement envelopes; extended duration is a capability rather than a requirement for every campaign, and deadline expiry reports bounded coverage and residual uncertainty. Product-owner-approved F7 keeps campaign continuity independent of target-side persistence, prohibits arbitrary malware and unmonitored implants, and limits any later temporary managed artifact to explicit authorization, bounded lease/capability, non-sensitive manifest, revocation, expiry, opaque cleanup evidence, and honest residual reporting. Following explicit product-owner authorization, `DW-FOUNDATION-001` was sealed on 2026-09-28 against the reconciled authority baseline `5883fa52cd063083350a41a293e0bd654d500d63`. Stage 4 Reality & Evidence design is permitted. PRD-007 was accepted by the product owner on 2026-09-28 after reconciliation of observation/reconnaissance, owner-qualified use without a global barrier, freshness, protected-edge, and raw-input semantics. PRD-008 was accepted by the product owner on 2026-09-28 after bounded revision of owner-specific burden, reviewable technical material, semantic lineage, late contamination, reviewer authority, time basis, and current-use eligibility. PRD-009 Client Proof was explicitly accepted by the product owner on 2026-09-29 after refinement of remediation, finding traceability, bounded scanner-signal reporting, attack-narrative composition, and completion-scope distinctions. PRD-010 Sensitive Data Handling was explicitly accepted by the product owner on 2026-09-29 after bounded research into real assessment practice and sanitization assurance. On 2026-09-29 the product owner authorized reconciliation of INV-005 so separately authorized operational authentication material may remain reusable only inside isolated campaign-scoped custody, while core state, PostgreSQL, events, evidence, operators, and reasoning retain only opaque references and safe metadata. Proof content remains attempt-ephemeral; secret custody is non-durable by default, cannot cross campaigns/retests, requires current authority for every use, and ends with accountable disposal. The product owner explicitly resealed `DW-FOUNDATION-001` on 2026-09-29 against authority baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`; the 2026-09-28 baseline remains historical. Runtime and tool integration remain governed by later dependencies and are not authorized by this navigation update.
+The [roadmap](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
+owns product priorities and deferred breadth. Execute only the current assigned
+outcome after verifying its dependencies; completed DW-* assignments are historical.
 
 ## Mandatory invariants
 
