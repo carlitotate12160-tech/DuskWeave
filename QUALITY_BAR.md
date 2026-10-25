@@ -44,23 +44,32 @@ the one enforced numerical threshold and is governed by the ratchet below —
 do not extract merely to move branches into forwarding helpers, and do not
 delete comments, blanks or formatting to satisfy a number.
 
-Before issuing a packet, inspect the destination files and affected consumers.
-Record the chosen mechanism versus the simplest viable alternative, estimated
-additions and removals separately for runtime, tests, tooling and docs, and any
-new responsibility, state, dependency or operational step. Distinguish measured
-baseline from estimated growth; net LOC alone hides replacement/review cost.
-Name superseded mechanisms to retire with verified consumer replacements, or
-explain why no retirement is safe. Keep this decision in the existing packet.
+Before issuing a packet, inspect affected files and consumers. For a routine local
+change, one maintenance line confirming existing ownership and no trigger suffices.
+Expand only when a destination already exceeds or is expected to cross its category
+reference, new responsibilities/state/dependencies/operator steps are introduced,
+a mechanism is replaced, or a concrete duplication/ownership/readability risk is
+affected. Reassess if actual work reveals a trigger.
+When triggered, record four brief facts in the existing packet:
 
-For growth in an already oversized file, identify the exact responsibility or
-scenario being changed, unnecessary duplication/indirection considered, and why
-the retained growth is simpler than the viable alternative. "Same responsibility",
-"test-only" and an existing warning alone are not sufficient justification.
-Tests, fixtures and qualification scripts are maintained code too. Reject concrete
-ownership, dependency, duplication or readability regressions through section 7;
-do not treat advisory status as permission to accumulate them. Refactor a mixed
-responsibility within the allowed map or return the exact missing scope decision.
-Do not impose net-negative LOC or delete required assertions to satisfy a count.
+- Selected mechanism versus the simplest viable alternative and the reason.
+- Estimated additions/removals for runtime, tests, tooling and docs; distinguish
+  measured baselines from estimates. Net LOC alone hides review/replacement cost.
+- New responsibilities, or none.
+- Mechanism to retire with replacement evidence, none if nothing is replaced,
+  or the concrete reason an existing consumer still needs the old mechanism.
+
+Reuse decisions already stated; do not invent an alternative or an essay to fill
+a form. For oversized-file growth, address the specific changed scenario and its
+simplest viable placement; "same responsibility" or "test-only" alone is insufficient.
+Review tests, fixtures and qualification scripts as maintained code under Q1-Q4.
+Reject concrete regressions, not numerical growth alone; do not force net-negative
+LOC, delete required assertions or fragment files to satisfy a count.
+Existing size debt alone does not block delivery. Optional cleanup is nonblocking
+and may be deferred; a current correctness or invariant dependency cannot.
+Incomplete prose is corrected in the same packet. Only a missing material decision
+or required out-of-map edit warrants a scope return; estimates and routine local
+choices alone do not. Retain the other genuine STOP conditions below.
 
 ### Function and dispatch classification
 
@@ -263,10 +272,10 @@ local execution and exact-candidate CI, including their environment and limits.
 DESIGN/document-only work checks ownership, semantics, links and authority;
 runtime wiring/fault execution is N/A with that reason, not a fabricated test PASS.
 
-Under Q1-Q4, compare actual growth and responsibilities with the packet's decision.
-Explain material differences and the disposition of oversized files and replaced
-mechanisms. Inspect test setup, synchronization and cleanup as well as runtime.
-Reuse the existing review/report; add no approval tier, counter or evidence ledger.
+Under Q1-Q4, compare the actual change with the applicable maintenance decision.
+Inspect its effect on the owning code, including test setup/synchronization/cleanup.
+A blocking finding names the concrete regression or required missing evidence and
+smallest remedy; optional legacy cleanup is nonblocking. Reuse this review/report.
 
 Classify suspected findings as VALID, FALSE_POSITIVE or UNVERIFIED and separately
 state blocking impact. A valid finding names the violated invariant, reachable

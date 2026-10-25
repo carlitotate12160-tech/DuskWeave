@@ -240,10 +240,10 @@ reference point. A crossing produces a warning and a reviewer decision: retain w
 a concrete cohesion/readability reason, or refactor in the same PR. Numerical
 crossings alone do not require an exception, a new packet, or SPLIT_REQUIRED.
 
-Apply QUALITY_BAR.md's maintenance disposition before issuing a packet and in
-review. The architect resolves mechanism, consumer/file scope and retirement;
-the executor makes routine local choices within those decisions. Do not silently
-substitute mechanisms or add dependencies, operator commands or operational steps.
+Apply QUALITY_BAR.md's conditional maintenance disposition before handoff and in
+review. The architect resolves material mechanism, consumer/file scope and retirement;
+the executor retains routine local choices. Do not silently change those decisions
+or add dependencies, operator commands or operational steps.
 
 McCabe complexity is different: it is an enforced per-function ratchet, not an
 advisory metric. New functions above threshold 7 fail the required CI gate,

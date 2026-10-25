@@ -131,15 +131,14 @@ McCabe is different: an enforced per-function ratchet (QUALITY_BAR.md canonical)
 new or worsened violations above 7 fail the required metrics job; the reviewed
 `src/main.rs::run` dispatch holds 10. Do not raise a threshold to make a PR green.
 
-Follow the packet's selected mechanism, consumer/file scope and operational steps.
-Do not silently substitute designs or add dependencies or operator commands.
-Compare actual additions/removals by runtime/tests/tooling/docs and responsibilities
-with its maintenance disposition. Explain material deviations and simplify
-avoidable duplication in scope before claiming readiness. An estimate is not a
-hard LOC cap or permission to expand scope. For a genuinely missing architectural
-decision or required out-of-map edit, return the exact dependency before proceeding;
-routine in-scope defects stay in this delivery. Verify replaced mechanisms are
-retired safely and review test setup, synchronization and cleanup under Q1-Q4.
+Follow the selected architectural mechanism, consumer/file scope and operational
+steps; retain routine local choices. Apply QUALITY_BAR.md's conditional maintenance
+disposition as work evolves, explain material deviations and retire replaced paths
+safely. Estimates, routine choices or incomplete prose alone do not justify STOP;
+clarify the packet in place. Return the exact dependency only for a missing material
+decision or required out-of-map edit, retaining other genuine STOP conditions.
+Optional legacy cleanup is nonblocking; required correctness/invariant work is not
+deferred. Review runtime and test setup/synchronization/cleanup under Q1-Q4.
 
 Reuse Cargo build artifacts during normal iterations; do not routinely cargo clean.
 Follow the AGENTS.md artifact convention: set the packet's concrete

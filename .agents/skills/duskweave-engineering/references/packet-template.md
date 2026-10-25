@@ -31,7 +31,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 
 ## Decisions to Implement
 - Concrete architectural and implementation decisions captured by accepted PRDs/ADRs and packet.
-- Maintenance disposition per QUALITY_BAR.md: inspected destination-file baselines; chosen mechanism versus simplest viable alternative; estimated additions/removals separately for runtime/tests/tooling/docs; new responsibilities/state/dependencies/operational steps; mechanisms to retire or reason none can safely retire. Explain necessary growth in oversized files. Keep this in the packet, not a separate artifact.
+- Maintenance per QUALITY_BAR.md: one inspected/no-trigger line for routine changes; when triggered, four brief facts (mechanism/alternative/reason, estimated additions/removals by category, new responsibilities or none, retirement/replacement evidence or retained consumer). Reuse existing decisions; no separate artifact.
 - Fix the mechanism, consumer scope and permitted operational steps before handoff. Estimates do not authorize scope expansion; routine local choices remain with the executor.
 - For affected contracts, specify producer/artifact/consumer semantics (units, identity role/order and state), actual serialized byte bounds including request/configuration/repair, and lifecycle timing against freshness/deadlines. Preserve required information and original evidence times.
 - Runtime diff, file LOC and function span are advisory review reference points under QUALITY_BAR.md, not hard ceilings; a crossing produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR. McCabe is an enforced per-function ratchet (QUALITY_BAR.md canonical): a packet that must add or worsen an over-threshold function names the function, reason and smallest remedy.
@@ -39,7 +39,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 
 ## Acceptance Criteria
 - Exact observable assertions proving completion.
-- Compare actual growth/responsibilities with the decision above in the existing Q1-Q4 review; explain material deviations, retained oversized files and retirement evidence. Test-only growth is included in maintenance review even when excluded from the runtime-diff counter.
+- Review actual changes/deviations and any newly revealed maintenance trigger under Q1-Q4, including tests/tooling. Estimates and optional legacy cleanup alone are not STOP reasons; concrete correctness/invariant dependencies remain required.
 - Grounded in requirements, owner contracts, failure boundaries, and observable evidence.
 - Wiring for runtime slices: traced path from authorized entrypoint through changed production component to consumer and observable result.
 - For affected capacity/time boundaries, assert the minimum useful case and relevant legal boundary cases; state measured margins and honest omissions/expiry outcomes. Explain N/A where these boundaries are unaffected.

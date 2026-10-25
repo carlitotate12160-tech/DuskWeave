@@ -118,11 +118,11 @@ and report the policy-publication mismatch; the portable skill does not override
 
 Review packet feasibility as well as implementation: exact edit map versus
 read-only dependencies, real fixtures, supported platforms, and metrics.
-Under Q1-Q4, challenge the packet's simplest-alternative and maintenance disposition
-against actual growth, oversized destinations, new responsibilities and retirement
-evidence. Inspect test setup/synchronization/cleanup; "same responsibility" or
-"test-only" alone does not justify growth. Classify concrete regressions separately
-from missing evidence; neither low counts nor advisory status grants acceptance.
+Under Q1-Q4, apply QUALITY_BAR.md's conditional maintenance review to changed code
+and its owning context, including test setup/synchronization/cleanup and retirement.
+Do not require full dispositions without a trigger or block on LOC growth, routine
+choices or optional legacy cleanup alone. Name concrete regressions or required
+missing evidence and the smallest remedy; numerical PASS alone grants no acceptance.
 Runtime diff, file size and function span are advisory review reference points
 under QUALITY_BAR.md, not hard ceilings; a crossing produces an advisory warning
 and reviewer decision: retain with a concrete cohesion/readability reason, or
