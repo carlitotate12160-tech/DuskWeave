@@ -236,6 +236,7 @@ fn held_campaign_fence_refuses_release_without_waiting_or_provider_call() {
 struct ExpiringBasis {
     inner: Basis,
     shared_deadline: Instant,
+    entered_at: Option<Instant>,
 }
 impl ProposalBasis for ExpiringBasis {
     fn reference_eligible(&self, r: &str) -> bool {
@@ -249,6 +250,7 @@ impl ProposalBasis for ExpiringBasis {
     }
     fn before_provider_release(&mut self) -> Result<(), &'static str> {
         // Bounded barrier: validation completes only after the shared deadline.
+        self.entered_at = Some(Instant::now());
         while Instant::now() < self.shared_deadline {
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -277,6 +279,7 @@ fn deadline_expiring_during_validation_releases_the_fence_without_provider_call(
             deadline: Instant::now() + Duration::from_secs(60),
         },
         shared_deadline: r.shared_deadline,
+        entered_at: None,
     };
     let calls = Arc::new(AtomicUsize::new(0));
     let result = case.broker.release_into(
@@ -286,6 +289,13 @@ fn deadline_expiring_during_validation_releases_the_fence_without_provider_call(
         &bound,
         &mut CountingProvider(calls.clone()),
         &mut b,
+    );
+    // The refusal must come from the post-validation recheck: proof that the
+    // call cleared the early deadline check and reached validation in time.
+    assert!(
+        b.entered_at
+            .is_some_and(|entered| entered < r.shared_deadline),
+        "validation must be entered before the shared deadline"
     );
     assert!(matches!(
         result,
