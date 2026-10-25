@@ -177,6 +177,53 @@ fn stopped_before_release_has_zero_requests_and_an_actual_send_survives_unlock_f
 }
 
 #[test]
+fn worker_panic_prioritizes_release_error_then_reports_unknown_transport() {
+    for release_ok in [false, true] {
+        let b = bound(false);
+        let server = Server::start("200 OK", "", envelope());
+        let mut provider = provider(&server, &b, permit());
+        let (entered_send, entered) = channel();
+        let (gate_send, gate) = channel();
+        let gate = std::sync::Mutex::new(gate);
+        provider.pre_send = Box::new(move || {
+            let _ = entered_send.send(());
+            let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(3));
+            panic!("synthetic worker panic");
+        });
+        let result = provider.call(
+            &b,
+            Instant::now() + Duration::from_secs(40),
+            &mut Basis {
+                checks: AtomicUsize::new(0),
+                eligible: true,
+            },
+            &mut || {
+                entered
+                    .recv_timeout(Duration::from_secs(3))
+                    .expect("worker reached the pre-send barrier");
+                gate_send.send(()).unwrap();
+                if release_ok {
+                    Ok(())
+                } else {
+                    Err("inference_release_unknown")
+                }
+            },
+        );
+        let expected = if release_ok {
+            "provider_transport_unknown"
+        } else {
+            "inference_release_unknown"
+        };
+        assert_eq!(result.err(), Some(expected), "release_ok={release_ok}");
+        assert_eq!(
+            server.calls.load(Ordering::SeqCst),
+            0,
+            "panic before exchange sends nothing"
+        );
+    }
+}
+
+#[test]
 fn aggregate_bounds_protocol_reflection_and_late_reference_loss_never_publish_a_proposal() {
     for (status, headers, body, error) in [
         (

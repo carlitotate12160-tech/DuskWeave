@@ -38,6 +38,23 @@ fn stop(c: &mut impl GenericClient, s: &Scope) {
     c.execute("INSERT INTO mission.withdrawals(engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract) VALUES($1,$2,$3,$4,$5,$6)",&[&s.engagement,&s.campaign,&op.0,&event.0,&withdrawal.registration_operation_id.0,&serde_json::to_value(&withdrawal).unwrap()]).unwrap();
 }
 
+struct CountingProvider(Arc<AtomicUsize>);
+impl Provider for CountingProvider {
+    fn prepare(&mut self, _: &request::BoundCall, _: Instant) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn call(
+        &mut self,
+        _: &request::BoundCall,
+        _: Instant,
+        _: &mut dyn ProposalBasis,
+        _: &mut dyn FnMut() -> Result<(), &'static str>,
+    ) -> Result<Received, &'static str> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err("provider_release_refused")
+    }
+}
+
 struct BarrierProvider {
     launched: Arc<AtomicUsize>,
     ready: Sender<()>,
@@ -95,60 +112,209 @@ fn direct_stop_wins_before_launch_and_prevents_any_provider_call() {
         .may_send(&case.scope, r.generation_call, &bound)
         .unwrap();
     let mut b = basis(&case);
+    let mut legacy = native::client("DW_TEST_DATABASE_URL");
+    let mut tx = legacy.transaction().unwrap();
+    stop(&mut tx, &case.scope); // uncommitted writer trigger holds the campaign fence
+    let count = Arc::new(AtomicUsize::new(0));
+    let observed = count.clone();
+    let (ready, _) = channel();
+    let (_, finish) = channel();
+    let scope_id = case.scope.clone();
+    let (done, completed) = channel();
+    let worker = std::thread::spawn(move || {
+        let result = case.broker.release_into(
+            &case.scope,
+            &r,
+            r.generation_call,
+            &bound,
+            &mut BarrierProvider {
+                launched: observed,
+                ready,
+                finish,
+            },
+            &mut b,
+        );
+        let _ = done.send(());
+        (case.broker, result)
+    });
+    let refused = completed.recv_timeout(Duration::from_secs(3)).is_ok();
+    tx.commit().unwrap(); // always release the held fence before collecting
+    let (_, result) = worker.join().unwrap();
+    assert!(
+        refused,
+        "release must refuse promptly instead of waiting on the held fence"
+    );
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+    assert!(matches!(
+        result,
+        Err(ReleaseFailure::NeverReleased(
+            "current_authority_unavailable"
+        ))
+    ));
+    assert_eq!(native::admin().query_one("SELECT count(*) FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2",&[&scope_id.engagement,&scope_id.campaign]).unwrap().get::<_,i64>(0),1);
+}
+
+#[test]
+fn held_campaign_fence_refuses_release_without_waiting_or_provider_call() {
+    let _guard = native::db();
+    let mut case = native::decision(0x9912);
+    case.broker.deadline = Instant::now() + Duration::from_secs(4);
+    let r = case.broker.reserve(&case.scope, &case.pack).unwrap();
+    let bound = request::bind(&case.pack, None).unwrap();
+    case.broker
+        .may_send(&case.scope, r.generation_call, &bound)
+        .unwrap();
+    let mut b = basis(&case);
+    let s = case.scope.clone();
+    let key = format!("{}:{}", s.engagement, s.campaign);
+    let mut holder = native::client("DW_TEST_DATABASE_URL");
+    holder
+        .batch_execute("SET statement_timeout=3000; SET lock_timeout=2000")
+        .unwrap();
+    holder
+        .query_one("SELECT pg_advisory_lock(hashtextextended($1,0))", &[&key])
+        .unwrap();
     let pid: i32 = case
         .broker
         .client
         .query_one("SELECT pg_backend_pid()", &[])
         .unwrap()
         .get(0);
-    let mut legacy = native::client("DW_TEST_DATABASE_URL");
-    let mut tx = legacy.transaction().unwrap();
-    stop(&mut tx, &case.scope); // actual existing writer trigger holds campaign order
-    let count = Arc::new(AtomicUsize::new(0));
-    let observed = count.clone();
-    let (ready, _) = channel();
-    let (_, finish) = channel();
-    let scope_id = case.scope.clone();
-    let result = std::thread::scope(|threads| {
-        let worker = threads.spawn(move || {
-            let result = case.broker.release_into(
-                &case.scope,
-                &r,
-                r.generation_call,
-                &bound,
-                &mut BarrierProvider {
-                    launched: observed,
-                    ready,
-                    finish,
-                },
-                &mut b,
-            );
-            (case.broker, result)
-        });
-        let end = Instant::now() + Duration::from_secs(3);
-        let mut ordered = false;
-        while Instant::now() < end {
-            ordered = native::admin()
-                .query_one("SELECT cardinality(pg_blocking_pids($1))>0", &[&pid])
-                .unwrap()
-                .get(0);
-            if ordered {
-                break;
-            }
-            std::thread::yield_now();
-        }
-        assert!(ordered, "SQL lock barrier proves STOP precedes release");
-        tx.commit().unwrap();
-        worker.join().unwrap()
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = calls.clone();
+    let call_id = r.generation_call;
+    let (done, completed) = channel();
+    let worker = std::thread::spawn(move || {
+        let result = case.broker.release_into(
+            &case.scope,
+            &r,
+            call_id,
+            &bound,
+            &mut CountingProvider(observed),
+            &mut b,
+        );
+        let _ = done.send(());
+        (case.broker, result)
     });
-    assert_eq!(count.load(Ordering::SeqCst), 0);
+    let refused = completed.recv_timeout(Duration::from_secs(3)).is_ok();
+    // Owned bounded cleanup of the held fence precedes worker collection.
+    holder
+        .query_one("SELECT pg_advisory_unlock_all()", &[])
+        .unwrap();
+    let (mut broker, result) = worker.join().unwrap();
+    assert!(
+        refused,
+        "release must refuse promptly instead of waiting for the held fence"
+    );
+    assert!(
+        matches!(
+            result,
+            Err(ReleaseFailure::NeverReleased(
+                "current_authority_unavailable"
+            ))
+        ),
+        "fence contention must refuse without invoking the provider"
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let leaked: i64 = native::admin()
+        .query_one(
+            "SELECT count(*) FROM pg_locks WHERE pid=$1 AND locktype='advisory'",
+            &[&pid],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(leaked, 0, "a refused try-lock owns no session fence");
+    broker
+        .never_released(&s, call_id, "current_authority_unavailable")
+        .unwrap();
+    assert_eq!(
+        broker.inspect(&s).unwrap(),
+        "failed_never_released_reserved"
+    );
+}
+
+struct ExpiringBasis {
+    inner: Basis,
+    shared_deadline: Instant,
+    entered_at: Option<Instant>,
+}
+impl ProposalBasis for ExpiringBasis {
+    fn reference_eligible(&self, r: &str) -> bool {
+        self.inner.reference_eligible(r)
+    }
+    fn manifest_eligible(&self, r: &str) -> bool {
+        self.inner.manifest_eligible(r)
+    }
+    fn current_authority_and_premises(&mut self) -> Result<(), &'static str> {
+        self.inner.current_authority_and_premises()
+    }
+    fn before_provider_release(&mut self) -> Result<(), &'static str> {
+        // Bounded barrier: validation completes only after the shared deadline.
+        self.entered_at = Some(Instant::now());
+        while Instant::now() < self.shared_deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        self.inner.before_provider_release()
+    }
+    fn safe_explanation(&self, text: &str) -> bool {
+        self.inner.safe_explanation(text)
+    }
+}
+
+#[test]
+fn deadline_expiring_during_validation_releases_the_fence_without_provider_call() {
+    let _guard = native::db();
+    let mut case = native::decision(0x9913);
+    case.broker.deadline = Instant::now() + Duration::from_millis(500);
+    let r = case.broker.reserve(&case.scope, &case.pack).unwrap();
+    let bound = request::bind(&case.pack, None).unwrap();
+    case.broker
+        .may_send(&case.scope, r.generation_call, &bound)
+        .unwrap();
+    let mut b = ExpiringBasis {
+        inner: Basis {
+            client: native::client("DW_INFERENCE_BROKER_DATABASE_URL"),
+            scope: case.scope.clone(),
+            references: request::reference_ids(&case.pack).unwrap(),
+            deadline: Instant::now() + Duration::from_secs(60),
+        },
+        shared_deadline: r.shared_deadline,
+        entered_at: None,
+    };
+    let calls = Arc::new(AtomicUsize::new(0));
+    let result = case.broker.release_into(
+        &case.scope,
+        &r,
+        r.generation_call,
+        &bound,
+        &mut CountingProvider(calls.clone()),
+        &mut b,
+    );
+    // The refusal must come from the post-validation recheck: proof that the
+    // call cleared the early deadline check and reached validation in time.
+    assert!(
+        b.entered_at
+            .is_some_and(|entered| entered < r.shared_deadline),
+        "validation must be entered before the shared deadline"
+    );
     assert!(matches!(
-        result.1,
-        Err(ReleaseFailure::NeverReleased(
-            "current_authority_unavailable"
-        ))
+        result,
+        Err(ReleaseFailure::NeverReleased("inference_deadline"))
     ));
-    assert_eq!(native::admin().query_one("SELECT count(*) FROM mission.withdrawals WHERE engagement_id=$1 AND campaign_id=$2",&[&scope_id.engagement,&scope_id.campaign]).unwrap().get::<_,i64>(0),1);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let mut other = native::client("DW_TEST_DATABASE_URL");
+    let key = format!("{}:{}", case.scope.engagement, case.scope.campaign);
+    let acquired: bool = other
+        .query_one(
+            "SELECT pg_try_advisory_lock(hashtextextended($1,0))",
+            &[&key],
+        )
+        .unwrap()
+        .get(0);
+    assert!(acquired, "deadline refusal must release the acquired fence");
+    other
+        .query_one("SELECT pg_advisory_unlock_all()", &[])
+        .unwrap();
 }
 
 #[test]
