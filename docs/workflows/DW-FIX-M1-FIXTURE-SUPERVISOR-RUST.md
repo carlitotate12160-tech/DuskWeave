@@ -165,6 +165,13 @@ internal bounds, and the qualified platform is Windows; (2) the supervisor
 hard-death containment boundary is not claimed (no kill-on-close), matching
 decision 14.
 
+Exact-head correction (2026-10-25): the first pushed candidate failed its
+Linux CI in the prerequisite unit test, which used a Windows-style path that
+`Path.is_absolute()` rejects on Linux; both controller tests now derive the
+helper path from the platform's own temporary directory. No production code
+changed; the same 17 controller tests pass locally and the correction is
+re-verified by the new exact-head CI run.
+
 Author self-review under QUALITY_BAR section 7: Q1 ownership PASS (four
 single-responsibility modules; the bridge keeps provisioning only); Q2
 dependencies PASS (the helper imports no crate owners; dependency direction 0

@@ -125,7 +125,7 @@ class QualificationController(unittest.TestCase):
         self.assertEqual([a["status"] for a in actions[1:]], ["NOT_RUN"] * 3)
 
     def test_actions_inherit_the_exact_supervisor_path(self):
-        helper = "X:/dw-tools/dw-fixture-supervisor.exe"
+        helper = str(Path(self.tmp.name) / "dw-fixture-supervisor.exe")
         with mock.patch.dict(os.environ, {bootstrap.SUPERVISOR_VARIABLE: helper}):
             self.run_plan()
         inherited = {call[2].get(bootstrap.SUPERVISOR_VARIABLE) for call in self.calls}
@@ -140,7 +140,7 @@ class QualificationController(unittest.TestCase):
             os.environ[bootstrap.SUPERVISOR_VARIABLE] = "relative/tool"
             with self.assertRaisesRegex(RuntimeError, "^qualification_tool_unavailable$"):
                 qualification.supervisor_prerequisite()
-            helper = "X:/dw-tools/dw-fixture-supervisor.exe"
+            helper = str(Path(self.tmp.name) / "dw-fixture-supervisor.exe")
             os.environ[bootstrap.SUPERVISOR_VARIABLE] = helper
             self.assertEqual(qualification.supervisor_prerequisite(), helper)
         finally:
