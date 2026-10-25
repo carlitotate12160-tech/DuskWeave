@@ -299,7 +299,7 @@ the corrected service-check. The report root is
 Physical LOC before/after: action 384/399, report 272/369, service 354/187,
 main 137/137; integration 482/364; bootstrap 364/393; bridge-progress tests
 170/216; qualifier tests 292/321. Moved invocation/guard support is 162 lines;
-private service tests are 178. Structure warning membership is exactly the same
+private service tests were 178 in the external file (inlined by Amendment B below). Structure warning membership is exactly the same
 35 files as the base, with no new or removed member. The frozen lifecycle ledger
 remains 1221 lines. Retained historical debt is not claimed as repaid.
 
@@ -346,3 +346,64 @@ closure, review-history reset, acceptance or M1 seal is authorized or recorded.
 Tracking UPDATE is confined to this existing ledger and ENGINEERING_STATE's
 active-correction/next-qualification pointers. The frozen lifecycle ledger,
 roadmap and all other authority remain untouched.
+
+
+## Amendment B: coverage inventory correction, 2026-10-25
+
+Owner-issued continuation base `276335b263cd432d4e6a57bc4f7d144d94e994d6`.
+The preceding STOP is retained: exact-head Linux doc-check `40157033166`, Rust
+job `121060533080`, passed Clippy, helper/Python tests, focused qualification
+and the full instrumented suite but failed the actual coverage inventory gate:
+`production source missing from report: src/bin/dw-fixture-supervisor/service/tests.rs`.
+Reported coverage was 96.81% (12915/13341), with all reported files above 80%;
+that was not a complete gate PASS. Seven other component jobs and the separate
+parser-mutation run `40157033152` passed. The same independent review confirmed
+the coverage blocker after correcting its earlier R1 obsolete-import finding.
+
+Amendment B authorizes only relocation of the existing private tests. The
+187-line `service.rs` now contains the complete formerly external 178-line
+module inside its original `#[cfg(test)] mod tests`, preserving nested
+`#[cfg(test)] mod scenarios`, `use super::super::*`, every assertion, fixture,
+comment and `service::tests::scenarios::*` identity. The obsolete external file
+is deleted. Its content matches after normal indentation and rustfmt line-wraps;
+the production prefix before the test-module declaration is byte-for-byte
+identical to the base. There is no new source/helper/test file, runtime change,
+checker exclusion, fabricated entry, threshold/CI/dependency change or cycle reset.
+
+The dry relocation was 366 physical lines; normal rustfmt introduces five
+line-wraps, giving an actual formatted `service.rs` count of 371, below 400.
+No comment/blank deletion or formatting compression is used. Structure warning
+membership remains the same 35 retained files; no new member or repaid-debt claim.
+
+Local Windows/Rust 1.94.1 evidence uses the exclusively owned dedicated
+`fixture-supervisor` target and fresh
+`closure-20261025a/coverage-inventory-1` report directory. All earlier logs and
+STOP/RED/GREEN evidence remain retained; no behavioral RED is fabricated for
+this already-passing test relocation:
+
+- Before/after `--list`: the exact same 20 helper unit-test names, zero missing,
+  added or renamed tests; `relocation.json` records the comparison, prefix and
+  content checks, absent external file and physical LOC.
+- Serial helper unit 20/20 and integration 14/14 PASS, with zero ignored or
+  filtered required cases. Existing process assertions are preserved qualification,
+  not a new defect discovery.
+- fmt check, feature-enabled all-target Clippy with `-D warnings`, coverage
+  checker `--selftest` (all seven existing controls), structure/hygiene,
+  pinned rust-code-analysis-cli 0.0.25 ratchet, document links and whitespace PASS.
+  Ten historical complexity debts remain unchanged, without a new/worsened violation.
+
+The existing distinct reviewer inspects only this relocation/evidence delta
+under the same review, checking test ownership/inventory and unchanged production
+prefix. Exact committed head, narrow review disposition and fresh Linux full-suite
+coverage/actual inventory-gate results are read from PR #116. Old coverage totals
+alone never qualify this relocation. READY_FOR_FINAL_QUALIFICATION requires the
+new candidate's inventory, 90% total / 80% per-file gate and other required checks
+to pass; it never means READY_TO_MERGE.
+
+No local T8, provisioning, Python bridge matrix, local coverage instrumentation
+or full Windows lifecycle matrix is repeated for this test-only delta. Earlier
+Windows evidence keeps its original provenance; the mandatory full four-action
+Windows qualification on the replaced supervisor remains the next separately
+authorized gate. No provider/resolver/target contact, issue/thread closure,
+merge, acceptance or seal. Tracking UPDATE is confined to this ledger and
+ENGINEERING_STATE's active-correction/next-qualification pointer.
