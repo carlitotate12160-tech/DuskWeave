@@ -175,6 +175,17 @@ stored closure. Historical charges remain; no recovery refunds uncertain consump
 
 ## Native fixture qualification
 
+Action supervision and Docker/PostgreSQL service qualification are owned by the
+Rust development helper; there is no Python supervision fallback, and a missing
+or relative path fails closed. Build it once into the dedicated helper target
+and export its absolute path before any bootstrap use:
+
+```bash
+CARGO_TARGET_DIR=D:/DuskWeave-build/rust-1.94.1/fixture-supervisor \
+  cargo +1.94.1 build --locked --features fixture-supervisor --bin dw-fixture-supervisor
+export DW_TEST_FIXTURE_SUPERVISOR=D:/DuskWeave-build/rust-1.94.1/fixture-supervisor/debug/dw-fixture-supervisor.exe
+```
+
 Use `tests/support/m1_native_bootstrap.py` before launching Rust tests. It qualifies
 the retained owned PostgreSQL service and creates a disposable database in the
 `dw_native_` test namespace with unique random-password logins via

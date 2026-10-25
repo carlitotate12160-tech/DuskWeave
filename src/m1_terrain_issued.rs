@@ -40,7 +40,9 @@ impl IssuedDnsReference {
             self.version == "m1_terrain_dns_issued_observation_v1",
             matches!(
                 self.run_profile.as_str(),
-                "autonomous-dns-fixture-v1" | "autonomous-dns-provider-fixture-v1"
+                "autonomous-dns-fixture-v1"
+                    | "autonomous-dns-provider-fixture-v1"
+                    | "autonomous-dns-fixture-v2"
             ),
             self.execution_mode == "controlled_fixture",
             !self.engagement_id.0.is_nil(),

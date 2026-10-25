@@ -6,7 +6,39 @@ fixtures. It sends no provider or target request. A passing run proves the
 connected workflow. The separately bound provider-fixture lane below replaces
 only inference; live acquisition remains a later, independently qualified slice.
 
+The [inference-lifecycle R2 successor](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md)
+is implemented in [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116)
+and has completed the amended Windows qualification. Final Linux CI is checked
+on the exact PR candidate; the
+[review record](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1) and
+[T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger)
+record actual assertions and limits.
+Required full-suite/coverage qualification uses exact-candidate Linux CI;
+affected Windows native/CLI/transport/control checks remain mandatory. The
+v2 run/profile path is not yet qualified for demonstration. The
+existing fixture instructions below describe the previously delivered lane;
+they do not establish successor acceptance or authorize a provider request.
+
 ## What the owner should see
+
+The successor qualification uses `m1_inference_permission_v4`,
+`m1_autonomous_run_request_v2` and the provider-independent
+`autonomous-dns-fixture-v2` run profile in `controlled_fixture` mode. The run
+request explicitly selects `fixture-responses-v1` or
+`fixture-chat-completions-v1`, bound to the registered permission. Its closed
+CLI bootstrap hint is `--timing-profile reasoning-bounded-v1`; it grants no
+authority. Local protocols require no provider key and cannot fall back to a
+network provider. Numerical policy lives in
+[ADR-016](adr/ADR-016-execution-broker.md#selected-successor-timing-policy-reasoning-bounded-v1).
+
+Successor inspect/recover includes `inference_profile` and
+`recorded_decisions`. Each retained proposal keeps its actual intent,
+`disposition`, original times and separate `current_use` limitation. A
+`recorded_stale_premises` first decision defers with zero DNS; a stale second
+decision may complete historical recording. Neither grants current dispatch.
+Diagnostic-v2's optional `reported_guard` records a delivered closed guard
+report, separately from the parent's observed cause and exit code. Missing
+reports and exit 124 do not establish an exact terminating guard.
 
 One start completes two decisions and one fixture action, with no `continue`,
 copying results or intermediate approval. The terminal JSON contains:
@@ -25,6 +57,73 @@ cites the actual first decision and newly qualified Terrain, rather than merely
 printing these counts. An eight-seed scenario checks real producer/consumer fit.
 
 ## Isolated demonstration on the owned Windows fixture service
+
+### Successor Windows qualification
+
+With a clean committed source, Rust 1.94.1 x86_64-pc-windows-msvc,
+cargo-llvm-cov 0.9.1, existing Python and owned `dwpg-r3` PostgreSQL 17.11,
+hold both build targets and cluster-role fixtures under one serial owner.
+Build the fixture supervisor helper into its dedicated target and export its
+absolute path in the owning shell first; every supervised action and the
+service qualification now run through it (see
+[native inference helper build](RUN_M1_NATIVE_INFERENCE.md#native-fixture-qualification)).
+Before starting, clean only the selected coverage workspace profiles using
+`cargo +1.94.1 llvm-cov clean --workspace` with both coverage target variables
+set to `D:/DuskWeave-build/rust-1.94.1/coverage/inference-lifecycle` in that
+process. Preserve compiled artifacts and all previous evidence. Then run:
+
+```powershell
+python tests/support/m1_lifecycle_qualification.py --database-name dw_native_lifecycle_qualification_20261024d --report D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-reconciled-flags
+```
+
+The issued coverage-command amendment removes only `--no-clean` from both
+instrumented actions. In [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/README.md#merge-coverages-generated-under-different-test-conditions),
+`--no-report` already disables automatic cleanup; explicit selected-workspace
+cleanup above remains required. The prior `20261024c` database/report and
+flag-conflict STOP are retained in the
+[ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#native-qualification-closure-2026-10-24).
+The amended sequence passed 57/57, 18/18, 57/57 and 18/18 once on clean
+source `5d769d25d7236bf882faa8538e0ee6a285df18e8`, including ordinary/instrumented
+T8, with zero failed/ignored/filtered tests and aggregate exit 0. Its database
+and report names are now retained evidence, so this command refuses reuse.
+
+The command refuses existing output/database names and unsuitable prerequisites.
+It reuses native bootstrap custody once at schema 0021, with provisioning
+`postgres` distinct from restricted fixture-admin and runtime owners. It runs
+ordinary binary, ordinary lifecycle, instrumented binary and instrumented
+lifecycle actions serially, binding the CLI to the corresponding target.
+Each full action requires 57 binary or 18 lifecycle tests, with no failures,
+ignored or filtered tests. T8's nested one-test worker does not replace the
+full lifecycle summary. No key, observer or stale binary override is forwarded.
+
+The configured 900-second supervision policy per Cargo action includes compilation
+and tests; it is not measured fit or a product timeout. A distinct review had found
+that cleanup was not a reliable bound when the action parent exited while a
+descendant still held inherited pipes; the Rust fixture supervisor replacement
+([DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md))
+now owns that boundary, and the recorded finding stays historical evidence. The
+fresh full four-action Windows qualification on the replaced mechanism ran once
+on tested head `ef49780bd32ca19383cf6f7bd49c87aa5fd94f96` and passed 57/57,
+18/18, 57/57 and 18/18 with zero failed/ignored/filtered tests and aggregate
+exit 0; its retained evidence is report
+`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-rust-final-20261025a`
+with database `dw_native_lifecycle_rust_final_20261025a` ([qualification
+record](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md#final-windows-qualification-2026-10-25)).
+The four earlier Windows PASS results were produced under the superseded Python
+supervision and are retained with their provenance, not relabeled.
+`harness_timeout` is separate from an ordinary child exit 124. The first failed
+action ends qualification with its nonzero result; subsequent actions remain
+`NOT_RUN`. One read-only provisioning snapshot is attempted after failure.
+Redacted action logs, result metadata, `qualification.json` and any available
+snapshot are retained. Snapshot failure never replaces the original result.
+Credentials stay in the process and children; no session recovery or automatic
+retry is offered. Preserve databases and reports after either outcome.
+
+A successful sequence qualifies that source and environment only. It does not
+explain the historical 5,068 ms startup incident, establish a latency distribution,
+eliminate future Windows tail events, qualify a real provider or seal M1.
+
+### Previously delivered skeleton demonstration
 
 Use the qualified Rust 1.94.1 / PostgreSQL 17 setup described in
 [the implementation packet](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md).

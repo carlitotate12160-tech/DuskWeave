@@ -77,6 +77,12 @@ struct OperationInferenceLimits {
         skip_serializing_if = "Option::is_none",
         deserialize_with = "present"
     )]
+    soft_completion_ms: Option<i64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
     shared_wall_time_ms: Option<i64>,
     #[serde(
         default,
@@ -99,17 +105,14 @@ struct OperationInferenceLimits {
 }
 
 impl OperationInferenceLimits {
-    fn validate(&self, depth: i64, autonomous: bool) -> Res<()> {
+    fn validate(&self, depth: i64, context_cap: i64, decision_cap: i64) -> Res<()> {
         let bounded = [
-            (self.context_bytes, if autonomous { 8192 } else { 4096 }),
+            (self.context_bytes, context_cap),
             (self.candidates, 8),
             (self.request_bytes, 16384),
             (self.configuration_bytes, 16384),
             (self.response_bytes, 65536),
-            (
-                self.decision_wall_time_ms,
-                if autonomous { 45000 } else { 20000 },
-            ),
+            (self.decision_wall_time_ms, decision_cap),
             (self.connect_time_ms, 5000),
             (self.proposal_bytes, 8192),
             (self.repair_bytes, 2048),
@@ -172,6 +175,9 @@ pub struct InferencePermission {
 
 impl InferencePermission {
     fn check_profile(&self) -> Res<()> {
+        if self.version == "m1_inference_permission_v4" {
+            return self.check_successor();
+        }
         if self.version == "m1_inference_permission_v3" {
             return self.check_autonomous();
         }
@@ -207,7 +213,7 @@ impl InferencePermission {
     }
 
     fn check_field_classes(&self) -> Res<()> {
-        let autonomous = self.version == "m1_inference_permission_v3";
+        let autonomous = self.autonomous_binding().is_some();
         let max = 8 + usize::from(autonomous);
         if !(1..=max).contains(&self.field_classes.len()) {
             return Err(Fail::Input("inference_invalid_field_classes"));
@@ -368,6 +374,9 @@ fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
 
 impl OperationInferenceLimits {
     fn check_timers(&self, autonomous: bool) -> Res<()> {
+        if self.soft_completion_ms.is_some() {
+            return Err(Fail::Input("inference_unsupported_operation_profile"));
+        }
         let actual = [
             self.per_call_wall_time_ms,
             self.shared_wall_time_ms,
@@ -443,9 +452,63 @@ impl InferencePermission {
 
 impl InferencePermission {
     fn check_limits(&self) -> Res<()> {
+        if self.version == "m1_inference_permission_v4" {
+            return self.check_successor_limits();
+        }
         let autonomous = self.version == "m1_inference_permission_v3";
-        self.operation_limits
-            .validate(self.envelope_depth(), autonomous)?;
+        self.operation_limits.validate(
+            self.envelope_depth(),
+            if autonomous { 8192 } else { 4096 },
+            if autonomous { 45000 } else { 20000 },
+        )?;
         self.operation_limits.check_timers(autonomous)
+    }
+
+    fn check_successor(&self) -> Res<()> {
+        let profile = crate::m1_inference_profile::lookup(&self.profile)?;
+        let valid = [
+            self.recipient == profile.connection.recipient,
+            self.run_profile.as_deref() == Some(crate::m1_inference_profile::RUN_PROFILE),
+            self.execution_mode.as_deref() == Some("controlled_fixture"),
+            self.provider_terms_approved,
+            !self.permission_id.is_nil(),
+            !self.provider_terms_ref.is_nil(),
+            self.field_classes
+                .contains(&SafeFieldClass::AdmittedCampaignDecisionFeedback),
+        ];
+        if !valid.into_iter().all(|v| v) {
+            return Err(Fail::Input("inference_unsupported_profile"));
+        }
+        self.check_field_classes()?;
+        self.validate_native_profile()
+    }
+
+    fn check_successor_limits(&self) -> Res<()> {
+        let o = &self.operation_limits;
+        let t = &crate::m1_inference_profile::REASONING_BOUNDED;
+        o.validate(32, 8192, t.decision_ms as i64)?;
+        let actual = [
+            o.soft_completion_ms,
+            o.per_call_wall_time_ms,
+            o.shared_wall_time_ms,
+            Some(o.decision_wall_time_ms),
+            o.phase_wall_time_ms,
+            o.cancel_grace_ms,
+            o.accounting_window_ms,
+        ];
+        let expected = [
+            t.soft_ms,
+            t.hard_ms,
+            t.shared_ms,
+            t.decision_ms,
+            t.phase_ms,
+            t.stop_ms,
+            t.accounting_ms,
+        ]
+        .map(|n| Some(n as i64));
+        if actual != expected {
+            return Err(Fail::Input("inference_unsupported_operation_profile"));
+        }
+        Ok(())
     }
 }

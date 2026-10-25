@@ -1,5 +1,6 @@
 //! One bounded reasoning decision. Mission, Broker and Trajectory remain owners.
 pub mod bounded_json;
+pub mod chat_completions;
 mod decision_attempt;
 pub mod fixture;
 pub mod inference;

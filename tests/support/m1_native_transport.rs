@@ -50,6 +50,14 @@ pub(super) struct Server {
 }
 impl Server {
     pub(super) fn start(status: &str, headers: &str, body: Vec<u8>) -> Self {
+        Self::start_with_preparation(status, headers, body, Duration::from_secs(3))
+    }
+    pub(super) fn start_with_preparation(
+        status: &str,
+        headers: &str,
+        body: Vec<u8>,
+        preparation: Duration,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/responses", listener.local_addr().unwrap());
@@ -64,7 +72,7 @@ impl Server {
         let captured = received_body.clone();
         let (delivered, arrived) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || {
-            let end = Instant::now() + Duration::from_secs(3);
+            let end = Instant::now() + preparation;
             while Instant::now() < end {
                 match listener.accept() {
                     Ok((mut stream, _)) => {

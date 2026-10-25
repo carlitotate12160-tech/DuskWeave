@@ -117,7 +117,9 @@ impl ReservationRecord {
                 (c.response_bytes, 131072),
                 (
                     c.wall_time_ms,
-                    if c.wall_time_ms == 45000 {
+                    if c.wall_time_ms == 129000 {
+                        129000
+                    } else if c.wall_time_ms == 45000 {
                         45000
                     } else {
                         20000

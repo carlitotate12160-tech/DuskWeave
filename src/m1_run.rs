@@ -11,7 +11,12 @@ pub const PROVIDER_FIXTURE_PROFILE: &str = "autonomous-dns-provider-fixture-v1";
 pub const FIXTURE_MODE: &str = "controlled_fixture";
 
 pub fn controlled_fixture_profile(profile: &str) -> bool {
-    [FIXTURE_PROFILE, PROVIDER_FIXTURE_PROFILE].contains(&profile)
+    [
+        FIXTURE_PROFILE,
+        PROVIDER_FIXTURE_PROFILE,
+        crate::m1_inference_profile::RUN_PROFILE,
+    ]
+    .contains(&profile)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -28,6 +33,12 @@ pub struct RunRequest {
     pub run_id: Uuid,
     pub run_profile: String,
     pub execution_mode: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present_profile"
+    )]
+    pub inference_profile: Option<String>,
     pub deadline_at_ms: i64,
     pub context: ContextRequest,
     pub seed_names: Vec<RunSeed>,
@@ -46,7 +57,7 @@ impl RunRequest {
     pub fn validate(&self) -> Res<()> {
         self.context.validate_ingress()?;
         let valid = [
-            self.version == "m1_autonomous_run_request_v1",
+            self.valid_version_profile(),
             !self.run_id.is_nil(),
             controlled_fixture_profile(&self.run_profile),
             self.execution_mode == FIXTURE_MODE,
@@ -68,6 +79,31 @@ impl RunRequest {
         }
         Ok(())
     }
+
+    pub fn successor(&self) -> bool {
+        self.version == "m1_autonomous_run_request_v2"
+    }
+
+    pub fn supervised_inference(&self) -> bool {
+        self.successor() || self.run_profile == PROVIDER_FIXTURE_PROFILE
+    }
+
+    fn valid_version_profile(&self) -> bool {
+        match (self.version.as_str(), self.inference_profile.as_deref()) {
+            ("m1_autonomous_run_request_v1", None) => {
+                self.run_profile != crate::m1_inference_profile::RUN_PROFILE
+            }
+            ("m1_autonomous_run_request_v2", Some(name)) => {
+                self.run_profile == crate::m1_inference_profile::RUN_PROFILE
+                    && crate::m1_inference_profile::lookup(name).is_ok()
+            }
+            _ => false,
+        }
+    }
+}
+
+fn present_profile<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    String::deserialize(d).map(Some)
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -148,8 +184,26 @@ pub struct PhaseDiagnostic {
     pub exit_code: Option<i32>,
     pub readiness_observed: bool,
     pub elapsed_ms: Option<u32>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present_guard"
+    )]
+    pub reported_guard: Option<crate::m1_reasoning::transport_control::ReportedGuard>,
+}
+fn present_guard<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<crate::m1_reasoning::transport_control::ReportedGuard>, D::Error> {
+    crate::m1_reasoning::transport_control::ReportedGuard::deserialize(d).map(Some)
 }
 impl PhaseDiagnostic {
+    pub fn version_for(successor: bool) -> &'static str {
+        if successor {
+            "m1_run_phase_diagnostic_v2"
+        } else {
+            "m1_run_phase_diagnostic_v1"
+        }
+    }
     pub fn validate(&self) -> Res<()> {
         let expected_source = match self.cause {
             DiagnosticCause::ChildError => CauseSource::ChildReport,
@@ -157,7 +211,8 @@ impl PhaseDiagnostic {
             _ => CauseSource::ParentObserved,
         };
         let valid = [
-            self.version == "m1_run_phase_diagnostic_v1",
+            self.version == "m1_run_phase_diagnostic_v2"
+                || (self.version == "m1_run_phase_diagnostic_v1" && self.reported_guard.is_none()),
             !self.run_id.is_nil(),
             self.cause_source == expected_source,
             self.child_error

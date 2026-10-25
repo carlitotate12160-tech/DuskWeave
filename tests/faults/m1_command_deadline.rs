@@ -70,3 +70,26 @@ fn command_guard_installs_fixed_budget_and_drops_cleanly() {
     // Guard lifecycle without expiry: Drop sends Done, disarming the monitor.
     let _guard = CommandGuard::start().expect("command guard installs");
 }
+
+#[test]
+fn successor_child_command_bound_keeps_acquisition_at_its_existing_limit() {
+    let args = |phase: &str| {
+        [
+            "duskweave",
+            "m1-run-phase",
+            "--phase",
+            phase,
+            "--timing-profile",
+            "reasoning-bounded-v1",
+        ]
+        .map(str::to_owned)
+        .to_vec()
+    };
+    assert_eq!(child_watchdog_ms(&args("decision_one")), 139000);
+    assert_eq!(child_watchdog_ms(&args("decision_two")), 139000);
+    assert_eq!(child_watchdog_ms(&args("acquisition")), 60000);
+    assert_eq!(
+        duskweave::m1_inference_profile::REASONING_BOUNDED.parent_watchdog_ms,
+        410000
+    );
+}

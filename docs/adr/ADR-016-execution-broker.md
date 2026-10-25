@@ -450,13 +450,15 @@ semantic events never extend a hard authority deadline. Admission validates
 finite feasibility against the full reservation — generation, conditional
 repair, stop escalation and accounting reserves; insufficient remainder yields
 a visible defer/stop disposition, never silent truncation. The current
-inventory — 20-second provider call, 40-second shared generation/repair,
+legacy inventory — 20-second provider call, 40-second shared generation/repair,
 45-second decision envelope, 50-second inference phase, 60-second CLI phase,
 150-second run and the 90000-ms two-decision inference reservation, plus
-campaign/window limits — remains authoritative; each guard begins at its own
+campaign/window limits — remains authoritative for legacy bindings; each guard begins at its own
 lifecycle point, and a run need not permit every phase to consume its maximum.
-Successor production timer numbers are not selected here; exact values with
-measured margins remain runtime-packet prerequisites. Renewal cadence and
+The 2026-10-22 design did not select successor timer numbers. The owner-issued
+runtime packet now selects the versioned resource policy in the
+[successor table below](#selected-successor-timing-policy-reasoning-bounded-v1);
+measured margins remain qualification obligations. Renewal cadence and
 lease duration — the current 400-ms renewal target, 500-ms check bound and
 2-second lease with their DB/scheduler failure modes — are a separate
 revocation/availability contract, not a function of model thinking time; they
@@ -472,8 +474,10 @@ revision, repudiation/conflict or integrity hold still cancel in-flight
 transport under the existing bound. A result recorded after TTL-only expiry
 keeps original times and actual intent; its consumption/disposition categories
 are unchanged, and stale-dependent effects receive zero release. In current
-source TTL still clamps the transport permit; this paragraph describes proposed
-successor behavior, not implemented code.
+legacy lanes TTL still clamps the transport permit. The successor implements
+the separate integrity comparison and disposition-sensitive consumers in
+[the runtime packet](../workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#8-execution-record-blocked-uncommitted-work);
+its qualification and review status are recorded there.
 
 Termination attribution keeps separate accounting: the parent records its own
 deadline/kill, while child guard reasons need an explicit bounded safe signal;
@@ -485,6 +489,36 @@ regenerates the proposal; already committed DNS/Terrain/history outcomes stay
 preserved separately from failed inference. `may_send_uncertain` reconciliation
 against provider billing remains operational debt, not an assumed available
 API; reservations stay charged with no fabricated usage or refund.
+
+### Selected successor timing policy: reasoning-bounded-v1
+
+The owner-issued [inference-lifecycle implementation packet](../workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md)
+selects these finite resource ceilings for fresh v4 permission and v2 run/pack
+bindings. They are policy, not measured provider percentiles. Legacy profiles,
+their numerical values and previously registered consent remain unchanged.
+Implementation and qualification status stays in the runtime packet; this
+table grants no provider activation, target permission or milestone seal.
+
+| Boundary | Milliseconds | Original clock / allocation |
+| --- | ---: | --- |
+| Connect | 5,000 | Inside one admitted call |
+| Soft completion | 60,000 | One prepare/handoff origin, including final marker/release and I/O |
+| Call hard stop | 62,000 | Same origin; includes 2,000 cancellation grace |
+| Generation + conditional repair | 124,000 | One original shared decision origin; never reset for repair |
+| Decision reservation | 129,000 | Shared 124,000 + stop 2,000 + accounting 3,000 |
+| Inference phase | 134,000 | Preparation 5,000 + decision 129,000 |
+| Child command watchdog | 139,000 | Outer fallback from command entry; no acquisition expansion |
+| Acquisition | 60,000 | Existing phase/child bound |
+| Run | 400,000 | Two phases + acquisition fit within the original admitted run |
+| Parent command watchdog | 410,000 | Outer fallback from parent command entry |
+
+Campaign admission reserves four calls, 65,536 request bytes, 262,144 response
+bytes, 16,384 output-token capacity and 258,000 inference-wall milliseconds.
+Every qualified protocol uses the same allocation. Missing reported usage
+remains unknown and never refunds that reservation. Local lease 2,000 ms,
+renewal cadence 400 ms and maximum check/scheduling gap 500 ms are unchanged.
+The parent and phase deadlines remain independently authoritative; a reported
+guard condition does not identify the winner of an exit race.
 
 ## Supporting engineering references for section 4a
 

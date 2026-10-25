@@ -1,8 +1,33 @@
 //! Transport-local revocation and monotonic lease. Reading never calls an owner or waits.
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{Sender, channel};
+use std::sync::mpsc::{Sender, SyncSender, channel};
 use std::time::{Duration, Instant};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportedGuard {
+    TransportHardDeadline,
+    DecisionEnvelope,
+    PermitExpiry,
+    CommandWatchdog,
+}
+impl ReportedGuard {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TransportHardDeadline => "transport_hard_deadline",
+            Self::DecisionEnvelope => "decision_envelope",
+            Self::PermitExpiry => "permit_expiry",
+            Self::CommandWatchdog => "command_watchdog",
+        }
+    }
+}
+
+pub fn report_guard(sink: Option<&SyncSender<ReportedGuard>>, reason: ReportedGuard) {
+    if let Some(sink) = sink {
+        let _ = sink.try_send(reason);
+    }
+}
 
 #[derive(Clone)]
 pub struct Permit(Arc<State>);
@@ -54,6 +79,30 @@ impl Permit {
 pub struct TransportGuard(Sender<()>);
 impl TransportGuard {
     pub fn arm(permit: Permit, call_end: Instant) -> Result<Self, &'static str> {
+        Self::arm_selected(permit, None, call_end, None)
+    }
+    pub fn arm_successor(
+        permit: Permit,
+        soft: Instant,
+        hard: Instant,
+        sink: Option<SyncSender<ReportedGuard>>,
+    ) -> Result<Self, &'static str> {
+        Self::arm_selected(permit, Some(soft), hard, sink)
+    }
+    /// Completed wire output still needs permit-bounded owner work under the original window.
+    pub(super) fn arm_admission(
+        permit: Permit,
+        deadline: Instant,
+        sink: Option<SyncSender<ReportedGuard>>,
+    ) -> Result<Self, &'static str> {
+        Self::arm_selected(permit, None, deadline, sink)
+    }
+    fn arm_selected(
+        permit: Permit,
+        soft: Option<Instant>,
+        call_end: Instant,
+        sink: Option<SyncSender<ReportedGuard>>,
+    ) -> Result<Self, &'static str> {
         let (done, rx) = channel();
         std::thread::Builder::new()
             .name("inference_permit_guard".into())
@@ -65,6 +114,9 @@ impl TransportGuard {
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     }
                     let now = Instant::now();
+                    if soft.is_some_and(|end| now >= end) {
+                        permit.stop();
+                    }
                     if permit.stopped() {
                         cancelled_at.get_or_insert(now);
                     }
@@ -76,13 +128,63 @@ impl TransportGuard {
                     // Keep scheduling/reap margin inside the original bound, never after it.
                     if hard_end.saturating_duration_since(now) <= Duration::from_millis(50) {
                         permit.stop();
-                        // No grace extends an expired permit or a call's original deadline.
-                        std::process::exit(124);
+                        terminate_guard(&permit, call_end, sink.as_ref());
                     }
                 }
             })
             .map_err(|_| "inference_control_unavailable")?;
         Ok(Self(done))
+    }
+}
+fn terminate_guard(
+    permit: &Permit,
+    call_end: Instant,
+    sink: Option<&SyncSender<ReportedGuard>>,
+) -> ! {
+    let reason = if permit.expiry() <= call_end {
+        ReportedGuard::PermitExpiry
+    } else {
+        ReportedGuard::TransportHardDeadline
+    };
+    report_guard(sink, reason);
+    std::process::exit(124);
+}
+
+/// Anchored once at prepare/handoff, before marker/final release and I/O.
+pub(super) struct CallClock {
+    pub origin: Instant,
+    pub soft: Instant,
+    pub hard: Instant,
+    _guard: TransportGuard,
+}
+impl CallClock {
+    pub fn remaining(&self, permit: &Permit, shared: Instant) -> Result<Duration, &'static str> {
+        if self.hard > shared || !permit.current() {
+            return Err("current_authority_unavailable");
+        }
+        self.soft
+            .checked_duration_since(Instant::now())
+            .ok_or("inference_deadline")
+    }
+    pub fn arm(
+        permit: Permit,
+        shared: Instant,
+        sink: Option<SyncSender<ReportedGuard>>,
+    ) -> Result<Self, &'static str> {
+        let origin = Instant::now();
+        let timing = &crate::m1_inference_profile::REASONING_BOUNDED;
+        let hard = origin + Duration::from_millis(timing.hard_ms);
+        if hard > shared || !permit.current() {
+            return Err("inference_deadline");
+        }
+        let soft = origin + Duration::from_millis(timing.soft_ms);
+        let guard = TransportGuard::arm_successor(permit, soft, hard, sink)?;
+        Ok(Self {
+            origin,
+            soft,
+            hard,
+            _guard: guard,
+        })
     }
 }
 impl Drop for TransportGuard {
@@ -94,6 +196,68 @@ impl Drop for TransportGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guard_frame_values_and_durable_json_use_the_same_closed_vocabulary() {
+        for (guard, name) in [
+            (
+                ReportedGuard::TransportHardDeadline,
+                "transport_hard_deadline",
+            ),
+            (ReportedGuard::DecisionEnvelope, "decision_envelope"),
+            (ReportedGuard::PermitExpiry, "permit_expiry"),
+            (ReportedGuard::CommandWatchdog, "command_watchdog"),
+        ] {
+            assert_eq!(guard.as_str(), name);
+            assert_eq!(serde_json::to_value(guard).unwrap(), name);
+            assert_eq!(
+                serde_json::from_value::<ReportedGuard>(serde_json::json!(name)).unwrap(),
+                guard
+            );
+        }
+    }
+
+    #[test]
+    fn successor_handoff_clock_never_resets_and_refuses_insufficient_shared_remainder() {
+        let shared = Instant::now() + Duration::from_millis(124000);
+        let permit = Permit::new(shared);
+        assert!(permit.publish(Instant::now(), shared));
+        assert!(
+            CallClock::arm(
+                permit.clone(),
+                Instant::now() + Duration::from_millis(61999),
+                None
+            )
+            .is_err()
+        );
+        let clock = CallClock::arm(permit.clone(), shared, None).unwrap();
+        assert_eq!(clock.soft - clock.origin, Duration::from_millis(60000));
+        assert_eq!(clock.hard - clock.origin, Duration::from_millis(62000));
+        let first = clock.remaining(&permit, shared).unwrap();
+        assert!(clock.remaining(&permit, shared).unwrap() <= first);
+        assert!(
+            clock
+                .remaining(&permit, clock.hard - Duration::from_millis(1))
+                .is_err()
+        );
+        permit.stop();
+        assert!(clock.remaining(&permit, shared).is_err());
+    }
+
+    #[test]
+    fn full_or_disconnected_reporter_never_blocks_guard_progress() {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        report_guard(Some(&tx), ReportedGuard::PermitExpiry);
+        let start = Instant::now();
+        for _ in 0..1000 {
+            report_guard(Some(&tx), ReportedGuard::TransportHardDeadline);
+        }
+        assert!(start.elapsed() < Duration::from_millis(500));
+        assert_eq!(rx.recv().unwrap(), ReportedGuard::PermitExpiry);
+        drop(rx);
+        report_guard(Some(&tx), ReportedGuard::DecisionEnvelope);
+        report_guard(None, ReportedGuard::CommandWatchdog);
+    }
 
     #[test]
     fn callback_reads_use_only_the_atomic_permit() {

@@ -143,7 +143,12 @@ fn admit_json(
             // Only known safe metadata leaves the adapter; arbitrary model IDs do not.
             reported_model: v["model"]
                 .as_str()
-                .filter(|m| matches!(*m, "deepseek-flash" | "probe-fixture"))
+                .filter(|m| {
+                    matches!(
+                        *m,
+                        "deepseek-flash" | "probe-fixture" | "protocol-fixture-v1"
+                    )
+                })
                 .map(str::to_owned),
         },
     })

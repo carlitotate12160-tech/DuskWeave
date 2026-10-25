@@ -48,6 +48,40 @@ impl ProposalBasis for TerrainBasis {
 }
 
 impl TerrainBasis {
+    pub fn recording_integrity(
+        &mut self,
+    ) -> Result<super::proposal::RecordingPremises, &'static str> {
+        let deps = self.dependencies.clone();
+        self.recording_dependencies(&deps)
+    }
+
+    pub fn recording_references(&mut self, refs: &[String]) -> Result<(), &'static str> {
+        self.mission.current_authority_and_premises()?;
+        let deps = self.cited_dependencies(refs)?;
+        self.recording_dependencies(&deps).map(|_| ())
+    }
+
+    fn recording_dependencies(
+        &mut self,
+        deps: &[TerrainDependency],
+    ) -> Result<super::proposal::RecordingPremises, &'static str> {
+        use super::proposal::RecordingPremises;
+        self.mission.current_authority_and_premises()?;
+        if deps.is_empty() {
+            return Ok(RecordingPremises::Fresh);
+        }
+        let (assets, ids) = collect_dependency_targets(deps);
+        let (view, now) = self.read_current_terrain_view(&assets, ids)?;
+        let mut disposition = RecordingPremises::Fresh;
+        for dep in deps {
+            retained_integrity(dep, &view)?;
+            if now >= dep.valid_until {
+                disposition = RecordingPremises::ExpiredByTtl;
+            }
+        }
+        Ok(disposition)
+    }
+
     fn cited_dependencies(
         &self,
         references: &[String],
@@ -110,6 +144,17 @@ impl TerrainBasis {
         tx.commit().map_err(|_| "current_authority_unavailable")?;
         Ok((view, now))
     }
+}
+fn retained_integrity(
+    dep: &TerrainDependency,
+    view: &TerrainPublicView,
+) -> Result<(), &'static str> {
+    view.claims
+        .iter()
+        .find(|c| c.claim_id == dep.claim_id)
+        .filter(|c| dep.matches_integrity_current(c))
+        .map(|_| ())
+        .ok_or("reference_ineligible")
 }
 
 fn collect_dependency_targets(deps: &[TerrainDependency]) -> (Vec<AssetRef>, Vec<Uuid>) {

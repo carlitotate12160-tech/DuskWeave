@@ -56,21 +56,35 @@ impl Authority {
         let until: i64 = row
             .try_get(1)
             .map_err(|_| Fail::State("current_authority_unavailable"))?;
-        let until = self
-            .terrain
-            .dependencies
-            .iter()
-            .map(|d| d.valid_until.saturating_mul(1000))
-            .fold(until, i64::min);
-        self.terrain
-            .before_provider_release()
-            .map_err(Fail::State)?;
-        let left = until
-            .checked_sub(wall)
-            .filter(|n| *n > 0)
-            .ok_or(Fail::State("current_authority_unavailable"))?;
-        Ok((started + Duration::from_millis(left as u64)).min(self.deadline))
+        let source: serde_json::Value = row
+            .try_get(0)
+            .map_err(|_| Fail::State("current_authority_unavailable"))?;
+        let until = self.premise_limit(&source, until)?;
+        authority_deadline(started, wall, until, self.deadline)
     }
+    fn premise_limit(&mut self, source: &serde_json::Value, until: i64) -> Res<i64> {
+        if source["fields"]["m1_inference_permission"]["version"] == "m1_inference_permission_v4" {
+            self.terrain.recording_integrity().map_err(Fail::State)?;
+            Ok(until)
+        } else {
+            self.terrain
+                .before_provider_release()
+                .map_err(Fail::State)?;
+            Ok(self
+                .terrain
+                .dependencies
+                .iter()
+                .map(|d| d.valid_until.saturating_mul(1000))
+                .fold(until, i64::min))
+        }
+    }
+}
+fn authority_deadline(started: Instant, wall: i64, until: i64, end: Instant) -> Res<Instant> {
+    let left = until
+        .checked_sub(wall)
+        .filter(|n| *n > 0)
+        .ok_or(Fail::State("current_authority_unavailable"))?;
+    Ok((started + Duration::from_millis(left as u64)).min(end))
 }
 impl Coordinator {
     pub(super) fn start(
@@ -147,6 +161,9 @@ fn envelope_guard(permit: Permit, active: Instant, end: Instant, done: Receiver<
     if envelope_wait(active, end, &permit, &done) {
         permit.stop();
         // Blocked work could not return inside the original envelope.
+        super::m1_run_control::report_guard(
+            duskweave::m1_reasoning::transport_control::ReportedGuard::DecisionEnvelope,
+        );
         std::process::exit(124);
     }
 }
