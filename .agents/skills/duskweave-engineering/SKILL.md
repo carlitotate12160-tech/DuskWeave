@@ -186,9 +186,12 @@ or reasons for new packets; McCabe is an enforced per-function ratchet
 over-threshold function names the function, reason and smallest remedy instead
 of a bypass. Resolve known file-map,
 environment, and dependency conflicts here; do not knowingly send an impossible packet.
-Record estimates as estimates. Separate the cost of new behavior from existing
-behavior/fixtures reused by it. Do not remove behavior, explanatory comments or
-readable formatting to lower counted lines.
+Apply QUALITY_BAR.md's conditional maintenance disposition before handoff: inspect
+affected files/consumers; use one line for routine changes and four brief facts only
+when triggered. Resolve material mechanism, consumer scope and retirement decisions;
+leave routine local choices open. Reuse existing decisions instead of boilerplate.
+Estimates neither authorize scope growth nor become LOC caps. Do not delete required
+behavior, explanatory comments or readable formatting to lower counted lines.
 List exact editable files separately from read-only caller/consumer references.
 For runtime packets, trace the real entrypoint and consumer and require a test
 through that path. An unchanged caller need not be editable.

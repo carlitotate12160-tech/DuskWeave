@@ -15,7 +15,8 @@ class ScopeHistory(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name) / "repo"
+        self.root.mkdir()
         self.git("init", "-q")
         self.git("config", "user.name", "Synthetic CI")
         self.git("config", "user.email", "ci@example.invalid")
@@ -37,11 +38,11 @@ class ScopeHistory(unittest.TestCase):
         self.git("commit", "-qm", "synthetic change")
 
     def classify(self, event="pull_request", base=None):
-        event_file = self.root / "event.json"
+        event_file = self.root.parent / "event.json"
         revision = self.base if base is None else base
         event_file.write_text(json.dumps({"before": revision,
             "pull_request": {"base": {"sha": revision}}}), encoding="utf-8")
-        output = self.root / "outputs"
+        output = self.root.parent / "outputs"
         env = dict(os.environ, GITHUB_EVENT_NAME=event,
                    GITHUB_EVENT_PATH=str(event_file), GITHUB_OUTPUT=str(output))
         result = subprocess.run([sys.executable, str(SCRIPT), "classify"],
@@ -54,13 +55,39 @@ class ScopeHistory(unittest.TestCase):
         self.commit()
         self.assertEqual(self.classify(), "scope=docs")
 
+    def test_known_skill_markdown_with_root_docs_selects_document_lane(self):
+        for name in (
+            ".agents/skills/build-duskweave/SKILL.md",
+            ".agents/skills/duskweave-engineering/SKILL.md",
+            ".agents/skills/duskweave-engineering/references/packet-template.md",
+            ".agents/skills/duskweave-adversarial-review/SKILL.md",
+        ):
+            with self.subTest(name=name):
+                self.write(name, "synthetic skill prose\n")
+                self.write("QUALITY_BAR.md", f"synthetic policy prose {name}\n")
+                self.commit()
+                self.assertEqual(set(self.git("diff", "--name-only", self.base,
+                                              "HEAD").splitlines()),
+                                 {name, "QUALITY_BAR.md"})
+                self.assertEqual(self.classify(), "scope=docs")
+                self.base = self.git("rev-parse", "HEAD").strip()
+
     def test_mixed_or_unknown_inputs_require_full_verification(self):
         for name in ("src/lib.rs", "migrations/001.sql", "Cargo.lock",
                      "tests/t.rs", ".github/workflows/test.yml",
-                     "docs/contracts/fixture.json", "unknown.md", ".gitignore"):
+                     "docs/contracts/fixture.json", "unknown.md", ".gitignore",
+                     "Cargo.toml", "rust-toolchain.toml", ".cargo/config.toml",
+                     "scripts/ci_scope.py", "tests/test_ci_scope.py",
+                     ".agents/skills/build-duskweave/check.py",
+                     ".agents/skills/build-duskweave/references/unknown.md",
+                     ".agents/skills/unknown/SKILL.md"):
             with self.subTest(name=name):
                 self.write(name, "synthetic\n")
+                skill = ".agents/skills/build-duskweave/SKILL.md"
+                self.write(skill, f"synthetic skill prose {name}\n")
                 self.commit()
+                self.assertEqual(set(self.git("diff", "--name-only", self.base,
+                                              "HEAD").splitlines()), {name, skill})
                 self.assertEqual(self.classify(), "scope=full")
                 self.base = self.git("rev-parse", "HEAD").strip()
 
@@ -68,8 +95,9 @@ class ScopeHistory(unittest.TestCase):
         self.write("src/lib.rs", "runtime\n")
         self.commit()
         self.base = self.git("rev-parse", "HEAD").strip()
-        (self.root / "docs").mkdir()
-        self.git("mv", "src/lib.rs", "docs/moved.md")
+        target = ".agents/skills/duskweave-engineering/SKILL.md"
+        (self.root / target).parent.mkdir(parents=True)
+        self.git("mv", "src/lib.rs", target)
         self.commit()
         self.assertEqual(self.classify(), "scope=full")
 
@@ -85,11 +113,14 @@ class ScopeHistory(unittest.TestCase):
         self.assertEqual(self.classify(), "scope=full")
 
     def test_executable_document_requires_full(self):
-        self.write("docs/adr/ADR-002.md", "document\n")
-        self.git("add", "docs/adr/ADR-002.md")
-        self.git("update-index", "--chmod=+x", "docs/adr/ADR-002.md")
-        self.git("commit", "-qm", "executable document")
-        self.assertEqual(self.classify(), "scope=full")
+        for name in ("docs/adr/ADR-002.md", ".agents/skills/build-duskweave/SKILL.md"):
+            with self.subTest(name=name):
+                self.write(name, "document\n")
+                self.git("add", name)
+                self.git("update-index", "--chmod=+x", name)
+                self.git("commit", "-qm", "executable document")
+                self.assertEqual(self.classify(), "scope=full")
+                self.base = self.git("rev-parse", "HEAD").strip()
 
     def test_push_uses_before_and_docs_deletion_is_classified(self):
         self.git("rm", "README.md")
@@ -97,12 +128,15 @@ class ScopeHistory(unittest.TestCase):
         self.assertEqual(self.classify(event="push"), "scope=docs")
 
     def test_document_symlink_requires_full_without_following_it(self):
-        self.write("docs/link.md", "../../src/lib.rs")
-        self.git("add", "docs/link.md")
-        blob = self.git("hash-object", "docs/link.md").strip()
-        self.git("update-index", "--cacheinfo", f"120000,{blob},docs/link.md")
-        self.git("commit", "-qm", "synthetic symlink")
-        self.assertEqual(self.classify(), "scope=full")
+        for name in ("docs/link.md", ".agents/skills/build-duskweave/SKILL.md"):
+            with self.subTest(name=name):
+                self.write(name, "../../src/lib.rs")
+                self.git("add", name)
+                blob = self.git("hash-object", name).strip()
+                self.git("update-index", "--cacheinfo", f"120000,{blob},{name}")
+                self.git("commit", "-qm", "synthetic symlink")
+                self.assertEqual(self.classify(), "scope=full")
+                self.base = self.git("rev-parse", "HEAD").strip()
 
 
 class RequiredGate(unittest.TestCase):
