@@ -1200,11 +1200,10 @@ fn release_fence_orders_terrain_supersession_and_integrity_holds_with_launch() {
         });
     }
 
-    // 3. Invalidation-first (writer wins the fence before release admission): Broker waits on writer,
-    // then before_provider_release rejects with zero sends (tested for trajectory.terrain_history anomaly hold).
+    // 3. Invalidation-first (writer wins the fence before release admission): the nonblocking
+    // campaign fence refuses release with zero sends (tested for trajectory.terrain_history anomaly hold).
     {
         let (e, c, _, raw_reg, now) = tc_support::register_combined_campaign(0xa212, true);
-        let scope_key = format!("{}:{}", e.0, c.0);
         let dns1 = terrain_support::dns_request_json(e, c, now - 10);
         let (_, ev1, _, _) = tc_support::record_dns_accepted(e, c, &dns1);
         let (req_val, q) =
@@ -1270,15 +1269,9 @@ fn release_fence_orders_terrain_supersession_and_integrity_holds_with_launch() {
             .get(0);
         assert_eq!(status, "anomaly");
 
-        let release_done = Arc::new(AtomicBool::new(false));
-        std::thread::scope(|threads| {
-            let rd = release_done.clone();
-            let sk = scope_key.clone();
-            let coordinator = threads.spawn(move || {
-                let broker_waiting = wait_for_advisory_waiter_or_done(&sk, &rd);
-                tx.commit().unwrap();
-                broker_waiting
-            });
+        let anomaly_operation = tampered.operation_id.0;
+        let (done, completed) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
             let mut provider = BarrierProvider {
                 prepared: 0,
                 sent: 0,
@@ -1293,22 +1286,37 @@ fn release_fence_orders_terrain_supersession_and_integrity_holds_with_launch() {
                 &mut provider,
                 &mut basis,
             );
-            release_done.store(true, Ordering::SeqCst);
-            let broker_waiting = coordinator.join().unwrap();
-            assert!(
-                broker_waiting,
-                "release_into must wait on active terrain_history write guard"
-            );
-            assert!(matches!(
-                rel_res,
-                Err(
-                    duskweave::m1_reasoning::inference::ReleaseFailure::NeverReleased(
-                        "reference_ineligible"
-                    )
-                )
-            ));
-            assert_eq!(provider.sent, 0);
+            let sent = provider.sent;
+            let _ = done.send(());
+            (sent, rel_res, basis)
         });
+        let refused = completed.recv_timeout(Duration::from_secs(3)).is_ok();
+        tx.commit().unwrap(); // always finalize the held transaction before collecting
+        let (sent, rel_res, mut basis) = worker.join().unwrap();
+        assert!(
+            refused,
+            "release must refuse promptly instead of waiting on the held fence"
+        );
+        assert_eq!(sent, 0);
+        assert!(matches!(
+            rel_res,
+            Err(
+                duskweave::m1_reasoning::inference::ReleaseFailure::NeverReleased(
+                    "current_authority_unavailable"
+                )
+            )
+        ));
+        // Read-only post-commit checks: the anomaly is durable and the premise is ineligible.
+        let anomalies: i64 = terrain_support::admin_client()
+            .query_one(
+                "SELECT count(*) FROM trajectory.terrain_history \
+                 WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3 AND status='anomaly'",
+                &[&e.0, &c.0, &anomaly_operation],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(anomalies, 1);
+        assert_eq!(basis.before_provider_release(), Err("reference_ineligible"));
         let _ = input_hash;
     }
 }

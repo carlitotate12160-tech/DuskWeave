@@ -92,9 +92,12 @@ existing CLI/owners with its fixed resource-policy ceilings, DeepSeek as the
 first external adapter and two local protocol fixtures. The runtime work is
 implemented, with ordinary Windows scenarios recorded in the
 [T1-T9 ledger](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
-Delivery is [DRAFT PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116),
-NOT READY pending final Windows qualification, candidate CI and
-[review corrections](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#pr-review-and-fix-cycle-1).
+Delivery is [PR #116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116),
+merged to `master` at `618c885346ccf5e5b645bb63aee51b9e827be748` on 2026-10-25
+with final Windows qualification and exact-master CI.
+[DW-FIX-M1-INFERENCE-RELEASE-INTEGRITY](workflows/DW-FIX-M1-INFERENCE-RELEASE-INTEGRITY.md)
+delivers the bounded release-integrity correction on that base; then the freshly
+authorized real-provider fixture demonstration remains the next action.
 The owner-issued R2 assignment moves the
 required full-suite/coverage gate to exact-candidate Linux CI without widening
 local/runtime privileges. Partial focused tests do not establish T1-T9

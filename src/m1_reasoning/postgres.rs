@@ -97,17 +97,31 @@ impl Broker for PgBroker {
             return Err(ReleaseFailure::NeverReleased("inference_deadline"));
         }
         // Session lock spans the final SQL check and transport release, never a transaction.
-        self.client
+        let acquired: bool = self
+            .client
             .query_one(
-                "SELECT pg_advisory_lock(hashtextextended($1,0))",
+                "SELECT pg_try_advisory_lock(hashtextextended($1,0))",
                 &[&format!("{}:{}", s.engagement, s.campaign)],
             )
-            .map_err(|_| ReleaseFailure::NeverReleased("current_authority_unavailable"))?;
+            .map_err(|_| ReleaseFailure::NeverReleased("current_authority_unavailable"))?
+            .get(0);
+        if !acquired {
+            // A refused try-lock owns nothing; no cleanup may free another's fence.
+            return Err(ReleaseFailure::NeverReleased(
+                "current_authority_unavailable",
+            ));
+        }
         if let Err(code) = self.verify_release_current(s, basis) {
             let _ = self
                 .client
                 .query_one("SELECT pg_advisory_unlock_all()", &[]);
             return Err(ReleaseFailure::NeverReleased(code));
+        }
+        if Instant::now() >= r.shared_deadline {
+            let _ = self
+                .client
+                .query_one("SELECT pg_advisory_unlock_all()", &[]);
+            return Err(ReleaseFailure::NeverReleased("inference_deadline"));
         }
         let mut released = false;
         let mut release = || {

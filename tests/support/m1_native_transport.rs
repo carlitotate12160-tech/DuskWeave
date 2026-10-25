@@ -251,6 +251,66 @@ fn release_failure_cancels_worker_and_preserves_uncertainty() {
     assert!(matches!(result, Err("inference_release_unknown")));
 }
 
+struct PanicBasis {
+    entered: std::sync::mpsc::Sender<()>,
+    gate: std::sync::mpsc::Receiver<()>,
+}
+impl ProposalBasis for PanicBasis {
+    fn reference_eligible(&self, r: &str) -> bool {
+        r == "ref-1"
+    }
+    fn manifest_eligible(&self, _: &str) -> bool {
+        false
+    }
+    fn current_authority_and_premises(&mut self) -> Res<()> {
+        let _ = self.entered.send(());
+        let _ = self.gate.recv_timeout(Duration::from_secs(3));
+        panic!("synthetic worker panic");
+    }
+    fn safe_explanation(&self, _: &str) -> bool {
+        true
+    }
+}
+
+#[test]
+fn worker_panic_prioritizes_release_error_then_reports_unknown_transport() {
+    for release_ok in [false, true] {
+        let call = request::bind(br#"{"references":[{"id":"ref-1"}]}"#, None).unwrap();
+        let mut easy = configure(&call, "synthetic-fixture-token", Duration::from_secs(1)).unwrap();
+        easy.url("http://127.0.0.1:1/closed").unwrap();
+        let mut p = DeepSeekProvider {
+            prepared: Some((easy, "synthetic-fixture-token".into(), call.digest.clone())),
+        };
+        let (entered_send, entered) = channel();
+        let (gate_send, gate) = channel();
+        let result = p.call(
+            &call,
+            Instant::now() + Duration::from_secs(2),
+            &mut PanicBasis {
+                entered: entered_send,
+                gate,
+            },
+            &mut || {
+                entered
+                    .recv_timeout(Duration::from_secs(3))
+                    .expect("worker reached the basis barrier");
+                gate_send.send(()).unwrap();
+                if release_ok {
+                    Ok(())
+                } else {
+                    Err("inference_release_unknown")
+                }
+            },
+        );
+        let expected = if release_ok {
+            "provider_transport_unknown"
+        } else {
+            "inference_release_unknown"
+        };
+        assert_eq!(result.err(), Some(expected), "release_ok={release_ok}");
+    }
+}
+
 #[test]
 fn aggregate_limit_includes_headers_and_never_extends_on_overflow() {
     let bytes = RefCell::new(vec![0; 65530]);
