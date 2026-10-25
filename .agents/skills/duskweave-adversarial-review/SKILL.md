@@ -108,7 +108,10 @@ and report the policy-publication mismatch; the portable skill does not override
    consequential follow-on use under the governing contract, not every effect.
    Defender-informed exercises require separate authorization, labeling, and
    evaluation. Observer silence without verified coverage is inconclusive.
-5. For DESIGN documents, check meaning, cross-document dependencies, scope,
+5. Apply AGENTS.md's documentation lifecycle: check concrete reader need, owning
+   truth, frozen historical provenance and retained unique assertions. Do not demand
+   a permanent packet, repeated tracking updates or archive moves for their own sake.
+   For DESIGN documents, check meaning, cross-document dependencies, scope,
    links, counterexamples, and no premature runtime architecture. State that
    runtime wiring is N/A for a document-only packet.
 6. After one complete adversarial pass, review the fix delta and affected claims

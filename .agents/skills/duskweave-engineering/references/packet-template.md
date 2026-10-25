@@ -4,7 +4,8 @@ Use only when authoring a packet. Fill every field from verified DuskWeave sourc
 Do not publish placeholders as ready-to-execute instructions. Reference permanent
 authority instead of repeating it. Routine fixes stay in the same branch/PR; compiler
 and test failures require correction before merge and do not automatically require
-another packet.
+another packet. Ordinary packets/evidence live in the existing PR; a permanent
+repository document needs a concrete reader/reuse need under AGENTS.md.
 
 ---
 

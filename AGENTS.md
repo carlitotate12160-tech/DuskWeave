@@ -352,30 +352,43 @@ propagate local configuration between worktrees.
 
 ---
 
-## Tracking reconciliation at completion
+## Documentation ownership and delivery tracking
 
-Delivery is not complete until repository tracking is reconciled. At
-preflight, compare docs/ENGINEERING_STATE.md with live delivery and merge
-evidence; historical narrative remains historical.
+Maintain one owner for each kind of information:
+- PR state, candidate SHA and CI results: GitHub.
+- Active work, next action and milestone/seal evidence index: docs/ENGINEERING_STATE.md.
+- Product scope, priorities and retirement triggers: docs/MVP_AND_DEFERRED_SCOPE.md.
+- Dependency navigation: docs/BUILD_ORDER.md; decisions remain in their PRD/ADR/contract.
+- Supported operator procedures: the relevant RUN_* guide.
 
-Maintain docs/ENGINEERING_STATE.md as a short pointer:
-- active work or PR;
-- next action;
-- links to governing accepted decisions and milestone evidence.
+Link to the owner instead of repeating status, rules or merge narratives.
+Update tracking only when its owned information changes. At preflight, verify
+predecessor merges from GitHub; do not create a separate reconciliation PR for
+every merge. Every packet declares UPDATE with exact files/effects or NO_CHANGE
+with a reason. An unmerged candidate never records its own merge or HEAD SHA.
+Preserve accepted Foundation/M0 seal facts and referenced evidence.
 
-Preserve accepted Foundation/M0 seal facts and referenced anchors. Do not
-store the active candidate's own HEAD SHA inside its commit; read head, CI
-and OPEN/MERGED/CLOSED state from GitHub. Do not manually label unmerged delivery
-COMPLETED.
+Keep ordinary execution instructions, review findings and correction chronology
+in the existing PR description/discussion. A packet does not require a permanent
+workflow document. Add or expand repository documentation only for a concrete
+reader need: durable decisions/contracts, reusable operation, or evidence that
+cannot be reconstructed from Git/CI. Explain that need in the existing PR;
+prefer updating its owner and removing superseded duplication.
 
-Every packet declares an explicit tracking disposition: UPDATE with the exact
-files and effects, or NO_CHANGE with a concrete reason. Include
-docs/ENGINEERING_STATE.md in the editable map when active delivery status or
-the next action changes; include docs/BUILD_ORDER.md only when current
-navigation changes. Correct factual lag only inside the packet's editable
-map; acceptance, seal and other authority changes remain separately
-authorized. A candidate commit does not record its own merge: a delivered PR
-is distinct from merged source.
+After delivery, freeze retained packet records as historical. Remove obsolete
+executable instructions and patch chronology from the current tree once unique
+requirements/assertions have a durable owning reference. Keep a short outcome,
+implementation/PR reference, tested-source/evidence provenance, limitations and
+an immutable link to the full historical text. Preserve or repair inbound anchors.
+Do not keep appending new episodes to closed packets or maintain a merge log here.
+Moving intact text to archive/ alone is not simplification. Retire a RUN_* guide
+only after its actual operational consumers have a supported replacement.
+
+Review documentation growth in the existing maintenance review; no new gate,
+tracker or mandatory document per change. Reduce repeated prose, not required
+authority, assertions, incident evidence or readable formatting. Doc/code LOC
+ratios are diagnostics, never quotas: do not add code or erase useful documents
+to improve a ratio. Skills carry workflow guidance, not project history.
 
 ---
 

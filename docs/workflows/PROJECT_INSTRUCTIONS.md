@@ -122,7 +122,10 @@ unrelated worktrees are preserved. Git is candidate custody for ordinary changes
 base commit, committed PR head, git diff and CI associated with that candidate.
 Declare a tracking disposition (UPDATE with exact files/effects or NO_CHANGE with reason);
 a delivered PR is not merged until verified, and actual predecessor merges reconcile
-at the next packet's preflight. Do not store the candidate's own HEAD SHA in its commit.
+at preflight without a separate reconciliation PR. Do not store the candidate's
+own HEAD SHA in its commit. Apply AGENTS.md's documentation lifecycle: keep ordinary
+packets/correction evidence in the existing PR, link owning truth, and freeze closed
+records after preserving unique assertions/provenance. New prose needs a reader need.
 Resolve concrete artifact/coverage/report paths and cache ownership per packet;
 reused artifacts and owned local services never substitute for current-candidate evidence,
 and a refactor of correct behavior reports its passing baseline honestly rather than

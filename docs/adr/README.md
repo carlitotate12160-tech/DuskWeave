@@ -31,27 +31,10 @@ Every ADR is written using the following fixed structure:
 
 ## 2. ADR Registry & Dependency Index
 
-The autonomous-run extension in [ADR-016 section 4a](ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19)
-was ACCEPTED by the product owner on 2026-10-19 at exact text
-`0615fb72c946fd6abf0823692be621096091377c`, together with enabling section 7,
-as the basis for Walking Skeleton implementation. Existing sections and legacy
-profiles retain their status; runtime qualification, target permission and seals
-are unchanged. The controlled fixture does not qualify live acquisition.
-
-ADR-001..008 are authored and ACCEPTED. ADR-009/011/013/015/016/017 R1 and the
-M1 enabling owner/sequencing contract were ACCEPTED by the product owner on
-2026-10-06 for the selected M1 lane only; no full-stage acceptance or seal is claimed.
-The R2 cognitive amendment — direction approved by the product owner on 2026-10-07,
-published as a candidate with exact-text acceptance recorded separately — revises the
-scoped ADR-004/013/015/016/017 lane: Go generated-candidate workers under Rust trusted
-ownership, a replaceable inference adapter, the bounded candidate manifest/lifecycle/
-qualification/catalog responsibility, the isolated build/generated-worker lane,
-nested-effect admission with independent cognition budgets, and the untrusted candidate
-request channel. The bounded candidate catalog is not the ADR-014 registry model.
-ADR-010/012/014/018..024 remain reserved/unwritten slots. Legacy PROPOSED labels
-for those slots do not satisfy dependencies. Full-stage prerequisites remain;
-the [accepted M1 sequencing amendment](../contracts/M1-enabling-architecture.md)
-records the exact selected-lane substitutions; all other prerequisites remain unchanged.
+This index lists authored decisions; exact scope/status is owned by each ADR.
+The [M1 sequencing contract](../contracts/M1-enabling-architecture.md)
+owns scoped dependency substitutions and amendment acceptance; no full-stage
+completion, deployment qualification or seal is inferred from this index.
 
 | ADR ID | Decision Title | Related Stage | Direct Dependency | Status |
 | :--- | :--- | :--- | :--- | :--- |
@@ -64,18 +47,15 @@ records the exact selected-lane substitutions; all other prerequisites remain un
 | **ADR-007** | Foothold & Path Separation | Stage 3 | ADR-002, ADR-006 | `ACCEPTED` |
 | **ADR-008** | [Observation & Fact Separation](ADR-008-observation-fact-separation.md) | Stage 4 | PRD-007, ADR-003 | `ACCEPTED` |
 | **ADR-009** | [Evidence Immutability / M1 Continuity](ADR-009-evidence-immutability.md) | Stage 4 | PRD-008, ADR-008 | `ACCEPTED — M1 only` |
-| **ADR-010** | Proof Fingerprint Architecture | Stage 4 | PRD-009, ADR-009 | `PROPOSED` |
 | **ADR-011** | [Sensitive Data Barrier / M1 Non-Proof](ADR-011-sensitive-data-barrier.md) | Stage 4 | Full: PRD-010, ADR-010; M1 accepted: PRD-010, ADR-008/009 | `ACCEPTED — M1 only` |
-| **ADR-012** | Engagement Proof Key | Stage 4 | ADR-010, ADR-011 | `PROPOSED` |
 | **ADR-013** | [Fixed M1 Capability Contract](ADR-013-capability-contract.md) | Stage 11 | Full: PRD-011, Stage 10; M1 accepted: accepted PRDs/M1 scope, ADR-009/011 | `ACCEPTED — M1 only` |
-| **ADR-014** | Capability Registry Model | Stage 11 | ADR-013 | `PROPOSED` |
 | **ADR-015** | [M1 Execution Boundary](ADR-015-execution-boundary.md) | Stage 11 | Full: ADR-014; M1 accepted: ADR-011/013 | `ACCEPTED — M1 only` |
 | **ADR-016** | [M1 Execution Broker](ADR-016-execution-broker.md) | Stage 12 | Full: PRD-012..013, ADR-015; M1 accepted: ADR-013/015, ADR-003/005 | `ACCEPTED — M1 only` |
 | **ADR-017** | [M1 Cross-Process Contract](ADR-017-cross-process-contract.md) | Stage 12 | ADR-016; M1 accepted: ADR-009/011/013/015/016 | `ACCEPTED — M1 only` |
-| **ADR-018** | Native Helper Boundary | Stage 12 | ADR-017 | `PROPOSED` |
-| **ADR-019** | Polyglot Admission Policy | Stage 12 | ADR-018 | `PROPOSED` |
-| **ADR-020** | Chain Validation Architecture | Stage 15 | PRD-015 | `PROPOSED` |
-| **ADR-021** | Campaign & Observer Separation | Stage 17 | PRD-016..020 | `PROPOSED` |
-| **ADR-022** | Stealth Assessment Model | Stage 17 | ADR-021 | `PROPOSED` |
-| **ADR-023** | Defender Telemetry Isolation | Stage 17 | ADR-021, ADR-022 | `PROPOSED` |
-| **ADR-024** | Audit Integrity Model | Stage 17 | ADR-023 | `PROPOSED` |
+
+
+Reserved, unwritten IDs: `ADR-010/012/014/018..024`. IDs are not reused; titles and full-stage
+dependencies remain in [build-order navigation](../BUILD_ORDER.md). These slots
+are not authored proposals or accepted authority and do not satisfy dependencies.
+The [M1 sequencing contract](../contracts/M1-enabling-architecture.md#2-accepted-bounded-sequencing-amendment)
+owns selected-lane substitutions. Add a registry row when its document exists.

@@ -41,14 +41,10 @@ Every PRD must comply with the following rules:
 | **PRD-008** | Evidence Model | Stage 4 | PRD-007 | `ACCEPTED` |
 | **PRD-009** | Client Proof | Stage 4 | PRD-008 | `ACCEPTED` |
 | **PRD-010** | Sensitive Data Handling | Stage 4 | PRD-009 | `ACCEPTED` |
-| **PRD-011** | Capability System | Stage 11 | Stage 10 | `PLANNED` |
-| **PRD-012** | Runtime Isolation | Stage 12 | PRD-011 | `PLANNED` |
-| **PRD-013** | Native Execution | Stage 12 | PRD-012 | `PLANNED` |
-| **PRD-014** | Expansion Planning | Stage 14 | Stage 13 | `PLANNED` |
-| **PRD-015** | Chain Composition | Stage 15 | PRD-014 | `PLANNED` |
-| **PRD-016** | Stealth Fidelity | Stage 17 | Stage 16 | `PLANNED` |
-| **PRD-017** | Campaign Tempo | Stage 17 | PRD-016 | `PLANNED` |
-| **PRD-018** | Operational Footprint | Stage 17 | PRD-017 | `PLANNED` |
-| **PRD-019** | Observer Plane | Stage 17 | PRD-018 | `PLANNED` |
-| **PRD-020** | Control-Gap Assessment | Stage 17 | PRD-019 | `PLANNED` |
-| **PRD-021** | Autonomous Grader | Stage 20 | Stage 19 | `PLANNED` |
+
+
+Reserved, unwritten IDs: `PRD-011..021`. IDs are not reused; titles and full-stage
+dependencies remain in [build-order navigation](../BUILD_ORDER.md). These slots
+are not authored proposals or accepted authority and do not satisfy dependencies.
+The [M1 sequencing contract](../contracts/M1-enabling-architecture.md#2-accepted-bounded-sequencing-amendment)
+owns selected-lane substitutions. Add a registry row when its document exists.

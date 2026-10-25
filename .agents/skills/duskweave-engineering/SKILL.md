@@ -161,11 +161,12 @@ an instruction to plan the implementation; if authority is unresolved,
 stop and resolve it in the proper product or architecture step first.
 Specify mode, verified base, dependencies, exact allowed files, non-goals,
 acceptance criteria, tests or document checks, review gates, and STOP conditions.
-Declare the tracking disposition per AGENTS.md and the template: UPDATE with
-exact files/effects or NO_CHANGE with a concrete reason; ENGINEERING_STATE.md
-joins the editable map when active delivery status or next action changes;
-a candidate never records its own merge, and the actual predecessor merge is
-reconciled at the next packet's preflight.
+Apply AGENTS.md's documentation ownership/lifecycle rules. Put ordinary packets
+and correction evidence in the existing PR, not an automatic permanent workflow
+file. Name a reader/reuse need for new repository prose; link canonical decisions.
+Declare UPDATE with exact tracking effects or reasoned NO_CHANGE. Include state
+only when active work/next action changes; verify predecessor merges without a
+separate reconciliation PR. Retain historical assertions/provenance before retirement.
 Resolve concrete process-scoped artifact paths (ordinary target, per-packet
 coverage and report paths) and the cache ownership rule before handoff: one
 owner holds a shared target for the whole verification sequence, and
