@@ -186,9 +186,15 @@ or reasons for new packets; McCabe is an enforced per-function ratchet
 over-threshold function names the function, reason and smallest remedy instead
 of a bypass. Resolve known file-map,
 environment, and dependency conflicts here; do not knowingly send an impossible packet.
-Record estimates as estimates. Separate the cost of new behavior from existing
-behavior/fixtures reused by it. Do not remove behavior, explanatory comments or
-readable formatting to lower counted lines.
+Resolve QUALITY_BAR.md's maintenance disposition before handoff: inspect destination
+files, compare the simplest viable alternative, estimate additions/removals by
+runtime/tests/tooling/docs, and name new responsibilities and retirement decisions.
+Keep this concise in the existing packet, including why any oversized file must
+grow. "Same responsibility" or "test-only" alone is insufficient. Estimates are
+not measured counts or permission to expand scope. Specify the selected mechanism,
+required consumer changes and operational steps so the executor implements a
+resolved design; leave routine local choices open. Do not remove behavior,
+explanatory comments or readable formatting to lower counted lines.
 List exact editable files separately from read-only caller/consumer references.
 For runtime packets, trace the real entrypoint and consumer and require a test
 through that path. An unchanged caller need not be editable.

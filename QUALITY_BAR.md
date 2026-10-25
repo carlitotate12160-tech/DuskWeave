@@ -44,6 +44,24 @@ the one enforced numerical threshold and is governed by the ratchet below —
 do not extract merely to move branches into forwarding helpers, and do not
 delete comments, blanks or formatting to satisfy a number.
 
+Before issuing a packet, inspect the destination files and affected consumers.
+Record the chosen mechanism versus the simplest viable alternative, estimated
+additions and removals separately for runtime, tests, tooling and docs, and any
+new responsibility, state, dependency or operational step. Distinguish measured
+baseline from estimated growth; net LOC alone hides replacement/review cost.
+Name superseded mechanisms to retire with verified consumer replacements, or
+explain why no retirement is safe. Keep this decision in the existing packet.
+
+For growth in an already oversized file, identify the exact responsibility or
+scenario being changed, unnecessary duplication/indirection considered, and why
+the retained growth is simpler than the viable alternative. "Same responsibility",
+"test-only" and an existing warning alone are not sufficient justification.
+Tests, fixtures and qualification scripts are maintained code too. Reject concrete
+ownership, dependency, duplication or readability regressions through section 7;
+do not treat advisory status as permission to accumulate them. Refactor a mixed
+responsibility within the allowed map or return the exact missing scope decision.
+Do not impose net-negative LOC or delete required assertions to satisfy a count.
+
 ### Function and dispatch classification
 
 Count a function from its declaration through its closing brace, including
@@ -244,6 +262,11 @@ for material claims, not a fixed quota of tests. Distinguish static inspection,
 local execution and exact-candidate CI, including their environment and limits.
 DESIGN/document-only work checks ownership, semantics, links and authority;
 runtime wiring/fault execution is N/A with that reason, not a fabricated test PASS.
+
+Under Q1-Q4, compare actual growth and responsibilities with the packet's decision.
+Explain material differences and the disposition of oversized files and replaced
+mechanisms. Inspect test setup, synchronization and cleanup as well as runtime.
+Reuse the existing review/report; add no approval tier, counter or evidence ledger.
 
 Classify suspected findings as VALID, FALSE_POSITIVE or UNVERIFIED and separately
 state blocking impact. A valid finding names the violated invariant, reachable
