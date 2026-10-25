@@ -147,8 +147,29 @@ pub(super) fn process_alive(pid: u32) -> bool {
             .expect("tasklist");
         String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
     } else {
-        Path::new(&format!("/proc/{pid}/stat")).exists()
+        proc_stat_alive(Path::new(&format!("/proc/{pid}/stat")))
     }
+}
+
+/// A zombie has terminated even while its proc entry awaits reaping.
+/// Missing entries are dead; failed observations must never prove death.
+fn proc_stat_alive(path: &Path) -> bool {
+    let stat = match std::fs::read_to_string(path) {
+        Ok(stat) => stat,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
+        Err(error) => panic!("proc observation unavailable: {:?}", error.kind()),
+    };
+    // comm is parenthesized and can itself contain spaces and parentheses.
+    let state = stat
+        .rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .expect("proc observation has no process state");
+    let known = ["R", "S", "D", "Z", "T", "t", "W", "X", "x", "K", "P", "I"];
+    assert!(
+        known.contains(&state),
+        "proc observation has an invalid state"
+    );
+    state != "Z"
 }
 
 pub(super) fn direct_child(script: &str) -> Child {
@@ -159,4 +180,69 @@ pub(super) fn direct_child(script: &str) -> Child {
         .stderr(Stdio::null())
         .spawn()
         .expect("sentinel spawn")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proc_stat_zombies_are_terminated_and_live_states_remain_alive() {
+        let root = unique_root("proc-states");
+        let path = root.join("stat");
+        let cases = [
+            ("123 (worker) Z 1 0 0", false),
+            ("123 (worker) R 1 0 0", true),
+            ("123 (escaped sleeper) S 1 0 0", true),
+            ("123 (worker) D 1 0 0", true),
+            ("123 (worker) T 1 0 0", true),
+            ("123 (name ) Z marker) S 1 0 0", true),
+            ("123 (name with spaces and )) Z 1 0 0", false),
+        ];
+        for (stat, expected) in cases {
+            std::fs::write(&path, stat).expect("synthetic proc stat");
+            assert_eq!(proc_stat_alive(&path), expected, "{stat}");
+        }
+        std::fs::remove_file(path).expect("owned stat cleanup");
+        std::fs::remove_dir(root).expect("owned root cleanup");
+    }
+
+    #[test]
+    fn proc_stat_missing_is_dead_but_read_errors_are_not_death_evidence() {
+        let root = unique_root("proc-errors");
+        assert!(!proc_stat_alive(&root.join("missing")));
+        assert!(
+            std::panic::catch_unwind(|| proc_stat_alive(&root)).is_err(),
+            "a directory read error must fail the observation"
+        );
+        let path = root.join("stat");
+        std::fs::write(&path, [0xff]).expect("invalid UTF-8 fixture");
+        assert!(
+            std::panic::catch_unwind(|| proc_stat_alive(&path)).is_err(),
+            "an undecodable stat must fail the observation"
+        );
+        std::fs::remove_file(path).expect("owned stat cleanup");
+        std::fs::remove_dir(root).expect("owned root cleanup");
+    }
+
+    #[test]
+    fn proc_stat_malformed_state_is_rejected() {
+        let root = unique_root("proc-malformed");
+        let path = root.join("stat");
+        for stat in [
+            "",
+            "123 worker S",
+            "123 (worker)",
+            "123 (worker) ?",
+            "123 (worker) ZZ",
+        ] {
+            std::fs::write(&path, stat).expect("malformed stat fixture");
+            assert!(
+                std::panic::catch_unwind(|| proc_stat_alive(&path)).is_err(),
+                "malformed process state must fail the observation: {stat}"
+            );
+        }
+        std::fs::remove_file(path).expect("owned stat cleanup");
+        std::fs::remove_dir(root).expect("owned root cleanup");
+    }
 }

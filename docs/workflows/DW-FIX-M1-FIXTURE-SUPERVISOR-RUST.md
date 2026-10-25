@@ -407,3 +407,54 @@ Windows qualification on the replaced supervisor remains the next separately
 authorized gate. No provider/resolver/target contact, issue/thread closure,
 merge, acceptance or seal. Tracking UPDATE is confined to this ledger and
 ENGINEERING_STATE's active-correction/next-qualification pointer.
+
+
+## CodeRabbit process-observer correction, 2026-10-25
+
+The owner explicitly authorized the validated CodeRabbit finding
+[`4369845429`](https://github.com/carlitotate12160-tech/DuskWeave/pull/116#discussion_r4369845429)
+after Amendment B. Base `193354b90f6fa04b2a82e7305beb55619d203316` was clean,
+published, and qualified by Linux doc-check `40166781426` and parser-mutation
+`40166781445`; its complete inventory/coverage gate passed at 96.78%
+(13053/13487). That evidence and the earlier STOP/review history remain retained.
+This focused test-harness correction does not reset production-runtime FIX cycles.
+
+Finding VALID: the non-Windows `process_alive` path used only proc-file existence.
+A terminated zombie can retain `/proc/<pid>/stat` until reaping, creating false
+failure in independent descendant-termination assertions. The correction reads
+the state after the final closing parenthesis of comm, which can contain spaces
+and parentheses. State Z is terminated, recognized non-Z states remain alive,
+and a missing file is absent. Other read errors, undecodable contents and missing
+or unrecognized state fail the observation instead of manufacturing death.
+The Windows tasklist path and every existing PID/sentinel/escaped-process
+assertion remain unchanged. No supervisor, product runtime or timer changed.
+
+Genuine RED at the extracted private proc-file boundary retained the original
+existence predicate: all three new regression functions failed assertions for
+Z misclassification, unreadable stat and malformed state. This is deterministic
+synthetic proc-content evidence, not a claim that a flaky CI zombie race was
+observed on the base. GREEN uses the same private boundary, exercised through
+the real Linux liveness caller and directly by host-independent controls:
+Z dead; R/S/D/T alive; comm with spaces/parentheses or embedded `) Z ` handled;
+missing entry dead; directory/invalid-UTF-8 read and malformed/unknown state
+rejected. The real sleeping escaped process remains an independent positive
+control in the existing Unix suite.
+
+Local Windows/Rust 1.94.1 checks in the exclusive helper target: unit 20/20 and
+integration 17/17 PASS (14 existing plus 3 new observer regressions); fmt,
+feature-enabled all-target Clippy, structure/hygiene, dependency direction,
+links, whitespace and pinned McCabe ratchet PASS. Structure warning membership
+remains 35; the ten historical source complexity debts are unchanged. Harness
+size is 248 physical lines. Evidence is retained under
+`closure-20261025a/zombie-observer-1`; prior report directories are preserved.
+
+Tracking UPDATE is confined to this existing ledger and ENGINEERING_STATE's
+active correction/next qualification pointers. The only code change is in
+`tests/support/fixture_supervisor.rs`; its three regressions remain inline in
+that existing test-support file. No source/CI/checker/manifest/bridge change,
+new source file, database provisioning, local T8/Python matrix or full Windows
+matrix is introduced. The existing reviewer checks only this observer delta;
+current committed head, new exact-head Linux CI and final review disposition
+are read from PR #116. The mandatory full four-action Windows qualification
+on the replaced supervisor remains a separate pending gate. No merge,
+automatic thread closure, provider/resolver/target contact, acceptance or seal.
