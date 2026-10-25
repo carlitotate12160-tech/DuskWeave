@@ -101,11 +101,16 @@ and tests; it is not measured fit or a product timeout. A distinct review had fo
 that cleanup was not a reliable bound when the action parent exited while a
 descendant still held inherited pipes; the Rust fixture supervisor replacement
 ([DW-FIX-M1-FIXTURE-SUPERVISOR-RUST](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md))
-now owns that boundary, and the recorded finding stays historical evidence. A
-fresh full four-action Windows qualification on the replaced mechanism remains
-pending; until it passes, delivery stays NOT READY. The four earlier Windows
-PASS results were produced under the superseded Python supervision and are
-retained with their provenance, not relabeled.
+now owns that boundary, and the recorded finding stays historical evidence. The
+fresh full four-action Windows qualification on the replaced mechanism ran once
+on tested head `ef49780bd32ca19383cf6f7bd49c87aa5fd94f96` and passed 57/57,
+18/18, 57/57 and 18/18 with zero failed/ignored/filtered tests and aggregate
+exit 0; its retained evidence is report
+`D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-rust-final-20261025a`
+with database `dw_native_lifecycle_rust_final_20261025a` ([qualification
+record](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md#final-windows-qualification-2026-10-25)).
+The four earlier Windows PASS results were produced under the superseded Python
+supervision and are retained with their provenance, not relabeled.
 `harness_timeout` is separate from an ordinary child exit 124. The first failed
 action ends qualification with its nonzero result; subsequent actions remain
 `NOT_RUN`. One read-only provisioning snapshot is attempted after failure.

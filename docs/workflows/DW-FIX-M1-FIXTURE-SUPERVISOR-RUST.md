@@ -458,3 +458,64 @@ current committed head, new exact-head Linux CI and final review disposition
 are read from PR #116. The mandatory full four-action Windows qualification
 on the replaced supervisor remains a separate pending gate. No merge,
 automatic thread closure, provider/resolver/target contact, acceptance or seal.
+
+
+## Final Windows qualification, 2026-10-25
+
+Owner-issued qualification-only closure packet on the reviewed head
+`ef49780bd32ca19383cf6f7bd49c87aa5fd94f96` (PR base
+`79b0e3ee1bea44b5e5639c1142af45b6c44918b4` unchanged; clean worktree and
+verified ancestry at preflight; latest candidate Linux doc-check
+`40170048586` and parser-mutation `40170048587` passed before the run). This
+is the mandatory fresh full four-action Windows qualification on the
+replaced Rust-supervised mechanism; it does not relabel the earlier
+Python-supervised results or reset any FIX-cycle or review history.
+
+Environment pinned by the qualifier: Windows AMD64,
+`x86_64-pc-windows-msvc` rustc 1.94.1, cargo-llvm-cov 0.9.1, Python 3.12.10,
+and the owned `dwpg-r3` PostgreSQL 17.11 digest-pinned service on
+127.0.0.1:5432. One owning process held all three build targets
+(`fixture-supervisor`, `normal`, `coverage/inference-lifecycle`) for the
+whole sequence; the helper was rebuilt without source edits into its
+dedicated target and the selected coverage workspace profiles were cleaned
+once before the run. Database `dw_native_lifecycle_rust_final_20261025a` and
+report `D:/DuskWeave-build/rust-1.94.1/reports/inference-lifecycle/qualification-rust-final-20261025a`
+were absent at run time; both are now retained evidence, with no name
+rotation or rerun.
+
+All four serial actions passed on the first attempt with zero
+failed/ignored/filtered required tests and aggregate exit 0:
+
+| Action | Result | Elapsed |
+| --- | --- | --- |
+| `ordinary_binary` | 57/57 PASS | 32.8 s |
+| `ordinary_lifecycle` | 18/18 PASS | 277.7 s |
+| `instrumented_binary` | 57/57 PASS | 49.5 s |
+| `instrumented_lifecycle` | 18/18 PASS | 288.0 s |
+
+Every published result metadata records `status: completed`,
+`child_exit: 0`, `capture: complete`, `cleanup: completed`, empty
+`omissions` and `timing_origin: request_admission` within the 900-second
+policy budget. Each action log contains exactly one full unfiltered suite
+summary; the T8 staged-upgrade worker passed inside both lifecycle actions
+and did not substitute for their full summaries. `qualification.json`
+records `status: PASS`, `environment.head` equal to the tested candidate
+and the rebuilt helper absolute path.
+
+The narrow evidence/provenance recheck found no contradiction with the
+tested source: the observed path is the reviewed `invoke_supervisor` to
+`run-action` delegation under closed publication validation; no wrapper,
+flag change, hidden retry or environment mutation was used. The two
+retained CodeRabbit threads are verified against this run: `4367477301`
+(nullable ports) is refused helper-side with its dedicated regression, and
+`4367477318` (descendant cleanup) is the same tree-ownership boundary that
+produced the four `cleanup: completed` results. Both remain valid
+historical findings corrected and superseded by this replacement; their
+thread closure is recorded on the PR with this evidence.
+
+This qualifies the Windows fixture lane for this exact source and
+environment only. It still does not explain the historical startup
+incident, establish a latency distribution, qualify a real provider, grant
+target permission or seal M1. The closure commit is documentation-only; no
+executable source, test, helper, CI, manifest or checker change accompanies
+this record.
