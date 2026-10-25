@@ -6,7 +6,11 @@
 //! and published with a closed omission reason instead of partial content.
 
 use serde_json::{Value, json};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+const PROGRESS_INTERVAL_SECS: u64 = 15;
 
 const REDACTED: &[u8] = b"[REDACTED]";
 pub const CAPTURE_COMPLETE: &str = "complete";
@@ -19,6 +23,56 @@ pub struct CaptureStream {
     pub bytes: Vec<u8>,
     pub finished: bool,
     pub overflowed: bool,
+}
+
+/// Supervision facts for one finished action attempt.
+pub struct SupervisedAction {
+    pub status: &'static str,
+    pub exit: i32,
+    pub child_exit: Option<i32>,
+    pub elapsed_ms: u64,
+    pub capture: &'static str,
+    pub cleanup: &'static str,
+    pub omissions: Vec<&'static str>,
+    pub stdout: Option<CaptureStream>,
+    pub stderr: Option<CaptureStream>,
+}
+
+impl SupervisedAction {
+    /// The single closed result line emitted on stdout after publication.
+    pub fn protocol(&self) -> Value {
+        json!({
+            "ok": true,
+            "status": self.status,
+            "exit": self.exit,
+            "child_exit": self.child_exit,
+            "elapsed_ms": self.elapsed_ms,
+            "capture": self.capture,
+            "cleanup": self.cleanup,
+            "timing_origin": "request_admission",
+            "omissions": self.omissions,
+        })
+    }
+}
+
+/// Progress lines stay closed — label, running status and elapsed seconds —
+/// and are emitted once per completed interval, never per poll.
+fn progress_line(label: &str, elapsed: Duration, last_step: &mut u64) -> Option<String> {
+    let step = elapsed.as_secs() / PROGRESS_INTERVAL_SECS;
+    if label.is_empty() || step <= *last_step {
+        return None;
+    }
+    *last_step = step;
+    Some(
+        json!({ "action": label, "status": "running", "elapsed_seconds": elapsed.as_secs() })
+            .to_string(),
+    )
+}
+
+pub(super) fn emit_progress(label: &str, elapsed: Duration, last_step: &mut u64) {
+    if let Some(line) = progress_line(label, elapsed, last_step) {
+        let _ = writeln!(std::io::stderr(), "{line}");
+    }
 }
 
 /// Facts published as the closed `<label>.result.json` metadata record.
@@ -150,6 +204,34 @@ pub fn metadata_json(fields: &MetadataFields<'_>) -> String {
     .to_string()
 }
 
+/// Assemble redacted streams and metadata at the publication boundary.
+pub fn publish_action(
+    root: &Path,
+    label: &str,
+    result: &SupervisedAction,
+    redactions: &[String],
+    budget_ms: u64,
+) -> Result<(), &'static str> {
+    let mut log = stream_publication(result.stderr.as_ref(), redactions, "stderr");
+    log.push(b'\n');
+    log.extend_from_slice(&stream_publication(
+        result.stdout.as_ref(),
+        redactions,
+        "stdout",
+    ));
+    let fields = MetadataFields {
+        status: result.status,
+        exit: result.exit,
+        child_exit: result.child_exit,
+        elapsed_ms: result.elapsed_ms,
+        action_budget_ms: budget_ms,
+        capture: result.capture,
+        cleanup: result.cleanup,
+        omissions: &result.omissions,
+    };
+    publish(root, label, &log, &metadata_json(&fields)).map_err(|_| "native_report_write_failed")
+}
+
 /// Publish the redacted log and result metadata exactly once; any failure is
 /// reported to the caller and can never manufacture a PASS result.
 pub fn publish(report_root: &Path, label: &str, log: &[u8], metadata: &str) -> Result<(), ()> {
@@ -169,6 +251,21 @@ pub fn refusal_line(category: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn progress_lines_emit_once_per_completed_interval() {
+        let mut step = 0;
+        assert!(progress_line("", Duration::from_secs(25), &mut step).is_none());
+        assert!(progress_line("act", Duration::from_secs(14), &mut step).is_none());
+        let line = progress_line("act", Duration::from_secs(15), &mut step).expect("line");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&line).expect("json"),
+            json!({ "action": "act", "status": "running", "elapsed_seconds": 15 })
+        );
+        assert!(progress_line("act", Duration::from_secs(29), &mut step).is_none());
+        let next = progress_line("act", Duration::from_secs(31), &mut step).expect("line");
+        assert!(next.contains("\"elapsed_seconds\":31"));
+    }
 
     fn stream(bytes: &[u8], finished: bool, overflowed: bool) -> Option<CaptureStream> {
         Some(CaptureStream {

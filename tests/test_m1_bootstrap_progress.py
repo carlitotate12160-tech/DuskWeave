@@ -77,6 +77,27 @@ class BridgeRefusalMapping(unittest.TestCase):
                 bootstrap.validate_publication(line, report, "label")
 
 
+    def test_contradictory_results_and_metadata_cannot_be_success(self):
+        valid = {"ok": True, "status": "completed", "exit": 0, "child_exit": 0,
+                 "capture": "complete", "cleanup": "completed", "omissions": [],
+                 "timing_origin": "request_admission"}
+        cases = [{"child_exit": 7}, {"capture": "incomplete", "omissions": ["stdout"]},
+                 {"cleanup": "unknown"}, {"exit": False}, {"status": "action_failed"}, {"status": "action_failed", "exit": 7},
+                 {"status": "harness_timeout", "exit": 1}, {"omissions": ["raw-detail"]},
+                 {"omissions": [["stdout"]]}, {"exit": 7, "child_exit": 8, "status": "action_failed"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for delta in cases:
+                result = {**valid, **delta}
+                (root / "label.result.json").write_text(json.dumps(result))
+                with self.subTest(delta=delta), self.assertRaises(RuntimeError):
+                    bootstrap.validate_publication(json.dumps(result), root, "label")
+            for key, value in (("exit", False), ("child_exit", False), ("capture", "wrong"), ("cleanup", "wrong")):
+                (root / "label.result.json").write_text(json.dumps({**valid, key: value}))
+                with self.subTest(key=key), self.assertRaises(RuntimeError):
+                    bootstrap.validate_publication(json.dumps(valid), root, "label")
+
+
 class ServiceCheckDelegation(unittest.TestCase):
     """Service qualification is delegated to the development supervisor."""
 
@@ -148,14 +169,39 @@ class BridgePresentation(unittest.TestCase):
         self.assertIn("visible-line-2", stream.getvalue())
         self.assertNotIn("synthetic-secret", stream.getvalue())
 
+    def test_real_overflow_cannot_return_success(self):
+        command = [sys.executable, "-c", "print('x' * (17 * 1024 * 1024))"]
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = self.fixture.run("overflow", command, self.report, max_duration_seconds=10)
+        result = json.loads((self.report / "overflow.result.json").read_text())
+        self.assertEqual(result["status"], "action_failed")
+        self.assertEqual(result["child_exit"], 0)
+        self.assertEqual(result["capture"], "incomplete")
+        self.assertNotEqual(code, 0)
+        self.assertEqual(result["exit"], code)
+        self.assertEqual(result["omissions"], ["stdout"])
+        self.assertIn("[stdout omitted: capture_overflow]",
+                      (self.report / "overflow.log").read_text())
+
+    def test_one_shot_observes_real_supervised_overflow(self):
+        self.fixture.database = "dw_native_synthetic_oneshot"
+        command = [sys.executable, "-c", "print('x' * (17 * 1024 * 1024))"]
+        argv = ["bootstrap", "--report", str(self.report), "--", *command]
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch.object(bootstrap, "Fixture", return_value=self.fixture), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertNotEqual(bootstrap.main(), 0)
+
     def test_legacy_call_uses_the_finite_policy_ceiling(self):
         stream = io.StringIO()
 
         def publish_and_return(*args):
             (self.report / "qualification.log").write_text("synthetic redacted tail\n", encoding="utf-8")
-            (self.report / "qualification.result.json").write_text(
-                '{"status": "completed", "exit": 0}', encoding="utf-8")
-            return '{"ok": true, "status": "completed", "exit": 0}'
+            result = {"ok": True, "status": "completed", "exit": 0, "child_exit": 0,
+                      "capture": "complete", "cleanup": "completed", "omissions": [],
+                      "timing_origin": "request_admission"}
+            (self.report / "qualification.result.json").write_text(json.dumps(result), encoding="utf-8")
+            return json.dumps(result)
 
         with mock.patch.object(bootstrap.Fixture, "invoke_supervisor",
                                side_effect=publish_and_return) as run:

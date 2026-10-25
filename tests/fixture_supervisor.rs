@@ -5,168 +5,16 @@
 //! is contacted; the sentinel scenarios prove unrelated processes are never
 //! signalled.
 
-use serde_json::{Value, json};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
+use serde_json::json;
+#[cfg(unix)]
+use std::path::Path;
+#[cfg(unix)]
+use std::process::Command;
 use std::time::{Duration, Instant};
 
-const GUARD: Duration = Duration::from_secs(45);
-
-fn supervisor() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_dw-fixture-supervisor"))
-}
-
-fn python() -> String {
-    std::env::var("DW_TEST_PYTHON").unwrap_or_else(|_| {
-        if cfg!(windows) {
-            "python".into()
-        } else {
-            "python3".into()
-        }
-    })
-}
-
-fn unique_root(tag: &str) -> PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("dw-fs-{tag}-{}-{nanos}", std::process::id()));
-    std::fs::create_dir_all(&root).expect("unique report root");
-    root
-}
-
-fn request_for(
-    root: &Path,
-    label: &str,
-    script: &str,
-    budget_ms: u64,
-    redactions: &[&str],
-) -> String {
-    json!({
-        "version": 1,
-        "argv": [python(), "-c", script],
-        "cwd": env!("CARGO_MANIFEST_DIR"),
-        "label": label,
-        "report_root": root.to_string_lossy(),
-        "action_budget_ms": budget_ms,
-        "redactions": redactions,
-    })
-    .to_string()
-}
-
-fn invoke(arguments: &[&str], request: Option<&str>) -> (i32, Value, String) {
-    let mut command = Command::new(supervisor());
-    let output = bounded(command.args(arguments), request, GUARD);
-    let protocol = serde_json::from_slice(&output.stdout).unwrap_or(Value::Null);
-    (
-        status_code(&output.status),
-        protocol,
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    )
-}
-
-fn status_code(status: &std::process::ExitStatus) -> i32 {
-    status.code().unwrap_or(-1)
-}
-
-/// Independent bounded guard: the supervisor is killed if it ever exceeds the
-/// test's own deadline, so a supervision defect cannot hang the suite.
-fn bounded(command: &mut Command, request: Option<&str>, guard: Duration) -> Output {
-    command
-        .stdin_if(request)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command.spawn().expect("supervisor spawn");
-    if let Some(request) = request {
-        let mut stdin = child.stdin.take().expect("supervisor stdin");
-        stdin.write_all(request.as_bytes()).expect("request write");
-    }
-    let stdout = reader(child.stdout.take().expect("supervisor stdout"));
-    let stderr = reader(child.stderr.take().expect("supervisor stderr"));
-    let status = wait_or_panic(&mut child, guard);
-    Output {
-        status,
-        stdout: stdout.join().expect("stdout"),
-        stderr: stderr.join().expect("stderr"),
-    }
-}
-
-trait StdinIf {
-    fn stdin_if(&mut self, request: Option<&str>) -> &mut Self;
-}
-
-impl StdinIf for Command {
-    fn stdin_if(&mut self, request: Option<&str>) -> &mut Self {
-        if request.is_some() {
-            self.stdin(Stdio::piped());
-        } else {
-            self.stdin(Stdio::null());
-        }
-        self
-    }
-}
-
-fn reader(mut pipe: impl Read + Send + 'static) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        pipe.read_to_end(&mut bytes).expect("pipe read");
-        bytes
-    })
-}
-
-fn wait_or_panic(child: &mut Child, guard: Duration) -> std::process::ExitStatus {
-    let deadline = Instant::now() + guard;
-    loop {
-        if let Some(status) = child.try_wait().expect("supervisor poll") {
-            return status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("supervisor exceeded the independent test guard");
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-}
-
-fn metadata(root: &Path, label: &str) -> Value {
-    let path = root.join(format!("{label}.result.json"));
-    serde_json::from_str(&std::fs::read_to_string(path).expect("metadata")).expect("json")
-}
-
-fn log_text(root: &Path, label: &str) -> String {
-    std::fs::read_to_string(root.join(format!("{label}.log"))).expect("log")
-}
-
-fn service_arguments<'a>(container: &'a str, extra: &[&'a str]) -> Vec<&'a str> {
-    let mut arguments = vec!["service-check", "--container", container];
-    arguments.extend_from_slice(extra);
-    arguments
-}
-
-fn process_alive(pid: u32) -> bool {
-    if cfg!(windows) {
-        let output = Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-            .output()
-            .expect("tasklist");
-        String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
-    } else {
-        Path::new(&format!("/proc/{pid}/stat")).exists()
-    }
-}
-
-fn direct_child(script: &str) -> Child {
-    Command::new(python())
-        .arg("-c")
-        .arg(script)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("sentinel spawn")
-}
+#[path = "support/fixture_supervisor.rs"]
+mod fixture_support;
+use fixture_support::*;
 
 #[test]
 fn successful_action_publishes_redacted_log_and_closed_metadata() {
@@ -220,14 +68,14 @@ fn live_parent_timeout_terminates_owned_tree_within_the_budget() {
     let root = unique_root("timeout");
     let script = format!(
         "import subprocess, sys, time; from pathlib import Path; \
-         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); \
+         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(6)']); \
          Path({root:?}).joinpath('descendant.pid').write_text(str(child.pid)); \
-         time.sleep(60)"
+         time.sleep(6)"
     );
     let request = request_for(&root, "timeout", &script, 700, &[]);
     let started = Instant::now();
     let (_, protocol, _) = invoke(&["run-action"], Some(&request));
-    assert!(started.elapsed() < Duration::from_secs(6));
+    assert!(started.elapsed() < Duration::from_secs(4));
     assert_eq!(protocol["status"], "harness_timeout");
     assert_eq!(protocol["exit"], 124);
     assert_eq!(protocol["timing_origin"], "request_admission");
@@ -245,13 +93,13 @@ fn exited_parent_with_pipe_holding_descendant_settles_within_bound() {
     let root = unique_root("exited");
     let script = format!(
         "import subprocess, sys; from pathlib import Path; \
-         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(8)']); \
+         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(6)']); \
          Path({root:?}).joinpath('descendant.pid').write_text(str(child.pid))"
     );
-    let request = request_for(&root, "exited", &script, 5_000, &[]);
+    let request = request_for(&root, "exited", &script, 1_000, &[]);
     let started = Instant::now();
     let (_, protocol, _) = invoke(&["run-action"], Some(&request));
-    assert!(started.elapsed() < Duration::from_secs(6));
+    assert!(started.elapsed() < Duration::from_secs(4));
     assert_eq!(protocol["status"], "completed");
     assert_eq!(protocol["exit"], 0);
     assert_eq!(protocol["cleanup"], "completed");
@@ -274,8 +122,8 @@ fn group_escape_leaves_an_honest_incomplete_disposition() {
     let script = format!(
         "import subprocess, sys, time; from pathlib import Path; \
          child = subprocess.Popen([sys.executable, '-c', \
-         'import os, time; os.setsid(); time.sleep(8)']); \
-         Path({root:?}).joinpath('escape.pid').write_text(str(child.pid)); time.sleep(8)"
+         'import os, time; os.setsid(); time.sleep(6)']); \
+         Path({root:?}).joinpath('escape.pid').write_text(str(child.pid)); time.sleep(6)"
     );
     let request = request_for(&root, "escape", &script, 900, &[]);
     let (_, protocol, _) = invoke(&["run-action"], Some(&request));
@@ -308,6 +156,8 @@ fn output_overflow_suppresses_the_stream_with_a_closed_reason() {
     assert_eq!(protocol["capture"], "incomplete");
     assert_eq!(protocol["omissions"], json!(["stdout"]));
     assert_eq!(protocol["status"], "action_failed");
+    assert_eq!(protocol["child_exit"], 0);
+    assert_ne!(protocol["exit"], 0);
     let log = log_text(&root, "overflow");
     assert!(log.contains("[stdout omitted: capture_overflow]"));
     assert!(!log.contains("synthetic-secret"));
@@ -479,4 +329,38 @@ fn service_check_refuses_unowned_containers_and_open_flags() {
         let (code, protocol, _) = invoke(arguments, None);
         assert_eq!((code, protocol["category"].as_str()), (1, Some(*category)));
     }
+}
+
+#[test]
+fn closed_pipe_descendant_is_stopped_after_direct_parent_exit() {
+    let root = unique_root("closed-pipes");
+    let mut sentinel = direct_child("import time; time.sleep(6)");
+    let script = format!(
+        "import subprocess, sys; from pathlib import Path; \
+         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(6)'], \
+         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); \
+         Path({root:?}).joinpath('descendant.pid').write_text(str(child.pid))"
+    );
+    let request = request_for(&root, "closed-pipes", &script, 1_000, &[]);
+    let started = Instant::now();
+    let (_, protocol, _) = invoke(&["run-action"], Some(&request));
+    let elapsed = started.elapsed();
+    let pid: u32 = std::fs::read_to_string(root.join("descendant.pid"))
+        .expect("pid record")
+        .parse()
+        .expect("pid");
+    let descendant_alive = process_alive(pid);
+    let sentinel_alive = sentinel.try_wait().expect("sentinel poll").is_none();
+    let _ = sentinel.kill();
+    let _ = sentinel.wait();
+    assert!(elapsed < Duration::from_secs(4), "{elapsed:?}");
+    assert!(sentinel_alive, "unrelated sentinel must survive");
+    assert!(
+        !descendant_alive,
+        "closed-pipe owned descendant survived: {pid}"
+    );
+    assert_eq!(protocol["cleanup"], "completed");
+    assert_eq!(protocol["child_exit"], 0);
+    assert_eq!(protocol["exit"], 0);
+    let _ = std::fs::remove_dir_all(&root);
 }

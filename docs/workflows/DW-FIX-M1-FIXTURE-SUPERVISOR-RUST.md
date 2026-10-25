@@ -12,6 +12,11 @@ Volt Typhoon behavioral lenses as reference context only.
 
 ## Outcome
 
+The 2026-10-25 bounded correction below supersedes the original cleanup,
+exit-normalization and service-capture claims. The original seam and its
+evidence remain historical; neither the production-runtime FIX-cycle count
+nor this tooling outcome's review history is reset.
+
 One opt-in Rust development executable, `dw-fixture-supervisor`, now owns
 fixture action supervision and the fixed local Docker/PostgreSQL service
 qualification. It closes the three reviewed CodeRabbit defects:
@@ -30,7 +35,7 @@ qualification. It closes the three reviewed CodeRabbit defects:
    termination goes through the wrapper's `start_kill`, and collection is
    bounded instead of waiting for pipe holders.
 
-## Changed files
+## Original seam changed files (historical)
 
 Created: `src/bin/dw-fixture-supervisor/{main,action,report,service}.rs`
 (137/355/272/353 physical lines; all under the 400 tooling reference),
@@ -59,13 +64,16 @@ pointer). All within the issued file map.
 - `action.rs` owns child/group lifetime and capture. The action clock starts at
   complete private-request admission before spawn (`timing_origin:
   request_admission`). Only the direct child's disposition is the action
-  result; wrapper `try_wait`/`wait` group state is never taken as whole-tree
-  completion proof (the pinned process-wrap 10.0.1 `JobObjectChild::try_wait`
-  returns the inner parent status). Reader threads drain both pipes into
-  16 MiB bounded transient memory, overflowing streams are drained-but-dropped,
-  and after the stopping event cleanup/collection is bounded to 2,000 ms;
-  an unfinished reader is abandoned (`UNKNOWN` cleanup), never joined forever.
-- `report.rs` redacts assembled streams (secrets split across read chunks are
+  result. The single wrapper remains owned while `inner_mut().try_wait()`
+  polls the native parent; the outer wrapper's `start_kill` settles the owned
+  boundary on every terminal parent event, including closed-pipe descendants.
+  Wrapper wait/completion-port messages are never empty-job evidence. One
+  2,000 ms deadline covers native termination acknowledgment, native parent
+  disposal and reader collection inside an unscoped worker; a pending worker
+  is never joined. Reader EOF and read errors remain distinct. Each stream
+  retains at most 16 MiB, and incomplete/overflowed streams are suppressed.
+- `report.rs` owns closed result/progress serialization and publication assembly,
+  and redacts assembled streams (secrets split across read chunks are
   still removed), suppresses any stream that overflowed or could not finish
   with a closed omission reason, refuses report collisions before launch, and
   makes a report-write failure non-success.
@@ -74,7 +82,8 @@ pointer). All within the issued file map.
   helper selected by the absolute `DW_TEST_FIXTURE_SUPERVISOR` path (no PATH
   fallback, no on-demand build, no Python supervision fallback — the old
   `stop_action_tree`/`wait_supervised`/`wait_with_progress` are deleted) and
-  validates the protocol line against the published metadata. Legacy no-ceiling
+  validates status, supervised exit, child exit, capture, cleanup and omissions
+  against the published metadata, including their types and result consistency. Legacy no-ceiling
   calls receive the finite 3,600,000 ms development-tool policy ceiling
   (selected policy, not measured fit). Both bootstrap and qualifier delegate
   the Docker inspect/port/version qualification to `service-check`; their
@@ -85,7 +94,7 @@ pointer). All within the issued file map.
   pinned dependency. This tooling does not replace ADR-015, adds no kill-on-
   close claim, and does not supervise the supervisor itself.
 
-## RED/GREEN evidence (captured against the unchanged mechanism first)
+## Original seam RED/GREEN evidence (historical mechanism)
 
 - Exited parent with a six-second pipe-holding descendant, 0.5 s ceiling:
   old `Fixture.run` returned after **6.125 s** (`AssertionError: 6.125 not
@@ -99,7 +108,7 @@ pointer). All within the issued file map.
   `action_failed` exit 1 (`AssertionError: 1 != 124`); the defensive mapping
   now reports `harness_timeout`/124.
 
-## Verification actually run (Windows 10 x86_64, Rust 1.94.1 MSVC)
+## Original seam verification (historical, superseded mechanism)
 
 - Helper unit tests 16/16 and integration tests 13/13 (real OS processes;
   success, child failure, child exit 124, live-parent timeout, exited parent
@@ -148,9 +157,9 @@ linted, executed and measured under the retained 90%/80% floors; the pinned
 dependency checks and audit read the updated lockfile. No required check
 identity changed; no Windows service-container job was added.
 
-## Review, tracking and remaining gates
+## Original seam review and tracking (historical)
 
-One distinct adversarial review of the complete candidate diff returned READY
+The original distinct adversarial review of the complete candidate diff returned READY
 for this packet's scope with five non-blocking findings; all were addressed or
 recorded here: progress-emission coverage was added (unit), the service probes
 were aligned inside the bridge's 60 s bound (25 s each), the candidate tree was
@@ -172,7 +181,7 @@ helper path from the platform's own temporary directory. No production code
 changed; the same 17 controller tests pass locally and the correction is
 re-verified by the new exact-head CI run.
 
-Author self-review under QUALITY_BAR section 7: Q1 ownership PASS (four
+Original author self-review under QUALITY_BAR section 7 (cleanup/failure claims superseded below): Q1 ownership PASS (four
 single-responsibility modules; the bridge keeps provisioning only); Q2
 dependencies PASS (the helper imports no crate owners; dependency direction 0
 violations); Q3 simplicity PASS (no runner framework; injection limited to two
@@ -200,3 +209,126 @@ from the exact-candidate CI, including the setsid-escape case), any live
 provider/target contact, issue or thread closure, merge, acceptance or seal.
 The four `5d769d2` Windows PASS results keep their original provenance under
 the superseded Python supervision.
+
+
+## Bounded correction, 2026-10-25
+
+Authority: owner-issued PR116 bounded correction, Amendment A, base
+`60e89d1c0f31c6c902b20076c1a769ce68124c74`. This corrects the current tooling
+outcome; the two historical production-runtime FIX cycles remain unchanged.
+The instruction-conflict STOP preserved clean source and `base-build.log`;
+Amendment A replaced the unsafe accessor instruction with the verified safe
+single-wrapper path. No unsafe, dependency, manifest, main, CI, ACL, SQL or
+production runtime change is made.
+
+### Corrected mechanism and evidence basis
+
+`run-action` and both fixed service probes call `action::capture_process`.
+The service's duplicate spawn/read/join/kill/wait implementation is removed.
+Its 25-second per-probe policy and the bridge's 60-second bound are unchanged;
+private transient capture never publishes Docker inspect content. Service
+probes emit no action progress and refuse every non-completed result.
+
+`cleanup=completed` means a successful native owned-boundary termination
+acknowledgment (or Unix ESRCH specifically establishing an absent owned group),
+disposed native parent, and finished capture readers within the shared 2,000 ms
+deadline. A detached cleanup worker owns blocking termination/drop and is
+observed through a deadline-bounded channel. Missing/failed evidence is
+`cleanup=unknown`; EOF alone is insufficient. This is neither a native empty-job
+query nor universal descendant reaping, hard-death or adversarial-escape containment.
+Independent recorded-PID assertions still require actual descendant termination.
+
+Rust normalizes completed results to exit 0 only with child exit 0, complete
+capture and qualified completed cleanup. Supervision failure after child exit 0
+is `action_failed`/1 while preserving `child_exit=0`. Actual nonzero child exits
+are retained; child exit 124 stays action failure. An original harness timeout
+stays `harness_timeout`/124 even with unknown cleanup. Helper transport exit 0
+still means successful result publication; `Fixture.run` returns the supervised
+exit. Both protocol and metadata must satisfy the bridge contract.
+
+### Candidate-bound RED to GREEN
+
+The retained unchanged-base build was reused. New assertions failed against
+that mechanism before implementation (`correction-1/red-*.log`):
+
+- Closed-pipe descendant: parent exit 0 left the recorded owned PID alive.
+  GREEN requires return below four seconds with a 1,000 ms action budget,
+  completed cleanup, terminated six-second descendant and surviving sentinel.
+  Pipe-holding and live-parent timeout assertions also remain.
+- Actual `Fixture.run` overflow: 17 MiB, child exit 0, `action_failed` and
+  incomplete capture nevertheless returned 0. GREEN returns nonzero, preserves
+  child exit 0 and suppresses stdout. Real one-shot bootstrap and qualifier
+  consumers observe failure; qualifier retains three `NOT_RUN` actions.
+- Simulated termination failure incorrectly reported completed cleanup; reader
+  error incorrectly became finished capture. GREEN leaves cleanup unknown and
+  non-success, suppresses failed reads, and exercises the actual pending cleanup
+  worker within the settlement deadline with both original success and timeout.
+- Actual service capture waited 6.252 seconds for a six-second pipe holder and
+  accepted overflow. GREEN returns below four seconds, independently checks the
+  recorded descendant's termination, and refuses overflow/nonzero probes.
+
+An ordinary successful child remains a control. Exit-124 distinction, cross-write
+redaction, collision-before-launch, report write failure, nullable-port refusal,
+original scenario inventory and first-failure/no-replay behavior are retained.
+
+### Windows correction checks
+
+Environment: Windows AMD64/MSVC, Rust 1.94.1, Python 3.12.10,
+cargo-llvm-cov 0.9.1, owned PostgreSQL 17.11 on `dwpg-r3` requalified through
+the corrected service-check. The report root is
+`D:/DuskWeave-build/rust-1.94.1/reports/fixture-supervisor/closure-20261025a`;
+`base-build.log` is retained and all new evidence is under `correction-1`.
+
+- Dedicated helper target: unit 20/20, integration 14/14, serial. The Unix-only
+  escape assertion awaits exact-head Linux CI; no Windows substitution is claimed.
+- Python suites: bootstrap_progress 15/15, native_helpers 35/35,
+  lifecycle_qualification 18/18, terrain_live 39/39, terrain_live_contract 5/5.
+- Focused instrumented helper: action 94.57%, report 99.21%, service 97.81%,
+  main 100%; all exceed the 80% per-file floor. Profile cleanup was confined to
+  `coverage/fixture-supervisor`; no normal/lifecycle cache was cleaned and
+  `--no-report` was not combined with `--no-clean`. This is focused helper
+  coverage, not the full production coverage gate or four-action matrix.
+- Exact ordinary T8 selector ran once through its real staged bootstrap and
+  nested worker: 1/1 PASS (56.14 s test time). T8 provisioned its own fresh
+  predecessor database/restricted roles and exercised forward migration and
+  repeatable refresh. No outer fixture or historical credential recovery.
+- fmt, feature-enabled all-target Clippy, structure/hygiene, dependency direction,
+  links, whitespace and pinned rust-code-analysis-cli 0.0.25 ratchet PASS.
+  Ten historical complexity debts remain unchanged; no new over-cap function.
+
+Physical LOC before/after: action 384/399, report 272/369, service 354/187,
+main 137/137; integration 482/366; bootstrap 364/393; bridge-progress tests
+170/216; qualifier tests 292/321. Moved invocation/guard support is 162 lines;
+private service tests are 178. Structure warning membership is exactly the same
+35 files as the base, with no new or removed member. The frozen lifecycle ledger
+remains 1221 lines. Retained historical debt is not claimed as repaid.
+
+Publication owns result/progress/metadata serialization; process ownership stays
+in action and fixed service admission stays in service. No circular owner import
+or second runner was introduced. The only two new files are the permitted test
+moves. The cumulative source-path diff exceeds the advisory runtime reference;
+the changes remain cohesive across process custody, closed result publication
+and their real consumers, with no exception or threshold adjustment.
+
+### Review, disposition and remaining qualification
+
+Author section-7 delta review: Q1/Q2 ownership/dependencies are explicit above;
+Q3 removes the duplicate supervisor; Q4 Rust normalization and independent bridge
+validation preserve one result contract; Q5 the three issued findings have RED
+and GREEN assertions; Q6 run-action -> capture -> report -> Fixture.run ->
+one-shot/qualifier/T8 and service-check -> the same capture path are exercised;
+Q7 failure/UNKNOWN/124/NOT_RUN behavior is tested; Q8 closed omissions, private
+capture, redaction and the stated cleanup-evidence limits preserve truthful claims.
+No changed runtime island remains. No new campaign capability is delivered.
+
+Current committed head, exact-head Linux CI and the distinct adversarial delta
+review are read from PR #116 before returning READY_FOR_FINAL_QUALIFICATION.
+That disposition never means READY_TO_MERGE: a fresh full four-action Windows
+matrix on this replaced mechanism and final qualification remain mandatory and
+were not started here. Old `5d769d2` matrix results retain their original Python
+supervision provenance. No provider/target/resolver contact, merge, issue/thread
+closure, review-history reset, acceptance or M1 seal is authorized or recorded.
+
+Tracking UPDATE is confined to this existing ledger and ENGINEERING_STATE's
+active-correction/next-qualification pointers. The frozen lifecycle ledger,
+roadmap and all other authority remain untouched.

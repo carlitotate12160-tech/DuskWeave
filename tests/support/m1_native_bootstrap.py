@@ -124,18 +124,47 @@ def validate_publication(protocol_line, report, label):
         result = json.loads(protocol_line.strip().splitlines()[-1])
     except (ValueError, IndexError):
         raise RuntimeError("native_supervisor_protocol_refused") from None
+    if not isinstance(result, dict):
+        raise RuntimeError("native_supervisor_protocol_refused")
     if result.get("ok") is False and result.get("category") in CLOSED_CATEGORIES:
         raise RuntimeError(result["category"])
-    if (result.get("ok") is not True or result.get("status") not in RESULT_STATUSES
-            or not isinstance(result.get("exit"), int)):
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        raise RuntimeError("native_supervisor_protocol_refused")
+    if result.get("status") not in RESULT_STATUSES or type(result.get("exit")) is not int:
         raise RuntimeError("native_supervisor_protocol_refused")
     try:
         metadata = json.loads((report / f"{label}.result.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raise RuntimeError("native_supervisor_result_inconsistent") from None
-    if metadata.get("status") != result["status"] or metadata.get("exit") != result["exit"]:
+    fields = ("status", "exit", "child_exit", "capture", "cleanup", "omissions", "timing_origin")
+    if not isinstance(metadata, dict) or any(metadata.get(k) != result.get(k) for k in fields):
         raise RuntimeError("native_supervisor_result_inconsistent")
+    validate_supervised_result(result)
+    validate_supervised_result(metadata)
     return result
+
+
+def validate_supervised_result(result):
+    """Reject contradictory success and preserve supervised failure end to end."""
+    status, code, child = (result.get(k) for k in ("status", "exit", "child_exit"))
+    capture, cleanup = result.get("capture"), result.get("cleanup")
+    if (status not in RESULT_STATUSES or type(code) is not int
+            or (child is not None and type(child) is not int)
+            or capture not in ("complete", "incomplete") or cleanup not in ("completed", "unknown")
+            or result.get("timing_origin") != "request_admission"):
+        raise RuntimeError("native_supervisor_protocol_refused")
+    omissions = result.get("omissions")
+    if (not isinstance(omissions, list) or any(type(x) is not str or x not in ("stdout", "stderr") for x in omissions)
+            or len(set(omissions)) != len(omissions) or (capture == "complete") != (omissions == [])):
+        raise RuntimeError("native_supervisor_protocol_refused")
+    success = child == 0 and capture == "complete" and cleanup == "completed"
+    if status == "completed" and (code != 0 or not success):
+        raise RuntimeError("native_supervisor_result_inconsistent")
+    if status == "action_failed" and (code == 0 or (child not in (None, 0) and code != child)
+                                      or (child in (None, 0) and code != 1)):
+        raise RuntimeError("native_supervisor_result_inconsistent")
+    if status == "harness_timeout" and code != 124:
+        raise RuntimeError("native_supervisor_result_inconsistent")
 
 
 class Fixture:

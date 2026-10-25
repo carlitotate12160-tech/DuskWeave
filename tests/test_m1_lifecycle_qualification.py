@@ -17,6 +17,35 @@ import m1_native_bootstrap as bootstrap
 import m1_lifecycle_qualification as qualification
 
 
+class RealSupervisedFailure(unittest.TestCase):
+    def test_overflow_stops_existing_consumer_and_retains_not_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = Path(tmp) / "report"
+            fixture = object.__new__(bootstrap.Fixture)
+            fixture.env, fixture.secrets = dict(os.environ), []
+            fixture.sql = mock.Mock(return_value="[]")
+            real_run = fixture.run
+            observed = []
+
+            def synthetic_action(label, args, root, max_duration_seconds):
+                observed.append(label)
+                return real_run(label, [sys.executable, "-c", "print('x' * (17 * 1024 * 1024))"],
+                                root, max_duration_seconds=10)
+
+            fixture.run = synthetic_action
+            with mock.patch.object(qualification, "preflight", return_value={"head": "synthetic"}), \
+                 mock.patch.object(bootstrap, "Fixture", return_value=fixture), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                code = qualification.qualify("dw_native_synthetic_overflow", report)
+            result = json.loads((report / "qualification.json").read_text())
+            self.assertNotEqual(code, 0)
+            self.assertEqual(len(observed), 1)
+            self.assertEqual([a["status"] for a in result["actions"]],
+                             ["action_failed", "NOT_RUN", "NOT_RUN", "NOT_RUN"])
+            self.assertEqual(result["status"], "NOT_READY")
+            fixture.sql.assert_called_once()
+
+
 class QualificationController(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
