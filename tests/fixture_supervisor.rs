@@ -7,8 +7,6 @@
 
 use serde_json::json;
 #[cfg(unix)]
-use std::path::Path;
-#[cfg(unix)]
 use std::process::Command;
 use std::time::{Duration, Instant};
 

@@ -297,7 +297,7 @@ the corrected service-check. The report root is
   Ten historical complexity debts remain unchanged; no new over-cap function.
 
 Physical LOC before/after: action 384/399, report 272/369, service 354/187,
-main 137/137; integration 482/366; bootstrap 364/393; bridge-progress tests
+main 137/137; integration 482/364; bootstrap 364/393; bridge-progress tests
 170/216; qualifier tests 292/321. Moved invocation/guard support is 162 lines;
 private service tests are 178. Structure warning membership is exactly the same
 35 files as the base, with no new or removed member. The frozen lifecycle ledger
@@ -321,8 +321,22 @@ Q7 failure/UNKNOWN/124/NOT_RUN behavior is tested; Q8 closed omissions, private
 capture, redaction and the stated cleanup-evidence limits preserve truthful claims.
 No changed runtime island remains. No new campaign capability is delivered.
 
-Current committed head, exact-head Linux CI and the distinct adversarial delta
-review are read from PR #116 before returning READY_FOR_FINAL_QUALIFICATION.
+One distinct independent section-7 delta review inspected committed `c46b3cc`
+against correction base `60e89d1`, including real callers and retained RED/GREEN
+evidence. It returned one VALID blocking finding R1: an obsolete Unix-only
+`Path` import remained in the integration file after its harness moved. Linux
+doc-check run `40156456763` independently failed Clippy on that exact import,
+before Linux runtime tests; the other seven component jobs passed. The review
+found no further surviving runtime defect. R1 is corrected by deleting only the
+unused import/attribute, without a lint allowance or behavior change; this is
+the one cohesive review correction, not another tooling/runtime FIX cycle.
+The review's cleanup, closed-pipe, supervised-exit and shared-service challenges
+and Q1-Q8 dispositions remain attached to the existing outcome. The corrected
+head receives narrow delta verification under the same review and fresh Linux CI.
+The first failed CI remains historical evidence, not a qualified Linux run.
+
+Current committed head, exact-head Linux CI and the review's final delta
+disposition are read from PR #116 before returning READY_FOR_FINAL_QUALIFICATION.
 That disposition never means READY_TO_MERGE: a fresh full four-action Windows
 matrix on this replaced mechanism and final qualification remain mandatory and
 were not started here. Old `5d769d2` matrix results retain their original Python
