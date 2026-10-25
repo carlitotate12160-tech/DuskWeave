@@ -132,9 +132,10 @@ impl Provider for DeepSeekProvider {
             if opened.is_err() {
                 cancelled.store(true, std::sync::atomic::Ordering::Release);
             }
-            let result = worker.join().map_err(|_| "provider_transport_unknown")?;
+            // Always collect the owned worker; a saved release error leads join failure.
+            let joined = worker.join();
             opened?;
-            result
+            joined.map_err(|_| "provider_transport_unknown")?
         })
     }
 }
@@ -496,9 +497,10 @@ impl AutonomousProvider {
             if opened.is_err() {
                 self.permit.stop();
             }
-            let received = worker.join().map_err(|_| "provider_transport_unknown")?;
+            // Always collect the owned worker; a saved release error leads join failure.
+            let joined = worker.join();
             opened?;
-            received
+            joined.map_err(|_| "provider_transport_unknown")?
         })
     }
     fn admit_received(
