@@ -51,6 +51,7 @@ if "%~2"=="--version" (
   exit /b 0
 )
 set "DEV_ENTRYPOINT_ARGUMENTS=%*"
+if defined DEV_ENTRYPOINT_STDERR echo synthetic-progress 1>&2
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0capture.ps1"
 exit /b %ERRORLEVEL%
 '@
@@ -97,6 +98,12 @@ try {
     Assert-True ($observed.target.EndsWith('normal')) 'ordinary target was not selected'
     Assert-True (-not $observed.coverage) 'ordinary command inherited coverage settings'
     Write-Output 'PASS child isolation, parent restoration, non-root cwd and ordinary target'
+
+    $redirected = $success.Replace("' build", "' build 2>&1 | Out-String | Write-Output")
+    $result = Finish-Case (Start-Case $redirected @{DEV_ENTRYPOINT_STDERR='1'})
+    Assert-True ($result.Code -eq 0 -and $result.Output.Contains('synthetic-progress')) 'native stderr was lost or treated as failure'
+    Assert-True (-not $result.Output.Contains('NativeCommandError')) 'native progress became a PowerShell error record'
+    Write-Output 'PASS native stderr forwarding without false errors'
 
     $untracked = "& '" + $escapedEntry + "' test -Target dev_untracked_probe; exit " + '$LASTEXITCODE'
     $result = Finish-Case (Start-Case $untracked)

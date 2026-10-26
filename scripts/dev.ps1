@@ -23,7 +23,7 @@ function Find-Executable([string]$Name) {
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     # Windows PowerShell 5.1 may represent native stderr as ErrorRecord objects.
     $ErrorActionPreference = 'Continue'
-    & $Program @Arguments
+    & $Program @Arguments 2>&1 | ForEach-Object { $_.ToString() }
     if ($LASTEXITCODE -ne 0) {
         $script:ExitCode = $LASTEXITCODE
         throw 'dev_command_failed'
