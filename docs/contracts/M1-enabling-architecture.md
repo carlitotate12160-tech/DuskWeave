@@ -375,7 +375,13 @@ failed/incomplete/truncated responses, error bodies and transport failures yield
 categories, never partial cognitive success. Raw response/error/chain-of-thought bytes
 stay transient inside the adapter admission boundary; only admitted safe proposal fields,
 usage/provenance and fixed error categories may leave. Size-bounded free text is not
-inherently safe. If safe admission cannot be established, reject without echo or retention.
+inherently safe. If safe admission cannot be established, reject without echo or retention. A rejected
+bounded envelope may retain a call-bound safe report in the existing call usage JSON:
+closed status/reason categories and optional bounded nonnegative reported counters,
+with reported/partial/unavailable usage availability. Missing counters are not zero;
+reported counts do not confirm accounting. Raw output, error text, private reasoning
+and arbitrary provider identifiers remain transient. Rejection stays a failure and
+usage_unknown; the report cannot grant repair, retry, refund or dispatch authority.
 Repair follows ADR-016 only: same question, exact pack and references plus static errors
 and optionally bounded independently admitted proposal fields labeled untrusted. It never
 resends arbitrary raw response or repairs authority/scope/provenance failure. Every

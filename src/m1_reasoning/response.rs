@@ -1,6 +1,9 @@
 //! Transient provider admission; only bounded safe fields escape.
 use super::bounded_json::JsonFailureKind;
-use super::inference::{Received, Usage};
+use super::inference::{
+    IncompleteReason, ProviderReport, Received, ResponseMetadata, ResponseStatus, Usage,
+    UsageAvailability,
+};
 use super::proposal::{self, ProposalBasis};
 use super::provider_diagnostic::{
     Classification, ErrorParam, ErrorType, Phase, ProviderDiagnostic,
@@ -100,6 +103,7 @@ pub fn admit_http(
     basis: &mut dyn ProposalBasis,
     d: &mut ProviderDiagnostic,
 ) -> Res<Received> {
+    d.report = None;
     d.response_bytes = raw.len();
     if raw.len() > 65536 {
         d.classification = Classification::ResponseLimit;
@@ -125,22 +129,61 @@ fn admit_json(
     d: &mut ProviderDiagnostic,
 ) -> Res<Received> {
     let v = parse_envelope(raw, d)?;
+    let report = report(&v, response_bytes, elapsed);
+    let usage = report.usage.clone();
+    d.report = Some(report);
     let text = output_text(&v, d)?;
     let admission = proposal::admit(text.as_bytes(), basis);
-    let usage = &v["usage"];
     d.phase = Phase::Completion;
     d.classification = Classification::Completed;
     Ok(Received {
         admission,
         accounting_confirmed: false,
+        usage,
+    })
+}
+fn counter(v: &serde_json::Value) -> Option<u64> {
+    v.as_u64().filter(|n| *n <= i64::MAX as u64)
+}
+fn response_status(v: &serde_json::Value) -> ResponseStatus {
+    if v["status"].is_null() {
+        return ResponseStatus::Missing;
+    }
+    match v["status"].as_str() {
+        Some("completed") => ResponseStatus::Completed,
+        Some("incomplete") => ResponseStatus::Incomplete,
+        Some("failed") => ResponseStatus::Failed,
+        Some("in_progress") => ResponseStatus::InProgress,
+        _ => ResponseStatus::Unrecognized,
+    }
+}
+fn report(v: &serde_json::Value, response_bytes: usize, elapsed: Duration) -> ProviderReport {
+    let input_tokens = counter(&v["usage"]["input_tokens"]);
+    let output_tokens = counter(&v["usage"]["output_tokens"]);
+    let reasoning_tokens = counter(&v["usage"]["output_tokens_details"]["reasoning_tokens"]);
+    let available = [input_tokens, output_tokens, reasoning_tokens]
+        .iter()
+        .filter(|n| n.is_some())
+        .count();
+    let usage_availability = match available {
+        3 => UsageAvailability::Reported,
+        0 => UsageAvailability::Unavailable,
+        _ => UsageAvailability::Partial,
+    };
+    let incomplete_reason =
+        (v["status"] == "incomplete").then(|| match v["incomplete_details"]["reason"].as_str() {
+            Some("max_output_tokens") => IncompleteReason::MaxOutputTokens,
+            Some("content_filter") => IncompleteReason::ContentFilter,
+            _ => IncompleteReason::Unknown,
+        });
+    ProviderReport {
         usage: Usage {
-            input_tokens: usage["input_tokens"].as_u64(),
-            output_tokens: usage["output_tokens"].as_u64(),
-            reasoning_tokens: usage["output_tokens_details"]["reasoning_tokens"].as_u64(),
+            input_tokens,
+            output_tokens,
+            reasoning_tokens,
             response_bytes,
-            wall_time_ms: elapsed.as_millis() as u64,
+            wall_time_ms: elapsed.as_millis().min(i64::MAX as u128) as u64,
             requested_model: "deepseek-flash",
-            // Only known safe metadata leaves the adapter; arbitrary model IDs do not.
             reported_model: v["model"]
                 .as_str()
                 .filter(|m| {
@@ -151,9 +194,13 @@ fn admit_json(
                 })
                 .map(str::to_owned),
         },
-    })
+        provider_response: ResponseMetadata {
+            status: response_status(v),
+            incomplete_reason,
+            usage_availability,
+        },
+    }
 }
-
 fn parse_envelope(raw: &[u8], d: &mut ProviderDiagnostic) -> Res<serde_json::Value> {
     d.phase = Phase::Json;
     d.classification = Classification::InvalidJson;

@@ -25,7 +25,13 @@ fn call(
         return Err((recorded, code));
     }
     let result = broker.release_into(scope, reservation, call_id, bound, provider, basis);
-    account(broker, scope, call_id, result)
+    account(
+        broker,
+        scope,
+        call_id,
+        result,
+        provider.terminal_report(&bound.digest),
+    )
 }
 
 fn account(
@@ -33,6 +39,7 @@ fn account(
     scope: &Scope,
     call_id: Uuid,
     result: Result<Received, ReleaseFailure>,
+    report: Option<&super::inference::ProviderReport>,
 ) -> Result<Received, (bool, &'static str)> {
     match result {
         Ok(mut received) => {
@@ -52,7 +59,7 @@ fn account(
         }
         Err(ReleaseFailure::MayHaveSent(code)) => {
             broker
-                .uncertain(scope, call_id, code)
+                .uncertain_with_report(scope, call_id, code, report)
                 .map_err(|e| (true, e))?;
             Err((true, code))
         }

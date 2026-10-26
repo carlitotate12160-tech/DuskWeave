@@ -143,7 +143,14 @@ struct LoopbackProvider {
 }
 
 impl Provider for LoopbackProvider {
+    fn terminal_report(
+        &self,
+        binding_digest: &str,
+    ) -> Option<&crate::m1_reasoning::inference::ProviderReport> {
+        self.inner.terminal_report(binding_digest)
+    }
     fn prepare(&mut self, call: &BoundCall, deadline: Instant) -> Res<()> {
+        self.inner = DeepSeekProvider::default();
         let left = deadline
             .checked_duration_since(Instant::now())
             .ok_or("inference_deadline")?;
@@ -151,9 +158,7 @@ impl Provider for LoopbackProvider {
             .map_err(|_| "inference_transport_unavailable")?;
         h.url(&self.url)
             .map_err(|_| "inference_transport_unavailable")?;
-        self.inner = DeepSeekProvider {
-            prepared: Some((h, "synthetic-fixture-token".into(), call.digest.clone())),
-        };
+        self.inner.prepared = Some((h, "synthetic-fixture-token".into(), call.digest.clone()));
         Ok(())
     }
     fn call(

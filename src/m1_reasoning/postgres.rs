@@ -149,6 +149,22 @@ impl Broker for PgBroker {
     fn uncertain(&mut self, _: &Scope, id: Uuid, _: &'static str) -> Res<()> {
         self.state(id, "usage_unknown", None)
     }
+    fn uncertain_with_report(
+        &mut self,
+        _: &Scope,
+        id: Uuid,
+        _: &'static str,
+        report: Option<&super::inference::ProviderReport>,
+    ) -> Res<()> {
+        let u = serde_json::to_value(report).map_err(|_| "inference_usage_encode")?;
+        self.client
+            .query_one(
+                "SELECT execution.inference_call_state($1,$2,$3)",
+                &[&id, &"usage_unknown", &u],
+            )
+            .map_err(|_| "inference_accounting_unknown")?;
+        Ok(())
+    }
     fn close_unused_repair(&mut self, _: &Scope, _: &Reservation) -> Res<()> {
         Ok(())
     }

@@ -70,6 +70,7 @@ pub struct ProviderDiagnostic {
     pub error_type: Option<ErrorType>,
     pub error_param: Option<ErrorParam>,
     pub json_error: Option<JsonFailure>,
+    pub report: Option<super::inference::ProviderReport>,
 }
 impl ProviderDiagnostic {
     pub fn new(binding_digest: String) -> Self {

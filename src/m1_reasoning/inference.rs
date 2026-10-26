@@ -23,7 +23,7 @@ pub struct Reservation {
     pub shared_deadline: Instant,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Usage {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
@@ -32,6 +32,43 @@ pub struct Usage {
     pub wall_time_ms: u64,
     pub requested_model: &'static str,
     pub reported_model: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseStatus {
+    Completed,
+    Incomplete,
+    Failed,
+    InProgress,
+    Unrecognized,
+    Missing,
+}
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IncompleteReason {
+    MaxOutputTokens,
+    ContentFilter,
+    Unknown,
+}
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageAvailability {
+    Reported,
+    Partial,
+    Unavailable,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct ResponseMetadata {
+    pub status: ResponseStatus,
+    pub incomplete_reason: Option<IncompleteReason>,
+    pub usage_availability: UsageAvailability,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct ProviderReport {
+    #[serde(flatten)]
+    pub usage: Usage,
+    pub provider_response: ResponseMetadata,
 }
 
 pub struct Received {
@@ -46,6 +83,9 @@ pub enum ReleaseFailure {
 }
 
 pub trait Provider {
+    fn terminal_report(&self, _binding_digest: &str) -> Option<&ProviderReport> {
+        None
+    }
     fn prepare(&mut self, call: &BoundCall, deadline: Instant) -> Res<()>;
     // Concrete adapter keeps raw response/reasoning/error text transient and
     // invokes Cognition's admission inside that boundary before returning.
@@ -75,6 +115,15 @@ pub trait Broker {
     fn never_released(&mut self, scope: &Scope, call_id: Uuid, category: &'static str) -> Res<()>;
     fn completed(&mut self, scope: &Scope, call_id: Uuid, usage: &Usage) -> Res<()>;
     fn uncertain(&mut self, scope: &Scope, call_id: Uuid, category: &'static str) -> Res<()>;
+    fn uncertain_with_report(
+        &mut self,
+        scope: &Scope,
+        call_id: Uuid,
+        category: &'static str,
+        _report: Option<&ProviderReport>,
+    ) -> Res<()> {
+        self.uncertain(scope, call_id, category)
+    }
     fn close_unused_repair(&mut self, scope: &Scope, reservation: &Reservation) -> Res<()>;
     fn provenance(&mut self, scope: &Scope) -> Res<serde_json::Value>;
     fn finish(&mut self, scope: &Scope) -> Res<()>;
