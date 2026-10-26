@@ -107,6 +107,120 @@ fn two_seeds(raw: &mut Value) {
     raw["m1_permission"]["contact_rules"] = json!([rule, second]);
 }
 
+fn three_seeds(context_bytes: usize) -> impl Fn(&mut Value) {
+    move |raw| {
+        let rule = raw["m1_permission"]["contact_rules"][0].clone();
+        let assets = [
+            Uuid::from_u128(0x21),
+            Uuid::from_u128(0x101),
+            Uuid::from_u128(0x102),
+        ];
+        raw["included_assets"] = json!(assets);
+        raw["m1_permission"]["contact_rules"] = json!(
+            assets
+                .iter()
+                .enumerate()
+                .map(|(i, id)| {
+                    let mut rule = rule.clone();
+                    rule["asset_ref"] = json!(id);
+                    rule["priority"] = json!(i + 1);
+                    rule["rule"] = json!({"exact":format!("seed{i}.example.invalid")});
+                    rule
+                })
+                .collect::<Vec<_>>()
+        );
+        raw["m1_inference_permission"]["operation_limits"]["context_bytes"] = json!(context_bytes);
+    }
+}
+
+fn three_seed_registration(slot: u128, successor: bool, context_bytes: usize) -> Value {
+    if successor {
+        lifecycle::registered_with(slot, "fixture-responses-v1", three_seeds(context_bytes))
+    } else {
+        run_support::registered_with(slot, three_seeds(context_bytes))
+    }
+}
+
+fn reduced_setup(
+    slot: u128,
+    successor: bool,
+    context_bytes: usize,
+) -> (Value, RunRecord, run_support::LeaseCustodian) {
+    if successor {
+        run_support::refresh();
+    } else {
+        run_support::refresh_legacy();
+    }
+    let q = three_seed_registration(slot, successor, context_bytes);
+    let rec = run_support::start_only(&q);
+    let lease = run_support::LeaseCustodian::start(&rec, run_support::broker_store());
+    (q, rec, lease)
+}
+
+// Construct the reduced ContextPack artifact through the real producer: the
+// context's candidate omission drops the middle seed while its asset_UUID
+// identity is preserved, so pack-local asset_1 still names original
+// seed_names[2]. No byte-pressure machinery is built here; the reduced
+// artifact is bound and recorded through the existing inference path.
+fn prepare_reduced_pack(rec: &RunRecord) -> lifecycle::Prepared {
+    use sha2::{Digest, Sha256};
+    let mut run = run_support::broker_store();
+    let r = rec.request.run_id;
+    run.renew(r).unwrap();
+    run.start_phase(r, RunPhase::DecisionOne).unwrap();
+    run.claim_phase(r, RunPhase::DecisionOne, &run_support::release())
+        .unwrap();
+    let mut qv = serde_json::to_value(&rec.request.context).unwrap();
+    qv["candidates"].as_array_mut().unwrap().remove(1);
+    let q: duskweave::m1_context_input::ContextRequest = serde_json::from_value(qv).unwrap();
+    let d = rec.decision_one;
+    let hash = Sha256::digest(serde_json::to_vec(&q).unwrap())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let scope = inference::Scope {
+        engagement: q.mission.engagement_id.0,
+        campaign: q.mission.campaign_id.0,
+        decision: d,
+        mission_revision: 1,
+        permission: q.mission.permission_id,
+    };
+    native::client("DW_INFERENCE_BROKER_DATABASE_URL")
+        .execute(
+            "SELECT execution.bind_inference_input($1,$2,$3,$4)",
+            &[&scope.engagement, &scope.campaign, &d, &hash],
+        )
+        .unwrap();
+    native::client("DW_INFERENCE_BROKER_DATABASE_URL")
+        .query_one(
+            "SELECT execution.inference_window_ms($1,$2,$3)",
+            &[&scope.engagement, &scope.campaign, &scope.decision],
+        )
+        .unwrap();
+    let a = duskweave::m1_autonomous_context::AutonomousContext {
+        binding: duskweave::m1_autonomous_context::RunContextBinding {
+            engagement_id: q.mission.engagement_id,
+            campaign_id: q.mission.campaign_id,
+            run_profile: rec.request.run_profile.clone(),
+            execution_mode: rec.request.execution_mode.clone(),
+            inference_profile: rec.request.inference_profile.clone(),
+            release_sha256: rec.release_sha256.clone(),
+            qualification_ref: rec.qualification_ref,
+        },
+        predecessor: None,
+    };
+    let pack = duskweave::m1_context::prepare_autonomous(
+        &mut duskweave::postgres_mission::PgContextReader::new(native::client(
+            "DW_INFERENCE_BROKER_DATABASE_URL",
+        )),
+        &q,
+        duskweave::mission::OperationId(d),
+        &a,
+    )
+    .unwrap();
+    lifecycle::Prepared { scope, pack, hash }
+}
+
 fn setup_run(slot: u128, successor: bool) -> (Value, RunRecord, run_support::LeaseCustodian) {
     if successor {
         run_support::refresh();
@@ -358,4 +472,167 @@ fn terminal_dispositions_and_pre_closure_or_withdrawn_guards_hold_with_contextua
         .unwrap();
     assert!(store.reserve_effect(r, 0).is_err());
     lease.finish().unwrap();
+}
+
+#[test]
+fn reduced_pack_asset_ordinal_resolves_through_entity_to_original_seed_across_0017_and_0021() {
+    let _guard = native::db();
+    for (mode_idx, successor) in [false, true].into_iter().enumerate() {
+        let slot = 0xd500 + (mode_idx * 0x40) as u128;
+        let (_q, rec, lease) = reduced_setup(slot, successor, 8192);
+        let prepared = prepare_reduced_pack(&rec);
+        let pack: Value = serde_json::from_str(prepared.pack.utf8()).unwrap();
+        let refs = pack["references"].as_array().unwrap();
+        let entity = |id: &str| {
+            refs.iter()
+                .find(|r| r["id"] == id)
+                .and_then(|r| r["entity"].as_str())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        assert_eq!(entity("asset_0"), Uuid::from_u128(0x21).to_string());
+        assert_eq!(entity("asset_1"), Uuid::from_u128(0x102).to_string());
+        assert!(refs.iter().all(|r| r["id"] != "asset_2"));
+        assert_eq!(pack["candidates"].as_array().unwrap().len(), 2);
+        assert_eq!(rec.request.seed_names.len(), 3);
+
+        let mut provider = SelectorProvider {
+            refs: vec!["mission".into(), "asset_1".into()],
+            intent_refs: vec!["mission".into(), "asset_1".into()],
+            category: "observe_more",
+            manifest: Some("dns_udp"),
+            view_owner: None,
+        };
+        let receipt = lifecycle::infer(&rec, &prepared, &mut provider);
+        assert_eq!(
+            receipt.proposal_disposition, "validated_proposal",
+            "successor={successor}"
+        );
+        assert_eq!(receipt.history, "completed", "successor={successor}");
+
+        let mut store = run_support::broker_store();
+        let r = rec.request.run_id;
+        assert_eq!(
+            store.first_step(&rec).unwrap(),
+            duskweave::m1_run::NextStep::Dns { seed_index: 1 },
+            "successor={successor}: Rust selects pack-local asset_1"
+        );
+        store.complete_phase(r, RunPhase::DecisionOne).unwrap();
+        store.start_phase(r, RunPhase::Acquisition).unwrap();
+        store
+            .claim_phase(r, RunPhase::Acquisition, &run_support::release())
+            .unwrap();
+
+        // A proposal naming two distinct assets never reserves an effect.
+        let mut admin = native::admin();
+        admin
+            .execute(
+                "UPDATE cognition.reasoning_decisions SET payload=jsonb_set(payload,'{proposal,next_intent,references}','[\"asset_0\",\"asset_1\"]'::jsonb) WHERE d=$1",
+                &[&rec.decision_one],
+            )
+            .unwrap();
+        let mut broker = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
+        for seed in [-1i32, 0, 1, 2] {
+            let mut tx = broker.transaction().unwrap();
+            assert!(
+                tx.query_one("SELECT execution.reserve_fixture_dns($1,$2)", &[&r, &seed])
+                    .is_err(),
+                "successor={successor}: two-asset proposal seed {seed}"
+            );
+            tx.rollback().unwrap();
+        }
+        admin
+            .execute(
+                "UPDATE cognition.reasoning_decisions SET payload=jsonb_set(payload,'{proposal,next_intent,references}','[\"mission\",\"asset_1\"]'::jsonb) WHERE d=$1",
+                &[&rec.decision_one],
+            )
+            .unwrap();
+        let attempts: i64 = admin
+            .query_one(
+                "SELECT count(*) FROM execution.fixture_dns_attempts WHERE run_id=$1",
+                &[&r],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(attempts, 0, "successor={successor}: invalid cases");
+
+        // Pack-local asset_1 (entity of original seed 2) reserves exactly once.
+        assert!(
+            store.reserve_effect(r, 0).is_err(),
+            "successor={successor}: asset_0 substitution"
+        );
+        assert!(
+            store.reserve_effect(r, 2).is_err(),
+            "successor={successor}: unissued asset_2 substitution"
+        );
+        let issued = store
+            .reserve_effect(r, 1)
+            .unwrap_or_else(|e| panic!("successor={successor}: pack-local asset_1: {e:?}"));
+        assert_eq!(
+            issued.subject_name, rec.request.seed_names[2].name,
+            "successor={successor}: DNS subject belongs to original seed 2"
+        );
+        assert_eq!(
+            issued.asset_ref,
+            Some(rec.request.seed_names[2].asset_ref),
+            "successor={successor}"
+        );
+        assert_ne!(
+            issued.asset_ref,
+            Some(rec.request.seed_names[1].asset_ref),
+            "successor={successor}: not seed 1"
+        );
+        let attempt_seed: i32 = admin
+            .query_one(
+                "SELECT seed_index FROM execution.fixture_dns_attempts WHERE run_id=$1",
+                &[&r],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(
+            attempt_seed, 2,
+            "successor={successor}: stored seed_index is the original selected seed"
+        );
+        assert!(
+            store.reserve_effect(r, 1).is_err(),
+            "successor={successor}: repeat reservation"
+        );
+        let attempts: i64 = admin
+            .query_one(
+                "SELECT count(*) FROM execution.fixture_dns_attempts WHERE run_id=$1",
+                &[&r],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(attempts, 1, "successor={successor}");
+        let results: i64 = admin
+            .query_one(
+                "SELECT count(*) FROM execution.fixture_dns_results WHERE run_id=$1",
+                &[&r],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(results, 0, "successor={successor}");
+
+        // Proposal content remains unchanged in durable inspection.
+        assert_eq!(
+            store.first_proposal(&rec).unwrap().next_intent.references,
+            ["mission", "asset_1"],
+            "successor={successor}"
+        );
+        let history_refs: Value = native::client("DW_TRAJECTORY_DATABASE_URL")
+            .query_one(
+                "SELECT contract#>'{proposal,next_intent,references}' FROM trajectory.reasoning_history WHERE operation_id=$1 AND status='accepted'",
+                &[&rec.decision_one],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(
+            history_refs,
+            json!(["mission", "asset_1"]),
+            "successor={successor}"
+        );
+        lease.finish().unwrap();
+    }
+    run_support::refresh();
 }

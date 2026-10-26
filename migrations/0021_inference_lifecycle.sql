@@ -1444,7 +1444,7 @@ BEGIN
  WHERE reference->>'id'='asset_'||seed::text AND reference->>'owner'='operator' AND reference->>'source'='admitted_operator_seed';
  SELECT v,i::integer-1 INTO chosen,selected FROM jsonb_array_elements(x.request->'seed_names') WITH ORDINALITY names(v,i)
  WHERE v->>'asset_ref'=asset::text;
- IF seed<0 OR chosen IS NULL OR selected IS DISTINCT FROM seed
+ IF seed<0 OR chosen IS NULL
  OR proposal#>>'{next_intent,category}' IS DISTINCT FROM 'observe_more'
  OR proposal#>>'{next_intent,manifest_reference}' IS DISTINCT FROM 'dns_udp'
  OR jsonb_typeof(proposal->'references') IS DISTINCT FROM 'array'
