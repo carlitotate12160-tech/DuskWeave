@@ -58,7 +58,7 @@ fn proposal_for(pack: &Value) -> Result<Value, &'static str> {
             .ok_or("unsupported_premise")?;
         (
             json!([seed]),
-            json!({"category":"observe_more","references":[seed],"manifest_reference":"dns_udp","view_request":null}),
+            json!({"category":"observe_more","references":["mission",seed],"manifest_reference":"dns_udp","view_request":null}),
             "The admitted seed needs a bounded fixture routing observation.",
         )
     };
@@ -301,7 +301,7 @@ mod tests {
     struct BlockedBasis(bool);
     impl ProposalBasis for BlockedBasis {
         fn reference_eligible(&self, r: &str) -> bool {
-            r == "asset_0"
+            matches!(r, "mission" | "asset_0")
         }
         fn manifest_eligible(&self, r: &str) -> bool {
             r == "dns_udp"
@@ -333,7 +333,7 @@ mod tests {
         let profile = crate::m1_inference_profile::lookup(&name).unwrap();
         let mut provider = ProtocolFixture::controlled(profile, permit, Some(reporter)).unwrap();
         let pack=json!({"version":"m1_context_pack_autonomous_v2","run_profile":"autonomous-dns-fixture-v2",
-            "execution_mode":"controlled_fixture","inference_profile":name,"references":[{"id":"asset_0"}],
+            "execution_mode":"controlled_fixture","inference_profile":name,"references":[{"id":"mission"},{"id":"asset_0"}],
             "candidates":[{"reference":"asset_0"}],"manifests":[{"reference":"dns_udp"}]}).to_string();
         let b = super::super::request::bind(pack.as_bytes(), None).unwrap();
         provider.prepare(&b, end).unwrap();

@@ -137,6 +137,17 @@ fn production_run_links_two_decisions_and_repeated_start_and_recovery_have_zero_
             .iter()
             .any(|r| r["source"] == "fixture_dns_acquisition")
     );
+    let first_proposal: Value = a
+        .query_one(
+            "SELECT payload->'proposal' FROM cognition.reasoning_decisions WHERE d=$1",
+            &[&Uuid::parse_str(receipt["decision_one"].as_str().unwrap()).unwrap()],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        first_proposal["next_intent"]["references"],
+        json!(["mission", "asset_0"])
+    );
     let proposal: Value = a
         .query_one(
             "SELECT payload->'proposal' FROM cognition.reasoning_decisions WHERE d=$1",

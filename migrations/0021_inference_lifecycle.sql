@@ -1444,9 +1444,24 @@ BEGIN
  WHERE reference->>'id'='asset_'||seed::text AND reference->>'owner'='operator' AND reference->>'source'='admitted_operator_seed';
  SELECT v,i::integer-1 INTO chosen,selected FROM jsonb_array_elements(x.request->'seed_names') WITH ORDINALITY names(v,i)
  WHERE v->>'asset_ref'=asset::text;
- IF seed<0 OR chosen IS NULL OR proposal#>>'{next_intent,category}' IS DISTINCT FROM 'observe_more'
+ IF seed<0 OR chosen IS NULL
+ OR proposal#>>'{next_intent,category}' IS DISTINCT FROM 'observe_more'
  OR proposal#>>'{next_intent,manifest_reference}' IS DISTINCT FROM 'dns_udp'
- OR proposal#>'{next_intent,references}' IS DISTINCT FROM jsonb_build_array('asset_'||seed::text)
+ OR jsonb_typeof(proposal->'references') IS DISTINCT FROM 'array'
+ OR jsonb_array_length(proposal->'references') NOT BETWEEN 1 AND 64
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(proposal->'references') ref_id
+  WHERE jsonb_typeof(ref_id) IS DISTINCT FROM 'string'
+  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(pack->'references') pk WHERE pk->'id'=ref_id))
+ OR jsonb_typeof(proposal#>'{next_intent,references}') IS DISTINCT FROM 'array'
+ OR jsonb_array_length(proposal#>'{next_intent,references}') NOT BETWEEN 1 AND 64
+ OR NOT (proposal#>'{next_intent,references}' @> jsonb_build_array('asset_'||seed::text))
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(proposal#>'{next_intent,references}') ref_id
+  WHERE jsonb_typeof(ref_id) IS DISTINCT FROM 'string'
+  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(pack->'references') pk WHERE pk->'id'=ref_id
+   AND ((pk->>'owner'='operator' AND pk->>'source'='admitted_operator_seed' AND pk->>'id'='asset_'||seed::text AND (pk->>'entity')::uuid=asset)
+    OR (pk->>'owner'='mission' AND pk->>'id'='mission')
+    OR (pk->>'owner'='campaign_trajectory' AND pk->>'id'='previous_decision')
+    OR (pk->>'owner'='cyber_terrain' AND pk->>'id' ~ '^terrain_(0|[1-9][0-9]*)$'))))
  OR coalesce(proposal#>'{next_intent,view_request}','null'::jsonb)<>'null'::jsonb
  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p->'contact_rules') rule WHERE rule->'asset_ref'=chosen->'asset_ref'
  AND (rule->'rule'->>'exact'=chosen->>'name' OR rule->'rule'->>'label_suffix'=chosen->>'name'

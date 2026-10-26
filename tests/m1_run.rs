@@ -44,6 +44,54 @@ fn genuine_non_effect_intents_remain_terminal_and_unknown_effects_are_capability
     );
 }
 #[test]
+fn contextual_and_duplicate_seed_references_select_one_canonical_target_and_reject_invalid_cases() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/m1-dns-selection-cases.json")).unwrap();
+    let count = fixture["candidate_count"].as_u64().unwrap() as usize;
+    let mut p = proposal("observe_more");
+    p.next_intent.manifest_reference = Some("dns_udp".into());
+    for case in fixture["valid"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let expected = case["expected_seed"].as_u64().unwrap() as usize;
+        p.next_intent.references = serde_json::from_value(case["references"].clone()).unwrap();
+        assert_eq!(
+            next_step(&p, count).unwrap_or_else(|e| panic!("{name}: {e:?}")),
+            NextStep::Dns {
+                seed_index: expected
+            },
+            "{name}"
+        );
+    }
+    p.next_intent.references = vec![
+        "previous_decision".into(),
+        "mission".into(),
+        "terrain_0".into(),
+        "asset_0".into(),
+    ];
+    assert_eq!(next_step(&p, 1).unwrap(), NextStep::Dns { seed_index: 0 });
+    p.next_intent.references = vec!["mission".into(), "asset_1".into()];
+    assert!(next_step(&p, 1).is_err());
+    for case in fixture["rejected"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        p.next_intent.references = serde_json::from_value(case["references"].clone()).unwrap();
+        match case["rust_outcome"].as_str().unwrap() {
+            "capability_gap" => assert_eq!(
+                next_step(&p, count).unwrap(),
+                NextStep::Terminal("capability_gap"),
+                "{name}"
+            ),
+            "ineligible" => assert!(
+                matches!(
+                    next_step(&p, count),
+                    Err(duskweave::Fail::State("effect_seed_ineligible"))
+                ),
+                "{name}"
+            ),
+            other => panic!("unexpected rust_outcome {other}"),
+        }
+    }
+}
+#[test]
 fn view_read_is_not_dns_and_mixed_effect_and_view_is_rejected() {
     let mut p = proposal("observe_more");
     p.next_intent.view_request =

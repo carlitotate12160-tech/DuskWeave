@@ -772,8 +772,12 @@ consumer, add exact-limit/+1 and escaping cases, and remeasure after any templat
 change. An example fitting does not authorize arbitrary request growth.
 
 Keep `m1_inference_proposal_v1` intent categories. In the autonomous profile,
-`observe_more` with exactly one eligible seed reference and a qualified
-`dns-routing-v2` manifest proposes one DNS observation. The live manifest binds UDP or
+`observe_more` with a qualified `dns-routing-v2` manifest and `next_intent.references`
+resolving to exactly one distinct eligible `asset_N` seed reference proposes one DNS
+observation; admitted non-asset context references (`mission`, `terrain_N`,
+`previous_decision`) may accompany that seed without becoming execution targets, while
+missing, multiple, malformed, out-of-range or unissued references authorize no effect.
+The live manifest binds UDP or
 TCP explicitly; fixture mode instead uses `dns-routing-fixture-v1`, with no egress; no worker-selected transport switch, retry or alias question.
 `observe_more` with `view_request` is an owner-view read and never DNS dispatch;
 combining an effect manifest and view request rejects as ambiguous. Free text
