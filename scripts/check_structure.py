@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_DIRS = {".git", "node_modules", "target", ".venv", "venv", "dist", "build"}
 CHECKED_EXTS = {
     ".md", ".rs", ".go", ".zig", ".c", ".h", ".cc", ".cpp", ".hpp",
-    ".py", ".sh", ".sql", ".toml", ".yml", ".yaml",
+    ".py", ".ps1", ".sh", ".sql", ".toml", ".yml", ".yaml",
 }
 SKIP_FILES = {
     "cargo.lock", "go.sum", "go.mod", "package-lock.json", "yarn.lock",

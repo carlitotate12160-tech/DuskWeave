@@ -33,12 +33,41 @@ governed by explicit mission consent:
 For operator guidance, environment setup, and role configurations, see the
 [M1 Native Inference Runbook](docs/RUN_M1_NATIVE_INFERENCE.md).
 
-PR #60 remains open for review. Native operations bind the complete validated
-input before reserving capacity; inspection/recovery never guesses a binding or
-replays a provider call. A verified late history conflict blocks dependent
-continuation despite an earlier closure. Fixture credentials come from the bounded
-bootstrap before test launch, with no fallback password or retained-login rotation.
-Current qualification and limitations are recorded with the corrected candidate.
+Native operations bind validated input before reserving capacity; inspection and
+recovery do not replay provider calls. Current qualification and limitations belong
+in [Engineering State](docs/ENGINEERING_STATE.md).
+
+## Windows developer commands
+
+Use Windows PowerShell 5.1 or later, Git, the pinned Rust toolchain, and Python
+from the 3.12 series in `.python-version` (matching CI). Scripts use the standard
+library; no Python package manager is required. Tests also need OpenSSL, selected
+from PATH or Git for Windows. Override tool selection with `-Python` / `-OpenSsl`.
+
+```powershell
+.\scripts\dev.ps1 build
+.\scripts\dev.ps1 check
+.\scripts\dev.ps1 test
+.\scripts\dev.ps1 test -Target m1_provider_terminal_metadata -Postgres
+.\scripts\dev.ps1 coverage -Target m1_provider_terminal_metadata -Postgres
+powershell -NoProfile -File tests/test_dev_entrypoint.ps1
+```
+
+`test` defaults to library/application unit tests; `-Target` selects one tracked
+integration target. `-Postgres` supports native-fixture targets and uses the existing
+bootstrap to inject fresh restricted DSNs into child processes. It requires Docker and owned `dwpg-r3`:
+only the pinned PostgreSQL 17.11 image on loopback 5432 is reused/started. A missing
+or incompatible container fails without replacement. `dev.ps1 postgres` checks it
+without creating a database. Existing containers, volumes and test evidence remain.
+
+The entrypoint never loads `.env`, changes global settings or installs tools.
+Inherited DuskWeave credentials and the DeepSeek key are excluded; caller environment
+and cwd are restored on success/failure. One same-session owner holds build/fixture
+resources. It uses the existing shared ordinary target, separate `coverage/dev`,
+and unique `reports/dev` paths; `-ArtifactRoot` overrides the artifact base.
+Coverage needs cargo-llvm-cov 0.9.1 and llvm-tools-preview. Reports cover the selected
+tests only; the full-suite 90%/80% gate remains in CI. These commands
+do not run providers, targets or qualify a production deployment.
 
 ## Documentation & Standards
 

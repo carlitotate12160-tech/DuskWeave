@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
       - name: CI classification and required-result negative controls
         run: python -m unittest discover -s tests -p test_ci_scope.py
       - name: Classify changed inputs (unknown or unavailable means full)
@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
 
       - name: Whitespace and conflict-marker check
         shell: bash
@@ -68,7 +68,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
 
       - name: Structure and hygiene check
         run: python scripts/check_structure.py
@@ -97,7 +97,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
 
       - name: Resolve diff base
         id: base
@@ -245,6 +245,11 @@ jobs:
       - name: Native TLS and local transport test prerequisites
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev pkg-config openssl python3
 
+      - name: Python tooling version
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: ".python-version"
+
       - name: Install pinned cargo-llvm-cov 0.9.1
         run: |
           set -e
@@ -347,7 +352,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
 
       - name: Tools and inputs (pinned cargo-deny, audit asset, advisory-db)
         shell: bash
@@ -434,6 +439,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: ".python-version"
       - name: Require all gated jobs to succeed
         env:
           NEEDS: ${{ toJSON(needs) }}

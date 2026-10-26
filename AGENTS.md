@@ -425,11 +425,12 @@ path, then run the current candidate's tests. `--no-run` output or an old
 report is not current verification, and no cache-reuse guarantee or speedup
 claim is valid without measurement.
 
-Set these variables only in the owning shell/process and its child test
-processes. Do not use `setx`, modify user/system environment, alter
-`.cargo/config.toml`, add scripts or wrappers, or change CI. Preserve
-existing target folders. Document effective paths and incomplete
-qualification honestly.
+Set these variables only in the owning process and its child test processes.
+The assigned developer entrypoint `scripts/dev.ps1` may configure and restore
+process-local settings under these ownership rules; see README.md. Do not use
+`setx`, modify user/system environment or local `.cargo/config.toml`, or add
+unassigned wrappers/CI changes. Preserve target folders and report effective
+paths and incomplete qualification honestly.
 
 ---
 
