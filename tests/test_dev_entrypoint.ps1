@@ -25,6 +25,8 @@ function Start-Case([string]$Body, [hashtable]$Variables = @{}) {
     $info.EnvironmentVariables['DW_DATABASE_URL'] = 'TEST_DSN_SENTINEL'
     $info.EnvironmentVariables['DEEPSEEK_API_KEY'] = 'TEST_PROVIDER_SENTINEL'
     $info.EnvironmentVariables['CARGO_TARGET_DIR'] = 'TEST_TARGET_SENTINEL'
+    $info.EnvironmentVariables['DW_TEST_PYTHON'] = Join-Path $temp 'python.cmd'
+    $info.EnvironmentVariables['DW_TEST_OPENSSL'] = Join-Path $temp 'openssl.cmd'
     $info.EnvironmentVariables['DEV_ENTRYPOINT_CAPTURE'] = Join-Path $temp 'capture.json'
     foreach ($name in $Variables.Keys) { $info.EnvironmentVariables[$name] = $Variables[$name] }
     $process = New-Object Diagnostics.Process
@@ -77,6 +79,10 @@ exit 0
 '@
 [IO.File]::WriteAllText((Join-Path $temp 'cargo.cmd'), $fakeCargo, $utf8)
 [IO.File]::WriteAllText((Join-Path $temp 'capture.ps1'), $capture, $utf8)
+# Command-routing tests own their tool fixtures; host installations are irrelevant.
+$pythonPin = [IO.File]::ReadAllText((Join-Path $repo '.python-version')).Trim()
+[IO.File]::WriteAllText((Join-Path $temp 'python.cmd'), "@echo off`r`necho Python $pythonPin.0", $utf8)
+[IO.File]::WriteAllText((Join-Path $temp 'openssl.cmd'), "@echo off`r`necho OpenSSL entrypoint-test", $utf8)
 $escapedEntry = $entry.Replace("'", "''")
 $escapedRepo = $repo.Replace("'", "''")
 $success = @'
