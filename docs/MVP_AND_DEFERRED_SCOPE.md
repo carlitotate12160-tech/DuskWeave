@@ -63,13 +63,12 @@ used to demonstrate this campaign loop, not a replacement product or fixed strat
 | Complete cognitive M1 | CT, bounded synthesis/evolution, applicable campaign-local feedback and minimum report under the M1 contract. Two LLM calls or DNS/HEAD alone do not seal M1. |
 | After M1 | Bounded access/authorized credential validation through its owning accepted contracts and current permission. |
 
-**Multi-provider direction (owner-directed, 2026-10-22):** support user-owned
-connections and individually qualified provider/model profiles; DeepSeek is the
-first real adapter, followed by OpenAI/Claude/Mistral and one OpenRouter adapter
-when credentials and qualification are available. OpenRouter is an approved
-aggregator direction, not automatic failover or permission to change upstream.
-Connection/protocol/model/routing, key isolation, disclosure and freshness rules
-belong to the [accepted revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22).
+**Multi-provider direction (2026-10-22; MVP priority clarified 2026-10-26):** retain
+user-owned connections and individually qualified profiles. DeepSeek is the first
+adapter. Additional OpenAI/Claude/Mistral/OpenRouter adapters remain future scope,
+not prerequisites for the next usable pilot. Credentials alone do not select work
+or permit failover. Connection/protocol/model/routing, key isolation, disclosure
+and freshness rules remain in the [accepted revision](contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22).
 Current delivery and missing demonstration evidence live only in
 [ENGINEERING_STATE](ENGINEERING_STATE.md#6-current-slices-and-next-action).
 
@@ -214,6 +213,15 @@ Record migration evidence in its existing PR; closed packets stay historical.
 ## 2. Deferred development candidates
 
 Deferred means outside initial scope; evaluate means a possible direction, not a commitment to build it. Revisit using evidence and the stated trigger.
+
+For the next usable pilot, defer authoring unwritten full-stage PRDs/ADRs,
+elaborating M2+ designs, general model pools/failover and blanket tooling rewrites.
+Keep existing accepted documents; load only authority relevant to the changed
+boundary. Unchanged legacy Python test/provisioning/CI tools may run until a
+bounded replacement is consumer-complete; migration is not a pilot prerequisite.
+Prioritize the real-provider feedback loop, then the first qualified live action
+and concise operator result. This staging does not remove accepted R2/M1 outcomes,
+waive deployment qualification or turn a partial pilot into a full M1/MVP seal.
 
 | Candidate | Disposition | Why deferred | Trigger for reconsideration |
 | :--- | :--- | :--- | :--- |

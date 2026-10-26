@@ -368,12 +368,13 @@ every merge. Every packet declares UPDATE with exact files/effects or NO_CHANGE
 with a reason. An unmerged candidate never records its own merge or HEAD SHA.
 Preserve accepted Foundation/M0 seal facts and referenced evidence.
 
-Keep ordinary execution instructions, review findings and correction chronology
-in the existing PR description/discussion. A packet does not require a permanent
-workflow document. Add or expand repository documentation only for a concrete
-reader need: durable decisions/contracts, reusable operation, or evidence that
-cannot be reconstructed from Git/CI. Explain that need in the existing PR;
-prefer updating its owner and removing superseded duplication.
+MVP documentation freeze (owner direction, 2026-10-26): create no new repository
+documentation files, packet records, trackers or guides until the owner changes
+this freeze. Keep execution instructions and review evidence in the existing PR.
+Correct existing owners only for changed behavior, required operation or material
+authority conflicts; remove superseded duplication. Existing accepted authority
+and unique evidence remain valid. Future document authoring follows the roadmap;
+missing future-stage documents do not become prerequisites for the accepted M1 lane.
 
 After delivery, freeze retained packet records as historical. Remove obsolete
 executable instructions and patch chronology from the current tree once unique
