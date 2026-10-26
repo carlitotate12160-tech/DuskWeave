@@ -116,7 +116,7 @@ fn closed_status_reason_and_individual_usage_projection() {
             Value::Null,
         ),
         (
-            json!({"input_tokens":9223372036854775808u64,"output_tokens":7}),
+            json!({"input_tokens":(1u64 << 63),"output_tokens":7}),
             "partial",
             Value::Null,
             json!(7),
@@ -376,7 +376,7 @@ fn restricted_sql_validates_before_mutation_and_preserves_reports_and_legacy() {
         ("error", json!("SENTINEL")),
         ("input_tokens", json!(-1)),
         ("output_tokens", json!(1.5)),
-        ("reasoning_tokens", json!(9223372036854775808u64)),
+        ("reasoning_tokens", json!((1u64 << 63))),
         ("response_bytes", json!(65537)),
         ("wall_time_ms", Value::Null),
         ("reported_model", json!("SENTINEL")),
