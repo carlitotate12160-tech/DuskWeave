@@ -212,5 +212,94 @@ class BridgePresentation(unittest.TestCase):
         self.assertEqual(request["redactions"], ["synthetic-secret"])
 
 
+class SessionContinuity(unittest.TestCase):
+    def test_collision_and_invalid_input_preserve_fixture_and_next_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = Path(tmp)
+            retained = report / "used.log"
+            retained.write_text("retained", encoding="utf-8")
+            lines = [
+                json.dumps({"label": "used", "args": ["unused"]}),
+                "not-json",
+                json.dumps(["SYNTHETIC_PRIVATE_INPUT"]),
+                json.dumps({"label": "next", "args": ["unused"]}),
+                json.dumps({"exit": True}),
+            ]
+            output = io.StringIO()
+
+            def run_action(label, *_):
+                if label == "used":
+                    raise RuntimeError("native_report_collision")
+                return 0
+
+            with mock.patch.object(sys, "argv", ["bootstrap", "--session", "--report", tmp]), \
+                 mock.patch.object(sys, "stdin", io.StringIO("\n".join(lines))), \
+                 mock.patch.object(bootstrap, "Fixture") as factory, \
+                 contextlib.redirect_stdout(output):
+                factory.return_value.database = "dw_native_session_synthetic"
+                factory.return_value.run.side_effect = run_action
+                self.assertEqual(bootstrap.main(), 0)
+            factory.assert_called_once()
+            factory.return_value.run.assert_called_once_with("next", ["unused"], report)
+            self.assertEqual(retained.read_text(encoding="utf-8"), "retained")
+            records = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(records[1]["category"], "native_report_collision")
+            self.assertEqual(records[1]["exit"], 1)
+            self.assertEqual(records[2]["category"], "native_action_refused")
+            self.assertEqual(records[3]["category"], "native_action_refused")
+            self.assertNotIn("SYNTHETIC_PRIVATE_INPUT", output.getvalue())
+
+    def test_uncertain_supervisor_failure_still_terminates_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = "\n".join(json.dumps({"label": label, "args": ["unused"]})
+                              for label in ("first", "must_not_run"))
+            with mock.patch.object(sys, "argv", ["bootstrap", "--session", "--report", tmp]), \
+                 mock.patch.object(sys, "stdin", io.StringIO(lines)), \
+                 mock.patch.object(bootstrap, "Fixture") as factory, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                factory.return_value.database = "dw_native_session_synthetic"
+                factory.return_value.run.side_effect = RuntimeError("native_supervisor_unresponsive")
+                with self.assertRaisesRegex(RuntimeError, "^native_supervisor_unresponsive$"):
+                    bootstrap.main()
+            self.assertEqual(factory.return_value.run.call_count, 1)
+
+
+class RolePrefixSelection(unittest.TestCase):
+    def test_cli_forwards_role_prefix_without_rewriting_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            args = ["bootstrap", "--role-prefix", "dw_cli", "--report", tmp, "--", "unused"]
+            with mock.patch.object(sys, "argv", args), \
+                 mock.patch.object(bootstrap, "Fixture") as factory, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                factory.return_value.database = "dw_native_prefix_synthetic"
+                factory.return_value.run.return_value = 0
+                self.assertEqual(bootstrap.main(), 0)
+            self.assertEqual(factory.call_args.kwargs["role_prefix"], "dw_cli")
+
+    def test_prefix_reaches_every_principal_including_negative_controls(self):
+        prefix = "dw_tm_20261026b"
+        with mock.patch.object(bootstrap, "service_qualified"), \
+             mock.patch.object(bootstrap, "private_run", return_value="") as run, \
+             mock.patch.object(bootstrap.Fixture, "migrate"):
+            bootstrap.Fixture("dwpg-r3", "fixture", role_prefix=prefix)
+        created = [call.args[0][-1] for call in run.call_args_list
+                   if "createuser" in call.args[0]]
+        self.assertEqual(len(created), 15)
+        self.assertEqual(len(set(created)), 15)
+        self.assertEqual(len({name.rsplit("_", 1)[0] for name in created}), 1)
+        self.assertTrue(all(name.startswith(prefix + "_") for name in created))
+        self.assertTrue(all(len(name) <= 63 for name in created))
+
+    def test_invalid_prefix_is_refused_before_service_or_sql(self):
+        for prefix in ("postgres", "dw_BAD", "dw_a'; DROP ROLE x", "dw_" + "a" * 50):
+            with self.subTest(prefix=prefix), \
+                 mock.patch.object(bootstrap, "service_qualified") as service, \
+                 mock.patch.object(bootstrap, "private_run") as run:
+                with self.assertRaises(RuntimeError):
+                    bootstrap.Fixture("dwpg-r3", "fixture", role_prefix=prefix)
+                service.assert_not_called()
+                run.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

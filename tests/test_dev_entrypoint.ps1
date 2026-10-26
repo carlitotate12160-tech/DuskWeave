@@ -50,11 +50,13 @@ if "%~2"=="--version" (
   echo cargo entrypoint-test
   exit /b 0
 )
+set "DEV_ENTRYPOINT_ARGUMENTS=%*"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0capture.ps1"
 exit /b %ERRORLEVEL%
 '@
 $capture = @'
 @{
+    arguments = @($env:DEV_ENTRYPOINT_ARGUMENTS -split ' ')
     directory = (Get-Location).Path
     target = $env:CARGO_TARGET_DIR
     coverage = $env:CARGO_LLVM_COV_TARGET_DIR
@@ -101,6 +103,12 @@ try {
     Assert-True ($result.Code -ne 0 -and $result.Output.Contains('dev_target_untracked')) 'untracked target reached a child command'
     Write-Output 'PASS untracked integration target refusal'
 
+    $result = Finish-Case (Start-Case ("& '" + $escapedEntry + "' test; exit " + '$LASTEXITCODE'))
+    Assert-True ($result.Code -eq 0) ('default unit command failed: ' + $result.Output)
+    $observed = Get-Content -Raw (Join-Path $temp 'capture.json') | ConvertFrom-Json
+    Assert-True ($observed.arguments -contains '--lib' -and $observed.arguments -notcontains '--bin') 'default unit command included database-dependent binary tests'
+    Write-Output 'PASS database-free library selection'
+
     $failure = @'
 & 'ENTRY' build
 $code = $LASTEXITCODE
@@ -136,6 +144,42 @@ exit $code
     $result = Finish-Case (Start-Case $success)
     Assert-True ($result.Code -eq 0) 'resource lock was not released'
     Write-Output 'PASS resource release after completion'
+
+    $fakeDocker = @'
+@echo off
+if "%~1"=="start" (
+  echo touched>"%DEV_ENTRYPOINT_DOCKER_START%"
+  exit /b 0
+)
+if "%~3"=="{{.Config.Image}}" (
+  echo %DEV_ENTRYPOINT_IMAGE%
+  exit /b 0
+)
+if "%~3"=="{{json .HostConfig.PortBindings}}" (
+  echo {"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"5432"}]}
+  exit /b 0
+)
+exit /b 98
+'@
+    [IO.File]::WriteAllText((Join-Path $temp 'docker.cmd'), $fakeDocker, $utf8)
+    $marker = Join-Path $temp 'docker-started'
+    $postgres = "& '" + $escapedEntry + "' postgres; exit " + '$LASTEXITCODE'
+    $result = Finish-Case (Start-Case $postgres @{
+        DEV_ENTRYPOINT_IMAGE='postgres:wrong'
+        DEV_ENTRYPOINT_DOCKER_START=$marker
+    })
+    Assert-True ($result.Code -ne 0 -and $result.Output.Contains('dev_postgres_image_refused')) 'unqualified image was admitted'
+    Assert-True (-not (Test-Path $marker)) 'unqualified container was started'
+    Write-Output 'PASS PostgreSQL image refusal before start'
+
+    $result = Finish-Case (Start-Case $postgres @{
+        DEV_ENTRYPOINT_IMAGE='postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f'
+        DEV_ENTRYPOINT_DOCKER_START=$marker
+    })
+    Assert-True ($result.Code -ne 0 -and $result.Output.Contains('dev_postgres_binding_refused')) 'unsafe port binding was admitted'
+    Assert-True (-not (Test-Path $marker)) 'unsafe container was started'
+    Write-Output 'PASS PostgreSQL binding refusal before start'
+
 }
 finally {
     Remove-Item -LiteralPath $temp -Recurse -Force

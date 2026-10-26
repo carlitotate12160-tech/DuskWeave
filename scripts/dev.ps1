@@ -4,6 +4,7 @@ param(
     [string]$Action = 'check',
     [string]$Target,
     [switch]$Postgres,
+    [string]$RolePrefix = 'dw_dev',
     [string]$ArtifactRoot,
     [string]$Python = $env:DW_TEST_PYTHON,
     [string]$OpenSsl = $env:DW_TEST_OPENSSL
@@ -90,7 +91,7 @@ function Run-Tests([bool]$Coverage) {
     if ($Coverage) { $arguments += 'llvm-cov' } else { $arguments += 'test' }
     $arguments += @('--locked', '--features', 'fixture-supervisor')
     if ($Target) { $arguments += @('--test', $Target) }
-    else { $arguments += @('--lib', '--bin', 'duskweave') }
+    else { $arguments += '--lib' }
     if ($Coverage) {
         $arguments += @('--json', '--output-path', (Join-Path $report 'coverage.json'))
     }
@@ -98,7 +99,7 @@ function Run-Tests([bool]$Coverage) {
     if ($Postgres) {
         $bootstrap = Join-Path $repo 'tests/support/m1_native_bootstrap.py'
         Invoke-Checked $pythonTool (@($bootstrap, '--container', 'dwpg-r3',
-            '--report', $report, '--', $cargo) + $arguments)
+            '--report', $report, '--role-prefix', $RolePrefix, '--', $cargo) + $arguments)
     } else { Invoke-Checked $cargo $arguments }
 }
 
@@ -173,11 +174,13 @@ try {
         Write-Host "coverage_target=$coverageTarget"
         Write-Host "report=$report"
     }
-    if ($Postgres -or $Action -eq 'postgres') {
+    if ($Postgres -or $Action -in @('postgres', 'check')) {
         Invoke-Checked $cargo @("+$toolchain", 'build', '--locked',
             '--features', 'fixture-supervisor', '--bin', 'dw-fixture-supervisor')
         $supervisor = Join-Path $normal 'debug/dw-fixture-supervisor.exe'
         $env:DW_TEST_FIXTURE_SUPERVISOR = $supervisor
+    }
+    if ($Postgres -or $Action -eq 'postgres') {
         Use-Postgres $supervisor
         Write-Host "report=$report"
     }
@@ -190,6 +193,11 @@ try {
                 '--features', 'fixture-supervisor', '--', '-D', 'warnings')
             foreach ($checker in @('check_links.py', 'check_structure.py')) {
                 Invoke-Checked $pythonTool @('-B', (Join-Path $repo "scripts/$checker"))
+            }
+            foreach ($suite in @('test_structure.py', 'test_ci_scope.py',
+                'test_m1_bootstrap_progress.py', 'test_m1_native_helpers.py')) {
+                Invoke-Checked $pythonTool @('-B', '-m', 'unittest', 'discover',
+                    '-s', 'tests', '-p', $suite)
             }
         }
         'test' { Run-Tests $false }

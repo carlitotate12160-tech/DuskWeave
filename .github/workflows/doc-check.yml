@@ -59,7 +59,11 @@ jobs:
         run: python scripts/check_links.py
 
   structure:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,6 +88,11 @@ jobs:
 
       - name: Coverage-gate regression tests
         run: python tests/check_coverage_gate.py --selftest
+
+      - name: Windows developer entrypoint regression tests
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tests/test_dev_entrypoint.ps1
 
   metrics:
     # Required metrics gate: McCabe ratchet enforced (exit 1 on regression);

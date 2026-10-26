@@ -53,12 +53,18 @@ from PATH or Git for Windows. Override tool selection with `-Python` / `-OpenSsl
 powershell -NoProfile -File tests/test_dev_entrypoint.ps1
 ```
 
-`test` defaults to library/application unit tests; `-Target` selects one tracked
+`test` defaults to library unit tests; `-Target` selects one tracked
 integration target. `-Postgres` supports native-fixture targets and uses the existing
 bootstrap to inject fresh restricted DSNs into child processes. It requires Docker and owned `dwpg-r3`:
 only the pinned PostgreSQL 17.11 image on loopback 5432 is reused/started. A missing
 or incompatible container fails without replacement. `dev.ps1 postgres` checks it
 without creating a database. Existing containers, volumes and test evidence remain.
+`-RolePrefix dw_packet_name` selects a validated prefix for all 15 fixture principals;
+the default is `dw_dev` with unique random suffixes. Bootstrap also exposes
+`--role-prefix`. In `--session` mode, pre-launch input/label collisions return a
+closed refusal with exit 1 while retaining the same fixture; choose a fresh label
+explicitly. Supervisor/migration failures remain fatal. DSNs stay process-scoped:
+there is no persistent attach, password rotation or automatic database deletion.
 
 The entrypoint never loads `.env`, changes global settings or installs tools.
 Inherited DuskWeave credentials and the DeepSeek key are excluded; caller environment
