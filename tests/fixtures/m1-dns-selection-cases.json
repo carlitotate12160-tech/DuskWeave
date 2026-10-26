@@ -1,0 +1,39 @@
+{
+  "version": "m1_dns_selection_cases_v1",
+  "candidate_count": 2,
+  "pack_references": ["mission", "asset_0", "asset_1"],
+  "valid": [
+    {"name": "contextual_mission_and_first_seed", "references": ["mission", "asset_0"], "expected_seed": 0},
+    {"name": "single_first_seed", "references": ["asset_0"], "expected_seed": 0},
+    {"name": "permuted_first_seed_then_mission", "references": ["asset_0", "mission"], "expected_seed": 0},
+    {"name": "repeated_mission_with_first_seed", "references": ["mission", "asset_0", "mission"], "expected_seed": 0},
+    {"name": "duplicate_first_seed_alone", "references": ["asset_0", "asset_0"], "expected_seed": 0},
+    {"name": "duplicate_first_seed_with_mission", "references": ["mission", "asset_0", "asset_0"], "expected_seed": 0},
+    {"name": "contextual_mission_and_second_seed", "references": ["mission", "asset_1"], "expected_seed": 1},
+    {"name": "permuted_and_duplicate_second_seed_with_mission", "references": ["asset_1", "mission", "asset_1"], "expected_seed": 1}
+  ],
+  "rejected": [
+    {"name": "empty_references", "references": [], "rust_outcome": "capability_gap"},
+    {"name": "context_only_mission", "references": ["mission"], "rust_outcome": "capability_gap"},
+    {"name": "context_only_repeated_mission", "references": ["mission", "mission"], "rust_outcome": "capability_gap"},
+    {"name": "two_distinct_assets", "references": ["asset_0", "asset_1"], "rust_outcome": "capability_gap"},
+    {"name": "two_distinct_assets_with_context", "references": ["mission", "asset_0", "asset_1"], "rust_outcome": "capability_gap"},
+    {"name": "two_distinct_assets_reversed", "references": ["asset_1", "mission", "asset_0"], "rust_outcome": "capability_gap"},
+    {"name": "out_of_range_asset_alone", "references": ["asset_2"], "rust_outcome": "ineligible"},
+    {"name": "out_of_range_asset_with_mission", "references": ["mission", "asset_2"], "rust_outcome": "ineligible"},
+    {"name": "out_of_range_asset_with_valid_asset", "references": ["asset_0", "asset_2"], "rust_outcome": "ineligible"},
+    {"name": "noncanonical_leading_zero", "references": ["mission", "asset_00"], "rust_outcome": "ineligible"},
+    {"name": "noncanonical_leading_zero_with_valid_asset", "references": ["asset_0", "asset_00"], "rust_outcome": "ineligible"},
+    {"name": "noncanonical_nonzero_leading_zero", "references": ["mission", "asset_01"], "rust_outcome": "ineligible"},
+    {"name": "negative_asset_index", "references": ["mission", "asset_-1"], "rust_outcome": "ineligible"},
+    {"name": "signed_asset_index", "references": ["mission", "asset_+0"], "rust_outcome": "ineligible"},
+    {"name": "empty_asset_suffix", "references": ["mission", "asset_"], "rust_outcome": "ineligible"},
+    {"name": "non_numeric_asset_suffix", "references": ["mission", "asset_x"], "rust_outcome": "ineligible"},
+    {"name": "uppercase_asset_prefix", "references": ["mission", "ASSET_0"], "rust_outcome": "ineligible"},
+    {"name": "noncanonical_terrain_reference", "references": ["terrain_00", "asset_0"], "rust_outcome": "ineligible"},
+    {"name": "empty_terrain_suffix", "references": ["terrain_", "asset_0"], "rust_outcome": "ineligible"},
+    {"name": "forged_contextual_reference", "references": ["forged_context", "asset_0"], "rust_outcome": "ineligible"},
+    {"name": "forged_endpoint_with_valid_asset", "references": ["seed0.example.invalid", "asset_0"], "rust_outcome": "ineligible"},
+    {"name": "arbitrary_endpoint_alone", "references": ["arbitrary endpoint"], "rust_outcome": "ineligible"}
+  ]
+}

@@ -58,6 +58,10 @@ fn assert_real_cli_feedback(slot: u128, profile: &str) {
     assert_eq!(receipt["terrain_history_count"], 1);
     assert_eq!(receipt["inference_profile"], profile);
     assert_eq!(receipt["recorded_decisions"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        receipt["recorded_decisions"][0]["proposal"]["next_intent"]["references"],
+        json!(["mission", "asset_0"])
+    );
     lifecycle::assert_bound_calls(&q, profile);
     for operation in ["m1-run-inspect", "m1-run-recover", "m1-run-recover"] {
         let (ok, r) = run_support::cli(operation, "--run", q["run_id"].as_str().unwrap());

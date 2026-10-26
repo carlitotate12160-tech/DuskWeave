@@ -48,10 +48,13 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** prepare one freshly authorized real DeepSeek
-provider-fixture demonstration through `m1-run`: Mission -> real Decision 1 ->
-Broker-admitted fixture DNS -> owner-qualified Terrain -> real Decision 2 ->
-durable history/inspect, without intermediate input. Use the
+**Next product action:** deliver `DW-FIX-M1-DNS-SELECTOR-CONTRACT` on
+`fix/m1-dns-selector-contract` so an admitted `observe_more` + `dns_udp`
+proposal carrying contextual references alongside a single canonical `asset_N`
+seed selects and reserves that seed identically in Rust and restricted SQL
+without rewriting the proposal, followed by incomplete-response metadata
+diagnosis and then a separately authorized real DeepSeek provider-fixture
+demonstration through `m1-run` under the
 [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent).
 Fresh disclosure, current terms/window, credential and actual platform
 qualification are required before provider contact. Historical consent is unusable.

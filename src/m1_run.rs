@@ -272,18 +272,37 @@ fn dns_selection(p: &Proposal, candidate_count: usize) -> Res<NextStep> {
         }
         return Ok(NextStep::Terminal("owner_view_requested"));
     }
-    if p.next_intent.manifest_reference.as_deref() != Some("dns_udp")
-        || p.next_intent.references.len() != 1
-    {
+    if p.next_intent.manifest_reference.as_deref() != Some("dns_udp") {
         return Ok(NextStep::Terminal("capability_gap"));
     }
-    let index = p.next_intent.references[0]
-        .strip_prefix("asset_")
-        .and_then(|n| n.parse::<usize>().ok())
-        .filter(|i| *i < candidate_count)
-        .ok_or(Fail::State("effect_seed_ineligible"))?;
-    if format!("asset_{index}") != p.next_intent.references[0] {
-        return Err(Fail::State("effect_seed_ineligible"));
+    match selected_dns_seeds(&p.next_intent.references, candidate_count)?.as_slice() {
+        [seed_index] => Ok(NextStep::Dns {
+            seed_index: *seed_index,
+        }),
+        _ => Ok(NextStep::Terminal("capability_gap")),
     }
-    Ok(NextStep::Dns { seed_index: index })
+}
+fn selected_dns_seeds(refs: &[String], candidate_count: usize) -> Res<Vec<usize>> {
+    let mut seeds = Vec::new();
+    for r in refs {
+        if let Some(index) = reference_target(r, candidate_count)?
+            && !seeds.contains(&index)
+        {
+            seeds.push(index);
+        }
+    }
+    Ok(seeds)
+}
+fn reference_target(r: &str, candidate_count: usize) -> Res<Option<usize>> {
+    if matches!(r, "mission" | "previous_decision") || canonical_index(r, "terrain_").is_some() {
+        return Ok(None);
+    }
+    canonical_index(r, "asset_")
+        .filter(|i| *i < candidate_count)
+        .map(Some)
+        .ok_or(Fail::State("effect_seed_ineligible"))
+}
+fn canonical_index(r: &str, prefix: &str) -> Option<usize> {
+    let index = r.strip_prefix(prefix)?.parse::<usize>().ok()?;
+    (format!("{prefix}{index}") == r).then_some(index)
 }
