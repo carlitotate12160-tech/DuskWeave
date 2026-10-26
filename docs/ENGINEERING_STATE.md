@@ -3,8 +3,8 @@
 ## 1. Project Identity & Status
 
 - **Project**: DuskWeave. Verify actual worktree, branch and HEAD before delivery.
-- **Current Phase**: M1 is unsealed. Current work is documentation retirement on
-  `docs/lean-documentation`; its candidate and checks come from GitHub.
+- **Current Phase**: M1 is unsealed. Current runtime work is provider-terminal
+  metadata correction in PR #122; its candidate and checks come from GitHub.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence below is unchanged.
 - Scope/priorities belong to [the roadmap](MVP_AND_DEFERRED_SCOPE.md); dependency
   navigation belongs to [BUILD_ORDER](BUILD_ORDER.md). Neither duplicates PR state.
