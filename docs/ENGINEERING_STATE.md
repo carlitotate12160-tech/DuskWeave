@@ -48,16 +48,19 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** deliver `DW-FIX-M1-DNS-SELECTOR-CONTRACT` on
-`fix/m1-dns-selector-contract` so an admitted `observe_more` + `dns_udp`
-proposal carrying contextual references alongside a single canonical `asset_N`
-seed selects and reserves that seed identically in Rust and restricted SQL
-without rewriting the proposal, followed by incomplete-response metadata
-diagnosis and then a separately authorized real DeepSeek provider-fixture
-demonstration through `m1-run` under the
+**Next product action:** incomplete-response metadata diagnosis, then a
+separately authorized real DeepSeek provider-fixture demonstration through
+`m1-run` under the
 [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent).
-Fresh disclosure, current terms/window, credential and actual platform
-qualification are required before provider contact. Historical consent is unusable.
+`DW-FIX-M1-DNS-SELECTOR-CONTRACT` merged as `e11f62f`
+([#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120)): an
+admitted `observe_more` + `dns_udp` proposal carrying contextual references
+alongside a single canonical `asset_N` seed now selects and reserves that seed
+identically in Rust and restricted SQL, and pack-local `asset_N` ordinals
+resolve through entity identity to the correct `seed_names` entry even when
+ContextPack omission shifts them. Fresh disclosure, current terms/window,
+credential and actual platform qualification are required before provider
+contact. Historical consent is unusable.
 
 Relevant merged implementation/evidence pointers, not a rolling merge log:
 
@@ -68,6 +71,7 @@ Relevant merged implementation/evidence pointers, not a rolling merge log:
 | Successor lifecycle / Rust fixture supervision | [#116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116), merged `618c885`; [final Windows qualification](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md#final-windows-qualification-2026-10-25) |
 | Nonblocking release and transport error precedence | [#117](https://github.com/carlitotate12160-tech/DuskWeave/pull/117), merged `7d7e696`; [record](workflows/DW-FIX-M1-INFERENCE-RELEASE-INTEGRITY.md) |
 | Conditional maintenance and qualified skill-doc CI routing | [#118](https://github.com/carlitotate12160-tech/DuskWeave/pull/118), merged `d29a1fb` |
+| DNS selector contextual references and entity-based ordinals | [#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120), merged `e11f62f` |
 
 **Unproved:** the 2026-10-22 provider run `4a4ce477-5734-4b92-bb6a-dce74f430114`
 committed Decision 1 and fixture Terrain; Decision 2 ended exit 124 with
