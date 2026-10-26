@@ -139,7 +139,7 @@ CREATE FUNCTION execution.inference_call_state(k uuid,wanted text,u jsonb) RETUR
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 #variable_conflict use_variable
 
-DECLARE owner_call execution.inference_calls;
+DECLARE owner_call execution.inference_calls; field text; metadata jsonb; available integer;
 BEGIN
  SELECT * INTO owner_call FROM execution.inference_calls x WHERE x.call=k;
  IF NOT EXISTS(SELECT 1 FROM execution.inference_reservations r WHERE
@@ -150,12 +150,57 @@ BEGIN
  IF NOT pg_has_role(session_user,'dw_m1_broker','MEMBER') OR wanted NOT IN
  ('sent_awaiting_result','completed','cancelled_uncertain','failed_never_released','usage_unknown')
  THEN RAISE EXCEPTION 'inference_state_refused'; END IF;
+ -- Re-read under the campaign fence so concurrent reports cannot replace each other.
+ SELECT * INTO owner_call FROM execution.inference_calls x WHERE x.call=k FOR UPDATE;
+ IF u IS NOT NULL AND u <> 'null'::jsonb AND
+    (wanted IN ('usage_unknown','cancelled_uncertain') OR u ? 'provider_response') THEN
+  IF u ? 'provider_response' AND wanted NOT IN ('usage_unknown','cancelled_uncertain')
+  THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+  IF jsonb_typeof(u) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+  IF (u - ARRAY['input_tokens','output_tokens','reasoning_tokens','response_bytes',
+      'wall_time_ms','requested_model','reported_model','provider_response']) <> '{}'::jsonb
+     OR NOT (u ?& ARRAY['input_tokens','output_tokens','reasoning_tokens','response_bytes',
+      'wall_time_ms','requested_model','reported_model','provider_response'])
+  THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+  metadata := u->'provider_response';
+  IF jsonb_typeof(metadata) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+  IF (metadata - ARRAY['status','incomplete_reason','usage_availability']) <> '{}'::jsonb
+     OR NOT (metadata ?& ARRAY['status','incomplete_reason','usage_availability'])
+     OR NOT coalesce(metadata->>'status' IN ('completed','incomplete','failed','in_progress','unrecognized','missing'),false)
+     OR NOT coalesce(metadata->>'usage_availability' IN ('reported','partial','unavailable'),false)
+  THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+  IF metadata->>'status'='incomplete' THEN
+   IF NOT coalesce(metadata->>'incomplete_reason' IN ('max_output_tokens','content_filter','unknown'),false)
+   THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+  ELSIF metadata->'incomplete_reason' IS DISTINCT FROM 'null'::jsonb
+  THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+  available := 0;
+  FOREACH field IN ARRAY ARRAY['input_tokens','output_tokens','reasoning_tokens','response_bytes','wall_time_ms'] LOOP
+   IF u->field='null'::jsonb AND field IN ('input_tokens','output_tokens','reasoning_tokens') THEN CONTINUE; END IF;
+   IF jsonb_typeof(u->field) IS DISTINCT FROM 'number' OR (u->>field) !~ '^[0-9]+$'
+   THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+   IF (u->>field)::numeric > 9223372036854775807 OR
+      (field='response_bytes' AND (u->>field)::numeric > 65536)
+   THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+   IF field IN ('input_tokens','output_tokens','reasoning_tokens') THEN available := available+1; END IF;
+  END LOOP;
+  IF metadata->>'usage_availability' IS DISTINCT FROM
+       (CASE WHEN available=3 THEN 'reported' WHEN available=0 THEN 'unavailable' ELSE 'partial' END)
+     OR u->>'requested_model' IS DISTINCT FROM 'deepseek-flash'
+     OR NOT coalesce(u->'reported_model'='null'::jsonb OR
+           u->>'reported_model' IN ('deepseek-flash','probe-fixture','protocol-fixture-v1'),false)
+  THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
+ END IF;
+ IF wanted IN ('usage_unknown','cancelled_uncertain') AND
+    owner_call.usage IS NOT NULL AND owner_call.usage <> 'null'::jsonb AND
+    u IS NOT NULL AND u <> 'null'::jsonb AND owner_call.usage IS DISTINCT FROM u
+ THEN RAISE EXCEPTION 'inference_usage_conflict'; END IF;
  IF wanted IN ('usage_unknown','cancelled_uncertain') AND EXISTS(
   SELECT 1 FROM execution.inference_calls WHERE call=k AND state IN ('cancelled_uncertain','usage_unknown')
  ) THEN
-  IF wanted='cancelled_uncertain' THEN
-   UPDATE execution.inference_calls SET state='cancelled_uncertain',usage=NULL WHERE call=k;
-  END IF;
+  UPDATE execution.inference_calls SET
+   state=CASE WHEN state='cancelled_uncertain' THEN state ELSE wanted END,
+   usage=CASE WHEN u IS NULL OR u='null'::jsonb THEN usage ELSE u END WHERE call=k;
   RETURN;
  END IF;
  UPDATE execution.inference_calls SET state=wanted,usage=u WHERE call=k

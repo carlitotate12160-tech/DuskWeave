@@ -79,6 +79,7 @@ fn provider(server: &Server, b: &BoundCall, permit: Permit) -> AutonomousProvide
     let mut h = configure(b, "synthetic-fixture-token", Duration::from_secs(20)).unwrap();
     h.url(&server.url).unwrap();
     AutonomousProvider {
+        diagnostic: ProviderDiagnostic::default(),
         clock: None,
         admission_guard: None,
         reporter: None,
@@ -389,6 +390,7 @@ fn autonomous_control_worker() {
     h.url(&std::env::var("DW_AUTONOMOUS_TEST_URL").unwrap())
         .unwrap();
     let mut provider = AutonomousProvider {
+        diagnostic: ProviderDiagnostic::default(),
         clock: None,
         admission_guard: None,
         reporter: None,
@@ -479,6 +481,7 @@ fn stalled_pre_send_case() {
         .unwrap();
     let root = std::env::var_os("DW_M1_RUN_CONTROL_ROOT").unwrap();
     let mut provider = AutonomousProvider {
+        diagnostic: ProviderDiagnostic::default(),
         clock: None,
         admission_guard: None,
         reporter: None,
@@ -611,6 +614,7 @@ fn successor_clock_case(mode: &str, binding: run_control::Binding) {
     let _blocked_reader = blocked_reader;
     let clock = CallClock::arm(permit.clone(), end, Some(report)).unwrap();
     let mut provider = AutonomousProvider {
+        diagnostic: ProviderDiagnostic::default(),
         prepared: Some((handle, "synthetic-fixture-token".into(), b.digest.clone())),
         permit,
         pre_send: Box::new(|| Ok(())),
@@ -1122,4 +1126,56 @@ fn operator_owned_but_nonwritable_control_root_is_not_qualified() {
             .unwrap()
             .success()
     );
+}
+
+#[test]
+fn autonomous_transport_captures_bound_report_and_clears_between_calls() {
+    let generation = bound(false);
+    let repair = bound(true);
+    let body = serde_json::to_vec(
+        &json!({"status":"incomplete","incomplete_details":{"reason":"content_filter"},
+        "usage":{"input_tokens":4,"output_tokens":8,"output_tokens_details":{"reasoning_tokens":6}},
+        "error":{"message":"SENTINEL"},"output":[{"type":"reasoning","text":"SENTINEL"}]}),
+    )
+    .unwrap();
+    let server = Server::start("200 OK", "", body);
+    let mut p = provider(&server, &generation, permit());
+    let mut basis = Basis {
+        checks: AtomicUsize::new(0),
+        eligible: true,
+    };
+    assert!(matches!(
+        p.call(
+            &generation,
+            Instant::now() + Duration::from_secs(3),
+            &mut basis,
+            &mut || Ok(())
+        ),
+        Err("provider_incomplete")
+    ));
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    let report = serde_json::to_value(p.terminal_report(&generation.digest).unwrap()).unwrap();
+    assert_eq!(
+        report["provider_response"]["incomplete_reason"],
+        "content_filter"
+    );
+    assert_eq!(report["reasoning_tokens"], 6);
+    assert!(!report.to_string().contains("SENTINEL"));
+    assert!(p.terminal_report(&repair.digest).is_none());
+    let second = Server::start("200 OK", "", b"{".to_vec());
+    p.prepared = provider(&second, &repair, p.permit.clone()).prepared;
+    assert!(
+        p.call(
+            &repair,
+            Instant::now() + Duration::from_secs(3),
+            &mut basis,
+            &mut || Ok(())
+        )
+        .is_err()
+    );
+    assert!(p.terminal_report(&repair.digest).is_none());
+    assert!(p.terminal_report(&generation.digest).is_none());
+    p.diagnostic.report = Some(super::tests::decode_report_fixture());
+    assert!(p.prepare(&generation, Instant::now()).is_err());
+    assert!(p.diagnostic.report.is_none());
 }

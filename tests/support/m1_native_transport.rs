@@ -141,6 +141,7 @@ fn provider(server: &Server, call: &BoundCall) -> DeepSeekProvider {
     // Private test construction; the production factory has no endpoint override.
     easy.url(&server.url).unwrap();
     DeepSeekProvider {
+        diagnostic: ProviderDiagnostic::default(),
         prepared: Some((easy, "synthetic-fixture-token".into(), call.digest.clone())),
     }
 }
@@ -221,6 +222,7 @@ fn concrete_transport_refuses_unprepared_or_changed_binding_before_release() {
     let mut easy = configure(&call, "synthetic-fixture-token", Duration::from_secs(1)).unwrap();
     easy.url("http://127.0.0.1:1/forbidden").unwrap();
     let mut p = DeepSeekProvider {
+        diagnostic: ProviderDiagnostic::default(),
         prepared: Some((easy, "synthetic-fixture-token".into(), "changed".into())),
     };
     for candidate in [&mut p, &mut DeepSeekProvider::default()] {
@@ -240,6 +242,7 @@ fn release_failure_cancels_worker_and_preserves_uncertainty() {
     let mut easy = configure(&call, "synthetic-fixture-token", Duration::from_secs(1)).unwrap();
     easy.url("http://127.0.0.1:1/closed").unwrap();
     let mut p = DeepSeekProvider {
+        diagnostic: ProviderDiagnostic::default(),
         prepared: Some((easy, "synthetic-fixture-token".into(), call.digest.clone())),
     };
     let result = p.call(
@@ -279,6 +282,7 @@ fn worker_panic_prioritizes_release_error_then_reports_unknown_transport() {
         let mut easy = configure(&call, "synthetic-fixture-token", Duration::from_secs(1)).unwrap();
         easy.url("http://127.0.0.1:1/closed").unwrap();
         let mut p = DeepSeekProvider {
+            diagnostic: ProviderDiagnostic::default(),
             prepared: Some((easy, "synthetic-fixture-token".into(), call.digest.clone())),
         };
         let (entered_send, entered) = channel();
@@ -349,6 +353,7 @@ fn concrete_transport_worker_child() {
     let mut h = configure(&call, "synthetic-fixture-token", Duration::from_secs(2)).unwrap();
     h.url(url.to_str().unwrap()).unwrap();
     let mut p = DeepSeekProvider {
+        diagnostic: ProviderDiagnostic::default(),
         prepared: Some((h, "synthetic-fixture-token".into(), call.digest.clone())),
     };
     let result = p.call(
@@ -543,6 +548,7 @@ with socket.socket() as listener:
             h.cainfo(&cert).unwrap();
         }
         let mut p = DeepSeekProvider {
+            diagnostic: ProviderDiagnostic::default(),
             prepared: Some((h, "synthetic-fixture-token".into(), call.digest.clone())),
         };
         let result = p.call(
@@ -562,3 +568,94 @@ with socket.socket() as listener:
 
 #[path = "m1_deadline_diagnostic.rs"]
 mod m1_deadline_diagnostic;
+
+#[test]
+fn concrete_transport_captures_only_current_screened_terminal_report() {
+    let call = request::bind(br#"{"references":[{"id":"ref-1"}]}"#, None).unwrap();
+    let repair = request::bind(&call.pack, Some(&["proposal_shape"])).unwrap();
+    let body = serde_json::to_vec(&json!({"status":"incomplete",
+        "incomplete_details":{"reason":"max_output_tokens"},
+        "usage":{"input_tokens":3,"output_tokens":5},
+        "error":{"message":"SENTINEL"},"output":[{"type":"reasoning","text":"SENTINEL"}]}))
+    .unwrap();
+    let server = Server::start("200 OK", "", body);
+    let mut p = provider(&server, &call);
+    assert!(matches!(
+        p.call(
+            &call,
+            Instant::now() + Duration::from_secs(2),
+            &mut Basis(true),
+            &mut || Ok(())
+        ),
+        Err("provider_incomplete")
+    ));
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    let report = serde_json::to_value(p.terminal_report(&call.digest).unwrap()).unwrap();
+    assert_eq!(report["input_tokens"], 3);
+    assert_eq!(report["provider_response"]["usage_availability"], "partial");
+    assert!(!report.to_string().contains("SENTINEL"));
+    assert!(p.terminal_report(&repair.digest).is_none());
+    // A subsequent repair with truncated JSON cannot borrow the generation report.
+    let truncated = Server::start("200 OK", "", br#"{"status":"incomplete""#.to_vec());
+    p.prepared = provider(&truncated, &repair).prepared;
+    assert!(matches!(
+        p.call(
+            &repair,
+            Instant::now() + Duration::from_secs(2),
+            &mut Basis(true),
+            &mut || Ok(())
+        ),
+        Err("provider_protocol")
+    ));
+    assert!(p.terminal_report(&call.digest).is_none());
+    assert!(p.terminal_report(&repair.digest).is_none());
+    // Preparing even an unavailable next call clears the prior report.
+    p.diagnostic.report = Some(decode_report_fixture());
+    assert!(p.prepare(&call, Instant::now()).is_err());
+    assert!(p.diagnostic.report.is_none());
+}
+pub(super) fn decode_report_fixture() -> super::super::inference::ProviderReport {
+    let mut d = ProviderDiagnostic::default();
+    let _ = super::super::response::admit_http(
+        b"HTTP/1.1 200 OK\r\n\r\n{\"status\":\"incomplete\"}",
+        Duration::ZERO,
+        &mut Basis(true),
+        &mut d,
+    );
+    d.report.unwrap()
+}
+#[test]
+fn concrete_transport_does_not_report_failed_or_reflected_transfers() {
+    let call = request::bind(br#"{"references":[{"id":"ref-1"}]}"#, None).unwrap();
+    for body in [
+        vec![b'x'; 65537],
+        br#"{"status":"incomplete","model":"synthetic-fixture-token"}"#.to_vec(),
+    ] {
+        let server = Server::start("200 OK", "", body);
+        let mut p = provider(&server, &call);
+        assert!(
+            p.call(
+                &call,
+                Instant::now() + Duration::from_secs(2),
+                &mut Basis(true),
+                &mut || Ok(())
+            )
+            .is_err()
+        );
+        assert!(p.terminal_report(&call.digest).is_none());
+    }
+    let mut p = DeepSeekProvider::default();
+    let mut h = configure(&call, "synthetic-fixture-token", Duration::from_secs(1)).unwrap();
+    h.url("http://127.0.0.1:1/closed").unwrap();
+    p.prepared = Some((h, "synthetic-fixture-token".into(), call.digest.clone()));
+    assert!(matches!(
+        p.call(
+            &call,
+            Instant::now() + Duration::from_secs(2),
+            &mut Basis(true),
+            &mut || Ok(())
+        ),
+        Err("provider_transport_unknown")
+    ));
+    assert!(p.terminal_report(&call.digest).is_none());
+}

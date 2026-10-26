@@ -12,6 +12,7 @@ type Res<T> = Result<T, &'static str>;
 #[derive(Default)]
 pub struct DeepSeekProvider {
     prepared: Option<(Easy, String, String)>,
+    diagnostic: ProviderDiagnostic,
 }
 
 struct Deadline(Sender<()>);
@@ -88,7 +89,13 @@ fn timeouts(h: &mut Easy, left: Duration) -> Result<(), curl::Error> {
 }
 
 impl Provider for DeepSeekProvider {
+    fn terminal_report(&self, digest: &str) -> Option<&super::inference::ProviderReport> {
+        (self.diagnostic.binding_digest == digest)
+            .then_some(self.diagnostic.report.as_ref())
+            .flatten()
+    }
     fn prepare(&mut self, b: &BoundCall, until: Instant) -> Res<()> {
+        self.diagnostic = ProviderDiagnostic::default();
         let key = provider_key()?;
         let left = until
             .checked_duration_since(Instant::now())
@@ -104,6 +111,8 @@ impl Provider for DeepSeekProvider {
         basis: &mut dyn ProposalBasis,
         release: &mut dyn FnMut() -> Res<()>,
     ) -> Res<Received> {
+        self.diagnostic = ProviderDiagnostic::new(b.digest.clone());
+        let diagnostic = &mut self.diagnostic;
         let _deadline = Deadline::arm(until)?;
         let (mut h, key, digest) = self
             .prepared
@@ -126,7 +135,9 @@ impl Provider for DeepSeekProvider {
             let stop = &cancelled;
             let worker = std::thread::Builder::new()
                 .name("inference_transport".into())
-                .spawn_scoped(scope, move || attempt(h, key, until, basis, stop))
+                .spawn_scoped(scope, move || {
+                    attempt(h, key, until, basis, stop, diagnostic)
+                })
                 .map_err(|_| "inference_transport_unavailable")?;
             let opened = release();
             if opened.is_err() {
@@ -145,13 +156,14 @@ fn attempt(
     until: Instant,
     basis: &mut dyn ProposalBasis,
     cancelled: &std::sync::atomic::AtomicBool,
+    diagnostic: &mut ProviderDiagnostic,
 ) -> Res<Received> {
     if !transport_current(until, cancelled, basis) {
         return Err("provider_cancelled_uncertain");
     }
     let (result, raw, oversized, elapsed) =
         exchange(&mut h, &mut || transport_current(until, cancelled, basis))?;
-    finish_transfer(result, raw, oversized, &key, elapsed, basis)
+    finish_transfer(result, raw, oversized, &key, elapsed, basis, diagnostic)
 }
 type Exchange = (Result<(), curl::Error>, Vec<u8>, bool, Duration);
 fn exchange(h: &mut Easy, current: &mut dyn FnMut() -> bool) -> Res<Exchange> {
@@ -188,6 +200,7 @@ fn finish_transfer(
     key: &str,
     elapsed: Duration,
     basis: &mut dyn ProposalBasis,
+    diagnostic: &mut ProviderDiagnostic,
 ) -> Res<Received> {
     if oversized {
         return Err("provider_response_limit");
@@ -198,7 +211,7 @@ fn finish_transfer(
     if raw.windows(key.len()).any(|v| v == key.as_bytes()) {
         return Err("provider_unsafe_response");
     }
-    admit_without_key(&raw, elapsed, key, basis)
+    admit_without_key(&raw, elapsed, key, basis, diagnostic)
 }
 struct KeyExclusion<'a> {
     owner: &'a mut dyn ProposalBasis,
@@ -239,27 +252,25 @@ fn admit_without_key(
     elapsed: Duration,
     key: &str,
     basis: &mut dyn ProposalBasis,
+    diagnostic: &mut ProviderDiagnostic,
 ) -> Res<Received> {
-    let mut diagnostic = ProviderDiagnostic::default();
     let mut screened = KeyExclusion {
         owner: basis,
         key,
         reflected: Cell::new(false),
     };
     // Screen decoded text before calling owners; raw matching misses both JSON escape layers.
-    let received = super::response::admit_http(raw, elapsed, &mut screened, &mut diagnostic)?;
-    if screened.reflected.get()
-        || received
-            .usage
-            .reported_model
-            .as_deref()
-            .is_some_and(|s| s.contains(key))
-    {
+    let received = super::response::admit_http(raw, elapsed, &mut screened, diagnostic);
+    let reflected_report = diagnostic
+        .report
+        .as_ref()
+        .is_some_and(|r| serde_json::to_string(r).map_or(true, |s| s.contains(key)));
+    if screened.reflected.get() || reflected_report {
+        diagnostic.report = None;
         return Err("provider_unsafe_response");
     }
-    Ok(received)
+    received
 }
-
 fn transport_current(
     until: Instant,
     cancelled: &std::sync::atomic::AtomicBool,
@@ -278,6 +289,7 @@ fn post(h: &mut Easy, b: &BoundCall, key: &str) -> Result<(), curl::Error> {
 /// The autonomous lane uses the same wire/TLS/admission boundary, but no SQL in curl callbacks.
 pub struct AutonomousProvider {
     prepared: Option<(Easy, String, String)>,
+    diagnostic: ProviderDiagnostic,
     permit: Permit,
     pre_send: Box<dyn Fn() -> Res<()> + Send + Sync>,
     clock: Option<CallClock>,
@@ -288,6 +300,7 @@ impl AutonomousProvider {
     pub fn new(permit: Permit, pre_send: impl Fn() -> Res<()> + Send + Sync + 'static) -> Self {
         Self {
             prepared: None,
+            diagnostic: ProviderDiagnostic::default(),
             permit,
             pre_send: Box::new(pre_send),
             clock: None,
@@ -350,7 +363,13 @@ fn verify_wire_binding(b: &BoundCall) -> Res<()> {
     )
 }
 impl Provider for AutonomousProvider {
+    fn terminal_report(&self, digest: &str) -> Option<&super::inference::ProviderReport> {
+        (self.diagnostic.binding_digest == digest)
+            .then_some(self.diagnostic.report.as_ref())
+            .flatten()
+    }
     fn prepare(&mut self, b: &BoundCall, until: Instant) -> Res<()> {
+        self.diagnostic = ProviderDiagnostic::default();
         autonomous_binding(b)?;
         if self.prepared.is_some() {
             return Err("inference_transport_unavailable");
@@ -374,6 +393,7 @@ impl Provider for AutonomousProvider {
         basis: &mut dyn ProposalBasis,
         release: &mut dyn FnMut() -> Res<()>,
     ) -> Res<Received> {
+        self.diagnostic = ProviderDiagnostic::new(b.digest.clone());
         if self.clock.is_some() {
             return self.call_successor(b, until, basis, release);
         }
@@ -504,7 +524,7 @@ impl AutonomousProvider {
         })
     }
     fn admit_received(
-        &self,
+        &mut self,
         received: Exchange,
         key: &str,
         call_end: Instant,
@@ -515,7 +535,15 @@ impl AutonomousProvider {
         }
         // Fresh owner/reference checks remain in proposal admission, outside the curl worker.
         let (result, raw, oversized, elapsed) = received;
-        let received = finish_transfer(result, raw, oversized, key, elapsed, basis)?;
+        let received = finish_transfer(
+            result,
+            raw,
+            oversized,
+            key,
+            elapsed,
+            basis,
+            &mut self.diagnostic,
+        )?;
         if !self.permit.current() {
             return Err("provider_cancelled_uncertain");
         }
