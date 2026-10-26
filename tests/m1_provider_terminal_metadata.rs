@@ -343,6 +343,32 @@ fn write_report(client: &mut postgres::Client, call: Uuid, state: &str, report: 
         .is_ok()
 }
 #[test]
+fn provider_response_report_never_establishes_terminal_or_inflight_state() {
+    let _guard = native::db();
+    let mut case = native::decision(0x1d005);
+    let reservation = case.broker.reserve(&case.scope, &case.pack).unwrap();
+    let bound = request::bind(&case.pack, None).unwrap();
+    case.broker
+        .may_send(&case.scope, reservation.generation_call, &bound)
+        .unwrap();
+    let original = calls(&mut case);
+    assert_eq!(original[0]["state"], "may_send_uncertain");
+    assert!(original[0]["usage"].is_null());
+    let safe = serde_json::to_value(decode(incomplete()).report.unwrap()).unwrap();
+    for wanted in ["completed", "failed_never_released", "sent_awaiting_result"] {
+        assert!(
+            !write_report(
+                &mut case.broker.client,
+                reservation.generation_call,
+                wanted,
+                &safe
+            ),
+            "provider_response metadata must not establish {wanted} accounting"
+        );
+        assert_eq!(calls(&mut case), original);
+    }
+}
+#[test]
 fn restricted_sql_validates_before_mutation_and_preserves_reports_and_legacy() {
     let _guard = native::db();
     // Successor refresh must retain the amended native definition.

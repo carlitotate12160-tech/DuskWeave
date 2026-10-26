@@ -154,6 +154,8 @@ BEGIN
  SELECT * INTO owner_call FROM execution.inference_calls x WHERE x.call=k FOR UPDATE;
  IF u IS NOT NULL AND u <> 'null'::jsonb AND
     (wanted IN ('usage_unknown','cancelled_uncertain') OR u ? 'provider_response') THEN
+  IF u ? 'provider_response' AND wanted NOT IN ('usage_unknown','cancelled_uncertain')
+  THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
   IF jsonb_typeof(u) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
   IF (u - ARRAY['input_tokens','output_tokens','reasoning_tokens','response_bytes',
       'wall_time_ms','requested_model','reported_model','provider_response']) <> '{}'::jsonb
