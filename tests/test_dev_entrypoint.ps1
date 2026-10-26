@@ -52,6 +52,7 @@ if "%~2"=="--version" (
 )
 set "DEV_ENTRYPOINT_ARGUMENTS=%*"
 if defined DEV_ENTRYPOINT_STDERR echo synthetic-progress 1>&2
+if defined DEV_ENTRYPOINT_STDERR powershell.exe -NoProfile -Command "[Console]::Error.WriteLine()"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0capture.ps1"
 exit /b %ERRORLEVEL%
 '@
@@ -102,7 +103,7 @@ try {
     $redirected = $success.Replace("' build", "' build 2>&1 | Out-String | Write-Output")
     $result = Finish-Case (Start-Case $redirected @{DEV_ENTRYPOINT_STDERR='1'})
     Assert-True ($result.Code -eq 0 -and $result.Output.Contains('synthetic-progress')) 'native stderr was lost or treated as failure'
-    Assert-True (-not $result.Output.Contains('NativeCommandError')) 'native progress became a PowerShell error record'
+    Assert-True ($result.Output -notmatch 'NativeCommandError|System.Management.Automation.RemoteException') 'native progress became a PowerShell error record'
     Write-Output 'PASS native stderr forwarding without false errors'
 
     $untracked = "& '" + $escapedEntry + "' test -Target dev_untracked_probe; exit " + '$LASTEXITCODE'
@@ -163,9 +164,18 @@ if "%~3"=="{{.Config.Image}}" (
   exit /b 0
 )
 if "%~3"=="{{json .HostConfig.PortBindings}}" (
-  echo {"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"5432"}]}
+  if defined DEV_ENTRYPOINT_SAFE_BINDING (
+    echo {"5432/tcp":[{"HostIp":"127.0.0.1","HostPort":"5432"}]}
+  ) else (
+    echo {"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"5432"}]}
+  )
   exit /b 0
 )
+if "%~3"=="{{.State.Status}}" (
+  echo running
+  exit /b 0
+)
+if "%~1"=="exec" exit /b 0
 exit /b 98
 '@
     [IO.File]::WriteAllText((Join-Path $temp 'docker.cmd'), $fakeDocker, $utf8)
@@ -186,6 +196,14 @@ exit /b 98
     Assert-True ($result.Code -ne 0 -and $result.Output.Contains('dev_postgres_binding_refused')) 'unsafe port binding was admitted'
     Assert-True (-not (Test-Path $marker)) 'unsafe container was started'
     Write-Output 'PASS PostgreSQL binding refusal before start'
+
+    $missing = "& '" + $escapedEntry + "' postgres -ArtifactRoot '" + (Join-Path $temp 'missing-helper') + "'; exit " + '$LASTEXITCODE'
+    $result = Finish-Case (Start-Case $missing @{
+        DEV_ENTRYPOINT_IMAGE='postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f'
+        DEV_ENTRYPOINT_SAFE_BINDING='1'
+    })
+    Assert-True ($result.Code -ne 0 -and $result.Output.Contains('dev_command_start_failed')) 'missing executable was reported as success'
+    Write-Output 'PASS missing executable cannot qualify a service'
 
 }
 finally {

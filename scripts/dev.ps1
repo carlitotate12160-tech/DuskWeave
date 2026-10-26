@@ -21,9 +21,18 @@ function Find-Executable([string]$Name) {
 }
 
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
+    if (-not (Test-Path -LiteralPath $Program -PathType Leaf)) { throw 'dev_command_start_failed' }
     # Windows PowerShell 5.1 may represent native stderr as ErrorRecord objects.
     $ErrorActionPreference = 'Continue'
-    & $Program @Arguments 2>&1 | ForEach-Object { $_.ToString() }
+    $PSNativeCommandUseErrorActionPreference = $false
+    & $Program @Arguments 2>&1 | ForEach-Object {
+        if ($_ -is [Management.Automation.ErrorRecord]) {
+            if ($_.FullyQualifiedErrorId -notmatch '^NativeCommandError') {
+                throw 'dev_command_start_failed'
+            }
+            $_.Exception.Message
+        } else { $_ }
+    }
     if ($LASTEXITCODE -ne 0) {
         $script:ExitCode = $LASTEXITCODE
         throw 'dev_command_failed'
