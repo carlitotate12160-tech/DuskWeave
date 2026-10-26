@@ -301,5 +301,43 @@ class RolePrefixSelection(unittest.TestCase):
                 run.assert_not_called()
 
 
+class SessionExecution(unittest.TestCase):
+    def test_real_child_keeps_custody_after_collision_without_overwriting_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = Path(tmp)
+            counter = report / "child-count"
+            fixture = object.__new__(bootstrap.Fixture)
+            fixture.database = "dw_native_session_synthetic"
+            fixture.env = dict(os.environ)
+            fixture.env["DW_SESSION_SENTINEL"] = "synthetic-session-value"
+            fixture.secrets = ["synthetic-session-value"]
+            program = (
+                f"from pathlib import Path; import os,sys; p=Path({str(counter)!r}); "
+                "p.write_text(str(int(p.read_text())+1) if p.exists() else '1'); "
+                "sys.exit(0 if os.environ.get('DW_SESSION_SENTINEL')=='synthetic-session-value' else 7)"
+            )
+            command = [sys.executable, "-c", program]
+
+            def requests():
+                yield json.dumps({"label": "first", "args": command})
+                original = (report / "first.result.json").read_bytes()
+                yield json.dumps({"label": "first", "args": command})
+                self.assertEqual((report / "first.result.json").read_bytes(), original)
+                yield json.dumps({"label": "after", "args": command})
+                yield json.dumps({"exit": True})
+
+            output = io.StringIO()
+            with mock.patch.object(sys, "argv", ["bootstrap", "--session", "--report", tmp]), \
+                 mock.patch.object(sys, "stdin", requests()), \
+                 mock.patch.object(bootstrap, "Fixture", return_value=fixture) as factory, \
+                 contextlib.redirect_stdout(output):
+                self.assertEqual(bootstrap.main(), 0)
+            factory.assert_called_once()
+            self.assertEqual(counter.read_text(), "2")
+            for label in ("first", "after"):
+                self.assertEqual(json.loads((report / f"{label}.result.json").read_text())["exit"], 0)
+            self.assertNotIn("synthetic-session-value", output.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
