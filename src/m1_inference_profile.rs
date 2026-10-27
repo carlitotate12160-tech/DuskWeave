@@ -103,6 +103,14 @@ pub fn lookup(name: &str) -> Res<Profile> {
             "deepseek-flash",
             Some("high"),
         ),
+        "deepseek-responses-low-v1" => (
+            "deepseek-responses-low-v1",
+            "https://api.deepseek.com/responses",
+            Some("DEEPSEEK_API_KEY"),
+            Protocol::Responses,
+            "deepseek-flash",
+            Some("low"),
+        ),
         "fixture-responses-v1" => (
             "fixture-responses-v1",
             "urn:duskweave:fixture:responses:v1",

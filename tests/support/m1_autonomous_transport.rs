@@ -577,6 +577,37 @@ fn successor_bound(repair: bool) -> BoundCall {
     .unwrap()
 }
 
+#[test]
+fn successor_network_profiles_arm_the_call_clock_and_others_do_not() {
+    for (profile, network) in [
+        ("deepseek-responses-reasoning-v1", true),
+        ("deepseek-responses-low-v1", true),
+        ("fixture-responses-v1", false),
+        ("fixture-chat-completions-v1", false),
+        ("synthetic-unknown-profile", false),
+    ] {
+        let mut pack: Value = serde_json::from_slice(&bound(false).pack).unwrap();
+        pack["version"] = json!("m1_context_pack_autonomous_v2");
+        pack["run_profile"] = json!("autonomous-dns-fixture-v2");
+        pack["inference_profile"] = json!(profile);
+        let bound = request::bind(&serde_json::to_vec(&pack).unwrap(), None);
+        if profile == "synthetic-unknown-profile" {
+            assert!(bound.is_err(), "an unadmitted profile must not bind");
+            continue;
+        }
+        let b = bound.unwrap();
+        assert_eq!(autonomous_binding(&b).is_ok(), network, "{profile}");
+        let clock = AutonomousProvider::new(permit(), || Ok(()))
+            .prepare_clock(&b, Instant::now() + Duration::from_millis(124000))
+            .unwrap();
+        assert_eq!(
+            clock.is_some(),
+            network,
+            "successor CallClock for {profile}"
+        );
+    }
+}
+
 fn successor_clock_case(mode: &str, binding: run_control::Binding) {
     let b = successor_bound(false);
     autonomous_binding(&b).unwrap();

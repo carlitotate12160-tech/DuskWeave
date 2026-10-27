@@ -48,10 +48,10 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** finish the developer entrypoint, then measure a
-separately authorized real DeepSeek provider-fixture demonstration through
-`m1-run` under the
-[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent).
+**Next product action:** a fresh authorized provider-fixture demonstration on
+the merged source, preferably through `deepseek-responses-low-v1` per the
+[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent),
+then Linux acquisition-boundary qualification.
 `DW-FIX-M1-DNS-SELECTOR-CONTRACT` merged as `e11f62f`
 ([#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120)): an
 admitted `observe_more` + `dns_udp` proposal carrying contextual references

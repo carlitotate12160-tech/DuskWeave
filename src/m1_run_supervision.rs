@@ -261,12 +261,13 @@ fn install_provider_environment(c: &mut Command, phase: RunPhase, run: &RunRecor
             c.env("DEEPSEEK_API_KEY", key);
         }
     }
-    if run
+    let network = run
         .request
         .inference_profile
         .as_deref()
-        .is_some_and(|p| p != "deepseek-responses-reasoning-v1")
-    {
+        .and_then(|p| duskweave::m1_inference_profile::lookup(p).ok())
+        .is_some_and(|p| p.connection.credential_environment.is_some());
+    if run.request.inference_profile.is_some() && !network {
         c.env_remove("DEEPSEEK_API_KEY");
     }
 }
@@ -907,5 +908,51 @@ mod tests {
         .unwrap();
         std::thread::sleep(Duration::from_millis(400));
         assert!(child.lock().unwrap().try_wait().unwrap().is_some());
+    }
+    fn credential_record(profile: Option<&str>) -> RunRecord {
+        let id = uuid::Uuid::from_u128(0x77);
+        serde_json::from_value(serde_json::json!({
+            "request":{"version":"m1_autonomous_run_request_v2","run_id":id,
+                "run_profile":"autonomous-dns-fixture-v2","execution_mode":"controlled_fixture",
+                "inference_profile":profile,"deadline_at_ms":1700004000000i64,
+                "context":{"version":"m1_context_prepare_request_v1","mission":{
+                    "version":"m1_inference_reservation_request_v1","engagement_id":id,"campaign_id":id,
+                    "operator_ref":id,"expected_mission_revision":1,"permission_id":id,"goal_ref":id,
+                    "exercise_mode":"blind"},"candidates":[{"asset_ref":id,"priority":"high"}]},
+                "seed_names":[{"asset_ref":id,"name":"seed.example.invalid"}]},
+            "decision_one":id,"decision_two":id,"attempt":id,"result":id,"terrain_operation":id,
+            "release_sha256":"ab","qualification_ref":id,"status":"running","deadline_at_ms":1700004000000i64
+        }))
+        .unwrap()
+    }
+    #[test]
+    fn credential_forwarding_follows_the_selected_profile_credential() {
+        // No real key is set here: the assertions inspect the child environment
+        // Command entries only, never a credential value.
+        let ambient = std::env::var_os("DEEPSEEK_API_KEY").is_some();
+        for (profile, forwarded) in [
+            (Some("deepseek-responses-reasoning-v1"), true),
+            (Some("deepseek-responses-low-v1"), true),
+            (Some("fixture-responses-v1"), false),
+            (Some("fixture-chat-completions-v1"), false),
+            (Some("synthetic-unknown-profile"), false),
+        ] {
+            let run = credential_record(profile);
+            for phase in [RunPhase::DecisionOne, RunPhase::Acquisition] {
+                let mut c = Command::new("unused");
+                c.env_clear();
+                install_provider_environment(&mut c, phase, &run);
+                let entry = c
+                    .get_envs()
+                    .find(|(k, _)| *k == "DEEPSEEK_API_KEY")
+                    .map(|(_, v)| v.map(|v| v.to_os_string()));
+                let carries_key = matches!(entry, Some(Some(_)));
+                assert_eq!(
+                    carries_key,
+                    forwarded && phase != RunPhase::Acquisition && ambient,
+                    "{profile:?}/{phase:?}: key must reach only a network decision child with an ambient key"
+                );
+            }
+        }
     }
 }

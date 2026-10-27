@@ -72,7 +72,7 @@ fn successor(profile: &str, recipient: &str) -> Value {
 }
 
 #[test]
-fn successor_permission_admits_only_the_three_explicit_bound_profiles() {
+fn successor_permission_admits_only_the_four_explicit_bound_profiles() {
     for (profile, recipient) in [
         ("fixture-responses-v1", "urn:duskweave:fixture:responses:v1"),
         (
@@ -81,6 +81,10 @@ fn successor_permission_admits_only_the_three_explicit_bound_profiles() {
         ),
         (
             "deepseek-responses-reasoning-v1",
+            "https://api.deepseek.com/responses",
+        ),
+        (
+            "deepseek-responses-low-v1",
             "https://api.deepseek.com/responses",
         ),
     ] {

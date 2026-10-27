@@ -333,7 +333,7 @@ fn autonomous_binding(b: &BoundCall) -> Res<()> {
     }
     verify_wire_binding(b)
 }
-fn transport_profile(p: &serde_json::Value) -> Res<&'static str> {
+fn transport_profile(p: &serde_json::Value) -> Res<&str> {
     match (
         p["version"].as_str(),
         p["run_profile"].as_str(),
@@ -347,8 +347,13 @@ fn transport_profile(p: &serde_json::Value) -> Res<&'static str> {
         (
             Some("m1_context_pack_autonomous_v2"),
             Some("autonomous-dns-fixture-v2"),
-            Some("deepseek-responses-reasoning-v1"),
-        ) => Ok("deepseek-responses-reasoning-v1"),
+            Some(profile),
+        ) if crate::m1_inference_profile::lookup(profile)
+            .map(|p| p.connection.credential_environment.is_some())
+            .unwrap_or(false) =>
+        {
+            Ok(profile)
+        }
         _ => Err("inference_transport_unavailable"),
     }
 }
@@ -423,7 +428,11 @@ impl AutonomousProvider {
     fn prepare_clock(&self, b: &BoundCall, until: Instant) -> Res<Option<CallClock>> {
         let config: serde_json::Value =
             serde_json::from_slice(&b.configuration).map_err(|_| "request_encode")?;
-        if config["profile"] != "deepseek-responses-reasoning-v1" {
+        let credential = config["profile"]
+            .as_str()
+            .and_then(|name| crate::m1_inference_profile::lookup(name).ok())
+            .is_some_and(|p| p.connection.credential_environment.is_some());
+        if !credential {
             return Ok(None);
         }
         CallClock::arm(self.permit.clone(), until, self.reporter.clone()).map(Some)

@@ -197,6 +197,49 @@ pub fn restricted_wire_checks(rec: &RunRecord, p: &Prepared) {
         );
         tx.rollback().unwrap();
     }
+    for (key, value) in [
+        ("reasoning", json!({"effort":"synthetic-forged-effort"})),
+        ("max_output_tokens", json!(8192)),
+        ("model", json!("synthetic-forged-model")),
+    ] {
+        let mut config: Value = serde_json::from_slice(&bound.configuration).unwrap();
+        config["requested_settings"][key] = value;
+        let cfg = serde_json::to_vec(&config).unwrap();
+        let forged = request::BoundCall {
+            pack: bound.pack.clone(),
+            digest: request::compute_binding(&bound.pack, &cfg, &bound.body),
+            configuration: cfg,
+            body: bound.body.clone(),
+        };
+        let mut tx = client.transaction().unwrap();
+        assert!(
+            invoke(&mut tx, &forged, reservation.generation_call).is_err(),
+            "SQL accepted forged requested setting {key}"
+        );
+        tx.rollback().unwrap();
+    }
+    // A configuration rebound to another admitted profile grants no send here.
+    let mut config: Value = serde_json::from_slice(&bound.configuration).unwrap();
+    config["profile"] = json!(
+        if config["profile"] == "deepseek-responses-low-v1" {
+            "deepseek-responses-reasoning-v1"
+        } else {
+            "deepseek-responses-low-v1"
+        }
+    );
+    let cfg = serde_json::to_vec(&config).unwrap();
+    let forged = request::BoundCall {
+        pack: bound.pack.clone(),
+        digest: request::compute_binding(&bound.pack, &cfg, &bound.body),
+        configuration: cfg,
+        body: bound.body.clone(),
+    };
+    let mut tx = client.transaction().unwrap();
+    assert!(
+        invoke(&mut tx, &forged, reservation.generation_call).is_err(),
+        "SQL accepted a cross-profile rebound configuration"
+    );
+    tx.rollback().unwrap();
     let repair = request::bind(&bound.pack, Some(&["unexpected_view_request"; 8])).unwrap();
     let mut tx = client.transaction().unwrap();
     assert!(
