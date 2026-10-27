@@ -24,27 +24,40 @@ impl IssuedDnsReference {
         result: Uuid,
         run_profile: &str,
     ) -> Res<Self> {
+        Self::issued(e, c, result, run_profile, "controlled_fixture")
+    }
+    pub fn boundary(e: EngagementId, c: CampaignId, result: Uuid, run_profile: &str) -> Res<Self> {
+        Self::issued(e, c, result, run_profile, crate::m1_run::LIVE_MODE)
+    }
+    fn issued(
+        e: EngagementId,
+        c: CampaignId,
+        result: Uuid,
+        run_profile: &str,
+        mode: &str,
+    ) -> Res<Self> {
         let q = Self {
             version: "m1_terrain_dns_issued_observation_v1".into(),
             engagement_id: e,
             campaign_id: c,
             result_ref: result,
             run_profile: run_profile.into(),
-            execution_mode: "controlled_fixture".into(),
+            execution_mode: mode.into(),
         };
         q.validate()?;
         Ok(q)
     }
     pub fn validate(&self) -> Res<()> {
+        let mode_ok = match self.run_profile.as_str() {
+            "autonomous-dns-fixture-v1"
+            | "autonomous-dns-provider-fixture-v1"
+            | "autonomous-dns-fixture-v2" => self.execution_mode == "controlled_fixture",
+            crate::m1_run::LIVE_PROFILE => self.execution_mode == crate::m1_run::LIVE_MODE,
+            _ => false,
+        };
         let valid = [
             self.version == "m1_terrain_dns_issued_observation_v1",
-            matches!(
-                self.run_profile.as_str(),
-                "autonomous-dns-fixture-v1"
-                    | "autonomous-dns-provider-fixture-v1"
-                    | "autonomous-dns-fixture-v2"
-            ),
-            self.execution_mode == "controlled_fixture",
+            mode_ok,
             !self.engagement_id.0.is_nil(),
             !self.campaign_id.0.is_nil(),
             !self.result_ref.is_nil(),

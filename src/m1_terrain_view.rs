@@ -605,15 +605,15 @@ pub fn verify_current_dependencies(
 
 impl TerrainPublicView {
     fn validate_source_mode(&self, mission: &MissionRegistered) -> Res<()> {
-        let fixture = mission
+        let source = match mission
             .fields
             .m1_inference_permission()
             .and_then(|p| p.autonomous_binding())
-            .is_some_and(|(_, m)| m == "controlled_fixture");
-        let source = if fixture {
-            TerrainSourceKind::FixtureDnsAcquisition
-        } else {
-            TerrainSourceKind::OperatorReviewedDns
+            .map(|(_, m)| m)
+        {
+            Some("controlled_fixture") => TerrainSourceKind::FixtureDnsAcquisition,
+            Some(crate::m1_run::LIVE_MODE) => TerrainSourceKind::BoundaryDnsAcquisition,
+            _ => TerrainSourceKind::OperatorReviewedDns,
         };
         if self.claims.iter().any(|c| c.source_kind != source) {
             return Err(Fail::Input("terrain_source_mode_mismatch"));

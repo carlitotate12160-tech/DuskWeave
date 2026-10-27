@@ -142,7 +142,12 @@ pub fn spawn(
 
 /// SIGKILL then bounded wait; the caller measures the <=1s bound.
 pub fn kill(name: &str) {
-    let _ = docker(&vec!["kill".into(), "-s".into(), "KILL".into(), name.into()]);
+    let _ = docker(&vec![
+        "kill".into(),
+        "-s".into(),
+        "KILL".into(),
+        name.into(),
+    ]);
 }
 
 /// Remove any leftover objects bearing the session label (crash sweep).
@@ -174,7 +179,11 @@ pub fn sweep(session: &str) -> Result<u32, &'static str> {
 
 /// Is the daemon reachable (preflight).
 pub fn live() -> bool {
-    docker(&vec!["version".into(), "--format".into(), "{{.Server.Version}}".into()])
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    docker(&vec![
+        "version".into(),
+        "--format".into(),
+        "{{.Server.Version}}".into(),
+    ])
+    .map(|o| o.status.success())
+    .unwrap_or(false)
 }

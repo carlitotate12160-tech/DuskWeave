@@ -107,11 +107,14 @@ fn nft_stdin(script: &str) -> Result<String, &'static str> {
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(script.as_bytes());
     }
-    child.wait().map_err(|_| "nft_command_failed").and_then(|s| {
-        if s.success() {
-            Ok(String::new())
-        } else {
-            Err("nft_command_failed")
-        }
-    })
+    child
+        .wait()
+        .map_err(|_| "nft_command_failed")
+        .and_then(|s| {
+            if s.success() {
+                Ok(String::new())
+            } else {
+                Err("nft_command_failed")
+            }
+        })
 }

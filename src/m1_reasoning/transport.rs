@@ -321,8 +321,13 @@ fn autonomous_binding(b: &BoundCall) -> Res<()> {
     let c: serde_json::Value =
         serde_json::from_slice(&b.configuration).map_err(|_| "request_encode")?;
     let profile = transport_profile(&p)?;
+    let run_profile = p["run_profile"].as_str().ok_or("request_encode")?;
+    let expected_mode = match run_profile {
+        "autonomous-dns-provider-fixture-v1" => Some("controlled_fixture"),
+        other => crate::m1_run::successor_mode_for(other),
+    };
     let valid = [
-        p["execution_mode"] == "controlled_fixture",
+        expected_mode == p["execution_mode"].as_str(),
         c["run_profile"] == p["run_profile"],
         c["execution_mode"] == p["execution_mode"],
         c["profile"] == profile,
@@ -346,7 +351,7 @@ fn transport_profile(p: &serde_json::Value) -> Res<&str> {
         ) => Ok("deepseek-responses-autonomous-v1"),
         (
             Some("m1_context_pack_autonomous_v2"),
-            Some("autonomous-dns-fixture-v2"),
+            Some("autonomous-dns-fixture-v2" | "autonomous-dns-live-v1"),
             Some(profile),
         ) if crate::m1_inference_profile::lookup(profile)
             .map(|p| p.connection.credential_environment.is_some())

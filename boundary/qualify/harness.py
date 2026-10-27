@@ -14,10 +14,10 @@ import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-LAUNCHER = os.path.join(REPO, "..", "target", "debug", "dw-boundary-launcher")
+LAUNCHER = os.path.realpath(os.path.join(REPO, "target", "debug", "dw-boundary-launcher"))
 STUB = os.path.join(HERE, "stub_responder.py")
 PROBE = os.path.join(HERE, "probe_capture.py")
-CONTROL = os.path.expanduser("~/duskweave/qualify/control")
+CONTROL = os.path.join(HERE, "control")
 DENIED_IP = "198.51.100.99"  # TEST-NET-2: unroutable, no live contact
 SUBNET_BASE = 10
 

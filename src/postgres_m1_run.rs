@@ -189,6 +189,38 @@ impl PgRunStore {
             .map_err(|_| Fail::Store("run_decode"))?;
         serde_json::from_value(raw).map_err(|_| Fail::Store("run_decode"))
     }
+    pub fn reserve_boundary_effect(
+        &mut self,
+        r: Uuid,
+        index: usize,
+    ) -> Res<crate::m1_terrain_input::TerrainDnsRequest> {
+        let index = i32::try_from(index).map_err(|_| Fail::Input("invalid_run_seeds"))?;
+        let raw: Value = self
+            .client
+            .query_one(
+                "SELECT execution.reserve_boundary_dns($1,$2)",
+                &[&r, &index],
+            )
+            .map_err(|_| Fail::State("fixture_release_refused"))?
+            .try_get(0)
+            .map_err(|_| Fail::Store("run_decode"))?;
+        serde_json::from_value(raw).map_err(|_| Fail::Store("run_decode"))
+    }
+    pub fn commit_boundary_result(
+        &mut self,
+        r: Uuid,
+        request: &crate::m1_terrain_input::TerrainDnsRequest,
+    ) -> Res<()> {
+        let raw = serde_json::to_value(request).map_err(|_| Fail::Store("run_decode"))?;
+        let mut tx = self
+            .client
+            .transaction()
+            .map_err(|_| Fail::Unresolved("fixture_result_unknown"))?;
+        tx.execute("SELECT execution.commit_boundary_dns($1,$2)", &[&r, &raw])
+            .map_err(|_| Fail::Unresolved("fixture_result_unknown"))?;
+        tx.commit()
+            .map_err(|_| Fail::Unresolved("fixture_result_unknown"))
+    }
     pub fn commit_result(
         &mut self,
         r: Uuid,

@@ -112,9 +112,13 @@ fn configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'static str> 
 
 fn successor_configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'static str> {
     use crate::m1_inference_profile::{self as profiles, Protocol};
-    if parsed["run_profile"] != profiles::RUN_PROFILE
-        || parsed["execution_mode"] != "controlled_fixture"
-    {
+    let Some(mode) = parsed["execution_mode"].as_str() else {
+        return Err("request_encode");
+    };
+    let Some(run_profile) = parsed["run_profile"].as_str() else {
+        return Err("request_encode");
+    };
+    if crate::m1_run::successor_mode_for(run_profile) != Some(mode) {
         return Err("request_encode");
     }
     let profile = profiles::lookup(
@@ -124,8 +128,8 @@ fn successor_configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'st
     )
     .map_err(|_| "request_encode")?;
     let mut c = template();
-    c["execution_mode"] = json!("controlled_fixture");
-    c["run_profile"] = json!(profiles::RUN_PROFILE);
+    c["execution_mode"] = json!(mode);
+    c["run_profile"] = json!(run_profile);
     c["profile"] = json!(profile.name);
     c["recipient"] = json!(profile.connection.recipient);
     c["credential_reference"] = json!(profile.connection.credential_environment);

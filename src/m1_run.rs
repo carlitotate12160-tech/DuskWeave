@@ -9,6 +9,18 @@ use uuid::Uuid;
 pub const FIXTURE_PROFILE: &str = "autonomous-dns-fixture-v1";
 pub const PROVIDER_FIXTURE_PROFILE: &str = "autonomous-dns-provider-fixture-v1";
 pub const FIXTURE_MODE: &str = "controlled_fixture";
+pub const LIVE_PROFILE: &str = "autonomous-dns-live-v1";
+pub const LIVE_MODE: &str = "boundary_dns_acquisition";
+pub const BOUNDARY_EFFECT_PROFILE: &str = "dns-routing-boundary-v1";
+
+/// Execution mode a successor run profile is bound to; unlisted profiles get none.
+pub fn successor_mode_for(run_profile: &str) -> Option<&'static str> {
+    match run_profile {
+        crate::m1_inference_profile::RUN_PROFILE => Some(FIXTURE_MODE),
+        LIVE_PROFILE => Some(LIVE_MODE),
+        _ => None,
+    }
+}
 
 pub fn controlled_fixture_profile(profile: &str) -> bool {
     [
@@ -59,8 +71,7 @@ impl RunRequest {
         let valid = [
             self.valid_version_profile(),
             !self.run_id.is_nil(),
-            controlled_fixture_profile(&self.run_profile),
-            self.execution_mode == FIXTURE_MODE,
+            self.mode_profile_ok(),
             self.deadline_at_ms > 0,
             (1..=8).contains(&self.seed_names.len()),
             self.seed_names.len() == self.context.candidates.len(),
@@ -88,13 +99,20 @@ impl RunRequest {
         self.successor() || self.run_profile == PROVIDER_FIXTURE_PROFILE
     }
 
+    fn mode_profile_ok(&self) -> bool {
+        if self.successor() {
+            return successor_mode_for(&self.run_profile) == Some(self.execution_mode.as_str());
+        }
+        controlled_fixture_profile(&self.run_profile) && self.execution_mode == FIXTURE_MODE
+    }
+
     fn valid_version_profile(&self) -> bool {
         match (self.version.as_str(), self.inference_profile.as_deref()) {
             ("m1_autonomous_run_request_v1", None) => {
                 self.run_profile != crate::m1_inference_profile::RUN_PROFILE
             }
             ("m1_autonomous_run_request_v2", Some(name)) => {
-                self.run_profile == crate::m1_inference_profile::RUN_PROFILE
+                successor_mode_for(&self.run_profile).is_some()
                     && crate::m1_inference_profile::lookup(name).is_ok()
             }
             _ => false,

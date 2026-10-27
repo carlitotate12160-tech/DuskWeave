@@ -260,6 +260,12 @@ fn install_provider_environment(c: &mut Command, phase: RunPhase, run: &RunRecor
         if let Some(key) = std::env::var_os("DEEPSEEK_API_KEY") {
             c.env("DEEPSEEK_API_KEY", key);
         }
+    } else {
+        for key in ["DW_BOUNDARY_LAUNCHER", "DW_BOUNDARY_IMAGE"] {
+            if let Some(value) = std::env::var_os(key) {
+                c.env(key, value);
+            }
+        }
     }
     let network = run
         .request

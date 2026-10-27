@@ -99,10 +99,10 @@ fn set_trajectory_view(pack: &mut Value, event: Option<Value>) -> Res<()> {
 
 impl RunContextBinding {
     fn effect_profile(&self) -> &'static str {
-        if self.execution_mode == "controlled_fixture" {
-            "dns-routing-fixture-v1"
-        } else {
-            "dns-routing-v2"
+        match self.execution_mode.as_str() {
+            "controlled_fixture" => "dns-routing-fixture-v1",
+            crate::m1_run::LIVE_MODE => crate::m1_run::BOUNDARY_EFFECT_PROFILE,
+            _ => "dns-routing-v2",
         }
     }
     fn validate(&self) -> Res<()> {
@@ -137,8 +137,8 @@ impl RunContextBinding {
             return false;
         };
         let valid = [
-            self.run_profile == crate::m1_inference_profile::RUN_PROFILE,
-            self.execution_mode == "controlled_fixture",
+            crate::m1_run::successor_mode_for(&self.run_profile)
+                == Some(self.execution_mode.as_str()),
             crate::m1_inference_profile::lookup(name).is_ok(),
         ];
         valid.into_iter().all(|v| v)

@@ -53,6 +53,7 @@ pub mod postgres_terrain_history;
 pub mod postgres_terrain_view;
 
 pub mod m1_autonomous_context;
+pub mod m1_boundary_dns;
 pub mod m1_fixture_dns;
 pub mod m1_run;
 pub mod m1_terrain_issued;

@@ -15,9 +15,15 @@ pub(super) fn acquire(run: &RunRecord) -> Res<()> {
     else {
         return Err(Fail::State("fixture_effect_not_selected"));
     };
-    let issued = broker.reserve_effect(run.request.run_id, seed_index)?;
-    let result = duskweave::m1_fixture_dns::acquire(issued)?;
-    broker.commit_result(run.request.run_id, &result)?;
+    if run.request.execution_mode == duskweave::m1_run::LIVE_MODE {
+        let issued = broker.reserve_boundary_effect(run.request.run_id, seed_index)?;
+        let acquired = duskweave::m1_boundary_dns::acquire(issued)?;
+        broker.commit_boundary_result(run.request.run_id, &acquired)?;
+    } else {
+        let issued = broker.reserve_effect(run.request.run_id, seed_index)?;
+        let acquired = duskweave::m1_fixture_dns::acquire(issued)?;
+        broker.commit_result(run.request.run_id, &acquired)?;
+    }
     deliver(run)
 }
 
@@ -25,12 +31,21 @@ fn accept_issued(run: &RunRecord) -> Res<duskweave::m1_terrain::TerrainAcceptedE
     let q = &run.request.context.mission;
     let mut terrain = PgTerrainStore::new(super::m1_terrain_cli::terrain_connection()?);
     let mut mission = PgMissionStore::new(super::connect()?);
-    let reference = duskweave::m1_terrain_issued::IssuedDnsReference::controlled_fixture(
-        q.engagement_id,
-        q.campaign_id,
-        run.result,
-        &run.request.run_profile,
-    )?;
+    let reference = if run.request.execution_mode == duskweave::m1_run::LIVE_MODE {
+        duskweave::m1_terrain_issued::IssuedDnsReference::boundary(
+            q.engagement_id,
+            q.campaign_id,
+            run.result,
+            &run.request.run_profile,
+        )?
+    } else {
+        duskweave::m1_terrain_issued::IssuedDnsReference::controlled_fixture(
+            q.engagement_id,
+            q.campaign_id,
+            run.result,
+            &run.request.run_profile,
+        )?
+    };
     let (event, _, _, _) = terrain
         .record_issued(&mut mission, &reference)?
         .map_err(Fail::State)?;

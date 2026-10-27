@@ -2,12 +2,12 @@
 //! the ADR-017 phase exchange under the host lease and STOP latch, then
 //! dispose and emit a safe receipt. Raw bytes never appear in the receipt.
 use super::{docker, msgs, nft, stop, wire};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufReader, Write};
 use std::process::{ChildStdin, ChildStdout};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const MAX_LEASE_MS: u64 = 2_000;
@@ -81,9 +81,22 @@ fn spawn_pair(
     tag: &str,
     net: &str,
 ) -> Result<(docker::Spawned, docker::Spawned), &'static str> {
-    let exp =
-        docker::spawn("exporter", tag, &req.session_id, docker::EXPORTER_UID, "none", &req.image)?;
-    match docker::spawn("capture", tag, &req.session_id, docker::CAPTURE_UID, net, &req.image) {
+    let exp = docker::spawn(
+        "exporter",
+        tag,
+        &req.session_id,
+        docker::EXPORTER_UID,
+        "none",
+        &req.image,
+    )?;
+    match docker::spawn(
+        "capture",
+        tag,
+        &req.session_id,
+        docker::CAPTURE_UID,
+        net,
+        &req.image,
+    ) {
         Ok(cap) => Ok((cap, exp)),
         Err(code) => {
             let mut exp = exp;
@@ -131,9 +144,8 @@ fn exchange(
     let req_owned = owned(req);
     let flag = stop_flag.clone();
     let lease2 = lease.clone();
-    let drive = std::thread::spawn(move || {
-        drive(pipes, &req_owned, lease2, arm_tx, result_tx, flag)
-    });
+    let drive =
+        std::thread::spawn(move || drive(pipes, &req_owned, lease2, arm_tx, result_tx, flag));
     let _renew = spawn_renew(req, lease.clone(), arm_rx, &stop_flag);
     let _watch = spawn_watch(req, &stop_flag, tag, lease.clone());
     let _ctl = spawn_ctl_reader(req, &stop_flag, tag, lease);
@@ -199,11 +211,7 @@ fn relay_ready(
                 && ph.attempt_id == req.attempt_id
         });
     if ok {
-        let bytes = [
-            &(buf.len() as u32).to_be_bytes()[..],
-            &buf[..],
-        ]
-        .concat();
+        let bytes = [&(buf.len() as u32).to_be_bytes()[..], &buf[..]].concat();
         let _ = exp_in.write_all(&bytes);
     }
     ok
@@ -229,10 +237,9 @@ fn read_results(
                 let kind = v.get("kind").and_then(|k| k.as_str());
                 match phase {
                     Some("ready")
-                        if kind == Some("exporter")
-                            && attempt == Some(req.attempt_id.as_str()) =>
+                        if kind == Some("exporter") && attempt == Some(req.attempt_id.as_str()) =>
                     {
-                        continue
+                        continue;
                     }
                     Some("result") if attempt == Some(req.attempt_id.as_str()) => {
                         if let Ok(res) = serde_json::from_slice::<msgs::WorkerResult>(&buf) {
@@ -258,10 +265,8 @@ fn await_result(
     stop: &Arc<AtomicBool>,
 ) -> Outcome {
     loop {
-        let latched = || {
-            stop.load(Ordering::Relaxed)
-                || stop::is_latched(&req.control_root, &req.session_id)
-        };
+        let latched =
+            || stop.load(Ordering::Relaxed) || stop::is_latched(&req.control_root, &req.session_id);
         match rx.recv_timeout(Duration::from_millis(50)) {
             Ok(r) => return if latched() { Err("stopped") } else { Ok(r) },
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -292,7 +297,7 @@ fn await_result(
                     Err("stopped")
                 } else {
                     Err("phase_failed")
-                }
+                };
             }
         }
     }
@@ -446,7 +451,10 @@ fn receipt(
             obj.insert("disposition".into(), json!(r.disposition));
             obj.insert("rcode".into(), json!(r.rcode));
             obj.insert("truncated".into(), json!(r.truncated));
-            obj.insert("answers".into(), serde_json::to_value(&r.answers).unwrap_or(json!([])));
+            obj.insert(
+                "answers".into(),
+                serde_json::to_value(&r.answers).unwrap_or(json!([])),
+            );
             obj.insert(
                 "counters".into(),
                 serde_json::to_value(&r.counters).unwrap_or(json!({})),
@@ -521,13 +529,18 @@ fn validate(req: &msgs::AttemptRequest) -> Result<(), &'static str> {
         ("effect", req.effect == "dns_udp"),
         ("qtype", req.qtype == "A"),
         ("transport", req.endpoint.transport == "udp"),
-        ("endpoint_ipv4", req.endpoint.ipv4.parse::<std::net::Ipv4Addr>().is_ok()),
+        (
+            "endpoint_ipv4",
+            req.endpoint.ipv4.parse::<std::net::Ipv4Addr>().is_ok(),
+        ),
         ("qname", qname_ok(&req.qname)),
         ("bounds", bounds_ok(req)),
         ("image_pin", image_pinned(&req.image)),
     ];
     match checks.iter().find(|(_, ok)| !ok) {
-        Some((name, _)) => Err(Box::leak(format!("request_refused_{name}").into_boxed_str())),
+        Some((name, _)) => Err(Box::leak(
+            format!("request_refused_{name}").into_boxed_str(),
+        )),
         None => Ok(()),
     }
 }

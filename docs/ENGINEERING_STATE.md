@@ -80,11 +80,20 @@ committed Decision 1 and fixture Terrain; Decision 2 ended exit 124 with
 remain unproved. [Retained evidence](workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md)
 does not authorize replay or establish a successful successor episode.
 
-**Live acquisition remains unqualified:** the 2026-10-19 WSL inventory showed
-active 2 GiB swap and a `wsl-capture-crash` core handler; it did not qualify
-ADR-015 no-swap/no-dump, egress, host STOP or disposal. Qualify the actual Linux
-boundary before live DNS, then HTTPS. Windows fixture qualification is not Linux
-acquisition evidence. No host reconfiguration or target contact is authorized here.
+**Live boundary DNS acquisition is qualified on Oracle ARM64 only:** the
+ADR-015 harness on the qualified `dw-boundary` image passed 10/10 scenarios
+with zero residual on the pre-rebase `test/m1-linux-boundary` candidate
+(`8bac527`, rebased onto #125 as `56c228d`), and the
+`autonomous-dns-live-v1` / `boundary_dns_acquisition` lane (migration `0022`,
+`src/m1_boundary_dns.rs` adapter, `m1-run-phase` env forwarding) completed an
+end-to-end owner-authorized episode `890cfd92-e41b-44b1-b663-0e789cdfc424`:
+DeepSeek decision one → one live UDP/53 query for `niagamas.com` to resolver
+`1.1.1.1` inside the nft-leased container (`noerror`, `206.189.93.100`,
+TTL 1799) → Terrain acceptance → predecessor-bound decision two. Receipt and
+consent drafts live under the live-boundary-lane report cache. This qualifies
+the lane's wiring, not live target facts, HTTPS reachability, or Windows/WSL
+platforms; each episode still requires fresh per-lane consent and its own
+window.
 
 **Debt remains open:** use [roadmap sections 1.3-1.5](MVP_AND_DEFERRED_SCOPE.md#13-audit-disposition-attached-to-these-deliveries)
 and current candidate metrics. Legacy CLI/M0 behavior remains supported until

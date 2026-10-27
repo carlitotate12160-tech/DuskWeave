@@ -256,3 +256,44 @@ For current demonstration evidence and missing prerequisites, read
 Offline fixtures prove owner wiring/failure semantics, not LLM cognition,
 live target facts or an M1 seal. A failed/partial paid episode stays recorded;
 do not replay it to obtain a preferred strategy or a successful-looking report.
+
+## Live boundary lane: separate opt-in consent
+
+The `autonomous-dns-live-v1` / `boundary_dns_acquisition` pair (migration
+`0022_live_boundary_dns.sql`) swaps only the effect path: Decision 1's
+`observe_more` + `dns_udp` proposal reserves through
+`execution.reserve_boundary_dns`, and the acquisition child spawns the
+qualified `dw-boundary-launcher` (`run-attempt` subcommand) instead of the
+deterministic fixture. Inference, Terrain intake, predecessor binding and all
+other gates are unchanged. It is qualified on the Oracle ARM64 host only; it
+carries its own consent and never inherits fixture or provider-fixture
+authority.
+
+Operator-facing differences from the provider-fixture lane:
+
+- Registration must bind run profile `autonomous-dns-live-v1`, execution mode
+  `boundary_dns_acquisition` and the same `m1_inference_permission_v4` /
+  `m1_autonomous_run_request_v2` versions. The permission additionally carries
+  `vantage_ref` and `resolver_ipv4`: the resolver must be a public unicast IPv4
+  (private, loopback, documentation and multicast ranges refuse at reserve
+  time). `contact_rules`/`excluded_names`/`campaign_limits.dns_questions` bound
+  the seed name as usual; names are never taken from LLM prose.
+- The run's parent environment needs two boundary variables in addition to the
+  existing configuration boundary: `DW_BOUNDARY_LAUNCHER` (absolute path to the
+  launcher or its `sudo -n` wrapper — nftables lease installation requires
+  root) and `DW_BOUNDARY_IMAGE` (digest-pinned, `name@sha256:` or `sha256:`
+  form; a bare tag refuses). The supervisor forwards them only to acquisition
+  children; inference children never receive them, and the API key is never
+  forwarded to acquisition children.
+- `DW_M1_RUN_CONTROL_ROOT` is reused as the launcher's control root; it must be
+  writable by the privileged launcher path.
+- A qualified attempt commits the real answers (rcode, truncation, answers with
+  TTLs, single-vantage limitation) into the issued Terrain observation. A
+  refused, timed-out or killed attempt is a terminal failure of the episode,
+  not a retryable fixture outcome; residual containers/networks/leases are
+  swept by the launcher's teardown, and `dw-boundary-launcher cleanup`/`stop`
+  remain the operator recovery commands.
+- The episode's `status=completed` with `effect_count=1` and
+  `terrain_history_count=1` proves one authorized live DNS exchange happened
+  inside the qualified boundary. It does not prove target reachability, HTTPS
+  service facts or any other vantage.

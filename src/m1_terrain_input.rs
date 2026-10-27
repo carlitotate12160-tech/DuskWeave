@@ -30,6 +30,8 @@ pub enum TerrainSourceKind {
     OperatorReviewedDns,
     #[serde(rename = "fixture_dns_acquisition")]
     FixtureDnsAcquisition,
+    #[serde(rename = "boundary_dns_acquisition")]
+    BoundaryDnsAcquisition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -353,6 +355,9 @@ impl TerrainDnsRequest {
             ) | (
                 TerrainRequestVersion::M1TerrainDnsIssuedObservationV1,
                 TerrainSourceKind::FixtureDnsAcquisition
+            ) | (
+                TerrainRequestVersion::M1TerrainDnsIssuedObservationV1,
+                TerrainSourceKind::BoundaryDnsAcquisition
             )
         ) {
             return Err(Fail::Input("invalid_source_binding"));

@@ -468,8 +468,10 @@ impl InferencePermission {
         let profile = crate::m1_inference_profile::lookup(&self.profile)?;
         let valid = [
             self.recipient == profile.connection.recipient,
-            self.run_profile.as_deref() == Some(crate::m1_inference_profile::RUN_PROFILE),
-            self.execution_mode.as_deref() == Some("controlled_fixture"),
+            self.run_profile
+                .as_deref()
+                .and_then(crate::m1_run::successor_mode_for)
+                == self.execution_mode.as_deref(),
             self.provider_terms_approved,
             !self.permission_id.is_nil(),
             !self.provider_terms_ref.is_nil(),
