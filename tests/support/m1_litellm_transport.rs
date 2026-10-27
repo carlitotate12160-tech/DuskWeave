@@ -21,8 +21,12 @@ const GATEWAY_URL: &str = "http://127.0.0.1:14000/v1/responses";
 const CONTROL_ADDR: &str = "127.0.0.1:14082";
 const GATEWAY_KEY: &str = "sk-dw-probe-gateway-sentinel-9002";
 const UPSTREAM_KEY: &str = "sk-dw-probe-upstream-sentinel-9001";
-const REPORT_DIR: &str = "D:/DuskWeave-build/rust-1.94.1/reports/litellm-native-probe-20261027a";
 const CONTAINER: &str = "dw-litellm-probe-20261027a";
+
+fn probe_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 struct ProbeBasis(AtomicUsize, bool);
 impl ProbeBasis {
@@ -385,6 +389,11 @@ fn run_wire_case(
 #[test]
 #[ignore = "requires disposable LiteLLM probe container on 127.0.0.1:14000/14082"]
 fn native_wire_and_terminal_matrix() {
+    let _serial = probe_lock();
+    let root = std::env::var_os("DW_LITELLM_REPORT_DIR")
+        .map(std::path::PathBuf::from)
+        .expect("set DW_LITELLM_REPORT_DIR to the gateway artifact directory");
+    std::fs::create_dir_all(&root).expect("create gateway artifact directory");
     ensure_gateway();
     let cases = wire_cases();
     let (d1, d2_min) = (
@@ -624,7 +633,6 @@ fn native_wire_and_terminal_matrix() {
         assert!(matches!(rec.admission, Admission::Repairable(ref c) if c == &[code]));
     }
 
-    let root = std::path::Path::new(REPORT_DIR);
     std::fs::write(root.join("gateway-completed-defer.http"), &raw_ok).unwrap();
     std::fs::write(
         root.join("gateway-incomplete-max-output-tokens.http"),
@@ -646,6 +654,7 @@ fn native_wire_and_terminal_matrix() {
 #[test]
 #[ignore = "requires disposable LiteLLM probe container on 127.0.0.1:14000/14082"]
 fn single_send_and_no_cache_matrix() {
+    let _serial = probe_lock();
     ensure_gateway();
     let d1 = wire_cases()[0]["pack"].as_str().unwrap().to_owned();
     let call = request::bind(&successor_pack(&d1, "deepseek-responses-low-v1"), None).unwrap();
@@ -789,6 +798,7 @@ fn stop_disconnect_and_redaction_matrix() {
     if let Ok(mode) = std::env::var("DW_LITELLM_PROBE_CHILD") {
         return probe_child_worker(&mode);
     }
+    let _serial = probe_lock();
     ensure_gateway();
     let d1 = wire_cases()[0]["pack"].as_str().unwrap().to_owned();
     let call = request::bind(&successor_pack(&d1, "deepseek-responses-low-v1"), None).unwrap();
@@ -860,16 +870,18 @@ fn stop_disconnect_and_redaction_matrix() {
     for mode in ["parent_loss", "lease_expiry"] {
         set_mock(json!({"status": 200, "delay_ms": 3500}));
         let target = "m1_reasoning::transport::litellm_tests::stop_disconnect_and_redaction_matrix";
-        let mut child = Command::new(std::env::current_exe().unwrap())
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
             .env_clear()
-            .env("SystemRoot", std::env::var_os("SystemRoot").unwrap())
             .env("DW_LITELLM_PROBE_CHILD", mode)
             .args(["--exact", target, "--ignored", "--nocapture"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
+            .stderr(Stdio::null());
+        if let Some(system_root) = std::env::var_os("SystemRoot") {
+            command.env("SystemRoot", system_root);
+        }
+        let mut child = command.spawn().unwrap();
         let arrive = Instant::now() + Duration::from_secs(5);
         while mock_state()["calls"] == 0 {
             assert!(Instant::now() < arrive, "child never sent: {mode}");
@@ -921,10 +933,31 @@ fn stop_disconnect_and_redaction_matrix() {
                 && !diag.contains("SENTINEL")
         );
     }
-    let (_, raw_hdr, _, el_hdr) = raw_exchange(&call);
-    let mut raw_with_key_hdr = b"HTTP/1.1 200 OK\r\nX-Probe-Echo: ".to_vec();
+    let clean_proposal = proposal_json("retain", &["asset_0"], "Bounded probe hypothesis.");
+    set_mock(json!({
+        "status": 200,
+        "body": completed_envelope(&clean_proposal, "deepseek-flash", Value::Null),
+    }));
+    let (perform_hdr, raw_hdr, over_hdr, el_hdr) = raw_exchange(&call);
+    perform_hdr.unwrap();
+    assert!(!over_hdr);
+    let clean = finish_transfer(
+        Ok(()),
+        raw_hdr.clone(),
+        false,
+        GATEWAY_KEY,
+        el_hdr,
+        &mut ProbeBasis::new(true),
+        &mut ProviderDiagnostic::new(call.digest.clone()),
+    )
+    .unwrap();
+    assert!(matches!(clean.admission, Admission::Accepted(_)));
+    let status_end = raw_hdr.windows(2).position(|w| w == b"\r\n").unwrap() + 2;
+    let mut raw_with_key_hdr = raw_hdr[..status_end].to_vec();
+    raw_with_key_hdr.extend_from_slice(b"X-Probe-Echo: ");
     raw_with_key_hdr.extend_from_slice(GATEWAY_KEY.as_bytes());
-    raw_with_key_hdr.extend_from_slice(&raw_hdr[15..]);
+    raw_with_key_hdr.extend_from_slice(b"\r\n");
+    raw_with_key_hdr.extend_from_slice(&raw_hdr[status_end..]);
     let mut diag_hdr = ProviderDiagnostic::new(call.digest.clone());
     let hdr_res = finish_transfer(
         Ok(()),

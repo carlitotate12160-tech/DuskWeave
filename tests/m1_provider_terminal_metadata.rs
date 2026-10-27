@@ -521,9 +521,9 @@ fn gateway_artifacts_to_pg_history_and_key_free_recovery() {
     native::admin()
         .batch_execute(include_str!("../migrations/0021_inference_lifecycle.sql"))
         .unwrap();
-    let root = std::path::Path::new(
-        "D:/DuskWeave-build/rust-1.94.1/reports/litellm-native-probe-20261027a",
-    );
+    let root = std::env::var_os("DW_LITELLM_REPORT_DIR")
+        .map(std::path::PathBuf::from)
+        .expect("set DW_LITELLM_REPORT_DIR to the gateway artifact directory");
     let manifest: Value = serde_json::from_slice(
         &std::fs::read(root.join("gateway-artifacts-manifest.json"))
             .expect("missing gateway-artifacts-manifest.json from adapter probe"),
