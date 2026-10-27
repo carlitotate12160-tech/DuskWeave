@@ -567,3 +567,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../../tests/support/m1_autonomous_transport.rs"]
 mod autonomous_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/m1_litellm_transport.rs"]
+mod litellm_tests;

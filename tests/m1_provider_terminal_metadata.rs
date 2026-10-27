@@ -513,3 +513,171 @@ fn restricted_sql_validates_before_mutation_and_preserves_reports_and_legacy() {
     );
     assert_eq!(calls(&mut legacy), old);
 }
+#[test]
+#[ignore = "consumes synthetic LiteLLM gateway artifacts and exercises restricted PostgreSQL"]
+fn gateway_artifacts_to_pg_history_and_key_free_recovery() {
+    use sha2::{Digest, Sha256};
+    let _guard = native::db();
+    native::admin()
+        .batch_execute(include_str!("../migrations/0021_inference_lifecycle.sql"))
+        .unwrap();
+    let root = std::path::Path::new(
+        "D:/DuskWeave-build/rust-1.94.1/reports/litellm-native-probe-20261027a",
+    );
+    let manifest: Value = serde_json::from_slice(
+        &std::fs::read(root.join("gateway-artifacts-manifest.json"))
+            .expect("missing gateway-artifacts-manifest.json from adapter probe"),
+    )
+    .unwrap();
+    let hex_sha = |b: &[u8]| -> String {
+        Sha256::digest(b)
+            .iter()
+            .map(|x| format!("{x:02x}"))
+            .collect()
+    };
+    let raw_ok = std::fs::read(root.join("gateway-completed-defer.http")).unwrap();
+    let raw_inc = std::fs::read(root.join("gateway-incomplete-max-output-tokens.http")).unwrap();
+    assert_eq!(
+        hex_sha(&raw_ok),
+        manifest["completed_defer"]["sha256"].as_str().unwrap()
+    );
+    assert_eq!(
+        hex_sha(&raw_inc),
+        manifest["incomplete_max_output_tokens"]["sha256"]
+            .as_str()
+            .unwrap()
+    );
+
+    let mut case_ok = native::decision(0x1d006);
+    let mut p_ok = EnvelopeProvider {
+        wire: raw_ok.clone(),
+        ..EnvelopeProvider::new(None)
+    };
+    let rec_ok = infer_case(&mut case_ok, &mut p_ok);
+    assert_eq!(p_ok.sends, 1);
+    assert_eq!(rec_ok["proposal_disposition"], "validated_proposal");
+    assert_eq!(rec_ok["publication"], "committed");
+    assert_eq!(rec_ok["history"], "completed");
+    assert_eq!(
+        rec_ok["consumption"],
+        "completed_charged_unused_repair_reserved"
+    );
+    assert_eq!(rec_ok["dispatch_granted"], false);
+    assert_eq!(rec_ok["proposal"]["next_intent"]["category"], "defer");
+    assert!(
+        !rec_ok.to_string().contains("SENTINEL") && !rec_ok.to_string().contains("sk-dw-probe")
+    );
+    let calls_ok = calls(&mut case_ok);
+    assert_eq!(calls_ok[0]["state"], "completed");
+    assert_eq!(calls_ok[0]["usage"]["input_tokens"], 12);
+    assert_eq!(calls_ok[0]["usage"]["output_tokens"], 23);
+    assert_eq!(calls_ok[0]["usage"]["reasoning_tokens"], 5);
+    assert_eq!(durable_counts(&case_ok), (1, 1, 0));
+    let path_ok =
+        std::env::temp_dir().join(format!("dw-litellm-ok-{}.json", case_ok.scope.decision));
+    std::fs::write(&path_ok, serde_json::to_vec(&case_ok.request).unwrap()).unwrap();
+    for cmd in ["m1-infer-inspect", "m1-infer-recover", "m1-infer-recover"] {
+        let r = cli(cmd, &path_ok, case_ok.scope.decision);
+        assert_eq!(
+            (
+                &r["proposal_disposition"],
+                &r["proposal"],
+                &r["consumption"]
+            ),
+            (
+                &rec_ok["proposal_disposition"],
+                &rec_ok["proposal"],
+                &rec_ok["consumption"]
+            )
+        );
+        assert_eq!(
+            (calls(&mut case_ok), durable_counts(&case_ok)),
+            (calls_ok.clone(), (1, 1, 0))
+        );
+    }
+
+    let mut case_inc = native::decision(0x1d007);
+    let mut p_inc = EnvelopeProvider {
+        wire: raw_inc.clone(),
+        ..EnvelopeProvider::new(None)
+    };
+    let rec_inc = infer_case(&mut case_inc, &mut p_inc);
+    assert_eq!(p_inc.sends, 1);
+    assert_eq!(rec_inc["proposal_disposition"], "provider_incomplete");
+    assert_eq!(rec_inc["publication"], "committed");
+    assert_eq!(rec_inc["history"], "completed");
+    assert_eq!(rec_inc["consumption"], "uncertain_charged");
+    assert_eq!(rec_inc["dispatch_granted"], false);
+    assert!(rec_inc["proposal"].is_null());
+    let calls_inc = calls(&mut case_inc);
+    assert_eq!(calls_inc[0]["state"], "usage_unknown");
+    assert_eq!(
+        calls_inc[0]["usage"],
+        serde_json::to_value(p_inc.diagnostic.report.as_ref().unwrap()).unwrap()
+    );
+    assert!(
+        !calls_inc.to_string().contains("SENTINEL")
+            && !calls_inc.to_string().contains("sk-dw-probe")
+    );
+    assert_eq!(durable_counts(&case_inc), (1, 1, 0));
+    let path_inc =
+        std::env::temp_dir().join(format!("dw-litellm-inc-{}.json", case_inc.scope.decision));
+    std::fs::write(&path_inc, serde_json::to_vec(&case_inc.request).unwrap()).unwrap();
+    for cmd in ["m1-infer-inspect", "m1-infer-recover", "m1-infer-recover"] {
+        let r = cli(cmd, &path_inc, case_inc.scope.decision);
+        assert_eq!(
+            (
+                &r["proposal_disposition"],
+                &r["provenance"],
+                &r["consumption"]
+            ),
+            (
+                &json!("provider_incomplete"),
+                &rec_inc["provenance"],
+                &json!("uncertain_charged")
+            )
+        );
+        assert_eq!(
+            (calls(&mut case_inc), durable_counts(&case_inc)),
+            (calls_inc.clone(), (1, 1, 0))
+        );
+    }
+
+    // Restricted SQL binding check: tampered recipient/model with recomputed hash is refused.
+    let mut case_bad = native::decision(0x1d008);
+    let res_bad = case_bad
+        .broker
+        .reserve(&case_bad.scope, &case_bad.pack)
+        .unwrap();
+    let bound_good = request::bind(&case_bad.pack, None).unwrap();
+    let mut cfg_v: Value = serde_json::from_slice(&bound_good.configuration).unwrap();
+    cfg_v["recipient"] = json!("http://127.0.0.1:14000/v1/responses");
+    let cfg_b = serde_json::to_vec(&cfg_v).unwrap();
+    let bad_call = request::BoundCall {
+        pack: bound_good.pack.clone(),
+        digest: request::compute_binding(&bound_good.pack, &cfg_b, &bound_good.body),
+        configuration: cfg_b,
+        body: bound_good.body,
+    };
+    assert_eq!(
+        case_bad
+            .broker
+            .may_send(&case_bad.scope, res_bad.generation_call, &bad_call)
+            .err(),
+        Some("inference_marker_refused")
+    );
+    assert_eq!(calls(&mut case_bad), json!([]));
+
+    std::fs::write(
+        root.join("pg-consumer-evidence.json"),
+        serde_json::to_vec_pretty(&json!({
+            "completed_defer_sha256_verified": hex_sha(&raw_ok),
+            "incomplete_sha256_verified": hex_sha(&raw_inc),
+            "completed_decision": {"decision": case_ok.scope.decision, "disposition": rec_ok["proposal_disposition"], "consumption": rec_ok["consumption"], "counts": [1, 1, 0]},
+            "incomplete_decision": {"decision": case_inc.scope.decision, "disposition": rec_inc["proposal_disposition"], "consumption": rec_inc["consumption"], "counts": [1, 1, 0]},
+            "tampered_recipient_sql_may_send": "inference_marker_refused",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+}
