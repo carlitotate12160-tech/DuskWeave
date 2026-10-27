@@ -116,6 +116,9 @@ $mutex = $null
 $ownsMutex = $false
 $savedEnvironment = $null
 $managedNames = @()
+if ($ArtifactRoot) {
+    $ArtifactRoot = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($ArtifactRoot)
+}
 Push-Location $repo
 try {
     if ($env:OS -ne 'Windows_NT') { throw 'dev_windows_required' }
@@ -144,7 +147,6 @@ try {
         $family = Split-Path (Split-Path $common -Parent) -Parent
         $ArtifactRoot = Join-Path $family "DuskWeave-build/rust-$toolchain"
     }
-    $ArtifactRoot = [IO.Path]::GetFullPath($ArtifactRoot)
     $normal = Join-Path $ArtifactRoot 'normal'
     $coverageTarget = Join-Path $ArtifactRoot 'coverage/dev'
     $run = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + $PID

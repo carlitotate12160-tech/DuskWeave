@@ -106,6 +106,22 @@ try {
     Assert-True (-not $observed.coverage) 'ordinary command inherited coverage settings'
     Write-Output 'PASS child isolation, parent restoration, non-root cwd and ordinary target'
 
+    $caller = Join-Path $temp 'caller'
+    [IO.Directory]::CreateDirectory($caller) | Out-Null
+    $absolute = Join-Path $temp 'absolute artifacts'
+    foreach ($case in @(
+        @{ Root = 'relative artifacts'; Expected = Join-Path $caller 'relative artifacts' },
+        @{ Root = $absolute; Expected = $absolute }
+    )) {
+        $body = "Set-Location -LiteralPath '" + $caller.Replace("'", "''") + "'`n" +
+            $success.Replace("' build", "' build -ArtifactRoot '" + $case.Root.Replace("'", "''") + "'")
+        $result = Finish-Case (Start-Case $body)
+        Assert-True ($result.Code -eq 0) 'artifact override failed or changed caller state'
+        $observed = Get-Content -Raw (Join-Path $temp 'capture.json') | ConvertFrom-Json
+        Assert-True ($observed.target -eq (Join-Path $case.Expected 'normal')) 'artifact override did not resolve against caller location'
+        Write-Output ('PASS artifact override: ' + $case.Root)
+    }
+
     $redirected = $success.Replace("' build", "' build 2>&1 | Out-String | Write-Output")
     $result = Finish-Case (Start-Case $redirected @{DEV_ENTRYPOINT_STDERR='1'})
     Assert-True ($result.Code -eq 0 -and $result.Output.Contains('synthetic-progress')) 'native stderr was lost or treated as failure'
