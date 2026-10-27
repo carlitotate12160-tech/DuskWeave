@@ -29,3 +29,7 @@ path = "src/main.rs"
 name = "dw-fixture-supervisor"
 path = "src/bin/dw-fixture-supervisor/main.rs"
 required-features = ["fixture-supervisor"]
+
+[[bin]]
+name = "dw-boundary-launcher"
+path = "src/bin/dw-boundary-launcher/main.rs"

@@ -8,3 +8,4 @@ __pycache__/
 # Accidental local root artifacts; retain other output/evidence files.
 /nul
 /evidence_authcap.out
+/boundary/bin/
