@@ -3,8 +3,8 @@
 ## 1. Project Identity & Status
 
 - **Project**: DuskWeave. Verify actual worktree, branch and HEAD before delivery.
-- **Current Phase**: M1 is unsealed. Current runtime work is provider-terminal
-  metadata correction in PR #122; its candidate and checks come from GitHub.
+- **Current Phase**: M1 is unsealed. Current work is the Windows developer
+  entrypoint; its candidate and checks come from GitHub.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence below is unchanged.
 - Scope/priorities belong to [the roadmap](MVP_AND_DEFERRED_SCOPE.md); dependency
   navigation belongs to [BUILD_ORDER](BUILD_ORDER.md). Neither duplicates PR state.
@@ -48,7 +48,7 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** incomplete-response metadata diagnosis, then a
+**Next product action:** finish the developer entrypoint, then measure a
 separately authorized real DeepSeek provider-fixture demonstration through
 `m1-run` under the
 [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent).
@@ -72,6 +72,7 @@ Relevant merged implementation/evidence pointers, not a rolling merge log:
 | Nonblocking release and transport error precedence | [#117](https://github.com/carlitotate12160-tech/DuskWeave/pull/117), merged `7d7e696`; [record](workflows/DW-FIX-M1-INFERENCE-RELEASE-INTEGRITY.md) |
 | Conditional maintenance and qualified skill-doc CI routing | [#118](https://github.com/carlitotate12160-tech/DuskWeave/pull/118), merged `d29a1fb` |
 | DNS selector contextual references and entity-based ordinals | [#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120), merged `e11f62f` |
+| Rejected-provider diagnostic metadata with uncertainty-only accounting | [#122](https://github.com/carlitotate12160-tech/DuskWeave/pull/122) |
 
 **Unproved:** the 2026-10-22 provider run `4a4ce477-5734-4b92-bb6a-dce74f430114`
 committed Decision 1 and fixture Terrain; Decision 2 ended exit 124 with

@@ -144,7 +144,8 @@ Reuse Cargo build artifacts during normal iterations; do not routinely cargo cle
 Follow the AGENTS.md artifact convention: set the packet's concrete
 `CARGO_TARGET_DIR` (and `CARGO_LLVM_COV_TARGET_DIR` for coverage) only in the
 owning process and its child test processes — never via `setx`, user/system
-environment, `.cargo/config.toml`, wrappers or CI changes. One owner holds the
+environment or `.cargo/config.toml`. Use the assigned developer entrypoint when
+applicable; do not add unassigned wrappers or CI changes. One owner holds the
 shared ordinary target for the whole verification sequence, including CLI
 subprocess tests and direct binary use; keep instrumented and ordinary
 directories separate and give each packet's coverage path one owner. Do not

@@ -167,8 +167,25 @@ def validate_supervised_result(result):
         raise RuntimeError("native_supervisor_result_inconsistent")
 
 
+def validated_role_prefix(value):
+    if not isinstance(value, str) or not value.startswith("dw_"):
+        raise RuntimeError("native_identifier_refused")
+    identifier(value)
+    identifier(f"{value}_{'0' * 12}_terrainsetonly")
+    return value
+
+
+def validate_action(label, args, report):
+    if not isinstance(label, str) or not re.fullmatch(r"[a-z0-9_-]+", label) or not isinstance(args, list) or not args:
+        raise RuntimeError("native_action_refused")
+    if any(not isinstance(arg, str) or len(arg.encode()) > 8192 for arg in args):
+        raise RuntimeError("native_action_refused")
+    if (report / f"{label}.log").exists() or (report / f"{label}.result.json").exists():
+        raise RuntimeError("native_report_collision")
+
+
 class Fixture:
-    def __init__(self, container, kind, ci=False, database=None, schema_revision="0021"):
+    def __init__(self, container, kind, ci=False, database=None, schema_revision="0021", role_prefix="dw_nf60"):
         if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
             raise RuntimeError("native_schema_revision_refused")
         self.schema_revision = schema_revision
@@ -178,6 +195,7 @@ class Fixture:
             raise RuntimeError("native_service_unqualified")
         if kind not in KINDS:
             raise RuntimeError("native_identifier_refused")
+        self.role_prefix = validated_role_prefix(role_prefix)
         self.container = container
         # Container names allow the existing owned dash spelling, never SQL use.
         self.database = database_name(kind, database)
@@ -190,11 +208,12 @@ class Fixture:
         service_qualified(container, ci=ci, version_prefix="17.")
         if self.sql(f"SELECT 1 FROM pg_database WHERE datname='{self.database}'", database="postgres").strip():
             raise RuntimeError("native_database_collision")
-        suffix = secrets.token_hex(6)
+        self.role_suffix = secrets.token_hex(6)
+        suffix = self.role_suffix
         owners = ["admin", "core", "broker", "cognition", "history", "terrain"]
         if kind == "fixture":
             owners.append("otherbroker")
-        self.roles = {name: identifier(f"dw_nf60_{suffix}_{name}") for name in owners}
+        self.roles = {name: identifier(f"{self.role_prefix}_{suffix}_{name}") for name in owners}
         self.migration_actor = "postgres" if ci else self.roles["admin"]
         for role in self.roles.values():
             if self.sql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'", database="postgres").strip():
@@ -243,8 +262,8 @@ class Fixture:
 
     def negative_owners(self):
         """Fresh hostile-principal controls; no retained principal is widened."""
-        suffix = secrets.token_hex(6)
-        names = {kind: identifier(f"dw_nf60_{suffix}_{kind}") for kind in (
+        suffix = self.role_suffix
+        names = {kind: identifier(f"{self.role_prefix}_{suffix}_{kind}") for kind in (
             "sibling", "foreign", "setonly", "column", "corebad", "terraincolumn", "terrainsetonly", "prepare")}
         for kind, role in names.items():
             if self.sql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'", database="postgres").strip():
@@ -294,15 +313,10 @@ class Fixture:
     def run(self, label, args, report, max_duration_seconds=None):
         """Delegate action execution to the development supervisor selected by
         DW_TEST_FIXTURE_SUPERVISOR; there is no Python supervision fallback."""
-        if not re.fullmatch(r"[a-z0-9_-]+", label) or not isinstance(args, list) or not args:
-            raise RuntimeError("native_action_refused")
+        validate_action(label, args, report)
         supervised = max_duration_seconds is not None
         if supervised and (not math.isfinite(max_duration_seconds) or max_duration_seconds <= 0):
             raise RuntimeError("native_action_refused")
-        if any(not isinstance(arg, str) or len(arg.encode()) > 8192 for arg in args):
-            raise RuntimeError("native_action_refused")
-        if (report / f"{label}.log").exists() or (report / f"{label}.result.json").exists():
-            raise RuntimeError("native_report_collision")
         budget_ms = LEGACY_CEILING_MS if not supervised else int(max_duration_seconds * 1000)
         result = self.supervised_result(label, args, report, budget_ms)
         print(json.dumps({"action": label, "exit": result["exit"]}), flush=True)
@@ -348,6 +362,29 @@ class Fixture:
             raise RuntimeError("native_supervisor_unresponsive") from None
 
 
+def run_session(fixture, source, report):
+    for line in source:
+        try:
+            action = json.loads(line)
+            if not isinstance(action, dict):
+                raise ValueError
+            if action.get("exit") is True:
+                return 0
+            if not action.get("refresh"):
+                validate_action(action["label"], action["args"], report)
+        except (ValueError, KeyError, TypeError, RuntimeError) as error:
+            category = "native_report_collision" if str(error) == "native_report_collision" else "native_action_refused"
+            print(json.dumps({"ok": False, "exit": 1, "category": category}), flush=True)
+            continue
+        # Actual migration/supervisor failures stay fatal: custody may be uncertain.
+        if action.get("refresh"):
+            fixture.migrate()
+            print('{"migration_refresh":"complete"}', flush=True)
+        else:
+            fixture.run(action["label"], action["args"], report)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--container", default="dwpg-r3")
@@ -355,6 +392,7 @@ def main():
     parser.add_argument("--database-name", default=None)
     parser.add_argument("--schema-revision", choices=SCHEMA_REVISIONS, default="0021")
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--role-prefix", default="dw_nf60")
     parser.add_argument("--ci", action="store_true")
     parser.add_argument("--session", action="store_true")
     parser.add_argument("command", nargs=argparse.REMAINDER)
@@ -365,19 +403,10 @@ def main():
         raise RuntimeError("native_report_collision")
     options.report.mkdir(parents=True, exist_ok=True)
     fixture = Fixture(options.container, options.database, options.ci, database=options.database_name,
-                      schema_revision=options.schema_revision)
-    print(json.dumps({"fixture": fixture.database, "status": "ready"}), flush=True)
+                      schema_revision=options.schema_revision, role_prefix=options.role_prefix)
+    print(json.dumps({"fixture": fixture.database, "status": "ready", "role_prefix": options.role_prefix}), flush=True)
     if options.session:
-        for line in sys.stdin:
-            action = json.loads(line)
-            if action.get("exit"):
-                return 0
-            if action.get("refresh"):
-                fixture.migrate()
-                print('{"migration_refresh":"complete"}', flush=True)
-            else:
-                fixture.run(action["label"], action["args"], options.report)
-        return 0
+        return run_session(fixture, sys.stdin, options.report)
     command = options.command[1:] if options.command[:1] == ["--"] else options.command
     return fixture.run("qualification", command, options.report)
 
