@@ -374,8 +374,46 @@ fn t9_real_producers_fit_both_protocols_and_restricted_sql_rejects_recomputed_fo
             lease.finish().unwrap();
         }
     }
+    // Deployment settings add qualification, not a third protocol golden.
+    let protocol_cases: Vec<_> = cases
+        .iter()
+        .filter(|case| {
+            let name = case["name"].as_str().unwrap();
+            name.starts_with("fixture-responses-v1_")
+                || name.starts_with("fixture-chat-completions-v1_")
+        })
+        .collect();
+    let artifact = json!({"version":"m1-inference-lifecycle-wire-v2","source":"real ContextPack/request producers and restricted SQL; synthetic fixture identities only","cases":protocol_cases});
+    let published = artifact["cases"].as_array().unwrap();
+    assert_eq!(published.len(), 24, "protocol golden artifact case count");
+    let mut expected = Vec::new();
+    for profile in ["fixture-responses-v1", "fixture-chat-completions-v1"] {
+        for kind in [
+            "minimum",
+            "eight_seeds",
+            "exact_limit",
+            "eight_seeds_quoted",
+            "quote_backslash",
+            "multibyte",
+        ] {
+            for phase in ["first", "feedback"] {
+                expected.push(format!("{profile}_{kind}_{phase}"));
+            }
+        }
+    }
+    let names: Vec<_> = published
+        .iter()
+        .map(|case| case["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, expected, "twelve ordered wires per protocol profile");
+    assert_eq!(
+        names
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        24
+    );
     if std::env::var_os("DW_WRITE_LIFECYCLE_WIRE_EXAMPLES").is_some() {
-        let artifact = json!({"version":"m1-inference-lifecycle-wire-v2","source":"real ContextPack/request producers and restricted SQL; synthetic fixture identities only","cases":cases});
         std::fs::write(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("docs/contracts/fixtures/m1-inference-lifecycle-wire-v2.json"),

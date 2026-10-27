@@ -927,9 +927,31 @@ mod tests {
     }
     #[test]
     fn credential_forwarding_follows_the_selected_profile_credential() {
-        // No real key is set here: the assertions inspect the child environment
-        // Command entries only, never a credential value.
-        let ambient = std::env::var_os("DEEPSEEK_API_KEY").is_some();
+        const CASE: &str = "DW_TEST_CREDENTIAL_FORWARDING_CASE";
+        if let Ok(case) = std::env::var(CASE) {
+            assert_credential_forwarding(case == "present");
+            return;
+        }
+        for case in ["absent", "present"] {
+            let mut child = Command::new(std::env::current_exe().unwrap());
+            child.args([
+                "--exact",
+                "m1_run_supervision::tests::credential_forwarding_follows_the_selected_profile_credential",
+                "--test-threads=1",
+            ]).env(CASE, case).env_remove("DEEPSEEK_API_KEY");
+            if case == "present" {
+                child.env("DEEPSEEK_API_KEY", "synthetic-forwarding-sentinel");
+            }
+            let output = child.output().unwrap();
+            // Child output is private even on failure; never log the sentinel.
+            assert!(
+                output.status.success()
+                    && String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "credential forwarding child failed: {case}"
+            );
+        }
+    }
+    fn assert_credential_forwarding(key_present: bool) {
         for (profile, forwarded) in [
             (Some("deepseek-responses-reasoning-v1"), true),
             (Some("deepseek-responses-low-v1"), true),
@@ -938,7 +960,11 @@ mod tests {
             (Some("synthetic-unknown-profile"), false),
         ] {
             let run = credential_record(profile);
-            for phase in [RunPhase::DecisionOne, RunPhase::Acquisition] {
+            for phase in [
+                RunPhase::DecisionOne,
+                RunPhase::DecisionTwo,
+                RunPhase::Acquisition,
+            ] {
                 let mut c = Command::new("unused");
                 c.env_clear();
                 install_provider_environment(&mut c, phase, &run);
@@ -949,8 +975,13 @@ mod tests {
                 let carries_key = matches!(entry, Some(Some(_)));
                 assert_eq!(
                     carries_key,
-                    forwarded && phase != RunPhase::Acquisition && ambient,
-                    "{profile:?}/{phase:?}: key must reach only a network decision child with an ambient key"
+                    forwarded && phase != RunPhase::Acquisition && key_present,
+                    "{profile:?}/{phase:?}: key must reach only a network decision child with a synthetic key"
+                );
+                assert!(
+                    entry
+                        .flatten()
+                        .is_none_or(|value| value == "synthetic-forwarding-sentinel")
                 );
             }
         }
