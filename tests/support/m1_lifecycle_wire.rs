@@ -220,13 +220,11 @@ pub fn restricted_wire_checks(rec: &RunRecord, p: &Prepared) {
     }
     // A configuration rebound to another admitted profile grants no send here.
     let mut config: Value = serde_json::from_slice(&bound.configuration).unwrap();
-    config["profile"] = json!(
-        if config["profile"] == "deepseek-responses-low-v1" {
-            "deepseek-responses-reasoning-v1"
-        } else {
-            "deepseek-responses-low-v1"
-        }
-    );
+    config["profile"] = json!(if config["profile"] == "deepseek-responses-low-v1" {
+        "deepseek-responses-reasoning-v1"
+    } else {
+        "deepseek-responses-low-v1"
+    });
     let cfg = serde_json::to_vec(&config).unwrap();
     let forged = request::BoundCall {
         pack: bound.pack.clone(),
