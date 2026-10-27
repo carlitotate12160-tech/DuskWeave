@@ -282,9 +282,13 @@ fn t9_real_producers_fit_both_protocols_and_restricted_sql_rejects_recomputed_fo
     let _guard = native::db();
     run_support::refresh();
     let mut cases = Vec::new();
-    for (i, profile) in ["fixture-responses-v1", "fixture-chat-completions-v1"]
-        .into_iter()
-        .enumerate()
+    for (i, profile) in [
+        "fixture-responses-v1",
+        "fixture-chat-completions-v1",
+        "deepseek-responses-low-v1",
+    ]
+    .into_iter()
+    .enumerate()
     {
         let mut exact_width = 0;
         for (j, kind) in [
@@ -370,8 +374,46 @@ fn t9_real_producers_fit_both_protocols_and_restricted_sql_rejects_recomputed_fo
             lease.finish().unwrap();
         }
     }
+    // Deployment settings add qualification, not a third protocol golden.
+    let protocol_cases: Vec<_> = cases
+        .iter()
+        .filter(|case| {
+            let name = case["name"].as_str().unwrap();
+            name.starts_with("fixture-responses-v1_")
+                || name.starts_with("fixture-chat-completions-v1_")
+        })
+        .collect();
+    let artifact = json!({"version":"m1-inference-lifecycle-wire-v2","source":"real ContextPack/request producers and restricted SQL; synthetic fixture identities only","cases":protocol_cases});
+    let published = artifact["cases"].as_array().unwrap();
+    assert_eq!(published.len(), 24, "protocol golden artifact case count");
+    let mut expected = Vec::new();
+    for profile in ["fixture-responses-v1", "fixture-chat-completions-v1"] {
+        for kind in [
+            "minimum",
+            "eight_seeds",
+            "exact_limit",
+            "eight_seeds_quoted",
+            "quote_backslash",
+            "multibyte",
+        ] {
+            for phase in ["first", "feedback"] {
+                expected.push(format!("{profile}_{kind}_{phase}"));
+            }
+        }
+    }
+    let names: Vec<_> = published
+        .iter()
+        .map(|case| case["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, expected, "twelve ordered wires per protocol profile");
+    assert_eq!(
+        names
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        24
+    );
     if std::env::var_os("DW_WRITE_LIFECYCLE_WIRE_EXAMPLES").is_some() {
-        let artifact = json!({"version":"m1-inference-lifecycle-wire-v2","source":"real ContextPack/request producers and restricted SQL; synthetic fixture identities only","cases":cases});
         std::fs::write(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("docs/contracts/fixtures/m1-inference-lifecycle-wire-v2.json"),
@@ -644,6 +686,7 @@ fn t5_profile_matrix_and_raw_sql_run_admission_are_closed_and_share_one_window_o
         "fixture-responses-v1",
         "fixture-chat-completions-v1",
         "deepseek-responses-reasoning-v1",
+        "deepseek-responses-low-v1",
     ]
     .into_iter()
     .enumerate()
@@ -859,46 +902,51 @@ fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_re
 fn t5_deepseek_cli_without_a_key_keeps_its_profile_and_never_falls_back_or_replays() {
     let _guard = native::db();
     run_support::refresh();
-    let q = lifecycle::registered(0xe610, "deepseek-responses-reasoning-v1");
-    let path = run_support::path(&q);
-    let output = run_support::command()
-        .env("DW_M1_RUN_CONTROL_ROOT", run_support::control_root())
-        .args([
-            "m1-run",
-            "--input",
-            path.to_str().unwrap(),
-            "--timing-profile",
-            "reasoning-bounded-v1",
-        ])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    let text = String::from_utf8_lossy(&output.stdout);
-    let receipt: Value = text
-        .lines()
-        .find(|line| line.starts_with('{'))
-        .map(|line| serde_json::from_str(line).unwrap())
-        .unwrap_or_else(|| panic!("missing run receipt: {text}"));
-    assert_eq!(
-        receipt["inference_profile"],
-        "deepseek-responses-reasoning-v1"
-    );
-    assert_eq!(receipt["inference"], json!([]));
-    assert_eq!(receipt["effect_count"], 0);
-    assert_eq!(
-        receipt["recorded_decisions"][0]["disposition"],
-        "live_key_missing"
-    );
-    assert_eq!(
-        receipt["recorded_decisions"][0]["current_use"],
-        "not_admitted"
-    );
-    for _ in 0..2 {
-        let (ok, after) =
-            run_support::cli("m1-run-recover", "--run", q["run_id"].as_str().unwrap());
-        assert!(ok, "{after}");
-        assert_eq!(after["inference"], json!([]));
-        assert_eq!(after["effect_count"], 0);
+    for (i, profile) in [
+        "deepseek-responses-reasoning-v1",
+        "deepseek-responses-low-v1",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let q = lifecycle::registered(0xe610 + i as u128, profile);
+        let path = run_support::path(&q);
+        let output = run_support::command()
+            .env("DW_M1_RUN_CONTROL_ROOT", run_support::control_root())
+            .args([
+                "m1-run",
+                "--input",
+                path.to_str().unwrap(),
+                "--timing-profile",
+                "reasoning-bounded-v1",
+            ])
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{profile}");
+        let text = String::from_utf8_lossy(&output.stdout);
+        let receipt: Value = text
+            .lines()
+            .find(|line| line.starts_with('{'))
+            .map(|line| serde_json::from_str(line).unwrap())
+            .unwrap_or_else(|| panic!("missing run receipt: {text}"));
+        assert_eq!(receipt["inference_profile"], profile);
+        assert_eq!(receipt["inference"], json!([]));
+        assert_eq!(receipt["effect_count"], 0);
+        assert_eq!(
+            receipt["recorded_decisions"][0]["disposition"],
+            "live_key_missing"
+        );
+        assert_eq!(
+            receipt["recorded_decisions"][0]["current_use"],
+            "not_admitted"
+        );
+        for _ in 0..2 {
+            let (ok, after) =
+                run_support::cli("m1-run-recover", "--run", q["run_id"].as_str().unwrap());
+            assert!(ok, "{after}");
+            assert_eq!(after["inference"], json!([]));
+            assert_eq!(after["effect_count"], 0);
+        }
+        std::fs::remove_file(path).unwrap();
     }
-    std::fs::remove_file(path).unwrap();
 }

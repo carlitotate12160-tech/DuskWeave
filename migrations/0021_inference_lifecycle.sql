@@ -14,6 +14,7 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
  SELECT coalesce(CASE WHEN p->>'version'='m1_inference_permission_v4' THEN
  (p->>'profile',p->>'recipient') IN (
  ('deepseek-responses-reasoning-v1','https://api.deepseek.com/responses'),
+ ('deepseek-responses-low-v1','https://api.deepseek.com/responses'),
  ('fixture-responses-v1','urn:duskweave:fixture:responses:v1'),
  ('fixture-chat-completions-v1','urn:duskweave:fixture:chat-completions:v1'))
  AND (p->>'run_profile',p->>'execution_mode')=('autonomous-dns-fixture-v2','controlled_fixture')
@@ -813,8 +814,8 @@ BEGIN
  SELECT jsonb_agg(value->'id' ORDER BY n) INTO ids FROM jsonb_array_elements(p->'references') WITH ORDINALITY a(value,n);
  IF ids IS NULL OR jsonb_array_length(ids)>64 OR EXISTS(SELECT 1 FROM jsonb_array_elements(ids) a WHERE jsonb_typeof(a) IS DISTINCT FROM 'string')
  OR (SELECT count(DISTINCT a) FROM jsonb_array_elements(ids) a)<>jsonb_array_length(ids) THEN RAISE EXCEPTION 'inference_binding_refused'; END IF;
- chat:=profile='fixture-chat-completions-v1'; external:=profile='deepseek-responses-reasoning-v1';
- IF profile IS NULL OR profile NOT IN ('fixture-responses-v1','fixture-chat-completions-v1','deepseek-responses-reasoning-v1')
+ chat:=profile='fixture-chat-completions-v1'; external:=profile IN ('deepseek-responses-reasoning-v1','deepseek-responses-low-v1');
+ IF profile IS NULL OR profile NOT IN ('fixture-responses-v1','fixture-chat-completions-v1','deepseek-responses-reasoning-v1','deepseek-responses-low-v1')
  THEN RAISE EXCEPTION 'inference_binding_refused'; END IF;
  refs:=jsonb_build_object('type','array','items',jsonb_build_object('type','string','enum',ids),'maxItems',64);
  cfg:=jsonb_set(cfg,'{schema,properties,references}',refs);
@@ -833,7 +834,8 @@ BEGIN
  'requested_settings',jsonb_build_object('model',CASE WHEN external THEN 'deepseek-flash' ELSE 'protocol-fixture-v1' END,
  'stream',false,'tools','[]'::jsonb,'tool_choice','none')||
  CASE WHEN chat THEN '{"max_tokens":4096}'::jsonb ELSE '{"max_output_tokens":4096}'::jsonb END ||
- CASE WHEN external THEN '{"reasoning":{"effort":"high"}}'::jsonb ELSE '{}'::jsonb END);
+ CASE WHEN profile='deepseek-responses-reasoning-v1' THEN '{"reasoning":{"effort":"high"}}'::jsonb
+ WHEN profile='deepseek-responses-low-v1' THEN '{"reasoning":{"effort":"low"}}'::jsonb ELSE '{}'::jsonb END);
  cfg:=jsonb_set(cfg,'{limits}',cfg->'limits'||'{"soft_completion_ms":60000,"per_call_wall_time_ms":62000,
  "shared_wall_time_ms":124000,"decision_wall_time_ms":129000,"phase_wall_time_ms":134000}'::jsonb);
  RETURN cfg;

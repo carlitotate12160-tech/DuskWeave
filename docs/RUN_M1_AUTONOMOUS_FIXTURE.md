@@ -189,11 +189,17 @@ there is no new M1 acceptance, deployment qualification or target authorization.
 
 For the delivered successor, bind `m1_inference_permission_v4` and
 `m1_autonomous_run_request_v2` to `autonomous-dns-fixture-v2`, `controlled_fixture`,
-`inference_profile: deepseek-responses-reasoning-v1`. Pass the CLI timing hint
+`inference_profile: deepseek-responses-low-v1`. Pass the CLI timing hint
 `--timing-profile reasoning-bounded-v1` at start. Only inference contacts
-`https://api.deepseek.com/responses`. The closed profile selects `deepseek-flash`,
-high reasoning effort, text-only non-streaming output, no tools and 4096 output
-tokens. There is no endpoint/model fallback. DNS stays `dns-routing-fixture-v1`
+`https://api.deepseek.com/responses`. The closed profiles select `deepseek-flash`,
+text-only non-streaming output, no tools and 4096 output tokens; `low` selects
+`reasoning.effort="low"` while `deepseek-responses-reasoning-v1` remains the
+explicit `high` variant. Prefer `deepseek-responses-low-v1` for this measured
+lane: one authorized episode observed the high variant exhausting all 4096
+reasoning-inclusive tokens on Decision 2 while the low variant completed with
+3343 reasoning + 460 visible tokens. That is one observation, not a latency or
+reliability calibration; both profiles keep honest `incomplete` handling and
+there is no endpoint/model fallback. DNS stays `dns-routing-fixture-v1`
 with no target/resolver socket; Terrain source stays `fixture_dns_acquisition`.
 Local protocol profiles never consume the key or fall back to DeepSeek.
 

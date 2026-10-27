@@ -1043,6 +1043,19 @@ consumption stays charged; there is no deadline reset or target-effect replay;
 existing unresolved-obligation barriers are not bypassed. Enabling that policy
 requires its own bounded delivery, not another generic architecture subsystem.
 
+The installed successor lane currently binds two DeepSeek Responses profiles,
+`deepseek-responses-reasoning-v1` (`reasoning.effort="high"`) and
+`deepseek-responses-low-v1` (`reasoning.effort="low"`). They share the direct
+endpoint, `deepseek-flash`, non-streaming text output, disabled tools, no
+retry/redirect/proxy/fallback, the `reasoning-bounded-v1` timing and accounting
+allocation, and the 4096 `max_output_tokens` ceiling. That ceiling is
+reasoning-inclusive: reasoning tokens and visible proposal text share one
+output budget, so an exhausted budget yields `incomplete` with no proposal,
+no published decision and no effect release. The observed low-effort fit
+(3343 reasoning + 460 visible of 4096 on the measured Decision 2) is a
+single-episode measurement, not a latency or reliability calibration; both
+profiles remain fallible under the same honest incomplete handling.
+
 Freshness resolves independently of inference completion. The pack contains a
 source-qualified snapshot eligible when released, with original perception time
 and expiry; packing, inference or publication never refresh freshness. TTL-only
