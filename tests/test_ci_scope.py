@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -164,6 +165,94 @@ class RequiredGate(unittest.TestCase):
         for scope, states, missing in cases:
             with self.subTest(scope=scope, states=states, missing=missing):
                 self.assertNotEqual(self.run_gate(scope, states, missing).returncode, 0)
+
+
+def job_blocks(workflow_path):
+    """Split `jobs:` into {name: body} using indentation only (no YAML dep)."""
+    text = Path(workflow_path).read_text(encoding="utf-8")
+    start = text.index("\njobs:\n") + len("\njobs:\n")
+    body = text[start:]
+    blocks, name, current = {}, None, []
+    for line in body.splitlines():
+        if line and not line.startswith(" "):
+            break
+        key = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if key:
+            if name:
+                blocks[name] = "\n".join(current)
+            name, current = key.group(1), []
+        elif name:
+            current.append(line)
+    if name:
+        blocks[name] = "\n".join(current)
+    return blocks
+
+
+def needs_of(block):
+    inline = re.search(r"^    needs: \[([^\]]+)\]", block, re.M)
+    if inline:
+        return [n.strip() for n in inline.group(1).split(",")]
+    listed = re.findall(r"^      - (\S+)\s*$", block, re.M)
+    single = re.search(r"^    needs: (\S+)\s*$", block, re.M)
+    return listed or ([single.group(1)] if single else [])
+
+
+class WorkflowWiring(unittest.TestCase):
+    """Structural wiring of the sharded rust pipeline in doc-check.yml."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.jobs = job_blocks(Path(__file__).resolve().parents[1]
+                              / ".github/workflows/doc-check.yml")
+
+    def test_rust_pipeline_shape(self):
+        for name in ("rust-build", "rust-tests", "rust"):
+            self.assertIn(name, self.jobs)
+        self.assertEqual(needs_of(self.jobs["rust-build"]), ["changes"])
+        self.assertEqual(set(needs_of(self.jobs["rust-tests"])),
+                         {"changes", "rust-build"})
+        self.assertEqual(set(needs_of(self.jobs["rust"])),
+                         {"changes", "rust-build", "rust-tests"})
+
+    def test_ci_ok_gate_set_is_unchanged(self):
+        self.assertEqual(set(needs_of(self.jobs["ci-ok"])), set(JOBS))
+
+    def test_docs_scope_skip_and_failure_propagation_guards(self):
+        for name in ("rust-build", "rust-tests", "rust"):
+            block = self.jobs[name]
+            guard = re.search(r"^    if: (.*)$", block, re.M).group(1)
+            self.assertIn("!cancelled()", guard)
+            self.assertIn("needs.changes.outputs.scope != 'docs'", guard)
+            self.assertIn("needs.changes.result != 'success'", guard)
+        # rust-tests additionally requires the shared build to succeed.
+        self.assertIn("needs.rust-build.result == 'success'",
+                      self.jobs["rust-tests"])
+        # rust cannot silently pass when build or workers failed.
+        self.assertIn("needs.rust-build.result", self.jobs["rust"])
+        self.assertIn("needs.rust-tests.result", self.jobs["rust"])
+
+    def test_two_worker_matrix_and_designated_prelude(self):
+        tests = self.jobs["rust-tests"]
+        self.assertIn("matrix:", tests)
+        self.assertIn("fromJSON(needs.changes.outputs.rust_workers_matrix)",
+                      tests)
+        self.assertIn("if: matrix.worker == 0", tests)
+        self.assertIn("prelude.jsonl", tests)
+        self.assertIn("LLVM_PROFILE_FILE", tests)
+
+    def test_helper_and_gate_wiring(self):
+        for name in ("rust-build", "rust-tests", "rust"):
+            self.assertIn("scripts/ci_rust_shards.py", self.jobs[name])
+        self.assertIn("enumerate", self.jobs["rust-build"])
+        self.assertIn("verify", self.jobs["rust-tests"])
+        self.assertIn("aggregate", self.jobs["rust"])
+        rust = self.jobs["rust"]
+        self.assertIn("cargo llvm-cov report", rust)
+        self.assertIn("tests/check_coverage_gate.py", rust)
+        # Instrumented build happens exactly once, not per worker.
+        self.assertIn("cargo llvm-cov show-env", self.jobs["rust-build"])
+        self.assertNotIn("cargo llvm-cov show-env", self.jobs["rust-tests"])
+        self.assertNotIn("cargo test --no-run", self.jobs["rust-tests"])
 
 
 if __name__ == "__main__":

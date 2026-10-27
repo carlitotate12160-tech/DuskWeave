@@ -90,3 +90,8 @@ acquisition evidence. No host reconfiguration or target contact is authorized he
 and current candidate metrics. Legacy CLI/M0 behavior remains supported until
 tested replacements and compatibility disposition exist. No M1/full-domain seal,
 new provider support or blanket Windows full-suite PASS is implied.
+
+**Active CI work:** `DW-FIX-CI-RUST-TWO-WORKERS` — the instrumented Rust suite
+moves to one shared build, two supervised workers and a single merged coverage
+report behind the unchanged `rust` check; candidate and evidence stay in the
+open draft PR on GitHub.
