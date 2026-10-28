@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -535,6 +536,119 @@ class ReceiptAggregateTest(unittest.TestCase):
         self.make_workers()
         (self.ws.root / f"{COV}/debug/deps/beta-eee5").unlink()
         self.assertNotEqual(self.aggregate().returncode, 0)
+
+
+import shutil as _shutil
+import subprocess as _subprocess
+
+
+def _posix(path):
+    s = str(Path(path)).replace("\\", "/")
+    return "/" + s[0].lower() + s[2:] if re.match(r"^[A-Za-z]:/", s) else s
+
+
+def _staging_body():
+    text = (ROOT / ".github/workflows/doc-check.yml").read_text()
+    start = text.index("Validate complete worker evidence and stage profiles")
+    seg = text[start:start + 4000]
+    match = re.search(r"run: \|\r?\n((?:[ ]{10,}.*\r?\n?)+)", seg)
+    return "\n".join(line[10:] if line.startswith(" " * 10) else line
+                     for line in match.group(1).splitlines()) + "\n"
+
+
+class StagingAggregateTest(unittest.TestCase):
+    """Run the real staging shell + aggregate CLI on synthetic worker dirs."""
+
+    BASH = _shutil.which("bash")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ws = Workspace(self.tmp.name)
+        self.ws.plan()
+        (self.ws.root / "scripts").mkdir(exist_ok=True)
+        _shutil.copy(SCRIPT, self.ws.root / "scripts" / SCRIPT.name)
+        p = read_json(self.ws.root / "ci-shards" / "partition-2.json")
+        self.assign = {int(k): v for k, v in p["assignments"].items()}
+        for i, assignment in self.assign.items():
+            self._receipt(i, "partition-2.json", assignment)
+        self.ev_root = Path(self.tmp.name) / "dw-evidence"
+
+    def _receipt(self, worker, partition, assignment):
+        ev = self.ws.evidence(worker, assignment)
+        r = self.ws.run("receipt", "--manifest",
+                        str(self.ws.root / "ci-shards/manifest.json"),
+                        "--partition",
+                        str(self.ws.root / "ci-shards" / partition),
+                        "--worker", str(worker), "--report", str(ev / "suite"),
+                        "--out", str(ev / "receipt.json"))
+        self.assertEqual(r.returncode, 0)
+        return ev
+
+    def _place(self, worker, name=None, profraw=True, src=None):
+        dst = self.ev_root / (name or f"dw-rust-worker-{worker}-{'a' * 40}-1-1")
+        src = src or self.ws.root / f"evidence-w{worker}"
+        _shutil.copytree(src, dst)
+        if profraw:
+            (dst / "profraw").mkdir(exist_ok=True)
+            (dst / "profraw" / f"w{worker}-1-2.profraw").write_bytes(b"p")
+        return dst
+
+    def _stage(self, workers):
+        body = (_staging_body()
+                .replace("${{ needs.changes.outputs.rust_workers }}",
+                         str(workers))
+                .replace("$(git rev-parse HEAD)", "a" * 40))
+        script = Path(self.tmp.name) / "stage.sh"
+        script.write_bytes(body.encode())
+        shim = Path(self.tmp.name) / "shim"
+        shim.mkdir(exist_ok=True)
+        py3 = shim / "python3.exe"
+        if not py3.exists():
+            _shutil.copy(sys.executable, py3)
+        env = dict(os.environ)
+        env["PATH"] = str(shim) + os.pathsep + env["PATH"]
+        env["RUNNER_TEMP"] = _posix(self.tmp.name)
+        env["GITHUB_WORKSPACE"] = _posix(self.ws.root)
+        return _subprocess.run([self.BASH, script.as_posix()],
+                               cwd=self.ws.root, env=env,
+                               capture_output=True, text=True)
+
+    def test_two_worker_staging_and_aggregate_pass(self):
+        for w in self.assign:
+            self._place(w)
+        r = self._stage(2)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_serial_staging_and_aggregate_pass(self):
+        p1 = read_json(self.ws.root / "ci-shards" / "partition-1.json")
+        ev = self._receipt(0, "partition-1.json", p1["assignments"]["0"])
+        self._place(0, src=ev)
+        r = self._stage(1)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_zero_evidence_fails(self):
+        self.assertNotEqual(self._stage(2).returncode, 0)
+
+    def test_single_dir_in_two_worker_mode_fails(self):
+        self._place(0)
+        self.assertNotEqual(self._stage(2).returncode, 0)
+
+    def test_extra_or_duplicate_worker_evidence_fails(self):
+        for w in self.assign:
+            self._place(w)
+        self._place(0, name="dw-rust-worker-0-" + "a" * 40 + "1-1" + "-dup")
+        self.assertNotEqual(self._stage(2).returncode, 0)
+        for d in self.ev_root.iterdir():
+            if d.name.endswith("-dup"):
+                _shutil.rmtree(d)
+        # serial mode with two evidence roots on disk still fails the count
+        self.assertNotEqual(self._stage(1).returncode, 0)
+
+    def test_missing_profiles_fail(self):
+        self._place(0, profraw=False)
+        self._place(1)
+        self.assertNotEqual(self._stage(2).returncode, 0)
 
 
 if __name__ == "__main__":

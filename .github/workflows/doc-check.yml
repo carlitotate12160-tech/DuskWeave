@@ -141,6 +141,19 @@ jobs:
             BASE="${{ github.event.pull_request.base.sha }}"
           elif [ "$EVENT" = "push" ]; then
             BASE="${{ github.event.before }}"
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+              # Explicit single-commit manual check on the default branch.
+              BASE="$(git rev-parse --verify HEAD^)" || {
+                echo "dispatch on master: HEAD has no parent"; exit 1; }
+            else
+              # Whole branch against master, not just the newest commit.
+              git rev-parse --verify "refs/remotes/origin/master^{commit}" \
+                >/dev/null || {
+                  echo "origin/master unresolvable for event $EVENT"; exit 1; }
+              BASE="$(git merge-base HEAD refs/remotes/origin/master)" || {
+                echo "merge-base unresolvable for event $EVENT"; exit 1; }
+            fi
           fi
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             # push with zero/absent before, or schedule (no before): HEAD^ is
@@ -497,11 +510,23 @@ jobs:
       - name: Extract the object set at its original absolute paths
         run: tar --zstd -xf "$RUNNER_TEMP/dw-rust-build/dw-rust-build.tar.zst" -C "$GITHUB_WORKSPACE"
 
-      - name: Download worker evidence and raw profiles
+      # The pinned download-artifact action extracts a single match directly
+      # into the destination (no child dir), so the serial mode must address
+      # the one worker artifact by exact name into its own named root.
+      - name: Download single-worker evidence (serial mode)
+        if: needs.changes.outputs.rust_workers == '1'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dw-rust-worker-0-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-0-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Download worker evidence and raw profiles (sharded mode)
+        if: needs.changes.outputs.rust_workers == '2'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: dw-rust-worker-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/dw-evidence
+          merge-multiple: false
 
       - name: Verify candidate, tools and object set
         run: |
@@ -515,18 +540,28 @@ jobs:
         run: |
           set -e
           mkdir -p target/llvm-cov-target
-          shopt -s nullglob
-          workers=0
+          expected="${{ needs.changes.outputs.rust_workers }}"
+          evidence=()
           for dir in "$RUNNER_TEMP"/dw-evidence/dw-rust-worker-*/; do
-            cp "$dir"profraw/*.profraw target/llvm-cov-target/
-            workers=$((workers + 1))
+            [ -d "$dir" ] || {
+              echo "missing worker evidence root: $dir"; exit 1; }
+            evidence+=("$dir")
           done
-          echo "worker evidence dirs: $workers"
+          if [ "${#evidence[@]}" -ne "$expected" ]; then
+            echo "worker evidence dirs ${#evidence[@]} != requested $expected"
+            exit 1
+          fi
+          for dir in "${evidence[@]}"; do
+            profiles=("$dir"profraw/*.profraw)
+            [ -e "${profiles[0]}" ] || {
+              echo "empty profraw set in $dir"; exit 1; }
+            cp "${profiles[@]}" target/llvm-cov-target/
+          done
           python3 scripts/ci_rust_shards.py aggregate \
             --manifest ci-shards/manifest.json \
             --partition "ci-shards/partition-${{ needs.changes.outputs.rust_workers }}.json" \
             --workers "${{ needs.changes.outputs.rust_workers }}" \
-            --evidence "$RUNNER_TEMP"/dw-evidence/dw-rust-worker-*/ \
+            --evidence "${evidence[@]}" \
             --cov-dir target/llvm-cov-target \
             --workspace "$GITHUB_WORKSPACE" --sha "$(git rev-parse HEAD)"
 
