@@ -257,16 +257,16 @@ Offline fixtures prove owner wiring/failure semantics, not LLM cognition,
 live target facts or an M1 seal. A failed/partial paid episode stays recorded;
 do not replay it to obtain a preferred strategy or a successful-looking report.
 
-## Proposed SDK transport transition (candidate, not delivered)
+## Accepted SDK transport transition (not delivered)
 
-A candidate amendment proposes replacing this lane's owned direct-libcurl
-inference transport with a trusted `rust-genai` SDK adapter under the semantic
+An accepted amendment selects a trusted `rust-genai` SDK adapter to replace
+this lane's owned direct-libcurl inference transport under the semantic
 `dw-inference-intent-v1` binding; see
 [ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
 and
 [enabling contract section 8](contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28).
 It is not delivered: there is no SDK CLI, no new command and no changed
-behavior in the commands, profiles, bindings or qualification above. If
-accepted, adoption arrives only through a bounded runtime packet, qualified
-fixture/provider-fixture evidence, new versioned permission/run bindings and
-fresh consent — never by reusing an existing episode or approval.
+behavior in the commands, profiles, bindings or qualification above. Adoption
+arrives only through a bounded runtime packet, qualified fixture/provider-
+fixture evidence, new versioned permission/run bindings and fresh consent —
+never by reusing an existing episode or approval.

@@ -12,7 +12,7 @@
 | Scope | [M1 enabling lane](../contracts/M1-enabling-architecture.md); no full-stage acceptance |
 | Autonomous-run amendment | Section 4a ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 | Provider-neutral revision | [Section 4a revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
-| rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) — CANDIDATE, published 2026-10-28 for owner review; not accepted; accepted text, timers, consent and seals unchanged |
+| rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, timers, consent and seals unchanged |
 
 ## 1. Context and problem statement
 
@@ -533,12 +533,14 @@ Checked 2026-10-19; these explain mechanisms, not DuskWeave authority or certifi
 
 ## 4b. Candidate rust-genai SDK transport amendment (2026-10-28)
 
-**Status: CANDIDATE — published for owner review on 2026-10-28; not accepted.**
-This proposal selects `rust-genai` as the trusted provider-SDK adapter for the
-provider-independent successor lane. If accepted, it applies only through a new
+**Status: ACCEPTED — product owner, 2026-10-28 (Asia/Jakarta), by conversation
+approval.** The historical candidate heading is retained for stable links.
+This amendment selects `rust-genai` as the trusted provider-SDK adapter for the
+provider-independent successor lane. Acceptance applies only through a new
 versioned successor permission/profile after qualified implementation and fresh
 run authorization; it changes no accepted section 4/4a text, timer value,
-consent, legacy binding or seal.
+consent, legacy binding or seal, and grants no provider activation, target
+permission or runtime qualification.
 [Enabling contract section 8](../contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28)
 owns SDK placement, the semantic intent fields, the proposal/response
 boundary, permitted protocol adaptation and data custody. This section keeps

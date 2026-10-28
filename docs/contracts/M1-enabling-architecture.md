@@ -13,7 +13,7 @@
 | Preserved seals | DW-FOUNDATION-001 and DW-M0-001; no full-domain or M1 seal |
 | Autonomous-run amendment | [Section 7](#7-proposed-autonomous-run-amendment-2026-10-19) ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 | Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
-| rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) — CANDIDATE, published 2026-10-28 for owner review; not accepted; accepted text, consent and seals unchanged |
+| rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
 
 ## 1. Outcome and decision boundary
 
@@ -1127,16 +1127,17 @@ These records establish neither live-provider qualification nor an M1 seal.
 
 ## 8. Candidate rust-genai SDK adapter amendment (2026-10-28)
 
-**Status: CANDIDATE — published for owner review on 2026-10-28; not accepted.**
-This proposal adopts the `rust-genai` library as the trusted provider SDK for
+**Status: ACCEPTED — product owner, 2026-10-28 (Asia/Jakarta), by conversation
+approval.** The historical candidate heading is retained for stable links.
+This amendment adopts the `rust-genai` library as the trusted provider SDK for
 the provider-independent successor lane, so the cognitive feedback loop keeps
 its mission-led reasoning -> authorized action -> evidence -> adaptation
 shape — APT41/Lazarus/Volt Typhoon remain behavioral reference lenses only,
 never playbooks or permission — without binding campaign authority to a
 vendor's JSON layout. Accepted
 sections 1-7, v1/v2/v3/v4 consent semantics, legacy profiles and their exact
-byte binding are unchanged; this section selects no provider, activates no
-endpoint and grants no target permission or seal.
+byte binding are unchanged; this section selects no additional provider,
+activates no endpoint and grants no target permission or seal.
 [ADR-016 section 4b](../adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
 owns reservation/release, accounting units, intent binding, uncertain
 accounting, finite MVP timing and recovery; this section owns SDK placement,
@@ -1278,10 +1279,10 @@ protocol adaptation and data custody.
 
 ### Gate and verification boundary
 
-Transition order: owner acceptance of this amendment -> one bounded runtime
-packet delivering the pinned vendored SDK plus recorded patch, the trusted
-adapter, `dw-inference-intent-v1` binding, semantic SQL admission and tests
--> offline and provider-fixture qualification on the actual platform ->
-new versioned permission/run bindings with fresh consent -> only then a
-provider contact. The currently delivered commands and profiles remain the
-supported lane until each step's evidence exists.
+The accepted transition order is: one bounded runtime packet delivering the
+pinned vendored SDK plus recorded patch, the trusted adapter,
+`dw-inference-intent-v1` binding, semantic SQL admission and tests -> offline
+and provider-fixture qualification on the actual platform -> new versioned
+permission/run bindings with fresh consent -> only then a provider contact.
+The currently delivered commands and profiles remain the supported lane until
+each step's evidence exists.
