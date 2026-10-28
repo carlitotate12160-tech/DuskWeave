@@ -83,6 +83,11 @@ TEST_LINE = re.compile(
 # header can be separated from its verdict by arbitrary child output lines.
 TEST_HEAD = re.compile(r"^test (\S+)(?: - should panic)? \.\.\.")
 VERDICT_LINE = re.compile(r"^(ok|FAILED|ignored|measured)\b")
+# A spawned test binary writes its own libtest transcript into the captured
+# stream: `running N tests` opens a nested harness scope and its `test result`
+# summary closes it. Only depth-1 lines are outer-harness evidence.
+HARNESS_OPEN = re.compile(r"^running \d+ tests?")
+HARNESS_DONE = re.compile(r"^test result: ")
 RESULT_LINE = re.compile(
     r"^test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored; "
     r"(\d+) measured; (\d+) filtered out; finished in ([\d.]+)s")
@@ -347,45 +352,84 @@ def cmd_verify(args):
     return 0
 
 
-class _PendingMatch:
-    def __init__(self, name, status):
-        self._groups = (name, status)
-
-    def group(self, index):
-        return self._groups[index - 1]
+def _record_test(name, status, names, ignored, failed, problems):
+    if name in names:
+        problems.append(f"duplicate outer test execution: {name}")
+    names.add(name)
+    if status == "ignored":
+        ignored.add(name)
+    elif status != "ok":
+        failed.add(name)
 
 
 def parse_libtest_log(path):
+    """Parse a libtest transcript, tolerating nested child-harness scopes.
+
+    Outer evidence lives at depth 1 only: the outer `running` banner opens the
+    outer harness, spawned test binaries nest additional `running`/`test
+    result` scopes inside a pending parent's output, and a parent's verdict
+    may land on its own line after all nested scopes close. Child test names
+    and summaries are consumed without entering the outer inventory.
+    """
     names, ignored, failed, result = set(), set(), set(), None
+    problems = []
+    depth = 0
     pending = None
-    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
-        match = TEST_LINE.match(line)
-        if not match and pending is not None:
-            match = VERDICT_LINE.match(line)
-            if match:
-                match = _PendingMatch(pending, match.group(1))
-        if not match:
-            head = TEST_HEAD.match(line)
-            if head:
-                pending = head.group(1)
-        elif match is not None:
-            pending = None
-        if match:
-            name, status = match.group(1), match.group(2)
-            names.add(name)
-            if status == "ignored":
-                ignored.add(name)
-            elif status != "ok":
-                failed.add(name)
+    for raw in Path(path).read_text(
+            encoding="utf-8", errors="replace").splitlines():
+        line = raw.rstrip("\r")
+        if HARNESS_DONE.match(line):
+            match = RESULT_LINE.match(line)
+            if depth == 1:
+                if match:
+                    result = {"status": match.group(1),
+                              "passed": int(match.group(2)),
+                              "failed": int(match.group(3)),
+                              "ignored": int(match.group(4)),
+                              "measured": int(match.group(5)),
+                              "filtered": int(match.group(6)),
+                              "secs": float(match.group(7))}
+                depth = 0
+            elif depth > 1:
+                depth -= 1
+            elif match:
+                result = {"status": match.group(1),
+                          "passed": int(match.group(2)),
+                          "failed": int(match.group(3)),
+                          "ignored": int(match.group(4)),
+                          "measured": int(match.group(5)),
+                          "filtered": int(match.group(6)),
+                          "secs": float(match.group(7))}
             continue
-        match = RESULT_LINE.match(line)
+        if HARNESS_OPEN.match(line):
+            depth += 1
+            continue
+        if depth != 1:
+            continue
+        match = TEST_LINE.match(line)
         if match:
-            result = {"status": match.group(1), "passed": int(match.group(2)),
-                      "failed": int(match.group(3)), "ignored": int(match.group(4)),
-                      "measured": int(match.group(5)),
-                      "filtered": int(match.group(6)),
-                      "secs": float(match.group(7))}
-    return names, ignored, failed, result
+            if pending is not None:
+                problems.append(f"unresolved outer test verdict: {pending}")
+            _record_test(match.group(1), match.group(2),
+                         names, ignored, failed, problems)
+            pending = None
+            continue
+        head = TEST_HEAD.match(line)
+        if head:
+            if pending is not None:
+                problems.append(f"unresolved outer test verdict: {pending}")
+            pending = head.group(1)
+            continue
+        verdict = VERDICT_LINE.match(line)
+        if verdict and pending is not None:
+            _record_test(pending, verdict.group(1),
+                         names, ignored, failed, problems)
+            pending = None
+    if pending is not None:
+        problems.append(f"unresolved outer test verdict: {pending}")
+    if depth > 0:
+        problems.append(f"unclosed harness scope at depth {depth}")
+    return names, ignored, failed, result, problems
 
 
 def validate_result_fields(record):
@@ -408,8 +452,10 @@ def validate_report(manifest, assignment, report_dir):
         record = load_json(rpath, "action result")
         if not validate_result_fields(record):
             fail(f"{label}: supervisor result not a clean success: {record}")
-        names, ignored, failed, result = parse_libtest_log(lpath)
+        names, ignored, failed, result, problems = parse_libtest_log(lpath)
         expected = targets[target_id]
+        for problem in problems:
+            fail(f"{label}: {problem}")
         if result is None:
             fail(f"{label}: no libtest result line")
         if (result["status"] != "ok" or result["failed"] or failed
@@ -440,13 +486,14 @@ def check_prelude(report_dir):
     record = load_json(rpath, "prelude result")
     if not validate_result_fields(record):
         fail(f"prelude: supervisor result not clean: {record}")
-    text = lpath.read_text(encoding="utf-8", errors="replace")
-    # The child's stdout can interleave between the libtest header and the
-    # verdict, so `ok` may land on its own line. Bind the named test plus a
-    # clean summary (the prelude runs exactly one test).
-    if not (re.search(rf"^test {re.escape(PRELUDE_TEST)} ", text, re.M)
-            and re.search(r"^test result: ok\. \d+ passed; 0 failed;",
-                          text, re.M)):
+    # Route the prelude log through the real scope-aware parser: the stall
+    # probe's children run nested libtest harnesses, so only depth-1 evidence
+    # (the parent name and the outer summary) may count.
+    names, ignored, failed, result, problems = parse_libtest_log(lpath)
+    if problems:
+        fail(f"prelude: {problems[0]}")
+    if (PRELUDE_TEST not in names or failed or result is None
+            or result["status"] != "ok" or result["failed"]):
         fail("prelude: reservation-stall test did not run successfully")
 
 

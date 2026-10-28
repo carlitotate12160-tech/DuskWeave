@@ -427,11 +427,96 @@ class ReceiptAggregateTest(unittest.TestCase):
             "test normal_ok ... ok\n\n"
             "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; "
             "0 filtered out; finished in 0.01s\n")
-        names, ignored, failed, result = mod.parse_libtest_log(p)
+        names, ignored, failed, result, problems = mod.parse_libtest_log(p)
         self.assertEqual(names, {"panics_ok", "normal_ok"})
         self.assertEqual(failed, set())
         self.assertEqual(ignored, set())
+        self.assertEqual(problems, [])
         self.assertEqual(result["passed"], 2)
+
+    def _nested_lib_log(self, verdict="ok", outer_summary=True,
+                        truncate=False, duplicate=False):
+        """src/lib.rs log: parent header -> nested child harnesses -> verdict.
+
+        Mirrors the real supervisor capture: a parent test spawns libtest
+        binaries whose `running`/`test result` scopes (including a deeper
+        grandchild) sit between the parent header and its standalone verdict.
+        Child names include one that never occurs in the outer inventory and
+        one that overlaps (`lib_b`), and neither may count as outer evidence.
+        """
+        worker = next(w for w, ids in self.assign.items()
+                      if "src/lib.rs" in ids)
+        label = action_label(self.assign[worker].index("src/lib.rs"),
+                             "src/lib.rs")
+        lines = [
+            "running 2 tests",
+            "test lib_a ... ",
+            "running 1 test",
+            "test child_only_probe ... ok",
+            "",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; "
+            "1 filtered out; finished in 0.10s",
+            "",
+            "running 1 test",
+            "test lib_b ... ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; "
+            "1 filtered out; finished in 0.10s",
+            "",
+            "running 1 test",
+            "running 1 test",
+            "test deep_child_probe ... ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; "
+            "1 filtered out; finished in 0.05s",
+            "test child_probe_two ... ok",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; "
+            "1 filtered out; finished in 0.20s",
+            "",
+            verdict,
+            "test lib_b ... ignored",
+        ]
+        if duplicate:
+            lines.append("test lib_a ... ok")
+        if outer_summary:
+            lines.append(
+                "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; "
+                "0 filtered out; finished in 1.23s")
+        text = "\n".join(lines) + "\n"
+        if truncate:
+            text = text[:text.index("test lib_b ... ok")]  # mid child scope
+        log = (self.ws.root / f"evidence-w{worker}" / "suite"
+               / f"{label}.log")
+        log.write_text(text)
+        return worker
+
+    def test_nested_child_scopes_bind_parent_verdict(self):
+        self.make_workers()
+        worker = self._nested_lib_log()
+        self.assertEqual(self.receipt(worker).returncode, 0)
+
+    def test_nested_missing_parent_verdict_fails(self):
+        self.make_workers()
+        worker = self._nested_lib_log(verdict="")
+        self.assertNotEqual(self.receipt(worker).returncode, 0)
+
+    def test_nested_failed_parent_verdict_fails(self):
+        self.make_workers()
+        worker = self._nested_lib_log(verdict="FAILED")
+        self.assertNotEqual(self.receipt(worker).returncode, 0)
+
+    def test_nested_missing_outer_summary_fails(self):
+        self.make_workers()
+        worker = self._nested_lib_log(outer_summary=False)
+        self.assertNotEqual(self.receipt(worker).returncode, 0)
+
+    def test_nested_truncated_child_fails(self):
+        self.make_workers()
+        worker = self._nested_lib_log(truncate=True)
+        self.assertNotEqual(self.receipt(worker).returncode, 0)
+
+    def test_nested_duplicate_outer_execution_fails(self):
+        self.make_workers()
+        worker = self._nested_lib_log(duplicate=True)
+        self.assertNotEqual(self.receipt(worker).returncode, 0)
 
     def test_aggregate_rejects_evidence_mismatch(self):
         self.make_workers()
