@@ -13,7 +13,8 @@ pub struct BoundCall {
 const INSTRUCTIONS: &str = "DuskWeave initial inference v3: reason over labeled evidence and owner-qualified Terrain DNS summaries toward the authorized mission objective. APT41, Lazarus and Volt Typhoon are behavioral lenses for hypothesis testing, alternatives, adaptation, continuity and restrained footprint, not playbooks or permission. Missing views stay unavailable; stale, withheld, held or conflicted Terrain summaries are not active routing premises. Propose one bounded hypothesis, alternative, expected and falsifying observation and next intent. Reference fields and view selectors must use exact references[].id strings from this immutable pack only, preserving their bytes. Entity UUIDs, lineage/publication/permission/goal IDs, owner names, field names and JSON paths are not reference IDs. Empty references may support defer/stop when appropriate; other categories still require supported premises. The manifest catalog is unavailable in this lane: manifest_reference must be null. Do not invent facts, access, manifests, endpoints or authority. Defer or request a bounded safe view when support is missing. Return concise decision explanation, never private reasoning, secrets or client content. Output grants no dispatch.";
 
 fn object(properties: Map<String, Value>) -> Value {
-    let required: Vec<_> = properties.keys().cloned().collect();
+    let mut required: Vec<_> = properties.keys().cloned().collect();
+    required.sort_unstable();
     json!({"type":"object","properties":properties,"required":required,
         "additionalProperties":false})
 }
@@ -118,7 +119,9 @@ fn schema(ids: &[String]) -> Value {
 }
 
 fn bytes(value: &Value, cap: usize) -> Result<Vec<u8>, &'static str> {
-    let raw = serde_json::to_vec(value).map_err(|_| "request_encode")?;
+    let mut canonical = value.clone();
+    canonical.sort_all_objects();
+    let raw = serde_json::to_vec(&canonical).map_err(|_| "request_encode")?;
     if raw.len() > cap {
         return Err("request_size");
     }
@@ -128,9 +131,16 @@ fn bytes(value: &Value, cap: usize) -> Result<Vec<u8>, &'static str> {
 pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'static str> {
     let ids = reference_ids(pack)?;
     let parsed: Value = serde_json::from_slice(pack).map_err(|_| "request_encode")?;
+    if parsed["version"] == "m1_context_pack_autonomous_v3" {
+        return Err("request_encode");
+    }
     if matches!(
         parsed["version"].as_str(),
-        Some("m1_context_pack_autonomous_v1" | "m1_context_pack_autonomous_v2")
+        Some(
+            "m1_context_pack_autonomous_v1"
+                | "m1_context_pack_autonomous_v2"
+                | "m1_context_pack_autonomous_v3"
+        )
     ) {
         return autonomous::bind(pack, &parsed, &ids, repair_codes);
     }
@@ -200,6 +210,28 @@ pub fn verify_binding(
     if configuration.len() > 16384 || body.len() > 16384 {
         return Err("inference_decision_integrity");
     }
+    if super::inference_intent::sdk_pack(pack.as_bytes()) {
+        let bound = BoundCall {
+            pack: pack.as_bytes().to_vec(),
+            configuration: configuration.as_bytes().to_vec(),
+            body: body.as_bytes().to_vec(),
+            digest: expected_binding.to_owned(),
+        };
+        let intent = super::inference_intent::verify(&bound)?;
+        if (intent["call_role"] == "repair") != expected_repair {
+            return Err("inference_decision_integrity");
+        }
+        return Ok(());
+    }
+    verify_legacy_binding(pack, configuration, body, expected_binding, expected_repair)
+}
+fn verify_legacy_binding(
+    pack: &str,
+    configuration: &str,
+    body: &str,
+    expected_binding: &str,
+    expected_repair: bool,
+) -> Result<(), &'static str> {
     reference_ids(pack.as_bytes()).map_err(|_| "inference_decision_integrity")?;
     if compute_binding(pack.as_bytes(), configuration.as_bytes(), body.as_bytes())
         != expected_binding
@@ -266,24 +298,10 @@ fn verify_body_pack(pack: &str, body: &str, expected_repair: bool) -> Result<(),
 }
 
 pub(super) fn input(pack: &str, codes: Option<&[&str]>) -> Result<Value, &'static str> {
-    const REPAIR_CODES: &[&str] = &[
-        "json_size",
-        "json_structure",
-        "json_trailing",
-        "proposal_shape",
-        "proposal_version",
-        "unexpected_view_request",
-        "proposal_text",
-    ];
     let Some(codes) = codes else {
         return Ok(json!(pack));
     };
-    if codes.iter().any(|code| !REPAIR_CODES.contains(code)) {
-        return Err("repair_code_ineligible");
-    }
-    if codes.len() > 8 {
-        return Err("repair_code_limit");
-    }
+    validate_repair_codes(codes)?;
     let repair =
         serde_json::to_string(&json!({"repair_error_codes":codes})).map_err(|_| "repair_encode")?;
     Ok(json!([
@@ -295,10 +313,66 @@ pub(super) fn input(pack: &str, codes: Option<&[&str]>) -> Result<Value, &'stati
 fn pack_limit(value: &Value) -> usize {
     if matches!(
         value["version"].as_str(),
-        Some("m1_context_pack_autonomous_v1" | "m1_context_pack_autonomous_v2")
+        Some(
+            "m1_context_pack_autonomous_v1"
+                | "m1_context_pack_autonomous_v2"
+                | "m1_context_pack_autonomous_v3"
+        )
     ) {
         8192
     } else {
         4096
     }
+}
+
+/// Semantic request material; this path does not build vendor request bytes.
+pub(super) fn semantic_material(pack: &[u8]) -> Result<(String, Value), &'static str> {
+    let ids = reference_ids(pack)?;
+    let p: Value = serde_json::from_slice(pack).map_err(|_| "request_encode")?;
+    Ok((
+        autonomous::AUTONOMOUS_INSTRUCTIONS.to_owned(),
+        autonomous::autonomous_schema(&p, &ids)?,
+    ))
+}
+
+pub(super) fn validate_repair_codes(codes: &[&str]) -> Result<(), &'static str> {
+    const REPAIR_CODES: &[&str] = &[
+        "json_size",
+        "json_structure",
+        "json_trailing",
+        "proposal_shape",
+        "proposal_version",
+        "unexpected_view_request",
+        "proposal_text",
+    ];
+    if codes.iter().any(|code| !REPAIR_CODES.contains(code)) {
+        return Err("repair_code_ineligible");
+    }
+    if codes.len() > 8 {
+        return Err("repair_code_limit");
+    }
+    Ok(())
+}
+
+/// One capacity dispatch for the pre-reservation ContextPack and optional feedback.
+/// The semantic branch never constructs a call identity or vendor request.
+pub fn capacity_fits(
+    pack: &[u8],
+    context_cap: usize,
+    configuration_cap: usize,
+    request_cap: usize,
+) -> bool {
+    if pack.len() > context_cap {
+        return false;
+    }
+    if super::inference_intent::sdk_pack(pack) {
+        return super::inference_intent::preflight(pack, context_cap, configuration_cap).is_ok();
+    }
+    [None, Some(&["unexpected_view_request"; 8][..])]
+        .into_iter()
+        .all(|repair| {
+            bind(pack, repair).is_ok_and(|b| {
+                b.body.len() <= request_cap && b.configuration.len() <= configuration_cap
+            })
+        })
 }

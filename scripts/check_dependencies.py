@@ -15,7 +15,7 @@ PROTECTED = (
     'm1_terrain.rs', 'm1_terrain_input.rs', 'm1_terrain_view.rs', 'm1_terrain_issued.rs',
     'm1_run.rs', 'm1_reasoning/inference.rs', 'm1_reasoning/decision_attempt.rs',
     'm1_reasoning/proposal.rs', 'm1_reasoning/request.rs', 'm1_reasoning/request_autonomous.rs',
-    'm1_reasoning/bounded_json.rs', 'm1_reasoning/response.rs',
+    'm1_reasoning/bounded_json.rs', 'm1_reasoning/response.rs', 'm1_reasoning/inference_intent.rs',
 )
 TOKEN = re.compile(r'//[^\n]*|/\*|r(\#*)"|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'|[a-zA-Z_][a-zA-Z_0-9]*|::|[{};,*]', re.S)
 IDENT = re.compile(r'^[a-zA-Z_][a-zA-Z_0-9]*$')
@@ -94,6 +94,12 @@ def paths(source):
 def violations(name, source):
     errors = set()
     for path in paths(source):
+        if name != 'm1_reasoning/sdk_transport.rs' and any(p in ('genai', 'reqwest', 'tokio') for p in path):
+            errors.add('::'.join(path))
+        if name in PROTECTED and 'sdk_transport' in path:
+            errors.add('::'.join(path))
+        if name not in PROTECTED:
+            continue
         if any(p == 'postgres' or p.startswith('postgres_') or p == 'curl' or p.endswith('_cli') for p in path):
             errors.add('::'.join(path))
         if path[:2] == ('std', 'process'):
@@ -110,7 +116,8 @@ def violations(name, source):
 def main():
     root = Path(__file__).resolve().parents[1] / 'src'
     failures = []
-    for name in PROTECTED:
+    names = set(PROTECTED) | {p.relative_to(root).as_posix() for p in root.rglob('*.rs')}
+    for name in sorted(names):
         try:
             source = (root / name).read_text(encoding='utf-8')
             failures.extend(f'{name}: {p}' for p in violations(name, source))

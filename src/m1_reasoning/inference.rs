@@ -210,8 +210,12 @@ pub fn infer(
             Ok(value) => value,
             Err(code) => (Admission::Rejected(code), Vec::new(), Vec::new()),
         };
-    let successor = serde_json::from_slice::<serde_json::Value>(pack)
-        .is_ok_and(|v| v["version"] == "m1_context_pack_autonomous_v2");
+    let successor = serde_json::from_slice::<serde_json::Value>(pack).is_ok_and(|v| {
+        matches!(
+            v["version"].as_str(),
+            Some("m1_context_pack_autonomous_v2" | "m1_context_pack_autonomous_v3")
+        )
+    });
     let (proposal, disposition) = recorded_proposal(admission, successor, basis);
     let event = Decision {
         kind: "reasoning_decision",

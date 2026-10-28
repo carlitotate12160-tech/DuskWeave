@@ -17,7 +17,7 @@ def check_files(files):
         for rel, text in files.items():
             path = Path(tmp) / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+            path.write_text(text, encoding="utf-8", newline="\n")
         checker.ROOT = tmp
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -97,6 +97,49 @@ class StructureTests(unittest.TestCase):
         ):
             code, out = check_files({path: text})
             self.assertEqual(code, 0, out)
+
+
+
+
+
+class VendoredSdkTests(unittest.TestCase):
+    def snapshot(self):
+        source = SCRIPT.parent.parent / 'third_party' / 'genai'
+        return {'third_party/genai/' + p.relative_to(source).as_posix(): p.read_text(encoding='utf-8')
+                for p in source.rglob('*') if p.is_file()}
+
+    def test_exact_snapshot_waives_only_upstream_hygiene_and_size(self):
+        code, out = check_files(self.snapshot())
+        self.assertEqual(code, 0, out)
+        self.assertNotIn('third_party/genai/src/common/', out)
+
+    def test_first_party_and_similarly_named_paths_remain_checked(self):
+        for name in ('src/domain.rs', 'third_party/genai-other/common.rs'):
+            files = self.snapshot()
+            files[name] = 'fn bad() { value.unwrap(); }'
+            code, out = check_files(files)
+            self.assertEqual(code, 1, out)
+            self.assertIn('FAIL', out)
+
+    def test_extra_or_altered_sdk_source_invalidates_exemption(self):
+        for path in ('third_party/genai/src/campaign.rs', 'third_party/genai/src/common/mod.rs'):
+            files = self.snapshot()
+            files[path] = 'fn bad() { value.unwrap(); }'
+            code, out = check_files(files)
+            self.assertEqual(code, 1, out)
+            self.assertIn('SDK provenance', out)
+
+    def test_sdk_conflict_markers_remain_checked(self):
+        files = self.snapshot()
+        files['third_party/genai/src/client/client_impl.rs'] += '\n<<<<<<< HEAD\n'
+        code, out = check_files(files)
+        self.assertEqual(code, 1, out)
+        self.assertIn('Conflict markers: 1', out)
+
+    def test_canonical_snapshot_survives_windows_crlf_checkout(self):
+        files={name:text.replace("\n","\r\n") for name,text in self.snapshot().items()}
+        code,out=check_files(files)
+        self.assertEqual(code,0,out)
 
 
 if __name__ == "__main__":

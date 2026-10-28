@@ -4,9 +4,9 @@
 # doc-check `dependencies` job; advisories stay owned by cargo-audit.
 
 [licenses]
-# SPDX expressions in the resolved graph select MIT/Apache-2.0
-# alternatives; unicode-ident additionally requires Unicode-3.0.
-allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+# Supported permissive SDK/TLS licenses; retain upstream notices, attribution
+# conditions and any required modified-source labeling.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "ISC", "BSD-3-Clause", "Zlib", "CDLA-Permissive-2.0"]
 # The workspace root is `publish = false` with no declared license.
 # Only unpublished crates are skipped for license checks — not every
 # private/path dependency, and no license is synthesized for the root.

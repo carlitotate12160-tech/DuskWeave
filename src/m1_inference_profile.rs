@@ -31,8 +31,15 @@ pub struct RoutingPolicy {
     pub proxy: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Backend {
+    Legacy,
+    Genai,
+}
+
 #[derive(Clone, Copy)]
 pub struct Profile {
+    pub backend: Backend,
     pub name: &'static str,
     pub connection: Connection,
     pub protocol: Protocol,
@@ -93,8 +100,17 @@ impl Timing {
     }
 }
 
-pub fn lookup(name: &str) -> Res<Profile> {
-    let (name, recipient, credential, protocol, model, effort) = match name {
+type Metadata = (
+    &'static str,
+    &'static str,
+    Option<&'static str>,
+    Protocol,
+    &'static str,
+    Option<&'static str>,
+);
+// Legacy deployment metadata is frozen separately from explicit SDK entries.
+fn legacy_metadata(name: &str) -> Res<Metadata> {
+    Ok(match name {
         "deepseek-responses-reasoning-v1" => (
             "deepseek-responses-reasoning-v1",
             "https://api.deepseek.com/responses",
@@ -128,11 +144,40 @@ pub fn lookup(name: &str) -> Res<Profile> {
             None,
         ),
         _ => return Err(Fail::Input("inference_unsupported_profile")),
+    })
+}
+pub fn lookup(name: &str) -> Res<Profile> {
+    let (backend, metadata) = match name {
+        "deepseek-genai-responses-low-v1" => (
+            Backend::Genai,
+            (
+                "deepseek-genai-responses-low-v1",
+                "https://api.deepseek.com/responses",
+                Some("DEEPSEEK_API_KEY"),
+                Protocol::Responses,
+                "deepseek-flash",
+                Some("low"),
+            ),
+        ),
+        "fixture-genai-responses-v1" => (
+            Backend::Genai,
+            (
+                "fixture-genai-responses-v1",
+                "http://127.0.0.1:18083/responses",
+                None,
+                Protocol::Responses,
+                "deepseek-flash",
+                Some("low"),
+            ),
+        ),
+        _ => (Backend::Legacy, legacy_metadata(name)?),
     };
+    let (name, recipient, credential, protocol, model, effort) = metadata;
     if !REASONING_BOUNDED.feasible() {
         return Err(Fail::Config("inference_infeasible_profile"));
     }
     Ok(Profile {
+        backend,
         name,
         connection: Connection {
             recipient,

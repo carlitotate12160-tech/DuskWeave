@@ -1155,9 +1155,11 @@ protocol adaptation and data custody.
   the adapter is the only module permitted to name them.
 - Composition uses only the SDK's public `Client` path: the adapter builds
   `Client` via `Client::builder().with_reqwest(custom)` — the injected
-  reqwest client carries the transport policy below — and calls `exec_chat`
-  with the complete `ServiceTarget` bound under the routing bullet,
-  receiving `ChatResponse`. `adapter::dispatcher`, `webc::WebClient`,
+  reqwest client carries the transport policy below — and calls
+  `exec_chat_observed(ModelSpec::Target(ServiceTarget), ...)` with the
+  complete target bound under the routing bullet. The result contains the
+  ordinary `Result<ChatResponse>` plus invocation-local HTTP evidence;
+  `exec_chat` delegates to that same implementation. `adapter::dispatcher`, `webc::WebClient`,
   `WebRequestData` and `WebResponse` are crate-private at this revision
   (an earlier draft's public-surface claim for them is corrected here) and
   are never invoked directly. `extra_headers`/`extra_body` request mutation
@@ -1170,8 +1172,8 @@ protocol adaptation and data custody.
   `cargo audit` gate applies to the added tree.
 - Explicit OpenAIResp routing: the adapter supplies a complete
   `ServiceTarget` — `Endpoint::from_static("https://api.deepseek.com/")`
-  resolving to the `/responses` suffix, `AuthData::from_env` naming the
-  configured credential variable, and
+  resolving to the `/responses` suffix, `AuthData::from_single` containing
+  the key read from the explicitly configured credential variable, and
   `ModelIden::new(AdapterKind::OpenAIResp, "deepseek-flash")`. Name inference
   would resolve `deepseek-*` to the chat-completions DeepSeek adapter, so
   routing is bound explicitly from the admitted permission's
@@ -1190,18 +1192,22 @@ protocol adaptation and data custody.
   the fallback. Recorded API limits: the SDK has no progress callback and
   no per-call non-streaming timeout option; the race plus injected client
   timeouts cover those bounds.
-- Minimal SDK HTTP-boundary patch: inside the pinned vendor copy's `webc`
-  boundary only, count the serialized request-entity bytes, replace the
-  unbounded `res.text()` response read with a bounded counted capture that
-  refuses over the configured 65536-byte envelope ceiling before JSON
-  parsing, and expose status plus counted request/response bytes on a
-  narrow added public evidence surface — the public `exec_chat` path hides
-  the payload `Value` and the raw body, so both counts must be produced
-  inside the SDK boundary. The patch carries no DuskWeave logic and changes
-  no other SDK surface; until it is delivered, request/response-byte
-  accounting for this lane stays UNVERIFIED.
+- Minimal SDK patch: the `webc` boundary serializes/counts the exact UTF-8
+  request entity and refuses above 16384 bytes before execute/send. Its counted
+  response read refuses above 65536 entity bytes before buffer growth/JSON
+  parsing, including error responses. `Client::exec_chat_observed` returns its
+  result with optional request/response counts, status and optional bounded
+  transient response bytes. Missing measurements remain unavailable; evidence
+  Debug redacts content. There is no global last-response slot or caller hook.
+  The non-streaming conversion-error constructor retains the existing category
+  with static decode-failure cause and null request/response payloads; derived
+  Debug and field access cannot recover the rejected values. This covers five
+  owning files in the pinned vendor snapshot, with source/patch identities in
+  `third_party/genai/source-manifest.json`. It adds no provider protocol,
+  DuskWeave policy or general SDK error-safety claim. Actual byte accounting
+  requires executed per-call evidence, not a preflight estimate.
 - Credential custody: the key stays in adapter-only infrastructure secret
-  configuration named by `AuthData::from_env`, outside the pack, intent,
+  configuration selected by the explicit profile, outside the pack, intent,
   SQL, diagnostics and receipts; no ambient credential discovery. Raw
   request/response/error/reasoning content stays transient inside the
   adapter: `ChatResponse.reasoning_content`, `captured_raw_body`, error

@@ -165,7 +165,7 @@ fn fit_pack(
             &kept,
             omitted_bytes,
         )?;
-        let utf8 = serialize_pack(&mut raw, autonomous)?;
+        let utf8 = serialize_pack(&mut raw, autonomous, disclosure)?;
         if wire_fits(&utf8, disclosure, autonomous.is_some()) {
             return Ok(PreparedContext {
                 decision_id: op,
@@ -527,22 +527,25 @@ fn wire_fits(utf8: &str, d: &ContextDisclosure, autonomous: bool) -> bool {
     if !autonomous {
         return true;
     }
-    [None, Some(&["unexpected_view_request"; 8][..])]
-        .into_iter()
-        .all(|repair| {
-            crate::m1_reasoning::request::bind(utf8.as_bytes(), repair).is_ok_and(|b| {
-                b.body.len() <= d.required[1] as usize / 2
-                    && b.configuration.len() <= d.configuration_bytes
-            })
-        })
+    crate::m1_reasoning::request::capacity_fits(
+        utf8.as_bytes(),
+        d.context_bytes,
+        d.configuration_bytes,
+        d.required[1] as usize / 2,
+    )
 }
 
 fn serialize_pack(
     raw: &mut Value,
     autonomous: Option<&crate::m1_autonomous_context::AutonomousContext>,
+    disclosure: &ContextDisclosure,
 ) -> Res<String> {
     if let Some(a) = autonomous {
-        a.extend(raw)?;
+        a.extend(
+            raw,
+            disclosure.context_bytes,
+            disclosure.configuration_bytes,
+        )?;
     }
     serde_json::to_string(raw).map_err(|_| Fail::Store("context_encode"))
 }

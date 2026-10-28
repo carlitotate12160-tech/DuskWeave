@@ -120,7 +120,9 @@ impl FixtureControl {
 }
 impl ProtocolFixture {
     pub fn new(profile: crate::m1_inference_profile::Profile) -> Result<Self, &'static str> {
-        if profile.connection.credential_environment.is_some() {
+        if profile.backend != crate::m1_inference_profile::Backend::Legacy
+            || profile.connection.credential_environment.is_some()
+        {
             return Err("inference_fixture_endpoint_refused");
         }
         Ok(Self {

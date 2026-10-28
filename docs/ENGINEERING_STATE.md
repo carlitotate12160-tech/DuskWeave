@@ -3,8 +3,8 @@
 ## 1. Project Identity & Status
 
 - **Project**: DuskWeave. Verify actual worktree, branch and HEAD before delivery.
-- **Current Phase**: M1 is unsealed. Current work is the Windows developer
-  entrypoint; its candidate and checks come from GitHub.
+- **Current Phase**: M1 is unsealed. Current work is the bounded SDK runtime
+  candidate; its PR, committed head and checks come from GitHub.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence below is unchanged.
 - Scope/priorities belong to [the roadmap](MVP_AND_DEFERRED_SCOPE.md); dependency
   navigation belongs to [BUILD_ORDER](BUILD_ORDER.md). Neither duplicates PR state.
@@ -48,20 +48,25 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** a fresh authorized provider-fixture demonstration on
-the merged source, preferably through `deepseek-responses-low-v1` per the
-[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent),
-then Linux acquisition-boundary qualification.
+**Next product action:** finish candidate-bound SDK fixture qualification and
+review before any separately authorized paid-provider + DNS-fixture episode;
+then qualify the Linux acquisition boundary. The
+[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#sdk-loopback-qualification-and-fresh-consent)
+owns supported version/profile/start/stop/recovery procedures.
 
-**Active design:** the `rust-genai` SDK transport successor amendment —
+**Active SDK delivery:** the accepted
 [ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
-and [enabling contract section 8](contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) —
-was ACCEPTED by the product owner on 2026-10-28 (conversation approval) and is
-delivered as a docs-only amendment; no runtime exists. The next permitted
-step is a bounded runtime packet per its recorded gate: pinned SDK plus patch,
-trusted adapter, `dw-inference-intent-v1` semantic admission, then fixture
-qualification, new versioned bindings and fresh consent. The delivered
-libcurl lane stays current until a tested replacement exists.
+and [enabling contract section 8](contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28)
+now have a runtime candidate: pinned SDK and bounded per-call evidence patch,
+shared semantic preflight, post-reservation `dw-inference-intent-v1` binding,
+restricted schema 0022 admission/source recovery, and explicit v5/v3 bindings.
+Local Windows fixture tests exercise D1, one DNS fixture acquisition, qualified
+D2 feedback and key-free recovery, plus failure/STOP/lease/parent-loss paths.
+Final candidate checks, CI and distinct review remain the delivery gate;
+GitHub owns candidate/PR status. These observations are not a seal, paid-provider
+qualification, Linux acquisition qualification or global SDK error-safety proof.
+Legacy libcurl remains only for its explicitly retained old profiles and M0
+consumers; no SDK profile may select it or construct its legacy vendor binding.
 `DW-FIX-M1-DNS-SELECTOR-CONTRACT` merged as `e11f62f`
 ([#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120)): an
 admitted `observe_more` + `dns_udp` proposal carrying contextual references
@@ -100,8 +105,3 @@ acquisition evidence. No host reconfiguration or target contact is authorized he
 and current candidate metrics. Legacy CLI/M0 behavior remains supported until
 tested replacements and compatibility disposition exist. No M1/full-domain seal,
 new provider support or blanket Windows full-suite PASS is implied.
-
-**Active CI work:** `DW-FIX-CI-RUST-TWO-WORKERS` — the instrumented Rust suite
-moves to one shared build, two supervised workers and a single merged coverage
-report behind the unchanged `rust` check; candidate and evidence stay in the
-open draft PR on GitHub.

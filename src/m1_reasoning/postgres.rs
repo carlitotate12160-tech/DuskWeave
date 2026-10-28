@@ -496,6 +496,13 @@ fn verify_repair_call<'a>(
 }
 
 fn verify_call_bytes(c: &StoredCall, expected_repair: bool) -> Res<()> {
+    if super::inference_intent::sdk_pack(c.p.as_bytes()) {
+        let intent: Value =
+            serde_json::from_str(&c.cfg).map_err(|_| "inference_decision_integrity")?;
+        if intent["call_id"] != serde_json::json!(c.call) {
+            return Err("inference_decision_integrity");
+        }
+    }
     super::request::verify_binding(&c.p, &c.cfg, &c.body, &c.binding, expected_repair)
         .map_err(|_| "inference_decision_integrity")
 }

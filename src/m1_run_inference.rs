@@ -136,6 +136,7 @@ pub(super) fn decide(
 enum SelectedProvider<N = reasoning::transport::AutonomousProvider> {
     Local(reasoning::fixture::ProtocolFixture),
     Network(N),
+    Sdk(reasoning::sdk_transport::SdkProvider),
 }
 impl<N: reasoning::inference::Provider> reasoning::inference::Provider for SelectedProvider<N> {
     fn terminal_report(
@@ -145,6 +146,7 @@ impl<N: reasoning::inference::Provider> reasoning::inference::Provider for Selec
         match self {
             Self::Local(p) => p.terminal_report(binding_digest),
             Self::Network(p) => p.terminal_report(binding_digest),
+            Self::Sdk(p) => p.terminal_report(binding_digest),
         }
     }
     fn prepare(
@@ -155,6 +157,7 @@ impl<N: reasoning::inference::Provider> reasoning::inference::Provider for Selec
         match self {
             Self::Local(p) => p.prepare(b, end),
             Self::Network(p) => p.prepare(b, end),
+            Self::Sdk(p) => p.prepare(b, end),
         }
     }
     fn call(
@@ -167,6 +170,7 @@ impl<N: reasoning::inference::Provider> reasoning::inference::Provider for Selec
         match self {
             Self::Local(p) => p.call(b, end, basis, release),
             Self::Network(p) => p.call(b, end, basis, release),
+            Self::Sdk(p) => p.call(b, end, basis, release),
         }
     }
 }
@@ -201,7 +205,19 @@ fn successor_decision<B: ProposalBasis>(
                 end,
                 envelope_end(end, run)?,
             )?;
-            let provider = if profile.connection.credential_environment.is_some() {
+            let provider = if profile.backend == duskweave::m1_inference_profile::Backend::Genai {
+                SelectedProvider::Sdk(
+                    reasoning::sdk_transport::SdkProvider::new(
+                        coordinator.permit.clone(),
+                        move || {
+                            binding
+                                .current()
+                                .map_err(|_| "current_authority_unavailable")
+                        },
+                    )
+                    .with_reporter(super::m1_run_control::reporter()),
+                )
+            } else if profile.connection.credential_environment.is_some() {
                 SelectedProvider::Network(
                     reasoning::transport::AutonomousProvider::new(
                         coordinator.permit.clone(),

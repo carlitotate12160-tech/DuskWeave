@@ -10,6 +10,9 @@ default-run = "duskweave"
 fixture-supervisor = ["dep:process-wrap"]
 
 [dependencies]
+genai = { path = "third_party/genai", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json", "stream"] }
+tokio = { version = "=1.54.1", features = ["rt", "sync", "time"] }
 postgres = { version = "=0.19.14", features = ["with-uuid-1", "with-serde_json-1"] }
 uuid = { version = "=1.28.0", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
@@ -29,3 +32,7 @@ path = "src/main.rs"
 name = "dw-fixture-supervisor"
 path = "src/bin/dw-fixture-supervisor/main.rs"
 required-features = ["fixture-supervisor"]
+
+[dev-dependencies]
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "registry"] }

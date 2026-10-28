@@ -175,7 +175,10 @@ pub struct InferencePermission {
 
 impl InferencePermission {
     fn check_profile(&self) -> Res<()> {
-        if self.version == "m1_inference_permission_v4" {
+        if matches!(
+            self.version.as_str(),
+            "m1_inference_permission_v4" | "m1_inference_permission_v5"
+        ) {
             return self.check_successor();
         }
         if self.version == "m1_inference_permission_v3" {
@@ -452,7 +455,10 @@ impl InferencePermission {
 
 impl InferencePermission {
     fn check_limits(&self) -> Res<()> {
-        if self.version == "m1_inference_permission_v4" {
+        if matches!(
+            self.version.as_str(),
+            "m1_inference_permission_v4" | "m1_inference_permission_v5"
+        ) {
             return self.check_successor_limits();
         }
         let autonomous = self.version == "m1_inference_permission_v3";
@@ -467,6 +473,10 @@ impl InferencePermission {
     fn check_successor(&self) -> Res<()> {
         let profile = crate::m1_inference_profile::lookup(&self.profile)?;
         let valid = [
+            self.version != "m1_inference_permission_v5"
+                || self.operation_limits.request_bytes == 16384,
+            (self.version == "m1_inference_permission_v5")
+                == (profile.backend == crate::m1_inference_profile::Backend::Genai),
             self.recipient == profile.connection.recipient,
             self.run_profile.as_deref() == Some(crate::m1_inference_profile::RUN_PROFILE),
             self.execution_mode.as_deref() == Some("controlled_fixture"),
