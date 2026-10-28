@@ -77,7 +77,12 @@ WEIGHTS = {
     "tests/planning.rs": 0.0, "tests/planning_bounds.rs": 0.0, "tests/planning_history.rs": 0.0,
     "tests/planning_positive.rs": 0.0, "tests/planning_withdrawal.rs": 0.0, "tests/withdrawal.rs": 0.0,
 }
-TEST_LINE = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. (\w+)(.*)$")
+TEST_LINE = re.compile(
+    r"^test (\S+)(?: - should panic)? \.\.\. (ok|FAILED|ignored|measured)\b")
+# Child processes bypass libtest's capture and write to the same stream, so a
+# header can be separated from its verdict by arbitrary child output lines.
+TEST_HEAD = re.compile(r"^test (\S+)(?: - should panic)? \.\.\.")
+VERDICT_LINE = re.compile(r"^(ok|FAILED|ignored|measured)\b")
 RESULT_LINE = re.compile(
     r"^test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored; "
     r"(\d+) measured; (\d+) filtered out; finished in ([\d.]+)s")
@@ -342,10 +347,29 @@ def cmd_verify(args):
     return 0
 
 
+class _PendingMatch:
+    def __init__(self, name, status):
+        self._groups = (name, status)
+
+    def group(self, index):
+        return self._groups[index - 1]
+
+
 def parse_libtest_log(path):
     names, ignored, failed, result = set(), set(), set(), None
+    pending = None
     for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
         match = TEST_LINE.match(line)
+        if not match and pending is not None:
+            match = VERDICT_LINE.match(line)
+            if match:
+                match = _PendingMatch(pending, match.group(1))
+        if not match:
+            head = TEST_HEAD.match(line)
+            if head:
+                pending = head.group(1)
+        elif match is not None:
+            pending = None
         if match:
             name, status = match.group(1), match.group(2)
             names.add(name)
