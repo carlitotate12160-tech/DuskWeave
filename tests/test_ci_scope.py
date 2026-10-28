@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -164,6 +165,248 @@ class RequiredGate(unittest.TestCase):
         for scope, states, missing in cases:
             with self.subTest(scope=scope, states=states, missing=missing):
                 self.assertNotEqual(self.run_gate(scope, states, missing).returncode, 0)
+
+
+def job_blocks(workflow_path):
+    """Split `jobs:` into {name: body} using indentation only (no YAML dep)."""
+    text = Path(workflow_path).read_text(encoding="utf-8")
+    start = text.index("\njobs:\n") + len("\njobs:\n")
+    body = text[start:]
+    blocks, name, current = {}, None, []
+    for line in body.splitlines():
+        if line and not line.startswith(" "):
+            break
+        key = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if key:
+            if name:
+                blocks[name] = "\n".join(current)
+            name, current = key.group(1), []
+        elif name:
+            current.append(line)
+    if name:
+        blocks[name] = "\n".join(current)
+    return blocks
+
+
+def needs_of(block):
+    inline = re.search(r"^    needs: \[([^\]]+)\]", block, re.M)
+    if inline:
+        return [n.strip() for n in inline.group(1).split(",")]
+    listed = re.findall(r"^      - (\S+)\s*$", block, re.M)
+    single = re.search(r"^    needs: (\S+)\s*$", block, re.M)
+    return listed or ([single.group(1)] if single else [])
+
+
+def step_body(block, name):
+    """Extract the run: | body of a named step inside a job block."""
+    start = block.index(f"- name: {name}")
+    seg = block[start:start + 8000]
+    match = re.search(r"run: \|\r?\n((?:[ ]{10,}.*\r?\n?)+)", seg)
+    assert match, f"no run body for step {name}"
+    return "\n".join(line[10:] if line.startswith(" " * 10) else line
+                     for line in match.group(1).splitlines()) + "\n"
+
+
+class WorkflowWiring(unittest.TestCase):
+    """Structural wiring of the sharded rust pipeline in doc-check.yml."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.jobs = job_blocks(Path(__file__).resolve().parents[1]
+                              / ".github/workflows/doc-check.yml")
+
+    def test_rust_pipeline_shape(self):
+        for name in ("rust-build", "rust-tests", "rust"):
+            self.assertIn(name, self.jobs)
+        self.assertEqual(needs_of(self.jobs["rust-build"]), ["changes"])
+        self.assertEqual(set(needs_of(self.jobs["rust-tests"])),
+                         {"changes", "rust-build"})
+        self.assertEqual(set(needs_of(self.jobs["rust"])),
+                         {"changes", "rust-build", "rust-tests"})
+
+    def test_ci_ok_gate_set_is_unchanged(self):
+        self.assertEqual(set(needs_of(self.jobs["ci-ok"])), set(JOBS))
+
+    def test_docs_scope_skip_and_failure_propagation_guards(self):
+        for name in ("rust-build", "rust-tests", "rust"):
+            block = self.jobs[name]
+            guard = re.search(r"^    if: (.*)$", block, re.M).group(1)
+            self.assertIn("!cancelled()", guard)
+            self.assertIn("needs.changes.outputs.scope != 'docs'", guard)
+            self.assertIn("needs.changes.result != 'success'", guard)
+        # rust-tests additionally requires the shared build to succeed.
+        self.assertIn("needs.rust-build.result == 'success'",
+                      self.jobs["rust-tests"])
+        # rust cannot silently pass when build or workers failed.
+        self.assertIn("needs.rust-build.result", self.jobs["rust"])
+        self.assertIn("needs.rust-tests.result", self.jobs["rust"])
+
+    def test_two_worker_matrix_and_designated_prelude(self):
+        tests = self.jobs["rust-tests"]
+        self.assertIn("matrix:", tests)
+        self.assertIn("fromJSON(needs.changes.outputs.rust_workers_matrix)",
+                      tests)
+        self.assertIn("if: matrix.worker == 0", tests)
+        self.assertIn("prelude.jsonl", tests)
+        self.assertIn("LLVM_PROFILE_FILE", tests)
+
+    def test_helper_and_gate_wiring(self):
+        for name in ("rust-build", "rust-tests", "rust"):
+            self.assertIn("scripts/ci_rust_shards.py", self.jobs[name])
+        self.assertIn("enumerate", self.jobs["rust-build"])
+        self.assertIn("verify", self.jobs["rust-tests"])
+        self.assertIn("aggregate", self.jobs["rust"])
+        rust = self.jobs["rust"]
+        self.assertIn("cargo llvm-cov report", rust)
+        self.assertIn("tests/check_coverage_gate.py", rust)
+        # `report` merges profdata + objects only: its commands must carry
+        # the JSON/text output paths and the object dir but none of the
+        # build-only flags (hosted run rejected --features for 'report').
+        commands = [c.strip() for c in re.sub(r"\\\s*\n\s*", " ", rust)
+                    .splitlines() if "cargo llvm-cov report" in c]
+        self.assertEqual(len(commands), 2)
+        for command in commands:
+            self.assertNotIn("--features", command)
+            self.assertNotIn("--all-targets", command)
+        self.assertTrue(any("--json" in c and "m0a-coverage.json" in c
+                            for c in commands))
+        self.assertTrue(any("--text" in c and "m0a-coverage.txt" in c
+                            for c in commands))
+        self.assertIn("CARGO_LLVM_COV_TARGET_DIR", rust)
+        # The instrumented build, not the report, selects the feature graph.
+        build = self.jobs["rust-build"]
+        self.assertIn("cargo test --locked --all-targets "
+                      "--features fixture-supervisor --no-run", build)
+        # Instrumented build happens exactly once, not per worker.
+        self.assertIn("cargo llvm-cov show-env", build)
+        self.assertNotIn("cargo llvm-cov show-env", self.jobs["rust-tests"])
+        self.assertNotIn("cargo test --no-run", self.jobs["rust-tests"])
+
+    def test_worker_evidence_download_modes_are_exclusive(self):
+        rust = self.jobs["rust"]
+        # Serial mode: a single artifact lands without its named child dir on
+        # the pinned action, so it is addressed by exact name into its root.
+        serial = re.search(
+            r"- name: Download single-worker evidence \(serial mode\)\n"
+            r"(.*?)- name:", rust, re.S).group(1)
+        self.assertIn("rust_workers == '1'", serial)
+        self.assertIn("name: dw-rust-worker-0-", serial)
+        self.assertIn("/dw-evidence/dw-rust-worker-0-", serial)
+        sharded = re.search(
+            r"- name: Download worker evidence and raw profiles "
+            r"\(sharded mode\)\n(.*?)- name:", rust, re.S).group(1)
+        self.assertIn("rust_workers == '2'", sharded)
+        self.assertIn("pattern: dw-rust-worker-*-", sharded)
+        self.assertIn("merge-multiple: false", sharded)
+        # Staging binds the dir count to the requested worker count and
+        # requires nonempty per-worker profiles before invoking aggregate.
+        staging = step_body(rust, "Validate complete worker evidence "
+                                "and stage profiles")
+        self.assertIn("evidence+=(", staging)
+        self.assertIn('#evidence[@]}" -ne "$expected"', staging)
+        self.assertIn('profraw/*.profraw', staging)
+        self.assertIn('"${evidence[@]}"', staging)
+
+
+class MetricsBaseResolution(unittest.TestCase):
+    """Execute the real 'Resolve diff base' body in synthetic git histories."""
+
+    @classmethod
+    def setUpClass(cls):
+        jobs = job_blocks(Path(__file__).resolve().parents[1]
+                          / ".github/workflows/doc-check.yml")
+        cls.body = step_body(jobs["metrics"], "Resolve diff base")
+
+    def _repo(self, name="repo"):
+        repo = Path(self.tmp.name) / name
+        repo.mkdir()
+        run = lambda *args: subprocess.run(
+            args, cwd=repo, check=True, capture_output=True).stdout
+        run("git", "init", "-b", "master")
+        run("git", "config", "user.email", "t@example.com")
+        run("git", "config", "user.name", "t")
+        return repo, run
+
+    def _commit(self, repo, run, marker):
+        (repo / "f.txt").write_text(marker)
+        run("git", "add", "-A")
+        run("git", "commit", "-m", marker)
+        return run("git", "rev-parse", "HEAD").decode().strip()
+
+    def _resolve(self, repo, event, ref="refs/heads/feat",
+                 pr_base="", before="", sha=""):
+        body = (self.body
+                .replace("${{ github.event_name }}", event)
+                .replace("${{ github.event.pull_request.base.sha }}", pr_base)
+                .replace("${{ github.event.before }}", before)
+                .replace("${{ github.ref }}", ref)
+                .replace("${{ github.sha }}", sha or "0" * 40)
+                .replace("$GITHUB_OUTPUT", "ghout"))
+        script = repo / "resolve.sh"
+        script.write_bytes(body.encode())  # LF only, like hosted bash -e {0}
+        out = repo / "ghout"
+        out.write_text("")
+        r = subprocess.run(["bash", "resolve.sh"], cwd=repo,
+                           capture_output=True, text=True)
+        base = ""
+        if "base=" in out.read_text():
+            base = out.read_text().strip().rsplit("base=", 1)[1]
+        return r.returncode, base
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_dispatch_branch_uses_master_merge_base(self):
+        repo, run = self._repo()
+        base_sha = self._commit(repo, run, "master-a")
+        run("git", "update-ref", "refs/remotes/origin/master", base_sha)
+        run("git", "checkout", "-b", "feat")
+        self._commit(repo, run, "b")
+        self._commit(repo, run, "c")
+        rc, base = self._resolve(repo, "workflow_dispatch",
+                                 ref="refs/heads/feat")
+        self.assertEqual(rc, 0)
+        self.assertEqual(base, base_sha)  # whole branch, not HEAD^
+
+    def test_dispatch_master_uses_parent(self):
+        repo, run = self._repo()
+        self._commit(repo, run, "a")
+        head_parent = self._commit(repo, run, "b")
+        self._commit(repo, run, "c")
+        rc, base = self._resolve(repo, "workflow_dispatch",
+                                 ref="refs/heads/master")
+        self.assertEqual(rc, 0)
+        self.assertEqual(base, head_parent)  # wait: HEAD^ is c's parent = b
+
+    def test_dispatch_branch_missing_master_fails(self):
+        repo, run = self._repo()
+        self._commit(repo, run, "a")
+        run("git", "checkout", "-b", "feat")
+        self._commit(repo, run, "b")
+        rc, base = self._resolve(repo, "workflow_dispatch",
+                                 ref="refs/heads/feat")
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(base, "")
+
+    def test_pull_request_push_schedule_bases_unchanged(self):
+        repo, run = self._repo()
+        first = self._commit(repo, run, "a")
+        head = self._commit(repo, run, "b")
+        rc, base = self._resolve(repo, "pull_request", pr_base=first)
+        self.assertEqual(rc, 0)
+        self.assertEqual(base, first)
+        rc, base = self._resolve(repo, "push", before=head)
+        self.assertEqual(base, head)
+        rc, base = self._resolve(repo, "schedule")
+        self.assertEqual(base, first)  # HEAD^ after b
+
+    def test_push_without_before_and_no_parent_fails(self):
+        repo, run = self._repo()
+        self._commit(repo, run, "a")
+        rc, base = self._resolve(repo, "push", before="0" * 40)
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(base, "")
 
 
 if __name__ == "__main__":

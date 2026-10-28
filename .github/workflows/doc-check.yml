@@ -6,6 +6,16 @@ on:
   pull_request:
   schedule:
     - cron: "23 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      rust_workers:
+        # Two workers is the normal fan-out. One worker is the explicit
+        # serial reference qualification on the same instrumented build.
+        description: "Rust suite fan-out: 2 (default) or 1 (serial reference)"
+        required: false
+        default: "2"
+        type: choice
+        options: ["2", "1"]
 
 permissions:
   contents: read
@@ -16,6 +26,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
+      rust_workers: ${{ steps.fanout.outputs.count }}
+      rust_workers_matrix: ${{ steps.fanout.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -24,10 +36,19 @@ jobs:
         with:
           python-version-file: ".python-version"
       - name: CI classification and required-result negative controls
-        run: python -m unittest discover -s tests -p test_ci_scope.py
+        run: python -m unittest discover -s tests -p 'test_ci_*.py'
       - name: Classify changed inputs (unknown or unavailable means full)
         id: scope
         run: python scripts/ci_scope.py classify
+      - name: Rust worker fan-out
+        id: fanout
+        env:
+          REQUESTED: ${{ github.event.inputs.rust_workers || '2' }}
+        run: |
+          set -e
+          case "$REQUESTED" in 1|2) ;; *) echo "unsupported rust_workers=$REQUESTED"; exit 1;; esac
+          if [ "$REQUESTED" = 1 ]; then echo 'matrix=[0]' >> "$GITHUB_OUTPUT"; else echo 'matrix=[0,1]' >> "$GITHUB_OUTPUT"; fi
+          echo "count=$REQUESTED" >> "$GITHUB_OUTPUT"
 
   links:
     runs-on: ubuntu-latest
@@ -120,6 +141,19 @@ jobs:
             BASE="${{ github.event.pull_request.base.sha }}"
           elif [ "$EVENT" = "push" ]; then
             BASE="${{ github.event.before }}"
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+              # Explicit single-commit manual check on the default branch.
+              BASE="$(git rev-parse --verify HEAD^)" || {
+                echo "dispatch on master: HEAD has no parent"; exit 1; }
+            else
+              # Whole branch against master, not just the newest commit.
+              git rev-parse --verify "refs/remotes/origin/master^{commit}" \
+                >/dev/null || {
+                  echo "origin/master unresolvable for event $EVENT"; exit 1; }
+              BASE="$(git merge-base HEAD refs/remotes/origin/master)" || {
+                echo "merge-base unresolvable for event $EVENT"; exit 1; }
+            fi
           fi
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             # push with zero/absent before, or schedule (no before): HEAD^ is
@@ -192,12 +226,11 @@ jobs:
           python scripts/check_runtime_budget.py --base "${{ steps.base.outputs.base }}" --head HEAD | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-  rust:
+  rust-build:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.scope != 'docs') }}
     runs-on: ubuntu-latest
-    # Bounded infrastructure policy; individual test deadlines are unchanged.
-    timeout-minutes: 40
+    timeout-minutes: 20
     env:
       RUSTUP_TOOLCHAIN: "1.94.1"
     steps:
@@ -224,29 +257,6 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-rust1.94.1-llvmcov0.9.1-${{ hashFiles('Cargo.lock', 'Cargo.toml', '.cargo/config.toml', 'rust-toolchain*') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-rust1.94.1-llvmcov0.9.1-${{ hashFiles('Cargo.lock', 'Cargo.toml', '.cargo/config.toml', 'rust-toolchain*') }}-
-
-      - name: Start owned PostgreSQL 17 on loopback
-        shell: bash
-        run: |
-          set -e
-          ADMIN_PW="ci-$(openssl rand -hex 16)"
-          echo "::add-mask::$ADMIN_PW"
-          echo "ADMIN_PW=$ADMIN_PW" >> "$GITHUB_ENV"
-          POSTGRES_PASSWORD="$ADMIN_PW" docker run -d --name dwpg \
-            -e POSTGRES_PASSWORD \
-            -p 127.0.0.1:5432:5432 \
-            postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
-
-      - name: Bounded readiness and runtime role setup
-        shell: bash
-        run: |
-          set -e
-          for i in $(seq 1 30); do
-            if docker exec dwpg pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then break; fi
-            [ "$i" = 30 ] && { echo "postgres did not become ready"; exit 1; }
-            sleep 1
-          done
-          echo "CREATE DATABASE dw_test;" | docker exec -i dwpg psql -U postgres -v ON_ERROR_STOP=1 >/dev/null
 
       - name: Rust toolchain 1.94.1
         run: rustup toolchain install 1.94.1 --profile minimal --component clippy,rustfmt,llvm-tools-preview
@@ -281,48 +291,297 @@ jobs:
           echo "DW_TEST_FIXTURE_SUPERVISOR=$DW_TEST_FIXTURE_SUPERVISOR" >> "$GITHUB_ENV"
           for suite in bootstrap_progress native_helpers lifecycle_qualification terrain_live terrain_live_contract; do python3 -m unittest discover -s tests -p "test_m1_${suite}.py"; done
 
-      - name: Focused reservation-stall qualification under Linux coverage
-        env:
-          DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
+      - name: Build the full instrumented inventory once (show-env flow)
+        shell: bash
         run: |
           set -e
+          # show-env does not export CARGO_TARGET_DIR; pin it so the
+          # instrumented objects land in the cached target/llvm-cov-target.
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/llvm-cov-target"
+          source <(cargo llvm-cov show-env --sh)
           cargo llvm-cov clean --workspace
-          python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
-            --database-name "dw_native_pr107_relay_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" \
-            --report "$RUNNER_TEMP/pr107-relay-focus" -- \
-            cargo llvm-cov --locked --test m1_provider_fixture --no-report -- \
-            stalled_reservation_reply_hard_stops_at_the_original_decision_envelope --exact --test-threads=1 --nocapture
+          cargo test --locked --all-targets --features fixture-supervisor --no-run \
+            --message-format=json-render-diagnostics > "$RUNNER_TEMP/artifacts.jsonl"
 
-      - name: Full test suite under coverage instrumentation (real PostgreSQL 17)
-        id: full-coverage
+      - name: Enumerate harness inventory and record the build manifest
+        run: |
+          set -e
+          mkdir -p ci-shards
+          cp "$RUNNER_TEMP/fixture-supervisor/debug/dw-fixture-supervisor" ci-shards/dw-fixture-supervisor
+          python3 scripts/ci_rust_shards.py enumerate \
+            --artifacts "$RUNNER_TEMP/artifacts.jsonl" --workspace "$GITHUB_WORKSPACE" \
+            --out "$RUNNER_TEMP/tests.json"
+          python3 scripts/ci_rust_shards.py manifest \
+            --artifacts "$RUNNER_TEMP/artifacts.jsonl" --workspace "$GITHUB_WORKSPACE" \
+            --cov-dir target/llvm-cov-target --sha "$(git rev-parse HEAD)" \
+            --rustc "$(rustc --version)" --llvm-cov "$(cargo llvm-cov --version)" \
+            --tests "$RUNNER_TEMP/tests.json" --out ci-shards/manifest.json \
+            --extra-object ci-shards/dw-fixture-supervisor
+          python3 scripts/ci_rust_shards.py plan \
+            --manifest ci-shards/manifest.json --workspace "$GITHUB_WORKSPACE" \
+            --out-dir ci-shards
+
+      - name: Package instrumented object set, plans and supervisor
+        run: |
+          set -e
+          cp "$RUNNER_TEMP/artifacts.jsonl" ci-shards/artifacts.jsonl
+          python3 -c "import json;print('\n'.join(o['path'] for o in json.load(open('ci-shards/manifest.json'))['objects']))" > ci-shards/objects.txt
+          tar --zstd -cf "$RUNNER_TEMP/dw-rust-build.tar.zst" -T ci-shards/objects.txt ci-shards
+          du -h "$RUNNER_TEMP/dw-rust-build.tar.zst"
+
+      - name: Upload instrumented build artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # Attempt-independent: re-running only failed jobs reuses this
+          # successful build; a full re-run overwrites it.
+          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/dw-rust-build.tar.zst
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
+  rust-tests:
+    needs: [changes, rust-build]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.scope != 'docs') && needs.rust-build.result == 'success' }}
+    runs-on: ubuntu-latest
+    # Same bounded infrastructure policy; individual test deadlines unchanged.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: ${{ fromJSON(needs.changes.outputs.rust_workers_matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the shared instrumented build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/dw-rust-build
+
+      - name: Extract the object set at its original absolute paths
+        run: tar --zstd -xf "$RUNNER_TEMP/dw-rust-build/dw-rust-build.tar.zst" -C "$GITHUB_WORKSPACE"
+
+      - name: Verify candidate, build configuration and object hashes
+        run: python3 scripts/ci_rust_shards.py verify --manifest ci-shards/manifest.json --workspace "$GITHUB_WORKSPACE" --sha "$(git rev-parse HEAD)"
+
+      - name: Start owned PostgreSQL 17 on loopback
+        shell: bash
+        run: |
+          set -e
+          ADMIN_PW="ci-$(openssl rand -hex 16)"
+          echo "::add-mask::$ADMIN_PW"
+          echo "ADMIN_PW=$ADMIN_PW" >> "$GITHUB_ENV"
+          POSTGRES_PASSWORD="$ADMIN_PW" docker run -d --name dwpg \
+            -e POSTGRES_PASSWORD \
+            -p 127.0.0.1:5432:5432 \
+            postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+
+      - name: Bounded readiness and runtime role setup
+        shell: bash
+        run: |
+          set -e
+          for i in $(seq 1 30); do
+            if docker exec dwpg pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then break; fi
+            [ "$i" = 30 ] && { echo "postgres did not become ready"; exit 1; }
+            sleep 1
+          done
+          echo "CREATE DATABASE dw_test;" | docker exec -i dwpg psql -U postgres -v ON_ERROR_STOP=1 >/dev/null
+
+      - name: Native TLS and local transport test prerequisites
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev pkg-config openssl python3
+
+      - name: Python tooling version
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: ".python-version"
+
+      - name: Reservation-stall qualification prelude (designated worker)
+        if: matrix.worker == 0
         env:
           DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
         run: |
           set -e
-          cargo llvm-cov clean --workspace
-          mkdir -p target/llvm-cov
+          mkdir -p "$RUNNER_TEMP/dw-evidence/prelude" "$RUNNER_TEMP/dw-prelude-profraw"
+          DW_TEST_FIXTURE_SUPERVISOR="$GITHUB_WORKSPACE/ci-shards/dw-fixture-supervisor" \
+          LLVM_PROFILE_FILE="$RUNNER_TEMP/dw-prelude-profraw/prelude-%p-%12m.profraw" \
           python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
-            --report "$RUNNER_TEMP/native-fix60" -- \
-            cargo llvm-cov --locked --all-targets --features fixture-supervisor --json --output-path target/llvm-cov/m0a-coverage.json -- --test-threads=1
-          cargo llvm-cov report --text --output-path target/llvm-cov/m0a-coverage.txt
+            --report "$RUNNER_TEMP/dw-evidence/prelude" --session \
+            < ci-shards/prelude.jsonl
+
+      - name: Assigned instrumented targets through the supervisor
+        id: suite
+        env:
+          DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/target/llvm-cov-target/w${{ matrix.worker }}-%p-%12m.profraw
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/dw-evidence/suite"
+          DW_TEST_FIXTURE_SUPERVISOR="$GITHUB_WORKSPACE/ci-shards/dw-fixture-supervisor" \
+          python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
+            --report "$RUNNER_TEMP/dw-evidence/suite" --session \
+            < "ci-shards/session-${{ needs.changes.outputs.rust_workers }}-${{ matrix.worker }}.jsonl"
+
+      - name: Worker execution receipt (any gap fails the worker)
+        if: always()
+        run: |
+          set -e
+          PRELUDE_ARG=""
+          if [ "${{ matrix.worker }}" = "0" ]; then
+            PRELUDE_ARG="--prelude $RUNNER_TEMP/dw-evidence/prelude"
+          fi
+          python3 scripts/ci_rust_shards.py receipt \
+            --manifest ci-shards/manifest.json \
+            --partition "ci-shards/partition-${{ needs.changes.outputs.rust_workers }}.json" \
+            --worker "${{ matrix.worker }}" \
+            --report "$RUNNER_TEMP/dw-evidence/suite" $PRELUDE_ARG \
+            --out "$RUNNER_TEMP/dw-evidence/receipt.json"
+
+      - name: Stage worker evidence and raw profiles
+        if: always()
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/upload/profraw"
+          if [ -d "$RUNNER_TEMP/dw-evidence" ]; then
+            cp -a "$RUNNER_TEMP/dw-evidence/." "$RUNNER_TEMP/upload/"
+          fi
+          for f in target/llvm-cov-target/w${{ matrix.worker }}-*.profraw; do
+            [ -e "$f" ] && cp "$f" "$RUNNER_TEMP/upload/profraw/"
+          done
+          # The reservation-stall prelude profiles are evidence only; they
+          # never enter the merged full-suite coverage set.
+          [ -d "$RUNNER_TEMP/dw-prelude-profraw" ] && cp -a "$RUNNER_TEMP/dw-prelude-profraw" "$RUNNER_TEMP/upload/prelude-profraw" || true
+
+      - name: Upload worker evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dw-rust-worker-${{ matrix.worker }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/upload
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Always clean up PostgreSQL container
+        if: always()
+        run: docker rm -f dwpg || true
+
+  rust:
+    needs: [changes, rust-build, rust-tests]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.scope != 'docs') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: "1.94.1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require build and worker results (no silent pass)
+        run: |
+          if [ "${{ needs.rust-build.result }}" != "success" ]; then
+            echo "rust-build result: ${{ needs.rust-build.result }}"; exit 1
+          fi
+          if [ "${{ needs.rust-tests.result }}" != "success" ]; then
+            echo "rust-tests result: ${{ needs.rust-tests.result }}"; exit 1
+          fi
+
+      - name: Rust toolchain 1.94.1 (llvm-tools for profile merge)
+        run: rustup toolchain install 1.94.1 --profile minimal --component llvm-tools-preview
+
+      - name: Python tooling version
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install pinned cargo-llvm-cov 0.9.1
+        run: |
+          set -e
+          curl -fsSL -o /tmp/cargo-llvm-cov.tgz \
+            "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-unknown-linux-musl.tar.gz"
+          echo "3fca950394a3c49457657c158b1619cec8dfd2647ae5b48746734c0ab969a522  /tmp/cargo-llvm-cov.tgz" | sha256sum -c -
+          tar -xzf /tmp/cargo-llvm-cov.tgz -C "$HOME/.cargo/bin"
+          cargo llvm-cov --version
+
+      - name: Download the shared instrumented build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/dw-rust-build
+
+      - name: Extract the object set at its original absolute paths
+        run: tar --zstd -xf "$RUNNER_TEMP/dw-rust-build/dw-rust-build.tar.zst" -C "$GITHUB_WORKSPACE"
+
+      # The pinned download-artifact action extracts a single match directly
+      # into the destination (no child dir), so the serial mode must address
+      # the one worker artifact by exact name into its own named root.
+      - name: Download single-worker evidence (serial mode)
+        if: needs.changes.outputs.rust_workers == '1'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dw-rust-worker-0-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-0-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Download worker evidence and raw profiles (sharded mode)
+        if: needs.changes.outputs.rust_workers == '2'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dw-rust-worker-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dw-evidence
+          merge-multiple: false
+
+      - name: Verify candidate, tools and object set
+        run: |
+          set -e
+          python3 scripts/ci_rust_shards.py verify --manifest ci-shards/manifest.json \
+            --workspace "$GITHUB_WORKSPACE" --sha "$(git rev-parse HEAD)" \
+            --rustc "$(rustc --version)" --llvm-cov "$(cargo llvm-cov --version)"
+
+      - name: Validate complete worker evidence and stage profiles
+        id: aggregate
+        run: |
+          set -e
+          mkdir -p target/llvm-cov-target
+          expected="${{ needs.changes.outputs.rust_workers }}"
+          evidence=()
+          for dir in "$RUNNER_TEMP"/dw-evidence/dw-rust-worker-*/; do
+            [ -d "$dir" ] || {
+              echo "missing worker evidence root: $dir"; exit 1; }
+            evidence+=("$dir")
+          done
+          if [ "${#evidence[@]}" -ne "$expected" ]; then
+            echo "worker evidence dirs ${#evidence[@]} != requested $expected"
+            exit 1
+          fi
+          for dir in "${evidence[@]}"; do
+            profiles=("$dir"profraw/*.profraw)
+            [ -e "${profiles[0]}" ] || {
+              echo "empty profraw set in $dir"; exit 1; }
+            cp "${profiles[@]}" target/llvm-cov-target/
+          done
+          python3 scripts/ci_rust_shards.py aggregate \
+            --manifest ci-shards/manifest.json \
+            --partition "ci-shards/partition-${{ needs.changes.outputs.rust_workers }}.json" \
+            --workers "${{ needs.changes.outputs.rust_workers }}" \
+            --evidence "${evidence[@]}" \
+            --cov-dir target/llvm-cov-target \
+            --workspace "$GITHUB_WORKSPACE" --sha "$(git rev-parse HEAD)"
+
+      - name: Merged coverage reports against the single object set
+        env:
+          CARGO_LLVM_COV_TARGET_DIR: ${{ github.workspace }}/target/llvm-cov-target
+        run: |
+          set -e
+          mkdir -p target/llvm-cov
+          cargo llvm-cov report --locked \
+            --json --output-path target/llvm-cov/m0a-coverage.json
+          cargo llvm-cov report --locked \
+            --text --output-path target/llvm-cov/m0a-coverage.txt
           cat target/llvm-cov/m0a-coverage.txt
 
       - name: Coverage gate (90% total / 80% per production file)
         run: python3 tests/check_coverage_gate.py target/llvm-cov/m0a-coverage.json
 
-      - name: Upload native fixture test evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: native-fix60-test-evidence
-          path: |
-            ${{ runner.temp }}/native-fix60/qualification.log
-            ${{ runner.temp }}/pr107-relay-focus/qualification.log
-          if-no-files-found: warn
-          retention-days: 14
-
       - name: Upload coverage report artifact
-        if: ${{ always() && steps.full-coverage.outcome != 'skipped' }}
+        if: ${{ always() && steps.aggregate.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: m0a-coverage
@@ -331,10 +590,6 @@ jobs:
             target/llvm-cov/m0a-coverage.txt
           if-no-files-found: error
           retention-days: 14
-
-      - name: Always clean up PostgreSQL container
-        if: always()
-        run: docker rm -f dwpg || true
 
   codeql:
     runs-on: ubuntu-latest
