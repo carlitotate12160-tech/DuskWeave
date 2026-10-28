@@ -249,6 +249,24 @@ class WorkflowWiring(unittest.TestCase):
         rust = self.jobs["rust"]
         self.assertIn("cargo llvm-cov report", rust)
         self.assertIn("tests/check_coverage_gate.py", rust)
+        # `report` merges profdata + objects only: its commands must carry
+        # the JSON/text output paths and the object dir but none of the
+        # build-only flags (hosted run rejected --features for 'report').
+        commands = [c.strip() for c in re.sub(r"\\\s*\n\s*", " ", rust)
+                    .splitlines() if "cargo llvm-cov report" in c]
+        self.assertEqual(len(commands), 2)
+        for command in commands:
+            self.assertNotIn("--features", command)
+            self.assertNotIn("--all-targets", command)
+        self.assertTrue(any("--json" in c and "m0a-coverage.json" in c
+                            for c in commands))
+        self.assertTrue(any("--text" in c and "m0a-coverage.txt" in c
+                            for c in commands))
+        self.assertIn("CARGO_LLVM_COV_TARGET_DIR", rust)
+        # The instrumented build, not the report, selects the feature graph.
+        build = self.jobs["rust-build"]
+        self.assertIn("cargo test --locked --all-targets "
+                      "--features fixture-supervisor --no-run", build)
         # Instrumented build happens exactly once, not per worker.
         self.assertIn("cargo llvm-cov show-env", self.jobs["rust-build"])
         self.assertNotIn("cargo llvm-cov show-env", self.jobs["rust-tests"])

@@ -536,9 +536,9 @@ jobs:
         run: |
           set -e
           mkdir -p target/llvm-cov
-          cargo llvm-cov report --locked --features fixture-supervisor \
+          cargo llvm-cov report --locked \
             --json --output-path target/llvm-cov/m0a-coverage.json
-          cargo llvm-cov report --locked --features fixture-supervisor \
+          cargo llvm-cov report --locked \
             --text --output-path target/llvm-cov/m0a-coverage.txt
           cat target/llvm-cov/m0a-coverage.txt
 
