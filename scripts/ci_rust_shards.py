@@ -417,8 +417,12 @@ def check_prelude(report_dir):
     if not validate_result_fields(record):
         fail(f"prelude: supervisor result not clean: {record}")
     text = lpath.read_text(encoding="utf-8", errors="replace")
-    if not re.search(rf"^test {re.escape(PRELUDE_TEST)} \.\.\. ok[ \r]*$",
-                     text, re.M):
+    # The child's stdout can interleave between the libtest header and the
+    # verdict, so `ok` may land on its own line. Bind the named test plus a
+    # clean summary (the prelude runs exactly one test).
+    if not (re.search(rf"^test {re.escape(PRELUDE_TEST)} ", text, re.M)
+            and re.search(r"^test result: ok\. \d+ passed; 0 failed;",
+                          text, re.M)):
         fail("prelude: reservation-stall test did not run successfully")
 
 
