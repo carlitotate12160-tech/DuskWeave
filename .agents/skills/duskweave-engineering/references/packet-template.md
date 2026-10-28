@@ -2,7 +2,9 @@
 
 Use only when authoring a packet. Fill every field from verified DuskWeave sources.
 Do not publish placeholders as ready-to-execute instructions. Reference permanent
-authority instead of repeating it. Routine fixes stay in the same branch/PR; compiler
+authority instead of repeating it; require only outcome-specific decisions,
+exact scope, affected assertions, existing rule references and genuine STOP
+conditions. Routine fixes stay in the same branch/PR; compiler
 and test failures require correction before merge and do not automatically require
 another packet. Ordinary packets/evidence live in the existing PR; a permanent
 repository document needs a concrete reader/reuse need under AGENTS.md.
@@ -51,6 +53,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 - Exercise an artifact from the real producer through the real consumer where executable, including language/process boundaries; do not substitute mutually consistent mocks. Record evidence in the existing packet/review, not a new gate or report family.
 - McCabe ratchet is enforced in the required `metrics` job (exit 1 on regression); LOC/diff metrics remain advisory reports.
 - Material failures (broken tests, compiler errors, hygiene violations, invalid input) must be corrected before merge in the same PR.
+- CI and review may overlap drafting an independent next design under isolated resources — its own worktree and artifact/service ownership; the overlap grants no dependent runtime acceptance and permits no concurrent cluster-role mutation.
 
 ## Genuine STOP Conditions
 Pause implementation only for:
