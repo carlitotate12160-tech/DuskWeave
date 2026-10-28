@@ -135,7 +135,7 @@ class Workspace:
             test = ("stalled_reservation_reply_hard_stops_at_the_"
                     "original_decision_envelope")
             (pre / "prelude.log").write_text(
-                f"running 1 test\ntest {test} ... ok\n\n"
+                f"running 1 test\ntest {test} ... ok\r\n\n"
                 "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; "
                 "5 filtered out; finished in 3.01s\n")
         return ev

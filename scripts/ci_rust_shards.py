@@ -417,7 +417,8 @@ def check_prelude(report_dir):
     if not validate_result_fields(record):
         fail(f"prelude: supervisor result not clean: {record}")
     text = lpath.read_text(encoding="utf-8", errors="replace")
-    if not re.search(rf"^test {re.escape(PRELUDE_TEST)} \.\.\. ok$", text, re.M):
+    if not re.search(rf"^test {re.escape(PRELUDE_TEST)} \.\.\. ok[ \r]*$",
+                     text, re.M):
         fail("prelude: reservation-stall test did not run successfully")
 
 
