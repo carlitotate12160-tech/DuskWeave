@@ -116,6 +116,8 @@ SDK_REVISION = "a9504f1fe3641b4d21a8c44bea4379bed4394f4b"
 SDK_BASELINE_TREE = "a4673c51b9a276b7fa012f716a1de130db9aab60"
 SDK_PATCH_FILES = {"src/client/web_config.rs", "src/webc/web_client.rs", "src/webc/error.rs",
                    "src/client/client_impl.rs", "src/client/client_types.rs"}
+# Pin the authorized whitespace correction exactly; this is not a general patch allowance.
+SDK_COSMETIC_BLOBS = {"src/adapter/adapters/zai/mod.rs": "8c5c856234d7829fdf87108a229adbb310b0f387"}
 
 
 def git_object(kind, data):
@@ -168,8 +170,10 @@ def sdk_scope(root):
             data = path.read_bytes().replace(b"\r\n", b"\n")
             if path.is_symlink() or hashlib.sha256(data).hexdigest() != entry["sha256"]:
                 raise ValueError("patched member identity differs")
-            if entry["path"] not in SDK_PATCH_FILES and git_object("blob", data) != entry["upstream_blob"]:
-                raise ValueError("out-of-map SDK modification")
+            if entry["path"] not in SDK_PATCH_FILES:
+                expected = SDK_COSMETIC_BLOBS.get(entry["path"], entry["upstream_blob"])
+                if git_object("blob", data) != expected:
+                    raise ValueError("out-of-map SDK modification")
         return {"third_party/genai/" + p for p in paths}, []
     except (OSError, ValueError, KeyError, TypeError) as error:
         return set(), [f"third_party/genai: {error}"]

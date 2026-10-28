@@ -67,7 +67,8 @@ readiness. The installed DeepSeek profile is not invocation authority.
 ### Dependency and distribution obligations
 
 The vendored SDK is pinned at `a9504f1fe3641b4d21a8c44bea4379bed4394f4b` with
-only the five identified boundary/evidence files patched. Source and combined
+the five identified boundary/evidence files patched and one exact trailing-
+whitespace correction in `src/adapter/adapters/zai/mod.rs`. Source and combined
 patch identities are in `third_party/genai/source-manifest.json`. Snapshot
 hashes identify canonical Git LF text; the provenance guard also accepts a CRLF
 checkout without changing content, membership or conflict-marker checks. Retain its

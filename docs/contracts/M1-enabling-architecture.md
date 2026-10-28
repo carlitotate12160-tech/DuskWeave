@@ -1201,8 +1201,9 @@ protocol adaptation and data custody.
   Debug redacts content. There is no global last-response slot or caller hook.
   The non-streaming conversion-error constructor retains the existing category
   with static decode-failure cause and null request/response payloads; derived
-  Debug and field access cannot recover the rejected values. This covers five
-  owning files in the pinned vendor snapshot, with source/patch identities in
+  Debug and field access cannot recover the rejected values. This behavior patch
+  covers five owning files; one additional module has an exact trailing-whitespace
+  correction. The pinned vendor snapshot records source/patch identities in
   `third_party/genai/source-manifest.json`. It adds no provider protocol,
   DuskWeave policy or general SDK error-safety claim. Actual byte accounting
   requires executed per-call evidence, not a preflight estimate.

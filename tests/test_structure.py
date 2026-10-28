@@ -2,6 +2,8 @@
 import contextlib
 import importlib.util
 import io
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -128,6 +130,18 @@ class VendoredSdkTests(unittest.TestCase):
             code, out = check_files(files)
             self.assertEqual(code, 1, out)
             self.assertIn('SDK provenance', out)
+
+    def test_cosmetic_member_cannot_admit_code_changes_through_manifest(self):
+        path = 'src/adapter/adapters/zai/mod.rs'
+        files = self.snapshot()
+        files['third_party/genai/' + path] += '\npub fn injected() {}\n'
+        manifest = json.loads(files['third_party/genai/source-manifest.json'])
+        member = next(entry for entry in manifest['files'] if entry['path'] == path)
+        member['sha256'] = hashlib.sha256(files['third_party/genai/' + path].encode()).hexdigest()
+        files['third_party/genai/source-manifest.json'] = json.dumps(manifest)
+        code, out = check_files(files)
+        self.assertEqual(code, 1, out)
+        self.assertIn('out-of-map SDK modification', out)
 
     def test_sdk_conflict_markers_remain_checked(self):
         files = self.snapshot()
