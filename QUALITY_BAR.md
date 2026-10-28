@@ -153,8 +153,12 @@ through `ci-ok`. CI resolves the ratchet base before measurement — PR:
 
 ## 3. Testing Discipline (Testing Bar)
 
-1. **Strict Test-Driven Development (TDD)**:
-   - Mandatory cycle: **Red (failing test) → Green (minimal implementation) → Refactor**.
+1. **Evidence-proportional change verification**:
+   - A behavior change or fix demonstrates a relevant failing assertion before the fix; the fix then makes it pass.
+   - A refactor of already-correct behavior reports passing-baseline characterization and preserved regression evidence; never fabricate RED history.
+   - Documentation-only work uses document/authority checks (links, structure, terminology, cross-document consistency); runtime tests are N/A.
+   - A test-code change that affects behavior coverage demonstrates the actual weakened or strengthened assertion.
+   - Do not fabricate RED for already-correct behavior or require RED for spelling, navigation or unchanged semantics.
    - No feature code may be committed without a test that validates its behavior first.
 2. **Invariant Test Coverage**:
    - All invariants (INV-001 through INV-007) must have *negative control tests* (tests proving that a violation of the invariant is definitely rejected).
@@ -231,6 +235,11 @@ through `ci-ok`. CI resolves the ratchet base before measurement — PR:
 - Verify environment-sensitive behavior on platforms claimed as supported.
   Record OS/architecture, toolchain, DB and runtime privilege context. An untested
   platform remains unverified; a missing local service is not itself a product bug.
+- Local iteration runs focused affected checks. Reuse unchanged exact-candidate
+  evidence; rerun when source, inputs/environment or a failure affects the
+  claim. Required committed-head CI and the production coverage floors remain
+  mandatory as currently configured; do not modify workflows or describe an
+  unmerged CI proposal as live.
 - Enforce applicable deterministic runtime checks in CI when runtime is delivered.
   Inspect required-check wiring, skipped jobs/tests and candidate results.
   Green scans do not prove zero alerts or semantic correctness.
@@ -243,6 +252,9 @@ through `ci-ok`. CI resolves the ratchet base before measurement — PR:
 - Treat missing required evidence as UNVERIFIED/BLOCKED, not PASS. Candidate CI
   may supply execution evidence unavailable locally, but cannot waive an explicit
   local gate. Repeat checks when changes or unresolved risks warrant them.
+- Reuse machine outputs for LOC/McCabe/coverage and report material warnings,
+  decisions and actual test outcomes; no duplicated tables merely for ceremony,
+  new ledger, risk taxonomy, decision registry or proof-of-all-invariants claim.
 - Separate author review, independent review, owner acceptance, merge and seal.
   Enterprise readiness requires a defined deployment/assurance scope and evidence;
   a prompt or skill cannot certify military compliance.

@@ -304,6 +304,14 @@ candidate-bound evidence and concrete N/A reasons; distinguish findings from
 missing proof. Apply the quality bar's function-length review trigger and pure
 dispatch classification without count-driven helper fragmentation. Review fix
 deltas unless changed boundaries or unresolved risk invalidates earlier evidence.
+QUALITY_BAR.md also owns the canonical evidence rules: behavior changes
+demonstrate a relevant failing assertion, refactors report passing baselines,
+documentation uses document/authority checks, and local iteration runs focused
+affected checks while reusing unchanged exact-candidate evidence. Required
+committed-head CI and coverage floors stay mandatory as configured. Cite
+existing accepted decisions rather than re-litigating them without new
+evidence; one cohesive outcome may close several related issues. Authority
+loading stays incremental under the required reading order above.
 
 ## Development workflow
 
