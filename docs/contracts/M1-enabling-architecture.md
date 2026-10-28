@@ -1153,12 +1153,15 @@ protocol adaptation and data custody.
   `scripts/check_dependencies.py` to forbid `genai`/`reqwest`/`tokio` in the
   protected list, covering test aliases, re-exports and qualified paths, and
   the adapter is the only module permitted to name them.
-- Composition uses only the SDK's public surface:
-  `AdapterDispatcher::to_web_request_data` produces the URL, headers and
-  payload `Value`; an adapter-constructed `WebClient::from_reqwest_client`
-  with `do_post` performs the send; `to_chat_response` maps the result.
-  `Client`/`exec_chat` convenience resolution, `extra_headers`/`extra_body`
-  request mutation and `AuthData::RequestOverride` are never used.
+- Composition uses only the SDK's public `Client` path: the adapter builds
+  `Client` via `Client::builder().with_reqwest(custom)` — the injected
+  reqwest client carries the transport policy below — and calls `exec_chat`
+  with the complete `ServiceTarget` bound under the routing bullet,
+  receiving `ChatResponse`. `adapter::dispatcher`, `webc::WebClient`,
+  `WebRequestData` and `WebResponse` are crate-private at this revision
+  (an earlier draft's public-surface claim for them is corrected here) and
+  are never invoked directly. `extra_headers`/`extra_body` request mutation
+  and `AuthData::RequestOverride` are never used.
 - Pinned dependency: `genai` at commit
   `a9504f1fe3641b4d21a8c44bea4379bed4394f4b` (0.7.2-WIP), vendored or
   revision-pinned under the locked manifest; no floating version.
@@ -1188,13 +1191,15 @@ protocol adaptation and data custody.
   no per-call non-streaming timeout option; the race plus injected client
   timeouts cover those bounds.
 - Minimal SDK HTTP-boundary patch: inside the pinned vendor copy's `webc`
-  boundary only, replace the unbounded `res.text()` response read with a
-  bounded counted capture that refuses over the configured 65536-byte
-  envelope ceiling before JSON parsing and reports status with counted
-  entity/header bytes. Request-entity bytes are counted from the
-  adapter-visible `payload` `Value` returned by `to_web_request_data`. The
-  patch carries no DuskWeave logic and changes no other SDK surface; until
-  it is delivered, response-byte accounting for this lane stays UNVERIFIED.
+  boundary only, count the serialized request-entity bytes, replace the
+  unbounded `res.text()` response read with a bounded counted capture that
+  refuses over the configured 65536-byte envelope ceiling before JSON
+  parsing, and expose status plus counted request/response bytes on a
+  narrow added public evidence surface — the public `exec_chat` path hides
+  the payload `Value` and the raw body, so both counts must be produced
+  inside the SDK boundary. The patch carries no DuskWeave logic and changes
+  no other SDK surface; until it is delivered, request/response-byte
+  accounting for this lane stays UNVERIFIED.
 - Credential custody: the key stays in adapter-only infrastructure secret
   configuration named by `AuthData::from_env`, outside the pack, intent,
   SQL, diagnostics and receipts; no ambient credential discovery. Raw
