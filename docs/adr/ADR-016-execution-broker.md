@@ -12,6 +12,7 @@
 | Scope | [M1 enabling lane](../contracts/M1-enabling-architecture.md); no full-stage acceptance |
 | Autonomous-run amendment | Section 4a ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 | Provider-neutral revision | [Section 4a revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
+| rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) — CANDIDATE, published 2026-10-28 for owner review; not accepted; accepted text, timers, consent and seals unchanged |
 
 ## 1. Context and problem statement
 
@@ -529,6 +530,55 @@ Checked 2026-10-19; these explain mechanisms, not DuskWeave authority or certifi
 - [AWS timeouts and retries](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/): select/calibrate budgets from measured distributions; no arbitrary latency percentile or automatic replay claim.
 - [AWS idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/) and [transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): stable request identity, parameter conflict and durable publication obligations; no exactly-once external effect promise.
 - [PostgreSQL advisory locks](https://www.postgresql.org/docs/17/explicit-locking.html#ADVISORY-LOCKS): session-lock lifetime differs from transaction lifetime; pooling is not a mechanical Client replacement.
+
+## 4b. Candidate rust-genai SDK transport amendment (2026-10-28)
+
+**Status: CANDIDATE — published for owner review on 2026-10-28; not accepted.**
+This proposal selects `rust-genai` as the trusted provider-SDK adapter for the
+provider-independent successor lane. If accepted, it applies only through a new
+versioned successor permission/profile after qualified implementation and fresh
+run authorization; it changes no accepted section 4/4a text, timer value,
+consent, legacy binding or seal.
+[Enabling contract section 8](../contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28)
+owns SDK placement, the semantic intent fields, the proposal/response
+boundary, permitted protocol adaptation and data custody. This section keeps
+reservation/release, accounting units, intent binding, uncertain accounting,
+finite MVP timing and no-effect recovery.
+
+- **Reservation and release are unchanged.** Durable reservation, `may_send`
+  marker and owner-serialized release stay the send linearization point: a
+  stop ordered before release prevents transport; a stop ordered after leaves
+  the call cancelled-uncertain. An SDK client, prepared request, task or
+  dropped future is transport machinery, never an effect identity or a
+  reusable permission; release still serializes actual send start with local
+  stop under the same campaign/generation owner after SQL ends.
+- **Intent binding replaces vendor-body binding for this successor only.**
+  The admitted artifact per call is the immutable pack plus the versioned
+  semantic intent document owned by the contract, bound at `may_send` under a
+  `dw-inference-intent-v1` digest. Altered context, recipient, model/profile,
+  settings, permission or call identity still rejects before reservation and
+  again at release. Vendor request bytes are adapter-internal encoding:
+  restricted SQL admission never stores or compares them. Legacy v1/v2/v3
+  lanes keep the exact `dw-inference-binding-v1` P/C/B byte binding and their
+  protocol-shaped SQL checks until tested replacements exist; history and
+  recovery reads stay compatible with both bindings.
+- **Units and uncertain accounting are unchanged.** Two reserved call slots,
+  request/response bytes, output capacity and shared wall time keep the
+  existing allocation. Request bytes are measured intent/request-entity
+  bytes; response bytes are the counted bounded capture supplied by the
+  recorded SDK-boundary patch. An unavailable count stays unknown — never
+  zero — reported usage remains non-refunding evidence, and any possibly sent
+  call keeps its reserved capacity charged.
+- **Finite MVP timing is unchanged.** `reasoning-bounded-v1`'s connect, soft,
+  hard, shared, decision, phase, run, stop and accounting boundaries clamp
+  the SDK transport identically: connection establishment and the injected
+  client's transfer bound sit inside the call envelope, cooperative
+  cancellation drops the call future, and the independent supervisor hard
+  stop remains the fallback. SDK futures, internal retries or connection
+  pools cannot extend, reset or share these clocks.
+- **No-effect recovery is unchanged.** Inspect/recover perform bounded
+  database-only work: no SDK invocation, no resumed unused repair slot, no
+  replay of a lost call and no refill of consumed capacity.
 
 ## 5. Consequences
 

@@ -13,6 +13,7 @@
 | Preserved seals | DW-FOUNDATION-001 and DW-M0-001; no full-domain or M1 seal |
 | Autonomous-run amendment | [Section 7](#7-proposed-autonomous-run-amendment-2026-10-19) ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 | Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
+| rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) — CANDIDATE, published 2026-10-28 for owner review; not accepted; accepted text, consent and seals unchanged |
 
 ## 1. Outcome and decision boundary
 
@@ -1123,3 +1124,164 @@ retains the accepted assertions. Their successor runtime implementation,
 T1-T9 execution evidence and source-bound qualification are indexed in the
 [runtime ledger](../workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger).
 These records establish neither live-provider qualification nor an M1 seal.
+
+## 8. Candidate rust-genai SDK adapter amendment (2026-10-28)
+
+**Status: CANDIDATE — published for owner review on 2026-10-28; not accepted.**
+This proposal adopts the `rust-genai` library as the trusted provider SDK for
+the provider-independent successor lane, so the cognitive feedback loop keeps
+its mission-led reasoning -> authorized action -> evidence -> adaptation
+shape — APT41/Lazarus/Volt Typhoon remain behavioral reference lenses only,
+never playbooks or permission — without binding campaign authority to a
+vendor's JSON layout. Accepted
+sections 1-7, v1/v2/v3/v4 consent semantics, legacy profiles and their exact
+byte binding are unchanged; this section selects no provider, activates no
+endpoint and grants no target permission or seal.
+[ADR-016 section 4b](../adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
+owns reservation/release, accounting units, intent binding, uncertain
+accounting, finite MVP timing and recovery; this section owns SDK placement,
+the semantic intent fields, the proposal/response boundary, permitted
+protocol adaptation and data custody.
+
+### SDK placement and boundary
+
+- The `Provider` port in `src/m1_reasoning/inference.rs` remains the
+  architectural seam. `genai`, `reqwest` and `tokio` live only inside the
+  trusted adapter module inside the supervised inference child; protected
+  modules gain no SDK import. The runtime packet extends
+  `scripts/check_dependencies.py` to forbid `genai`/`reqwest`/`tokio` in the
+  protected list, covering test aliases, re-exports and qualified paths, and
+  the adapter is the only module permitted to name them.
+- Composition uses only the SDK's public surface:
+  `AdapterDispatcher::to_web_request_data` produces the URL, headers and
+  payload `Value`; an adapter-constructed `WebClient::from_reqwest_client`
+  with `do_post` performs the send; `to_chat_response` maps the result.
+  `Client`/`exec_chat` convenience resolution, `extra_headers`/`extra_body`
+  request mutation and `AuthData::RequestOverride` are never used.
+- Pinned dependency: `genai` at commit
+  `a9504f1fe3641b4d21a8c44bea4379bed4394f4b` (0.7.2-WIP), vendored or
+  revision-pinned under the locked manifest; no floating version.
+  `default-features` is disabled except `rustls-tls`; `system-proxy`,
+  `bedrock-sigv4` and `otel` stay off. The normal dependency curation and
+  `cargo audit` gate applies to the added tree.
+- Explicit OpenAIResp routing: the adapter supplies a complete
+  `ServiceTarget` — `Endpoint::from_static("https://api.deepseek.com/")`
+  resolving to the `/responses` suffix, `AuthData::from_env` naming the
+  configured credential variable, and
+  `ModelIden::new(AdapterKind::OpenAIResp, "deepseek-flash")`. Name inference
+  would resolve `deepseek-*` to the chat-completions DeepSeek adapter, so
+  routing is bound explicitly from the admitted permission's
+  recipient/profile, never a caller or model-name choice.
+- Standard TLS/HTTP handling: the injected reqwest client keeps normal
+  rustls certificate/hostname validation and disables proxy use, redirect
+  following and automatic decompression (identity encoding only); connect
+  and transfer bounds sit inside the ADR-016 clocks. HTTP/1.1 or HTTP/2 is
+  used as negotiated. The retired owned HTTP/1.1 parser, exact SDK JSON key
+  order and exact vendor unavailable-metadata are not acceptance
+  requirements of this contract.
+- Async bridge: one bounded current-thread tokio runtime inside the
+  inference child. The call future races the existing transport
+  permit/deadline watch; cooperative cancellation drops the future — an
+  honest possible send — and the independent supervisor hard stop remains
+  the fallback. Recorded API limits: the SDK has no progress callback and
+  no per-call non-streaming timeout option; the race plus injected client
+  timeouts cover those bounds.
+- Minimal SDK HTTP-boundary patch: inside the pinned vendor copy's `webc`
+  boundary only, replace the unbounded `res.text()` response read with a
+  bounded counted capture that refuses over the configured 65536-byte
+  envelope ceiling before JSON parsing and reports status with counted
+  entity/header bytes. Request-entity bytes are counted from the
+  adapter-visible `payload` `Value` returned by `to_web_request_data`. The
+  patch carries no DuskWeave logic and changes no other SDK surface; until
+  it is delivered, response-byte accounting for this lane stays UNVERIFIED.
+- Credential custody: the key stays in adapter-only infrastructure secret
+  configuration named by `AuthData::from_env`, outside the pack, intent,
+  SQL, diagnostics and receipts; no ambient credential discovery. Raw
+  request/response/error/reasoning content stays transient inside the
+  adapter: `ChatResponse.reasoning_content`, `captured_raw_body`, error
+  bodies and the SDK's `tracing::trace!` payloads never leave the boundary,
+  and the inference child installs no tracing subscriber.
+
+### Immutable inference intent (successor lane only)
+
+- The deterministic producer emits, per call, the immutable pack bytes plus
+  a versioned `dw-inference-intent-v1` document: contract version;
+  engagement/campaign/decision/call identity and call role; permission
+  identity/version; `run_profile`/`execution_mode`; recipient; protocol
+  family (`openai-resp-v1`); profile/template/adapter-release versions;
+  model; requested settings (non-streaming, `store=false`, reasoning
+  effort, `max_output_tokens`, the closed proposal JSON-schema
+  name/version, and the no-tools intent); the finite ADR-016 limits; and
+  the timing profile. The pack stays byte-identical; the intent serializes
+  canonically and is retained with decision provenance.
+- Restricted SQL admission validates those semantic fields against current
+  Mission consent — recipient, model, profile, settings, permission,
+  run/mode and call identity — stores the intent and the
+  `dw-inference-intent-v1` digest computed over the pack bytes and the
+  canonical intent document, and never reconstructs or compares a vendor
+  request body. Altering context, recipient, model/profile, settings,
+  permission or call identity rejects. Hashing caller-supplied SDK option
+  objects does not satisfy this contract: the intent is produced by the
+  deterministic producer, admitted semantically, then translated once by
+  the trusted adapter, whose screened result follows the existing durable
+  decision/history path unchanged.
+- The adapter maps one admitted intent to one SDK request: versioned
+  instructions, the pack text as input (plus bounded admitted repair codes
+  for a repair call), the closed `m1_inference_proposal_v1` JSON schema,
+  the bound reasoning effort, the bound output cap, `store=false`,
+  non-streaming and no tools. SDK encoding details — JSON key order,
+  omission of empty `tools`/`tool_choice`, the adapter-added `strict` flag,
+  the `store` default — are adapter-internal and carry no authority;
+  unexpected tool calls or output items still reject downstream.
+
+### Response boundary and Unknown/Unavailable mapping
+
+- The SDK result stays inside the adapter boundary; only the existing
+  closed proposal/admission/usage/report vocabulary escapes, with unchanged
+  local proposal admission. `usage` maps to the existing
+  reported/partial/unavailable availability — missing usage is never zero
+  and never a refund; `resp.status`/`StopReason` maps onto the existing
+  closed status categories and an unrecognized value stays unrecognized.
+- Failure mapping onto existing safe categories: `ApiKeyEnvNotFound` ->
+  `live_key_missing`; transport/connect/TLS failure, timeout or a lost
+  response -> `provider_transport_unknown` (possible send, stays charged);
+  non-success HTTP status -> `provider_protocol` with the bounded status
+  class only (body transient); invalid/non-JSON or envelope mismatch ->
+  `provider_protocol`; over-limit capture -> `provider_response_limit`;
+  permit loss or cancellation -> `provider_cancelled_uncertain`.
+  `ResponseFailedStatus` bodies/headers, `ChatResponseGeneration`
+  request/response payloads and trace text never leave the boundary.
+
+### Named replacement and retirement (successor lane only)
+
+- Replaced for the SDK successor: the direct-libcurl send inside
+  `AutonomousProvider`/`DeepSeekProvider`; successor-owned wire-body
+  construction in `request.rs`/`request_autonomous.rs` (vendor `B`
+  production and the P/C/B `dw-inference-binding-v1` digest for SDK-successor
+  profiles); the protocol-shaped SQL checks — the
+  `execution.successor_configuration` exact-text comparison and
+  `inference_body_refused` — for SDK-successor profiles; and the overlapping
+  wire-shape tests in `tests/support/m1_autonomous_transport.rs` and
+  `tests/support/m1_native_transport.rs` that assert exact
+  body/configuration text.
+- Retained until their tested replacements exist: the legacy
+  `deepseek-responses-v1`, `deepseek-responses-envelope32-v1` and
+  `deepseek-responses-autonomous-v1` lanes, all historical migrations,
+  binding and history rows, the `DeterministicProvider`/`ProtocolFixture`
+  local lanes, and the current operator commands.
+  `m1_context_pack_autonomous_v2`, `m1_inference_permission_v4`,
+  `m1_autonomous_run_request_v2` and `reasoning-bounded-v1` keep their
+  semantics; SDK adoption lands only through new versioned bindings.
+- The retained LiteLLM worktree probe stays a research probe, not a second
+  production inference service. No provider-selection subsystem, routing
+  service, model catalog or ambient credential discovery is added.
+
+### Gate and verification boundary
+
+Transition order: owner acceptance of this amendment -> one bounded runtime
+packet delivering the pinned vendored SDK plus recorded patch, the trusted
+adapter, `dw-inference-intent-v1` binding, semantic SQL admission and tests
+-> offline and provider-fixture qualification on the actual platform ->
+new versioned permission/run bindings with fresh consent -> only then a
+provider contact. The currently delivered commands and profiles remain the
+supported lane until each step's evidence exists.
