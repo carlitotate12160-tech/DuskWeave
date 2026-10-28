@@ -86,6 +86,7 @@ class Workspace:
             p = self.root / exe
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(b"\x7fELF-object-" + exe.encode())
+            os.chmod(p, 0o755)
         tests = {k: {"tests": v[0], "ignored": v[1]}
                  for k, v in self.TARGET_TESTS.items()}
         (self.root / "tests.json").write_text(json.dumps(tests), encoding="utf-8")

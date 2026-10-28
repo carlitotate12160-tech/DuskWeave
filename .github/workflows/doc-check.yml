@@ -282,6 +282,9 @@ jobs:
         shell: bash
         run: |
           set -e
+          # show-env does not export CARGO_TARGET_DIR; pin it so the
+          # instrumented objects land in the cached target/llvm-cov-target.
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/llvm-cov-target"
           source <(cargo llvm-cov show-env --sh)
           cargo llvm-cov clean --workspace
           cargo test --locked --all-targets --features fixture-supervisor --no-run \
