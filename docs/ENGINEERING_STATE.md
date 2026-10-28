@@ -52,6 +52,16 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 the merged source, preferably through `deepseek-responses-low-v1` per the
 [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#provider-fixture-lane-opt-in-not-inherited-consent),
 then Linux acquisition-boundary qualification.
+
+**Active design:** the `rust-genai` SDK transport successor amendment —
+[ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
+and [enabling contract section 8](contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) —
+was ACCEPTED by the product owner on 2026-10-28 (conversation approval) and is
+delivered as a docs-only amendment; no runtime exists. The next permitted
+step is a bounded runtime packet per its recorded gate: pinned SDK plus patch,
+trusted adapter, `dw-inference-intent-v1` semantic admission, then fixture
+qualification, new versioned bindings and fresh consent. The delivered
+libcurl lane stays current until a tested replacement exists.
 `DW-FIX-M1-DNS-SELECTOR-CONTRACT` merged as `e11f62f`
 ([#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120)): an
 admitted `observe_more` + `dns_udp` proposal carrying contextual references
