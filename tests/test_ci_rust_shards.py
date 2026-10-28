@@ -414,6 +414,24 @@ class ReceiptAggregateTest(unittest.TestCase):
         log.write_text(test_log(names + ["surprise_test"], ignored))
         self.assertNotEqual(self.receipt(0).returncode, 0)
 
+    def test_should_panic_result_line_is_recognized(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("shards", str(SCRIPT))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        p = Path(self.ws.root) / "panic.log"
+        p.write_text(
+            "running 2 tests\n"
+            "test panics_ok - should panic ... ok\n"
+            "test normal_ok ... ok\n\n"
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; "
+            "0 filtered out; finished in 0.01s\n")
+        names, ignored, failed, result = mod.parse_libtest_log(p)
+        self.assertEqual(names, {"panics_ok", "normal_ok"})
+        self.assertEqual(failed, set())
+        self.assertEqual(ignored, set())
+        self.assertEqual(result["passed"], 2)
+
     def test_aggregate_rejects_evidence_mismatch(self):
         self.make_workers()
         # tamper evidence vs receipt: change a receipt after the fact

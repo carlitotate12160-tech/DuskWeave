@@ -77,7 +77,7 @@ WEIGHTS = {
     "tests/planning.rs": 0.0, "tests/planning_bounds.rs": 0.0, "tests/planning_history.rs": 0.0,
     "tests/planning_positive.rs": 0.0, "tests/planning_withdrawal.rs": 0.0, "tests/withdrawal.rs": 0.0,
 }
-TEST_LINE = re.compile(r"^test (\S+) \.\.\. (\w+)(.*)$")
+TEST_LINE = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. (\w+)(.*)$")
 RESULT_LINE = re.compile(
     r"^test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored; "
     r"(\d+) measured; (\d+) filtered out; finished in ([\d.]+)s")

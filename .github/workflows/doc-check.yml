@@ -319,9 +319,12 @@ jobs:
       - name: Upload instrumented build artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # Attempt-independent: re-running only failed jobs reuses this
+          # successful build; a full re-run overwrites it.
+          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}
           path: ${{ runner.temp }}/dw-rust-build.tar.zst
           if-no-files-found: error
+          overwrite: true
           retention-days: 3
 
   rust-tests:
@@ -340,7 +343,7 @@ jobs:
       - name: Download the shared instrumented build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}
           path: ${{ runner.temp }}/dw-rust-build
 
       - name: Extract the object set at its original absolute paths
@@ -488,7 +491,7 @@ jobs:
       - name: Download the shared instrumented build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: dw-rust-build-${{ github.sha }}-${{ github.run_id }}
           path: ${{ runner.temp }}/dw-rust-build
 
       - name: Extract the object set at its original absolute paths
@@ -497,7 +500,7 @@ jobs:
       - name: Download worker evidence and raw profiles
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: dw-rust-worker-*
+          pattern: dw-rust-worker-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/dw-evidence
 
       - name: Verify candidate, tools and object set
