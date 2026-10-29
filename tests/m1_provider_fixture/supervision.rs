@@ -261,22 +261,6 @@ fn signal_before_sql(slot: u128, writer: &str) {
     }
 }
 
-fn wait_parent_exit(parent: &mut std::process::Child, end: Instant, mode: &str) -> Instant {
-    while parent.try_wait().unwrap().is_none() {
-        assert!(
-            Instant::now() < end,
-            "parent survived a parked {mode} session"
-        );
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    let done = Instant::now();
-    assert!(
-        !parent.wait().unwrap().success(),
-        "{mode} must fail honestly"
-    );
-    done
-}
-
 fn deadline_parent(
     input: &std::path::Path,
     routed: &str,
@@ -307,10 +291,6 @@ fn deadline_parent(
     }
     (parent.spawn().unwrap(), log)
 }
-fn parent_log(log: &std::path::Path) -> String {
-    String::from_utf8_lossy(&std::fs::read(log).unwrap_or_default()).into_owned()
-}
-
 pub(super) fn stalled_claim_reply_exits_provider_child_from_the_launch_clock() {
     let _guard = native::db();
     refresh();

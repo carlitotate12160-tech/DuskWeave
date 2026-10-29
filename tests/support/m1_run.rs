@@ -137,14 +137,22 @@ fn actual_binary() -> std::path::PathBuf {
         .unwrap_or_else(|| env!("CARGO_BIN_EXE_duskweave").into())
 }
 
+#[path = "m1_run/phase_observation.rs"]
+mod phase_observation;
 #[path = "m1_run/process.rs"]
 mod process;
 // Integration harnesses use different subsets of these fixture-only exports.
+#[allow(unused_imports)]
+pub use phase_observation::{
+    Barrier, PhaseBounds, original_barrier, phase_bounds, phase_bounds_for, run_stop,
+};
 #[cfg(windows)]
 #[allow(unused_imports)]
 pub use process::stale_phase_snapshot_accepted;
 #[allow(unused_imports)]
-pub use process::{OwnedRun, observe_child_exit, phase_child, wall_instant};
+pub use process::{
+    OwnedRun, observe_child_exit, parent_log, phase_child, wait_parent_exit, wall_instant,
+};
 
 pub fn cli(command: &str, flag: &str, value: &str) -> (bool, Value) {
     let mut c = self::command();
@@ -507,44 +515,5 @@ pub fn fence_state(admin: &mut postgres::Client, rec: &duskweave::m1_run::RunRec
         "attempts": row.get::<_, i64>(5),
         "results": row.get::<_, i64>(6),
         "withdrawals": row.get::<_, i64>(7),
-    })
-}
-
-/// Conservative earliest competing stops, projected from the real owner record.
-/// Selection of the parent's phase reaper occurs after phase-start commit.
-pub struct PhaseBounds {
-    pub started: std::time::Instant,
-    pub claimed: Option<std::time::Instant>,
-    pub earliest_stop: std::time::Instant,
-    pub uncertainty: std::time::Duration,
-}
-pub fn phase_bounds(
-    client: &mut postgres::Client,
-    run: Uuid,
-    ceiling_ms: u64,
-) -> Option<PhaseBounds> {
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-    let sampled = Instant::now();
-    let row=client.query_opt("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint-p.recorded_at_ms, x.deadline_at_ms-floor(extract(epoch FROM clock_timestamp())*1000)::bigint, x.deadline_at_ms, (SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint-y.recorded_at_ms FROM execution.autonomous_phases y WHERE y.run_id=x.run_id AND y.phase=p.phase AND y.status='claimed') FROM execution.autonomous_runs x JOIN execution.autonomous_phases p USING(run_id) WHERE x.run_id=$1 AND p.phase='decision_one' AND p.status='started'",&[&run]).unwrap_or_else(|_|panic!("restricted phase observation unavailable"))?;
-    let uncertainty = sampled.elapsed();
-    let age: u64 = u64::try_from(row.get::<_, i64>(0)).unwrap();
-    let remaining = u64::try_from(row.get::<_, i64>(1)).unwrap_or(0);
-    let wall = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
-    let local = u64::try_from(row.get::<_, i64>(2) - wall).unwrap_or(0);
-    let started = sampled - Duration::from_millis(age);
-    let claimed = row
-        .get::<_, Option<i64>>(3)
-        .and_then(|n| u64::try_from(n).ok())
-        .map(|n| sampled - Duration::from_millis(n));
-    Some(PhaseBounds {
-        started,
-        claimed,
-        uncertainty,
-        earliest_stop: (started + Duration::from_millis(ceiling_ms))
-            .min(sampled + Duration::from_millis(remaining))
-            .min(Instant::now() + Duration::from_millis(local)),
     })
 }

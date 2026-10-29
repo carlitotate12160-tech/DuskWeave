@@ -47,12 +47,47 @@ pub(crate) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
     parent.own_file(&log);
     parent.own_control_root(&root);
     let _ = parent.phase();
-    assert!(
-        relay.observed(Duration::from_secs(8)),
-        "reservation query was never withheld: {}",
-        parent_log(&log)
+    // Absolute state-aware barrier: the withheld reservation reply must be
+    // observed inside the original decision-one envelope. The bound is the
+    // phase-start/claim bracket's upper expiry, or the admitted run deadline
+    // while no phase record is observable; a dead parent or an exhausted
+    // bound is a failed witness, never a restarted clock.
+    let mut barrier_observer = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
+    let mut bounds: Option<PhaseBounds> = None;
+    let mut bounds_at = Instant::now();
+    let mut bound_now: Option<Instant> = None;
+    let reached = run_support::original_barrier(
+        |within| relay.observed(within),
+        || parent.try_wait().unwrap().is_none(),
+        || {
+            if Instant::now() >= bounds_at {
+                if let Some(b) = run_support::phase_bounds(&mut barrier_observer, id(&q), 50000) {
+                    bounds = Some(b);
+                }
+                bound_now = match &bounds {
+                    Some(b) => Some(b.expiry_upper(50000)),
+                    None => run_support::run_stop(&mut barrier_observer, id(&q)),
+                };
+                bounds_at = Instant::now() + Duration::from_millis(200);
+            }
+            bound_now
+        },
+        Instant::now,
+        std::thread::sleep,
     );
     let observed = Instant::now();
+    match reached {
+        Barrier::Reached => {}
+        Barrier::ParentExited => panic!(
+            "parent exited before the reservation barrier: {}",
+            parent_log(&log)
+        ),
+        Barrier::BoundPassed(end) => panic!(
+            "reservation query was never withheld inside its original envelope ({}ms over bound): {}",
+            observed.saturating_duration_since(end).as_millis(),
+            parent_log(&log)
+        ),
+    }
     println!(
         "reservation relay launch_to_barrier_ms={}",
         observed.duration_since(launched).as_millis()
