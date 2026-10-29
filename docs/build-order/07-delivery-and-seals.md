@@ -48,18 +48,22 @@ not:
 move functions randomly to helpers.py
 ```
 
-The 400 file threshold is an advisory review reference point for production/tooling; test/benchmark files have 500,
-Markdown has 600 unless a narrower document-specific rule applies. Physical
-comments/blanks count. File size is independent of the cumulative runtime diff.
-See QUALITY_BAR.md for canonical engineering policy.
+For first-party source/tooling files the 400 file threshold (500 for
+test/benchmark) is an enforced growth ratchet — QUALITY_BAR.md is canonical:
+a new over-threshold file, a compliant file crossing it or net growth of
+retained debt fails the required metrics check. Markdown has 600 and the
+runtime diff keeps its 400/600 advisory reference points unless a narrower
+document-specific rule applies. Physical comments/blanks count. File size is
+independent of the cumulative runtime diff.
 
-Crossing 400 or the 600 runtime diff reference point produces an advisory
-warning and a reviewer decision: retain with a concrete cohesion/readability
-reason, or refactor in the same PR. Do not require a new packet, separate
-authorization, or budget exception ledger for a numerical crossing. Do not add
-a low-value precursor or remove failure behavior merely to lower a count.
-Split for responsibility, unresolved authority, or material scope drift;
-numerical crossings alone do not require SPLIT_REQUIRED.
+An advisory crossing (Markdown, runtime diff) produces a warning and a
+reviewer decision: retain with a concrete cohesion/readability reason, or
+refactor in the same PR. Do not require a new packet, separate authorization,
+or budget exception ledger for a numerical crossing. Do not add a low-value
+precursor or remove failure behavior merely to lower a count. An enforced LOC
+failure is corrected inside the same outcome by cohesive extraction or
+shrinking the added code. Split for responsibility, unresolved authority, or
+material scope drift; numerical crossings alone do not require SPLIT_REQUIRED.
 
 ---
 

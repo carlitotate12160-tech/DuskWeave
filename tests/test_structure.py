@@ -57,6 +57,32 @@ class StructureTests(unittest.TestCase):
     def test_sql_gets_400_reference_not_600(self):
         self.assert_boundary("migrations/0001_init.sql", 400)
 
+    def test_physical_lines_agree_with_enforced_counting(self):
+        # Only LF/CRLF/CR delimit physical lines; other Unicode/control
+        # separators inside text are content, matching the LOC gate.
+        for sep in ("\u2028", "\u2029", "\x0c", "\x0b", "\x85"):
+            with self.subTest(sep=repr(sep)):
+                body = "\n".join(f"s{i} = 'a{sep}b'" for i in range(401))
+                code, out = check_files({"src/domain.rs": body + "\n"})
+                self.assertEqual(code, 0, out)
+                self.assertIn("401 lines > 400", out)
+                short = "\n".join(f"s{i} = 'a{sep}b'" for i in range(400))
+                code, out = check_files({"src/domain.rs": short + "\n"})
+                self.assertNotIn("lines > 400", out)
+
+    def test_terminator_forms_and_edge_counts(self):
+        cases = {"src/e.rs": ("", 0), "src/one.rs": ("x", 1),
+                 "src/blanks.rs": ("a\n\n\nb", 4),
+                 "src/mix.rs": ("a\nb\r\nc\rd", 4),
+                 "src/cr.rs": ("x\r" * 401, 401)}
+        for rel, (text, want) in cases.items():
+            with self.subTest(rel=rel):
+                code, out = check_files({rel: text})
+                if want > 400:
+                    self.assertIn(f"{want} lines > 400", out)
+                else:
+                    self.assertNotIn("lines > 400", out)
+
     def test_sql_conflict_markers_still_fail(self):
         for marker in ("<<<<<<< HEAD\n", ">>>>>>> branch\n", "=======\n"):
             code, out = check_files({"migrations/0001_init.sql": marker})
