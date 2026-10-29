@@ -13,7 +13,7 @@ ENFORCED = (
     "migrations/0099.sql",          # digits but no _name
     "migrations/tools/0001_x.sql",  # nested, not a direct child
     "migrations/0001_x.SQL",        # suffix must be lowercase .sql
-    "migrations/000a_x.sql",        # non-ASCII digit in version field
+    "migrations/000a_x.sql",        # non-digit character in version field
     "migrations/00012_x.sql",       # five digits
     "migrations/0001_.sql",         # empty name after version
     "migrations/١٢٣٤_x.sql",         # non-ASCII digits do not match [0-9]

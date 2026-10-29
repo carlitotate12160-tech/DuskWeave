@@ -8,7 +8,8 @@ pinned third_party/genai/ snapshot (existing provenance/hygiene
 controls). Other third_party paths get no vendor exemption. Markdown,
 declarative configuration/manifests/workflows and the cumulative
 runtime diff stay advisory under their existing owners; the standalone
-structure/hygiene inventory in scripts/check_structure.py is unchanged.
+structure/hygiene inventory stays with scripts/check_structure.py, which
+also owns the shared physical-line primitive this command consumes.
 
 Category thresholds come from check_structure.file_limit: 400 physical
 lines for production/tooling, 500 for test/benchmark paths. A file at or

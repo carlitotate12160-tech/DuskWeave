@@ -2,7 +2,7 @@
 import ast
 import unittest
 
-from test_file_loc import LocTest, git, run_loc, write_lines, write_text
+from test_file_loc import LocTest, git, run_loc, write_text
 
 NONPHYSICAL = ("\u2028", "\u2029", "\x0c", "\x0b", "\x85")
 
