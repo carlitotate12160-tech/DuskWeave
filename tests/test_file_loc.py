@@ -488,7 +488,7 @@ class WorkflowWiring(LocTest):
         self.assertIn('exit "$rc"', step)
 
     def test_metrics_runs_loc_unit_tests_and_stays_required(self):
-        self.assertIn("test_file_loc.py", self.metrics)
+        self.assertIn("'test_file_loc*.py'", self.metrics)
         ci_ok = re.search(r"^  ci-ok:\n(.*?)(?=^  \w|\Z)", self.text,
                           re.M | re.S).group(1)
         self.assertIn("metrics", ci_ok)

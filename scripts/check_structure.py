@@ -54,6 +54,19 @@ def iter_files(root):
             yield os.path.join(dirpath, name)
 
 
+PHYSICAL_EOL = re.compile(r"\r\n|\r|\n")
+
+
+def split_physical(text):
+    """Physical text lines: only LF, CRLF (one delimiter) and lone CR
+    terminate a line; U+2028/U+2029/FF/VT/NEL are content. A final
+    terminator closes the last line without adding a phantom line."""
+    parts = PHYSICAL_EOL.split(text)
+    if parts and parts[-1] == "":
+        parts.pop()
+    return parts
+
+
 def read_text(path):
     try:
         with open(path, encoding="utf-8") as fh:
@@ -125,7 +138,7 @@ def main():
         text = read_text(path)
         if text is None:
             continue
-        lines = text.splitlines()
+        lines = split_physical(text)
         cap = file_limit(rel)
         if len(lines) > cap:
             oversize.append(f"{rel} ({len(lines)} lines > {cap})")

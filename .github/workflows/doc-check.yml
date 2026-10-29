@@ -173,7 +173,7 @@ jobs:
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: File-size ratchet unit tests
-        run: python -m unittest discover -s tests -p test_file_loc.py
+        run: python -m unittest discover -s tests -p 'test_file_loc*.py'
 
       - name: File-size (LOC) ratchet measurement and reporting
         shell: bash

@@ -21,7 +21,11 @@ Readability, maintainability, and domain-responsibility isolation are informed b
 | **Pure dispatch McCabe** | `<= 7` preferred | `10` | Enforced ratchet at cap 10 for the single reviewed `src/main.rs::run` direct unit child only; every other function keeps 7. |
 
 Counts are physical lines including comments and blanks. File size uses actual
-lines, with or without a final newline. `.sql` files are in the structure
+lines, with or without a final newline; only LF, CRLF (one delimiter) and
+lone CR terminate a physical line — U+2028/U+2029, form feed, vertical tab,
+NEL and other Unicode/control characters inside text are content, and both
+the advisory inventory and the ratchet share this counting convention.
+`.sql` files are in the structure
 inventory and take the production/tooling threshold; versioned SQL under
 `migrations/` stays advisory for size, including new migration files, and
 historical migrations are never split or rewritten for a count. Test files are under
@@ -79,8 +83,12 @@ required resolvable base commit and fails on prohibited first-party
 source-file growth. Enforced scope: first-party source/tooling files with
 extensions `.rs`, `.go`, `.zig`, `.c`, `.h`, `.cc`, `.cpp`, `.hpp`, `.py`,
 `.ps1`, `.sh`, `.sql` — 400 physical lines for production/tooling, 500 under
-the existing test/benchmark classification. Versioned SQL under
-`migrations/` stays advisory as decided above; the pinned
+the existing test/benchmark classification. For LOC exemption only, a
+versioned SQL migration is a direct child of `migrations/` whose
+POSIX repository-relative path fully matches
+`migrations/[0-9]{4}_[A-Za-z0-9][A-Za-z0-9_]*\.sql` (ASCII digits and the
+lowercase `.sql` suffix exactly, no descendant directories); any other SQL
+file is ordinary in-scope source measured at its category cap. The pinned
 `third_party/genai/` snapshot is outside first-party enforcement under its
 existing provenance/hygiene controls and grants no other `third_party/` path
 a vendor exemption. Markdown, declarative configuration/manifests/workflows,

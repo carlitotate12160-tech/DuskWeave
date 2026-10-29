@@ -33,17 +33,20 @@ or measurement failure (never a zero-count pass).
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from check_structure import TEST_CAP, file_limit  # noqa: E402
+from check_structure import (  # noqa: E402
+    TEST_CAP, file_limit, split_physical)
 
 SOURCE_EXTS = {
     ".rs", ".go", ".zig", ".c", ".h", ".cc", ".cpp", ".hpp",
     ".py", ".ps1", ".sh", ".sql",
 }
-MIGRATIONS_PREFIX = "migrations/"
+MIGRATION_RE = re.compile(
+    r"migrations/[0-9]{4}_[A-Za-z0-9][A-Za-z0-9_]*\.sql")
 PINNED_GENAI_PREFIX = "third_party/genai/"
 SCRIPT_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GIT_TIMEOUT = 120.0
@@ -59,7 +62,7 @@ def in_scope(rel):
         return False
     if rel.startswith(PINNED_GENAI_PREFIX):
         return False
-    if ext == ".sql" and rel.startswith(MIGRATIONS_PREFIX):
+    if ext == ".sql" and MIGRATION_RE.fullmatch(rel):
         return False
     return True
 
@@ -101,12 +104,14 @@ def resolve_commit(repo, rev, flag):
 
 
 def count_lines(data, rel, side):
-    return len(_decode(data, f"{side}:{rel}").splitlines())
+    return len(split_physical(_decode(data, f"{side}:{rel}")))
 
 
 def normalized(data, rel, side):
-    """Line-ending/final-newline-insensitive identity for rename matching."""
-    return tuple(_decode(data, f"{side}:{rel}").splitlines())
+    """Physical-line identity for rename matching: LF/CRLF/CR and a
+    trailing-terminator difference are normalized away; every other
+    character, including non-terminator Unicode, is significant."""
+    return tuple(split_physical(_decode(data, f"{side}:{rel}")))
 
 
 def cat_blobs(repo, oids):
@@ -343,6 +348,11 @@ def main(argv=None):
     parser.add_argument("--head")
     parser.add_argument("--repo", default=SCRIPT_REPO)
     args = parser.parse_args(argv)
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
     try:
         root = repo_root(args.repo)
         base = resolve_commit(root, args.base, "--base")
