@@ -31,6 +31,10 @@ Execute the assigned packet directly. Do not return another architecture plan.
 - Exact editable file paths. Include required test/consumer changes established by inspection.
 - List read-only authority/caller/consumer references separately.
 - Do not authorize arbitrary wildcard edits.
+- Apply QUALITY_BAR.md's packet-feasibility checks. Inspect destination size and
+  ownership; for new/extracted modules name responsibility, types/state owner,
+  caller, narrow visibility, dependency direction and replaced code. Include
+  feasible cohesive paths up front; preferred size is headroom, not a new cap.
 
 ## Decisions to Implement
 - Concrete architectural and implementation decisions captured by accepted PRDs/ADRs and packet.
@@ -52,6 +56,9 @@ Execute the assigned packet directly. Do not return another architecture plan.
 - IMPLEMENT/FIX: unit, integration, and scenario tests; conflict markers, hygiene, formatting, and Clippy.
 - Exercise an artifact from the real producer through the real consumer where executable, including language/process boundaries; do not substitute mutually consistent mocks. Record evidence in the existing packet/review, not a new gate or report family.
 - McCabe and first-party file-LOC ratchets are enforced in the required `metrics` job (exit 1 on regression); runtime diff remains an advisory report.
+- After the first complete entrypoint-to-consumer path, run focused compile/
+  contract and local LOC checks before expanding scenarios. Review actual coupling
+  and change cost under the existing quality questions.
 - Material failures (broken tests, compiler errors, hygiene violations, invalid input) must be corrected before merge in the same PR.
 - CI and review may overlap drafting an independent next design under isolated resources — its own worktree and artifact/service ownership; the overlap grants no dependent runtime acceptance and permits no concurrent cluster-role mutation.
 

@@ -49,8 +49,27 @@ enforced numerical ratchets below — do not extract merely to move branches
 into forwarding helpers, and do not delete comments, blanks or formatting to
 satisfy a number.
 
-Before issuing a packet, inspect affected files and consumers. For a routine local
-change, one maintenance line confirming existing ownership and no trigger suffices.
+### Packet feasibility and early feedback
+
+Apply these five checks to every runtime IMPLEMENT/FIX packet, even when the
+request does not mention size or decomposition. Record only task-specific
+decisions in the existing file map, checks and review; add no separate artifact.
+1. Inspect actual destination sizes, responsibilities, consumers and dependencies
+   before assigning editable paths. Resolve known placement conflicts before handoff.
+2. For new or extracted modules, name responsibility, owning types/state, real
+   caller, narrow visibility, dependency direction and replaced code. Authorize
+   necessary cohesive paths up front; do not widen access merely to make a split compile.
+3. Use the preferred below-300 production size as planning headroom, not another
+   hard cap. Avoid deliberately creating near-cap fragments or speculative modules.
+4. After the first complete entrypoint-to-consumer path, run focused compile/
+   contract and local LOC checks before multiplying scenarios. Preserve assertions,
+   integration-target identity and fixture/resource custody; reuse actual fixture owners.
+5. Before handoff, challenge packet feasibility; after implementation, review
+   whether a small next change would cross unrelated owners, forwarding chains or
+   oversized shared fixtures. Numeric compliance alone does not prove good architecture.
+
+For a routine local change, one maintenance line confirming existing ownership
+and no trigger suffices.
 Expand only when a destination already exceeds or is expected to cross its category
 reference, new responsibilities/state/dependencies/operator steps are introduced,
 a mechanism is replaced, or a concrete duplication/ownership/readability risk is
