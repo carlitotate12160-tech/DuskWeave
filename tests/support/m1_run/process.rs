@@ -108,8 +108,8 @@ fn phase_identity(parent: u32, run: Uuid, phase: Option<RunPhase>) -> Option<Pha
             let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
             let args: Vec<&[u8]> = cmd.split(|b| *b == 0).collect();
             (fields.get(1)?.parse::<u32>().ok()? == parent
-                && args.iter().any(|a| *a == wanted.as_bytes())
-                && phase_name.is_none_or(|n| args.iter().any(|a| *a == n.as_bytes())))
+                && args.contains(&wanted.as_bytes())
+                && phase_name.is_none_or(|n| args.contains(&n.as_bytes())))
             .then_some((pid, fields.get(19)?.parse::<u64>().ok()?))
         })
         .collect();
