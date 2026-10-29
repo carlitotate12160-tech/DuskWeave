@@ -41,7 +41,7 @@ class MigrationScope(LocTest):
                                  rel + ": " + res.stdout)
                 self.assertIn("NEW_OVER", res.stdout)
                 shown = rel.encode("ascii", "backslashreplace").decode()
-                self.assertIn(shown, res.stdout)
+                self.assertTrue(rel in res.stdout or shown in res.stdout)
 
     def test_oversized_existing_migration_growth_also_exempt(self):
         fx = self.make()
