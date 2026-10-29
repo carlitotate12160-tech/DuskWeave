@@ -47,11 +47,12 @@ pub(crate) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
     parent.own_file(&log);
     parent.own_control_root(&root);
     let _ = parent.phase();
-    // Absolute state-aware barrier: the withheld reservation reply must be
-    // observed inside the original decision-one envelope. The bound is the
-    // phase-start/claim bracket's upper expiry, or the admitted run deadline
-    // while no phase record is observable; a dead parent or an exhausted
-    // bound is a failed witness, never a restarted clock.
+    // Absolute state-aware barrier: the client's matching reservation frame
+    // must reach the relay — arming reply withholding before it is forwarded —
+    // inside the original decision-one envelope. The bound is the
+    // phase-claim bracket's upper expiry, or the admitted run deadline while
+    // no claim is observable; a dead parent, an exhausted bound or an
+    // unqualified observation is a failed witness, never a restarted clock.
     let mut barrier_observer = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
     let mut bounds: Option<PhaseBounds> = None;
     let mut bounds_at = Instant::now();

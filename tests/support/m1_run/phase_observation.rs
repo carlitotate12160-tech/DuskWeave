@@ -26,15 +26,19 @@ pub struct PhaseBounds {
     pub uncertainty: Duration,
 }
 impl PhaseBounds {
-    /// Upper bracket of the phase expiry: deadline selection precedes launch
-    /// and the same-phase claim follows both, so expiry is at most claim plus
-    /// the ceiling. A missing claim leaves only the phase-start bracket, and
-    /// the admitted run deadline bounds either case independently.
+    /// Upper bracket of the phase expiry. Deadline selection precedes launch
+    /// and the same-phase claim follows both, so only a qualified claim
+    /// supplies an upper bracket: claim plus the ceiling and the measured
+    /// uncertainty, clamped to the admitted run deadline. A missing claim
+    /// leaves no tighter bound than the run deadline itself — phase start
+    /// plus the ceiling is the reaper's lower bracket, never an expiry upper.
     pub fn expiry_upper(&self, ceiling_ms: u64) -> Instant {
-        (self.claimed.unwrap_or(self.started)
-            + Duration::from_millis(ceiling_ms)
-            + self.uncertainty)
-            .min(self.run_stop)
+        match self.claimed {
+            Some(claimed) => {
+                (claimed + Duration::from_millis(ceiling_ms) + self.uncertainty).min(self.run_stop)
+            }
+            None => self.run_stop,
+        }
     }
 }
 
@@ -104,7 +108,9 @@ pub fn phase_bounds(
 
 /// Outcome of one absolute, state-aware barrier wait.
 pub enum Barrier {
-    /// The withheld needle was forwarded inside the original bounds.
+    /// The client's matching frame reached the relay inside the original
+    /// bounds; the relay forwards it while arming backend-reply withholding.
+    /// Pre-forward observation is not server execution or commit evidence.
     Reached,
     /// The owned parent terminated before the needle arrived.
     ParentExited,
@@ -114,10 +120,17 @@ pub enum Barrier {
 }
 
 /// Poll a barrier against an absolute original bound while the owned parent
-/// still runs. `observed` receives only the fixed poll slice; `bound` returns
-/// the current applicable absolute instant, or None while no original limit
-/// is observable yet — even then the wait cannot outlive the parent. No poll
-/// restarts a clock and the wait never continues past an earlier refusal.
+/// still runs. Terminal conditions are checked before every blocking poll
+/// and revalidated after a successful observation: a dead parent or an
+/// exhausted bound refuses even a completed needle. The relay event is
+/// consumed only while an original bound is observable — a success without
+/// one can never qualify — and each poll is capped to the remaining
+/// allowance so a late signal lands past its bound unchecked, then refused.
+/// `observed` receives the capped poll slice; `bound` returns the current
+/// applicable absolute instant, or None while no original limit is
+/// observable yet — even then the wait cannot outlive the parent or the
+/// outer fixture-supervisor budget. No poll, refresh or retry restarts a
+/// clock and the wait never continues past an earlier refusal.
 pub fn original_barrier(
     mut observed: impl FnMut(Duration) -> bool,
     mut parent_alive: impl FnMut() -> bool,
@@ -127,16 +140,30 @@ pub fn original_barrier(
 ) -> Barrier {
     const POLL: Duration = Duration::from_millis(50);
     loop {
-        if observed(POLL) {
-            return Barrier::Reached;
-        }
         if !parent_alive() {
             return Barrier::ParentExited;
         }
-        if let Some(end) = bound()
-            && now() >= end
-        {
-            return Barrier::BoundPassed(end);
+        if let Some(end) = bound() {
+            let sampled = now();
+            if sampled >= end {
+                return Barrier::BoundPassed(end);
+            }
+            // Cap the blocking poll to the remaining allowance.
+            if observed(POLL.min(end - sampled)) {
+                if !parent_alive() {
+                    return Barrier::ParentExited;
+                }
+                // Revalidate the success against the refreshed bound when
+                // observable, else the pre-poll bound: a vanished record
+                // cannot unbind an already-witnessed event. A re-projection
+                // may tighten the applicable bound; never honor a loosened
+                // one — the earlier sighting stays the conservative bound.
+                let end = bound().map_or(end, |e| e.min(end));
+                if now() >= end {
+                    return Barrier::BoundPassed(end);
+                }
+                return Barrier::Reached;
+            }
         }
         sleep(POLL);
     }
@@ -231,16 +258,18 @@ mod tests {
     fn bound_appearing_already_exhausted_fails_without_a_fresh_clock() {
         let rig = Rig::new();
         let bound = rig.base + Duration::from_millis(500);
-        // The first phase record becomes observable only after the bound has
-        // already passed; the wait reports that bound, never a restarted one.
+        // The needle queued while unbound must stay unconsumed; the phase
+        // record becomes observable only at 550ms, after its own 500ms bound
+        // already passed — the wait reports that bound, never a restarted one.
         let calls = Cell::new(0_u32);
+        let ticks = rig.ticks.clone();
         let outcome = original_barrier(
-            |_| false,
-            || true,
-            move || {
+            |_: Duration| {
                 calls.set(calls.get() + 1);
-                (calls.get() > 2).then_some(bound)
+                true
             },
+            || true,
+            move || (ticks.get() >= 11).then_some(bound),
             rig.now(),
             rig.sleep(),
         );
@@ -248,5 +277,145 @@ mod tests {
             Barrier::BoundPassed(end) => assert_eq!(end, bound),
             _ => panic!("a late bound must fail at its own instant"),
         }
+        assert_eq!(
+            calls.get(),
+            0,
+            "a queued event is never consumed while no bound is observable"
+        );
+    }
+
+    /// An already-exhausted bound must refuse even a waiting needle: terminal
+    /// conditions are evaluated before the event may be consumed.
+    #[test]
+    fn expired_bound_rejects_a_relayed_needle_without_consuming_it() {
+        let rig = Rig::new();
+        let bound = rig.base;
+        let calls = Cell::new(0_u32);
+        let outcome = original_barrier(
+            |_: Duration| {
+                calls.set(calls.get() + 1);
+                true
+            },
+            || true,
+            move || Some(bound),
+            rig.now(),
+            rig.sleep(),
+        );
+        match outcome {
+            Barrier::BoundPassed(end) => assert_eq!(end, bound),
+            _ => panic!("an exhausted bound must refuse a successful observation"),
+        }
+        assert_eq!(calls.get(), 0);
+    }
+
+    /// A parent dying while the relayed needle is being observed must still
+    /// refuse the success at post-poll revalidation.
+    #[test]
+    fn dead_parent_rejects_a_success_completed_during_the_poll() {
+        let rig = Rig::new();
+        let bound = rig.base + Duration::from_secs(45);
+        let alive = rig.ticks.clone();
+        let kill = rig.ticks.clone();
+        let outcome = original_barrier(
+            move |_: Duration| {
+                // The needle arrives while the parent is already gone.
+                kill.set(2);
+                true
+            },
+            move || alive.get() < 1,
+            move || Some(bound),
+            rig.now(),
+            rig.sleep(),
+        );
+        assert!(matches!(outcome, Barrier::ParentExited));
+    }
+
+    /// A poll whose successful observation completes at/after the bound must
+    /// be refused at revalidation — the capped slice cannot make it qualify.
+    #[test]
+    fn success_completing_across_the_deadline_is_rejected() {
+        let rig = Rig::new();
+        let bound = rig.base + Duration::from_millis(500);
+        let ticks = rig.ticks.clone();
+        let outcome = original_barrier(
+            move |slice: Duration| {
+                // The event completes one tick after the poll slice closes:
+                // a successful observation landing past the original bound.
+                ticks.set(ticks.get() + (slice.as_millis() / 50) as u64 + 1);
+                ticks.get() >= 10
+            },
+            || true,
+            move || Some(bound),
+            rig.now(),
+            rig.sleep(),
+        );
+        match outcome {
+            Barrier::BoundPassed(end) => assert_eq!(end, bound),
+            _ => panic!("a success past the original bound must be refused"),
+        }
+    }
+
+    /// A queued needle with no observable original bound is never consumed:
+    /// the wait continues (bounded by the parent's life) and cannot return
+    /// Reached on unqualified evidence.
+    #[test]
+    fn unbound_observation_is_never_consumed_or_reached() {
+        let rig = Rig::new();
+        let alive = rig.ticks.clone();
+        let calls = Cell::new(0_u32);
+        let outcome = original_barrier(
+            |_: Duration| {
+                calls.set(calls.get() + 1);
+                true
+            },
+            move || alive.get() < 4,
+            || None,
+            rig.now(),
+            rig.sleep(),
+        );
+        assert!(matches!(outcome, Barrier::ParentExited));
+        assert_eq!(calls.get(), 0);
+    }
+
+    /// While the same-phase claim is absent, started+ceiling is only the
+    /// reaper's LOWER bracket: the admitted run deadline is the sole upper
+    /// bound an unclaimed selection may use.
+    #[test]
+    fn unclaimed_phase_start_is_bounded_by_the_run_stop_not_the_ceiling() {
+        let base = Instant::now();
+        let bounds = PhaseBounds {
+            started: base,
+            claimed: None,
+            earliest_stop: base + Duration::from_millis(50_000),
+            run_stop: base + Duration::from_millis(90_000),
+            uncertainty: Duration::from_millis(10),
+        };
+        assert_eq!(bounds.expiry_upper(50_000), bounds.run_stop);
+    }
+
+    /// Once the claim exists, its record tightens the upper bracket without
+    /// restarting the origin; a late claim still clamps to the run deadline.
+    #[test]
+    fn a_qualified_claim_tightens_expiry_without_restarting_the_origin() {
+        let base = Instant::now();
+        let bounds = PhaseBounds {
+            started: base,
+            claimed: Some(base + Duration::from_millis(2_000)),
+            earliest_stop: base + Duration::from_millis(50_000),
+            run_stop: base + Duration::from_millis(90_000),
+            uncertainty: Duration::from_millis(10),
+        };
+        assert_eq!(
+            bounds.expiry_upper(50_000),
+            bounds.claimed.unwrap() + Duration::from_millis(50_010)
+        );
+        let late = PhaseBounds {
+            started: base,
+            claimed: Some(base + Duration::from_millis(89_000)),
+            earliest_stop: base + Duration::from_millis(50_000),
+            run_stop: base + Duration::from_millis(90_000),
+            uncertainty: Duration::from_millis(10),
+        };
+        assert_eq!(late.expiry_upper(50_000), late.run_stop);
     }
 }

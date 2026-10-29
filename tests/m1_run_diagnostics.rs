@@ -336,10 +336,11 @@ fn expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget() {
     let mut parent = OwnedRun::new(child, r);
     parent.own_file(&input);
     parent.own_file(&log);
-    // Stage reached: the parked reserve call must be observed inside the
+    // Stage reached: the client's reserve Q/P frame must reach the relay —
+    // arming reply withholding before the frame is forwarded — inside the
     // original acquisition/run envelope while the owned parent still runs.
-    // A dead parent or an exhausted bound is a failed witness, never a
-    // restarted clock.
+    // A dead parent, an exhausted bound or an unqualified observation is a
+    // failed witness, never a restarted clock.
     let mut observer = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
     let mut bounds: Option<PhaseBounds> = None;
     let mut bounds_at = Instant::now();
@@ -377,9 +378,10 @@ fn expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget() {
             parent_log(&log)
         ),
     }
-    // The forwarded reserve call implies the same-run, same-acquisition claim
-    // already committed; the started/claimed records bracket the local child
-    // launch with measured projection uncertainty.
+    // The relayed reserve frame proves the child issued the call, and its own
+    // same-run, same-acquisition claim commits before that call; the
+    // started/claimed records bracket the local child launch with measured
+    // projection uncertainty.
     let brackets = phase_bounds_for(&mut observer, r, RunPhase::Acquisition, 60000)
         .filter(|b| b.claimed.is_some())
         .expect("reached stage failed: same-acquisition claim must precede the reserve call");
@@ -413,11 +415,22 @@ fn expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget() {
             parent_log(&log)
         )
     });
-    // Remaining publication allowance after the expiry upper bracket. The
-    // admitted run deadline already bounds expiry itself and no clock is
-    // restarted here.
-    let publication_end = expiry_upper + Duration::from_millis(5000);
-    let done = wait_parent_exit(&mut parent, publication_end, "acquisition");
+    // A positive observation alone does not qualify: the projected completion
+    // timestamp must precede the expiry upper bracket, so a custodian kill or
+    // a late disappearance can never satisfy this witness.
+    assert!(
+        child_done <= expiry_upper,
+        "finished stage failed: acquisition child completion could not be \
+         qualified inside its original expiry bracket ({}ms over): {}",
+        child_done
+            .saturating_duration_since(expiry_upper)
+            .as_millis(),
+        parent_log(&log)
+    );
+    // The absolute publication outer bound is the admitted original run_stop
+    // — no grace is added and no clock restarts; collector settlement is not
+    // the product verdict.
+    let done = wait_parent_exit(&mut parent, brackets.run_stop, "acquisition");
     let parent_ms = launched.elapsed().as_millis();
     drop(relay);
     let output = std::fs::read_to_string(&log).unwrap();

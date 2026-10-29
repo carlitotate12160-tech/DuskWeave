@@ -367,6 +367,9 @@ pub fn observe_child_exit(pid: u32, end: std::time::Instant) -> bool {
 
 /// Bounded wait for product termination: the parent must exit on its own
 /// before `end`, and only a non-success status is honest failure evidence.
+/// An exit already complete when first checked is qualified by its
+/// observation instant alone — the only conservative evidence — so an exit
+/// first seen after `end` cannot satisfy the bound.
 pub fn wait_parent_exit(
     parent: &mut std::process::Child,
     end: std::time::Instant,
@@ -380,6 +383,11 @@ pub fn wait_parent_exit(
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     let done = std::time::Instant::now();
+    assert!(
+        done <= end,
+        "{mode} exit could not be qualified before its bound ({}ms over)",
+        done.saturating_duration_since(end).as_millis()
+    );
     assert!(
         !parent.wait().unwrap().success(),
         "{mode} must fail honestly"
@@ -424,5 +432,62 @@ mod tests {
         assert_eq!(owned.phases.len(), 1);
         assert_eq!(owned.focused().unwrap().0, u32::MAX);
         assert_eq!(owned.phase().unwrap().0, u32::MAX);
+    }
+
+    fn control_parent(code: &str) -> std::process::Child {
+        let python = std::env::var_os("DW_TEST_PYTHON").unwrap_or_else(|| "python".into());
+        Command::new(python)
+            .args(["-c", code])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap()
+    }
+    fn exited_control_parent() -> std::process::Child {
+        let mut parent = control_parent("import sys;sys.exit(3)");
+        parent.wait().unwrap();
+        parent
+    }
+    fn exit_wait_result(
+        parent: &mut std::process::Child,
+        end: std::time::Instant,
+    ) -> std::thread::Result<std::time::Instant> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            wait_parent_exit(parent, end, "control")
+        }))
+    }
+
+    /// An exit already complete is qualified by its observation instant: seen
+    /// before the bound, conservative evidence still proves on-time exit.
+    #[test]
+    fn already_exited_parent_first_seen_before_end_qualifies() {
+        let mut parent = exited_control_parent();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let done = exit_wait_result(&mut parent, end).unwrap();
+        assert!(done <= end);
+    }
+
+    /// An exit first observed after the bound cannot be qualified on time:
+    /// the observation instant is the only evidence and it lies past end.
+    #[test]
+    fn already_exited_parent_first_seen_after_end_cannot_qualify() {
+        let mut parent = exited_control_parent();
+        let end = std::time::Instant::now() - std::time::Duration::from_millis(1);
+        assert!(
+            exit_wait_result(&mut parent, end).is_err(),
+            "an already-exited parent first observed after end must fail qualification"
+        );
+    }
+
+    /// A still-running parent must fail at its supplied bound; observation
+    /// never grants an open-ended grace.
+    #[test]
+    fn still_running_parent_fails_at_its_bound() {
+        let mut parent = control_parent("import time;time.sleep(30)");
+        let end = std::time::Instant::now() + std::time::Duration::from_millis(120);
+        assert!(exit_wait_result(&mut parent, end).is_err());
+        let _ = parent.kill();
+        let _ = parent.wait();
     }
 }
