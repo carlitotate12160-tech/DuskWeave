@@ -370,7 +370,34 @@ pub(super) fn stalled_claim_reply_exits_provider_child_from_the_launch_clock() {
 
 pub(super) fn stalled_reservation_reply_hard_stops_at_the_original_decision_envelope() {
     let _guard = native::db();
-    refresh();
+    let upgraded = std::env::var("DW_TEST_GENAI_UPGRADE_COMPAT").ok();
+    assert!(
+        upgraded.as_deref().is_none_or(|v| v == "1"),
+        "closed upgrade compatibility mode"
+    );
+    if upgraded.is_some() {
+        // The native harness requalifies 0012 once per process. Reapply the
+        // same immutable 0022 setup after that, preserving prior SDK records.
+        let mut setup = native::admin();
+        let prior:i64=setup.query_one("SELECT count(*) FROM execution.inference_calls WHERE configuration LIKE '%dw-inference-intent-v1%'",&[]).unwrap().get(0);
+        assert!(
+            prior > 0,
+            "compatibility requires retained SDK call history"
+        );
+        setup
+            .batch_execute(include_str!(
+                "../../migrations/0022_genai_inference_intent.sql"
+            ))
+            .unwrap_or_else(|_| panic!("owned 0022 fixture refresh failed"));
+        let retained:i64=setup.query_one("SELECT count(*) FROM execution.inference_calls WHERE configuration LIKE '%dw-inference-intent-v1%'",&[]).unwrap().get(0);
+        assert_eq!(
+            retained, prior,
+            "fixture refresh preserves SDK call history"
+        );
+        assert_sdk_sql_still_installed();
+    } else {
+        refresh();
+    }
     let q = registered_with(0xc961, provider_permission);
     let root = control_root();
     // The needle names the function call, not the table: claim, identity,
@@ -381,7 +408,12 @@ pub(super) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
         terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", relay.port());
     let input = path(&q);
     let launched = Instant::now();
-    let (mut parent, log) = deadline_parent(&input, &routed, &root, None);
+    let (parent, log) = deadline_parent(&input, &routed, &root, None);
+    let mut parent = OwnedRun::new(parent, id(&q));
+    parent.own_file(&input);
+    parent.own_file(&log);
+    parent.own_control_root(&root);
+    let _ = parent.phase();
     assert!(
         relay.observed(Duration::from_secs(8)),
         "reservation query was never withheld: {}",
@@ -392,7 +424,7 @@ pub(super) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
         "reservation relay launch_to_barrier_ms={}",
         observed.duration_since(launched).as_millis()
     );
-    let (child, child_launch) = phase_child(parent.id(), id(&q));
+    let (child, child_launch) = parent.phase().expect("ready owned phase child");
     // The original Broker connection remains idle on inference_window_ms
     // while the separate reservation connection is parked. Read its original
     // query-completion timestamp through a fresh restricted connection; do not
@@ -425,8 +457,14 @@ pub(super) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
     // precedes the client's original monotonic deadline assignment by local
     // reply delivery only; it is never shifted to the reservation/readiness.
     let end = anchor + Duration::from_millis(45500);
+    let phase_bounds =
+        run_support::phase_bounds(&mut observer, id(&q), 50000).expect("original phase start");
     assert!(
-        end < launched + Duration::from_millis(50000),
+        phase_bounds.uncertainty <= Duration::from_millis(100),
+        "phase observation round trip unqualified"
+    );
+    assert!(
+        end < phase_bounds.earliest_stop,
         "phase reaper must be later than this assertion"
     );
     println!(
@@ -434,15 +472,19 @@ pub(super) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
         anchor.duration_since(child_launch).as_millis(),
         query_ms,
         end.saturating_duration_since(Instant::now()).as_millis(),
-        (launched + Duration::from_millis(50000))
-            .duration_since(end)
-            .as_millis()
+        phase_bounds.earliest_stop.duration_since(end).as_millis()
     );
     // This relay parks ParseComplete, before the child's reservation can
     // commit. Seed an existing charge through the actual restricted owner
     // for this original identity to challenge no-refund recovery as well.
     // This is explicit test injection, not proof of a lost COMMIT ACK.
     let rec = broker_store().inspect(id(&q)).unwrap();
+    assert_eq!(rec.request.version, "m1_autonomous_run_request_v1");
+    assert!(!rec.request.successor());
+    assert_eq!(
+        rec.request.run_profile,
+        "autonomous-dns-provider-fixture-v1"
+    );
     let reserved = duskweave::m1_inference_budget::reservation(
         &mut PgInferenceReservationStore::new(native::client("DW_INFERENCE_BROKER_DATABASE_URL")),
         Some(&mut PgMissionStore::new(native::client(
@@ -464,12 +506,17 @@ pub(super) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
         "an overbroad 5s kill terminated a ready inference child: {}",
         parent_log(&log)
     );
-    let terminated = observe_child_exit(child, end);
-    let child_done = Instant::now();
+    let exit = parent.observe_phase_exit(end);
+    let observed_at = Instant::now();
+    let terminated = exit.is_some();
+    let child_done = exit.unwrap_or(observed_at);
     println!(
-        "child exit observed={terminated} after anchor={}ms anchor observation uncertainty={}ms",
+        "child exit observed={terminated} after anchor={}ms anchor observation uncertainty={}ms observer_settlement_ms={}",
         child_done.duration_since(anchor).as_millis(),
-        uncertainty.as_millis()
+        uncertainty.as_millis(),
+        observed_at
+            .saturating_duration_since(child_done)
+            .as_millis()
     );
     let assertion = std::panic::catch_unwind(|| {
         assert!(
@@ -535,4 +582,89 @@ pub(super) fn stalled_reservation_reply_hard_stops_at_the_original_decision_enve
         assert_eq!(after.get::<_, Uuid>(column), before.get::<_, Uuid>(column));
     }
     assert_eq!(after.get::<_, Value>(3), before.get::<_, Value>(3));
+    if upgraded.is_some() {
+        assert_sdk_sql_still_installed();
+    }
+}
+
+#[test]
+fn early_witness_assertion_cleans_owned_parent_phase_relay_and_files() {
+    let _guard = native::db();
+    refresh();
+    let q = registered_with(0xc962, provider_permission);
+    let root = control_root();
+    let input = path(&q);
+    let relay = proxy::Relay::start(
+        "127.0.0.1:5432".parse().unwrap(),
+        b"SELECT execution.run_phase_claim",
+    );
+    let port = relay.port();
+    let routed = terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", port);
+    let (child, log) = deadline_parent(&input, &routed, &root, None);
+    let mut parent = OwnedRun::new(child, id(&q));
+    parent.own_file(&input);
+    parent.own_file(&log);
+    parent.own_control_root(&root);
+    let end = Instant::now() + Duration::from_secs(5);
+    let phase = loop {
+        if let Some(p) = parent.phase() {
+            break p;
+        }
+        assert!(
+            Instant::now() < end && parent.try_wait().unwrap().is_none(),
+            "owned phase must be observed before injected assertion"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    let verdict = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _relay = relay;
+        let _parent = parent;
+        panic!("synthetic early witness assertion");
+    }));
+    assert!(verdict.is_err());
+    // This is custody cleanup evidence, never a product STOP/deadline verdict.
+    assert!(observe_child_exit(
+        phase.0,
+        Instant::now() + Duration::from_secs(2)
+    ));
+    assert!(std::net::TcpListener::bind(("127.0.0.1", port)).is_ok());
+    assert!(!input.exists() && !log.exists() && !root.exists());
+    let idle:i64=native::client("DW_INFERENCE_BROKER_DATABASE_URL").query_one("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND usename=session_user AND state='idle in transaction'",&[]).unwrap().get(0);
+    assert_eq!(
+        idle, 0,
+        "owned transaction cannot survive assertion cleanup"
+    );
+}
+
+fn assert_sdk_sql_still_installed() {
+    let installed:bool=native::client("DW_INFERENCE_BROKER_DATABASE_URL").query_one("SELECT position('genai_binding_valid' in pg_get_functiondef('execution.inference_may_send(uuid,uuid,uuid,uuid,text,text,text,text)'::regprocedure))>0",&[]).unwrap_or_else(|_|panic!("SQL source identity observation unavailable")).get(0);
+    assert!(
+        installed,
+        "upgrade compatibility must exercise installed 0022 admission without fixture replacement"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn stale_discovery_cannot_grant_cleanup_over_a_reused_pid() {
+    let python = std::env::var_os("DW_TEST_PYTHON").unwrap_or_else(|| "python".into());
+    let child = std::process::Command::new(python)
+        .args(["-c", "import time;time.sleep(30)"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let run = Uuid::from_u128(0xc963);
+    let mut replacement = OwnedRun::new(child, run);
+    let accepted =
+        run_support::stale_phase_snapshot_accepted(std::process::id(), run, replacement.id());
+    assert!(
+        replacement.try_wait().unwrap().is_none(),
+        "discovery must not terminate the replacement"
+    );
+    assert!(
+        !accepted,
+        "stale discovery cannot confer cleanup rights over a replacement PID"
+    );
 }

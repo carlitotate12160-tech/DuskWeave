@@ -165,7 +165,13 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
-        self.worker.take().unwrap().join().unwrap();
+        if let Some(worker) = self.worker.take() {
+            let joined = worker.join();
+            assert!(
+                joined.is_ok() || std::thread::panicking(),
+                "fixture worker panicked"
+            );
+        }
     }
 }
 fn read_request(
@@ -294,4 +300,47 @@ pub fn proposal(pack: &Value) -> Value {
         "expected_observation":"Qualified fixture routing feedback.","falsifying_observation":"Missing or conflicting owner feedback.",
         "uncertainty":"Synthetic plumbing only; live applicability is unknown.",
         "rationale":if feedback {"Qualified fixture feedback supports retention."} else {"Observe one admitted seed."},"next_intent":intent})
+}
+
+/// A fixture-owned child handle. A verdict is sampled before custodian cleanup.
+pub struct FixtureChild(Option<std::process::Child>);
+impl FixtureChild {
+    pub fn new(child: std::process::Child) -> Self {
+        Self(Some(child))
+    }
+    pub fn wait_until(&mut self, end: Instant) -> Option<std::process::ExitStatus> {
+        loop {
+            if let Some(status) = self.0.as_mut().unwrap().try_wait().unwrap() {
+                return Some(status);
+            }
+            if Instant::now() >= end {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    pub fn output(mut self) -> std::process::Output {
+        self.0.take().unwrap().wait_with_output().unwrap()
+    }
+}
+impl std::ops::Deref for FixtureChild {
+    type Target = std::process::Child;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().unwrap()
+    }
+}
+impl std::ops::DerefMut for FixtureChild {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().unwrap()
+    }
+}
+impl Drop for FixtureChild {
+    fn drop(&mut self) {
+        if let Some(child) = &mut self.0 {
+            if !matches!(child.try_wait(), Ok(Some(_))) {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+    }
 }

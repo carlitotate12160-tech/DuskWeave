@@ -399,20 +399,7 @@ fn readiness_watch(
     prepared_by: Instant,
     observation: &Arc<Mutex<Observation>>,
 ) {
-    let wait = prepared_by
-        .saturating_duration_since(Instant::now())
-        .saturating_sub(Duration::from_millis(50));
-    let result = match rx.recv_timeout(wait) {
-        Ok(result) if Instant::now() < prepared_by => Observation::from_readiness(&result),
-        Err(mpsc::RecvTimeoutError::Disconnected) => Observation {
-            cause: Some(DiagnosticCause::ReadinessRefused),
-            ..Observation::default()
-        },
-        _ => Observation {
-            cause: Some(DiagnosticCause::ReadinessDeadline),
-            ..Observation::default()
-        },
-    };
+    let result = readiness_result(rx, prepared_by);
     let ready = result.ready;
     if let Ok(mut state) = observation.lock() {
         state.ready = ready;
@@ -422,16 +409,22 @@ fn readiness_watch(
         cooperative_stop(child, prepared_by);
     }
 }
-#[cfg(test)]
-fn ready_before(rx: &mpsc::Receiver<Res<()>>, prepared_by: Instant) -> bool {
-    matches!(
-        rx.recv_timeout(
-            prepared_by
-                .saturating_duration_since(Instant::now())
-                .saturating_sub(Duration::from_millis(50))
-        ),
-        Ok(Ok(()))
-    ) && Instant::now() < prepared_by
+/// One readiness decision shared by the real watchdog and its boundary tests.
+fn readiness_result(rx: &mpsc::Receiver<Res<()>>, prepared_by: Instant) -> Observation {
+    // Do not revoke a pending child before its original readiness deadline.
+    // A queued frame is still rejected if processed after that deadline.
+    let wait = prepared_by.saturating_duration_since(Instant::now());
+    match rx.recv_timeout(wait) {
+        Ok(result) if Instant::now() < prepared_by => Observation::from_readiness(&result),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Observation {
+            cause: Some(DiagnosticCause::ReadinessRefused),
+            ..Observation::default()
+        },
+        _ => Observation {
+            cause: Some(DiagnosticCause::ReadinessDeadline),
+            ..Observation::default()
+        },
+    }
 }
 fn monitor_control(
     child: Arc<Mutex<Child>>,
@@ -755,20 +748,30 @@ mod tests {
         ));
     }
     #[test]
+    fn readiness_does_not_refuse_before_the_original_deadline() {
+        let (tx, rx) = mpsc::channel();
+        let prepared_by = Instant::now() + Duration::from_millis(40);
+        let observed = readiness_result(&rx, prepared_by);
+        assert!(
+            Instant::now() >= prepared_by,
+            "a pending READY must retain the final interval of its original deadline"
+        );
+        assert!(!observed.ready);
+        assert_eq!(observed.cause, Some(DiagnosticCause::ReadinessDeadline));
+        drop(tx);
+    }
+    #[test]
     fn queued_late_ready_eof_and_refusal_cannot_disarm_the_original_guard() {
         let (tx, rx) = mpsc::channel();
         tx.send(Ok(())).unwrap();
-        assert!(!ready_before(
-            &rx,
-            Instant::now() - Duration::from_millis(1)
-        ));
+        assert!(!readiness_result(&rx, Instant::now() - Duration::from_millis(1)).ready);
         let end = Instant::now() + Duration::from_secs(5);
         tx.send(Err(Fail::Config("run_readiness_refused"))).unwrap();
-        assert!(!ready_before(&rx, end));
+        assert!(!readiness_result(&rx, end).ready);
         tx.send(Ok(())).unwrap();
-        assert!(ready_before(&rx, end));
+        assert!(readiness_result(&rx, end).ready);
         drop(tx);
-        assert!(!ready_before(&rx, end));
+        assert!(!readiness_result(&rx, end).ready);
     }
     fn parked_child() -> Child {
         #[cfg(windows)]
