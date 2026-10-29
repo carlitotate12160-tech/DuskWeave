@@ -218,45 +218,15 @@ Do not move business logic into shared modules to bypass module-size rules.
 
 ## Size discipline
 
-Preferred source module:
-
-```text
-< 300 LOC
-```
-
-Production/tooling file review reference point:
-
-```text
-400 LOC
-```
-
-Large modules should be split by cohesive responsibility. Test/benchmark files
-have a 500-line threshold; Markdown has a separate 600-line reference point, subordinate to any
-narrower document-specific rule. See QUALITY_BAR.md for canonical policy.
-
-First-party source-file LOC growth is enforced, not advisory:
-`python scripts/check_file_loc.py --base <commit>` fails on a new
-over-threshold file, a compliant file crossing its threshold, or net growth
-of retained over-threshold debt, and runs in the required metrics CI job.
-Retained oversized files may stay or shrink and remain reported as debt.
-Markdown, declarative configuration/manifests/workflows, function span and
-the cumulative runtime diff stay advisory. Prefer runtime diffs below 300;
-above 400 is an advisory review trigger; 600 is a reference point. An
-advisory crossing produces a warning and a reviewer decision: retain with a
-concrete cohesion/readability reason, or refactor in the same PR. Numerical
-crossings alone do not require an exception, a new packet, or SPLIT_REQUIRED.
-
-Apply QUALITY_BAR.md's conditional maintenance disposition before handoff and in
-review. The architect resolves material mechanism, consumer/file scope and retirement;
-the executor retains routine local choices. Do not silently change those decisions
-or add dependencies, operator commands or operational steps.
-
-McCabe complexity is the second enforced ratchet: a per-function ratchet, not
-an advisory metric. New functions above threshold 7 fail the required CI gate,
-previously compliant functions crossing above 7 fail, and retained debt may
-stay or decrease but never increase. The single reviewed pure-dispatch
-`src/main.rs::run` holds cap 10. QUALITY_BAR.md is canonical for the ratchet
-rules; do not raise a threshold to make a PR green.
+[QUALITY_BAR](QUALITY_BAR.md#1-module--file-size-budgets) owns size categories,
+enforced LOC/McCabe ratchets, advisory metrics and maintenance disposition.
+Before every runtime packet, apply its
+[packet-feasibility checks](QUALITY_BAR.md#packet-feasibility-and-early-feedback),
+even when the request does not mention LOC or decomposition.
+Resolve ownership and feasible editable/extraction paths before handoff;
+the executor retains routine local choices. Readability and narrow dependency/
+visibility boundaries matter beyond numeric compliance. Do not copy thresholds
+into packet prose, remove assertions or fragment helpers to obtain a pass.
 
 ---
 

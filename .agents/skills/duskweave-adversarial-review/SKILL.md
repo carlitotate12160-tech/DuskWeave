@@ -201,3 +201,11 @@ required dependency or materially wider fix, naming the exact paths/decision.
 Do not invent a PR, CI result, remote check, or independent reviewer identity.
 Return verified base/head, scope, findings and dispositions, checks actually
 run, blockers, readiness, and the next permitted packet boundary.
+
+## Packet feasibility and change cost
+
+Apply QUALITY_BAR.md's packet-feasibility checks to every runtime packet/delta.
+Check actual capacity, owners/callers and dependency/visibility boundaries before
+numeric compliance. Challenge fragmentation, broadened test-only access, duplicate
+fixtures and unrelated-owner fan-out. Verify early focused feedback from actual
+evidence; use the existing review, without a new ledger, document or approval tier.

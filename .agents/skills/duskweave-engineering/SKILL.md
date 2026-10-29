@@ -144,6 +144,16 @@ but grants no authority. Do not turn execution constraints into an unrequested
 restriction on accepted reasoning or adaptation. Use existing acceptance/review
 criteria; add no separate artifact, approval tier or gate.
 
+## Change-local maintainability
+
+Before every runtime packet, apply QUALITY_BAR.md's
+"Packet feasibility and early feedback" within its existing maintenance review.
+Inspect actual destinations before assigning paths; specify module ownership,
+callers, narrow visibility, dependency direction and retirement in the file map.
+Require early focused compile/contract and LOC feedback after the first complete
+path, then review coupling/change cost as well as numbers. Resolve packet defects
+before handoff; add no separate planning artifact or approval gate.
+
 ## Packet authoring
 
 Use references/packet-template.md when asked for an execution packet.
