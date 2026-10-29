@@ -317,3 +317,11 @@ Return AUTHORITY_CONFLICT for contradictory governing instructions.
 Return DESIGN_DRIFT when the pinned base or required baseline differs.
 For each, name the exact file/dependency, conflict, and smallest required resolution.
 Do not silently create a new PRD/ADR or repair higher authority to unblock yourself.
+
+## Early ownership and capacity feedback
+
+Apply QUALITY_BAR.md's packet-feasibility checks even without a repeated user
+reminder. Use the packet's cohesive paths and narrow visibility; verify the first
+complete path before expanding scenarios. Preserve assertions and fixture custody.
+Report a material missing path as a precise packet-map defect; fix routine compiler/
+gate failures within scope. Do not duplicate setup or add another planning deliverable.
