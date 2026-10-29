@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for scripts/check_file_loc.py in isolated Git fixtures.
-
-Each case executes the real CLI against a temporary repository and asserts
-verdict, output row and exit status (0/1/2). Fixtures never touch the
-delivery worktree.
-"""
+"""Tests for scripts/check_file_loc.py: real CLI in isolated Git fixtures."""
 
 import re
 import subprocess
@@ -178,15 +173,19 @@ class DebtRatchet(LocTest):
         self.assertIn("REGRESSED", res.stdout)
         self.assertIn("src/grow.rs", res.stdout)
 
-    def test_deletion_is_reported_and_passes(self):
-        fx = self.make()
-        fx.lines("src/old.rs", 450)
-        fx.commit_all()
-        fx.rebase()
-        (fx.repo / "src/old.rs").unlink()
-        res = fx.loc()
-        self.assertEqual(res.returncode, 0, res.stdout)
-        self.assertIn("DELETED", res.stdout)
+    def test_deletion_reported_and_passes_unstaged_and_staged(self):
+        for staged in (False, True):
+            fx = self.make()
+            fx.lines("src/old.rs", 450)
+            fx.commit_all()
+            fx.rebase()
+            if staged:
+                git(fx.repo, "rm", "-q", "src/old.rs")
+            else:
+                (fx.repo / "src/old.rs").unlink()
+            res = fx.loc()
+            self.assertEqual(res.returncode, 0, res.stdout)
+            self.assertIn("DELETED", res.stdout)
 
 
 class WorktreeModes(LocTest):
@@ -219,13 +218,11 @@ class WorktreeModes(LocTest):
         fx = self.make()
         fx.lines("src/ok.rs", 10)
         head = fx.commit_all()
-        fx.lines("src/dirty.rs", 999)  # uncommitted oversized file
-        committed = fx.loc(head=head)
-        self.assertEqual(committed.returncode, 0,
-                         committed.stdout + committed.stderr)
-        worktree = fx.loc()
-        self.assertEqual(worktree.returncode, 1)
-        self.assertIn("src/dirty.rs", worktree.stdout)
+        fx.lines("src/dirty.rs", 999)
+        self.assertEqual(fx.loc(head=head).returncode, 0)
+        res = fx.loc()
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("src/dirty.rs", res.stdout)
 
     def test_assume_unchanged_flag_does_not_hide_growth(self):
         fx = self.make()
@@ -238,15 +235,21 @@ class WorktreeModes(LocTest):
         self.assertEqual(res.returncode, 1, res.stdout)
         self.assertIn("src/big.rs", res.stdout)
 
-    def test_staged_deletion_reported(self):
+    def test_symlinked_parent_dir_is_measurement_error(self):
         fx = self.make()
-        fx.lines("src/old.rs", 100)
+        fx.lines("src/real.rs", 5)
         fx.commit_all()
         fx.rebase()
-        git(fx.repo, "rm", "-q", "src/old.rs")
+        (fx.repo / "src/real.rs").unlink()
+        (fx.repo / "src").rmdir()
+        write_lines(fx.repo, "outside/real.rs", 5)
+        try:
+            (fx.repo / "src").symlink_to(fx.repo / "outside",
+                                         target_is_directory=True)
+        except OSError:
+            self.skipTest("symlink privilege unavailable")
         res = fx.loc()
-        self.assertEqual(res.returncode, 0, res.stdout)
-        self.assertIn("DELETED", res.stdout)
+        self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
 
 
 class BranchDepth(LocTest):
@@ -385,23 +388,18 @@ class InputsAndErrors(LocTest):
         res = fx.loc(head=head)
         self.assertEqual(res.returncode, 2)
 
-    def test_symlink_mode_in_committed_candidate_is_error(self):
-        fx = self.make()
-        oid = git(fx.repo, "hash-object", "-w", "--stdin",
-                  stdin="payload\n").stdout.strip()
-        git(fx.repo, "update-index", "--add", "--cacheinfo",
-            f"120000,{oid},src/link.rs")
-        git(fx.repo, "commit", "-qm", "link")
-        res = run_loc(fx.repo, fx.base, "HEAD")
-        self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
-
-    def test_gitlink_in_committed_candidate_is_error(self):
-        fx = self.make()
-        git(fx.repo, "update-index", "--add", "--cacheinfo",
-            f"160000,{fx.base},src/sub.rs")
-        git(fx.repo, "commit", "-qm", "submodule")
-        res = run_loc(fx.repo, fx.base, "HEAD")
-        self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+    def test_nonregular_committed_entries_are_errors(self):
+        for mode, rel in (("120000", "src/link.rs"),
+                          ("160000", "src/sub.rs")):
+            fx = self.make()
+            oid = fx.base if mode == "160000" else git(
+                fx.repo, "hash-object", "-w", "--stdin",
+                stdin="payload\n").stdout.strip()
+            git(fx.repo, "update-index", "--add", "--cacheinfo",
+                f"{mode},{oid},{rel}")
+            git(fx.repo, "commit", "-qm", "nonregular")
+            res = run_loc(fx.repo, fx.base, "HEAD")
+            self.assertEqual(res.returncode, 2, mode)
 
     def test_missing_git_object_is_measurement_error(self):
         fx = self.make()

@@ -187,9 +187,11 @@ def load_worktree_files(repo, rels):
     """Real current bytes for changed in-scope paths; absent means gone."""
     files = {}
     for rel in rels:
-        path = os.path.join(repo, *rel.split("/"))
-        if os.path.islink(path):
-            raise MeasureError(f"{rel}: symlink in enforced scope")
+        path = repo
+        for comp in rel.split("/"):
+            path = os.path.join(path, comp)
+            if os.path.islink(path):
+                raise MeasureError(f"{rel}: symlink in enforced scope")
         if not os.path.exists(path):
             continue
         if not os.path.isfile(path):
