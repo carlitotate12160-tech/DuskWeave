@@ -2,9 +2,8 @@
 """Tests for scripts/check_file_loc.py in isolated Git fixtures.
 
 Each case executes the real CLI against a temporary repository and asserts
-verdict, output row and exit status (0 pass, 1 regression, 2 invalid
-input/measurement failure). Fixture repositories never touch the delivery
-worktree.
+verdict, output row and exit status (0/1/2). Fixtures never touch the
+delivery worktree.
 """
 
 import re
@@ -228,6 +227,17 @@ class WorktreeModes(LocTest):
         self.assertEqual(worktree.returncode, 1)
         self.assertIn("src/dirty.rs", worktree.stdout)
 
+    def test_assume_unchanged_flag_does_not_hide_growth(self):
+        fx = self.make()
+        fx.lines("src/big.rs", 450)
+        fx.commit_all()
+        fx.rebase()
+        git(fx.repo, "update-index", "--assume-unchanged", "src/big.rs")
+        fx.lines("src/big.rs", 451)
+        res = fx.loc()
+        self.assertEqual(res.returncode, 1, res.stdout)
+        self.assertIn("src/big.rs", res.stdout)
+
     def test_staged_deletion_reported(self):
         fx = self.make()
         fx.lines("src/old.rs", 100)
@@ -244,7 +254,7 @@ class BranchDepth(LocTest):
         fx = self.make()
         fx.lines("src/big.rs", 401)
         fx.commit_all()
-        fx.lines("src/other.rs", 5)
+        fx.lines("src/other.rs", 5)  # unrelated tip commit
         head = fx.commit_all()
         for mode in ({"head": head}, {}):
             res = fx.loc(**mode)
@@ -309,6 +319,17 @@ class Renames(LocTest):
         self.assertEqual(res.returncode, 1, res.stdout)
         self.assertIn("NEW_OVER", res.stdout)
         self.assertIn("src/t.py", res.stdout)
+
+    def test_commit_mode_rename_allowance(self):
+        fx = self.make()
+        fx.lines("src/old.py", 450)
+        fx.commit_all()
+        fx.rebase()
+        git(fx.repo, "mv", "src/old.py", "src/new.py")
+        head = fx.commit_all()
+        res = fx.loc(head=head)
+        self.assertEqual(res.returncode, 0, res.stdout)
+        self.assertIn("RETAINED", res.stdout)
 
     def test_rename_of_compliant_file_stays_within(self):
         fx = self.make()
@@ -382,6 +403,17 @@ class InputsAndErrors(LocTest):
         res = run_loc(fx.repo, fx.base, "HEAD")
         self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
 
+    def test_missing_git_object_is_measurement_error(self):
+        fx = self.make()
+        fx.lines("src/gone.rs", 5)
+        head = fx.commit_all()
+        oid = git(fx.repo, "rev-parse", "HEAD:src/gone.rs").stdout.strip()
+        obj = fx.repo / ".git/objects" / oid[:2] / oid[2:]
+        obj.chmod(0o644)
+        obj.unlink()
+        res = run_loc(fx.repo, fx.base, head)
+        self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+
     def test_missing_or_nongit_repo_is_invalid(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -431,8 +463,7 @@ class ScopeAndAdvisory(LocTest):
 
 
 class WorkflowWiring(LocTest):
-    """Narrow assertions: the metrics job runs the LOC gate on its resolved
-    base, preserves the nonzero exit and stays on the required ci-ok path."""
+    """Metrics job runs the LOC gate on its resolved base and stays required."""
 
     @classmethod
     def setUpClass(cls):

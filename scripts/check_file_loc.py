@@ -118,15 +118,19 @@ def cat_blobs(repo, oids):
     raw = _git(repo, ["cat-file", "--batch"],
                stdin=("\n".join(unique) + "\n").encode())
     pos = 0
-    for _ in unique:
-        header_end = raw.index(b"\n", pos)
-        fields = raw[pos:header_end].split(b" ")
-        if fields[1] == b"missing":
-            raise MeasureError(f"missing git object {fields[0].decode()}")
-        size = int(fields[2])
-        start = header_end + 1
-        blobs[fields[0].decode()] = raw[start:start + size]
-        pos = start + size + 1
+    try:
+        for _ in unique:
+            header_end = raw.index(b"\n", pos)
+            fields = raw[pos:header_end].split(b" ")
+            if fields[1] == b"missing":
+                raise MeasureError(
+                    f"missing git object {fields[0].decode()}")
+            size = int(fields[2])
+            start = header_end + 1
+            blobs[fields[0].decode()] = raw[start:start + size]
+            pos = start + size + 1
+    except (ValueError, IndexError) as exc:
+        raise MeasureError("malformed git cat-file output") from exc
     return blobs
 
 
@@ -138,7 +142,11 @@ def tree_inventory(repo, rev):
         if not entry:
             continue
         meta, _, path = entry.partition(b"\t")
-        mode, _type, oid = meta.split(b" ")
+        try:
+            mode, _type, oid = meta.split(b" ")
+        except ValueError as exc:
+            raise MeasureError(
+                f"malformed git ls-tree entry at {rev}") from exc
         inv[_decode(path, f"{rev} path")] = (
             mode.decode("ascii"), oid.decode("ascii"))
     return inv
@@ -151,7 +159,12 @@ def worktree_changes(repo, base):
     tracked = {_decode(e, "worktree path") for e in raw.split(b"\0") if e}
     raw = _git(repo, ["ls-files", "-o", "-z", "--exclude-standard"])
     untracked = {_decode(e, "worktree path") for e in raw.split(b"\0") if e}
-    return tracked, untracked
+    raw = _git(repo, ["ls-files", "-v", "-z"])
+    flagged = set()
+    for entry in raw.split(b"\0"):
+        if entry and entry[:1] in (b"S", b"s", b"h"):
+            flagged.add(_decode(entry.partition(b" ")[2], "worktree path"))
+    return tracked | untracked | flagged
 
 
 def load_commit(repo, rev):
@@ -209,8 +222,7 @@ def rename_destinations(added, deleted, limit_of):
 def measure(repo, base, head):
     base_files, base_oids = load_commit(repo, base)
     if head is None:
-        tracked_diff, untracked = worktree_changes(repo, base)
-        changed = tracked_diff | untracked
+        changed = worktree_changes(repo, base)
         scoped = sorted(p for p in changed if in_scope(p))
         head_files = load_worktree_files(repo, scoped)
         try:
