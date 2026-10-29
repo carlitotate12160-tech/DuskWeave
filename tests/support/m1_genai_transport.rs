@@ -872,7 +872,6 @@ fn maximum_pack_and_eight_repair_codes_use_observed_sdk_entity_bytes() {
                 "closed boundary observation excludes identities"
             );
         }
-        eprintln!("{observation}");
     }
     assert_eq!(server.count(), 2);
 }
