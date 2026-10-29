@@ -123,11 +123,14 @@ Batch independent preflight/read operations. Record loaded authority and check
 provenance briefly in the session; reread changed/newly affected boundaries only.
 Start with focused contract tests. As soon as the complete production path exists,
 format and measure the actual cumulative metrics against the packet base, before
-polishing tests/docs. Runtime diff, file size and function span are advisory review
-reference points under QUALITY_BAR.md, not hard ceilings; a crossing produces a warning
-and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR.
-Numerical crossings alone do not require an exception, new packet, or STOP.
-McCabe is different: an enforced per-function ratchet (QUALITY_BAR.md canonical) —
+polishing tests/docs. First-party source-file LOC growth is enforced locally by
+`python scripts/check_file_loc.py --base <base>` and in the required metrics job —
+a new over-threshold file, a compliant crossing or grown retained debt fails.
+Runtime diff, Markdown size and function span are advisory review reference points
+under QUALITY_BAR.md; a crossing produces a warning and reviewer decision: retain
+with a concrete cohesion reason or refactor in the same PR. Advisory crossings
+alone do not require an exception, new packet, or STOP.
+McCabe is the other enforced ratchet (QUALITY_BAR.md canonical) —
 new or worsened violations above 7 fail the required metrics job; the reviewed
 `src/main.rs::run` dispatch holds 10. Do not raise a threshold to make a PR green.
 

@@ -8,12 +8,12 @@ This document defines the software engineering quality standards, complexity thr
 
 ## 1. Module & File Size Budgets
 
-Readability, maintainability, and domain-responsibility isolation are informed by file size and complexity metrics. File-size, span and diff values are advisory review reference points, not hard ceilings; the per-function McCabe threshold is the one enforced numerical rule and is governed by the ratchet below:
+Readability, maintainability, and domain-responsibility isolation are informed by file size and complexity metrics. Two numerical rules are enforced ratchets — first-party source-file LOC growth and per-function McCabe, each governed by its ratchet below. Function span, cumulative runtime diff and Markdown size remain advisory review reference points, not hard ceilings:
 
 | Metric | Preferred Reference | Review Reference Point | Action When Exceeded |
 | :--- | :--- | :--- | :--- |
-| **Production/tooling file** | `< 300 LOC` | `400 LOC` | Advisory warning; review cohesion/readability. Retain with a concrete reason or refactor in the same PR. |
-| **Test/benchmark file** | Readable, cohesive tests | `500 LOC` | Advisory warning; review scenario cohesion. |
+| **Production/tooling file** | `< 300 LOC` | `400 LOC` | **Enforced growth ratchet** for in-scope source files: a new over-threshold file, a compliant file crossing it, or net growth of retained debt fails the required gate; retained debt stays visible and may shrink. |
+| **Test/benchmark file** | Readable, cohesive tests | `500 LOC` | Same enforced growth ratchet at the test/benchmark threshold. |
 | **Markdown document** | One purpose; navigable | `600 LOC` | Advisory warning; review document purpose. Narrower document-specific limits still apply. |
 | **Runtime diff per PR/slice** | `< 300 LOC`; review trigger `> 400` | `600 LOC` | Advisory warning; review cohesion and ownership. Retain with a concrete reason or refactor in the same PR. No separate exception or new packet required. |
 | **Function length** | `<= 50` physical lines | Review trigger, not a universal cap | Above 50, record cohesion/readability disposition; split only by meaningful responsibility without helper fragmentation. |
@@ -22,8 +22,9 @@ Readability, maintainability, and domain-responsibility isolation are informed b
 
 Counts are physical lines including comments and blanks. File size uses actual
 lines, with or without a final newline. `.sql` files are in the structure
-inventory and take the production/tooling reference point (migrations: 400);
-historical migrations are not split for the number alone. Test files are under
+inventory and take the production/tooling threshold; versioned SQL under
+`migrations/` stays advisory for size, including new migration files, and
+historical migrations are never split or rewritten for a count. Test files are under
 `tests/` or `benches/`
 or named `tests.rs`; this classification does not grant a new Rust-hygiene exemption.
 The test allowance is for test-only code. Naming or placing production code as
@@ -32,17 +33,17 @@ The runtime diff counts added plus deleted lines in production paths, SQL migrat
 and named manifests. Docs, `tests/`, lockfiles and CI-only tooling remain outside
 that diff; test modules placed under `src/` still count as source-path changes.
 
-The 600 runtime diff and 400 file size values are advisory reference points,
-not hard ceilings. A crossing produces a warning and a reviewer decision:
-retain with a concrete cohesion/readability reason, or refactor in the same PR.
-Do not require a new packet, separate authorization, or budget exception ledger
-for a numerical crossing. Git history preserves earlier exception approvals.
-Architecture, ownership, dependency direction and readability still matter;
-an advisory metric does not excuse a God Object or tangled responsibilities.
-LOC, function-span and diff budgets are advisory review triggers; McCabe is
-the one enforced numerical threshold and is governed by the ratchet below —
-do not extract merely to move branches into forwarding helpers, and do not
-delete comments, blanks or formatting to satisfy a number.
+The 600 runtime diff and Markdown file size values are advisory reference
+points, not hard ceilings. A crossing produces a warning and a reviewer
+decision: retain with a concrete cohesion/readability reason, or refactor in
+the same PR. Do not require a new packet, separate authorization, or budget
+exception ledger for a numerical crossing. Git history preserves earlier
+exception approvals. Architecture, ownership, dependency direction and
+readability still matter; an advisory metric does not excuse a God Object or
+tangled responsibilities. In-scope file LOC growth and McCabe are the two
+enforced numerical ratchets below — do not extract merely to move branches
+into forwarding helpers, and do not delete comments, blanks or formatting to
+satisfy a number.
 
 Before issuing a packet, inspect affected files and consumers. For a routine local
 change, one maintenance line confirming existing ownership and no trigger suffices.
@@ -63,13 +64,50 @@ Reuse decisions already stated; do not invent an alternative or an essay to fill
 a form. For oversized-file growth, address the specific changed scenario and its
 simplest viable placement; "same responsibility" or "test-only" alone is insufficient.
 Review tests, fixtures and qualification scripts as maintained code under Q1-Q4.
-Reject concrete regressions, not numerical growth alone; do not force net-negative
+Reject concrete regressions and gate failures; do not demand net-negative
 LOC, delete required assertions or fragment files to satisfy a count.
 Existing size debt alone does not block delivery. Optional cleanup is nonblocking
 and may be deferred; a current correctness or invariant dependency cannot.
 Incomplete prose is corrected in the same packet. Only a missing material decision
 or required out-of-map edit warrants a scope return; estimates and routine local
 choices alone do not. Retain the other genuine STOP conditions below.
+
+### LOC growth ratchet enforcement
+
+`scripts/check_file_loc.py --base <commit>` measures the candidate against a
+required resolvable base commit and fails on prohibited first-party
+source-file growth. Enforced scope: first-party source/tooling files with
+extensions `.rs`, `.go`, `.zig`, `.c`, `.h`, `.cc`, `.cpp`, `.hpp`, `.py`,
+`.ps1`, `.sh`, `.sql` — 400 physical lines for production/tooling, 500 under
+the existing test/benchmark classification. Versioned SQL under
+`migrations/` stays advisory as decided above; the pinned
+`third_party/genai/` snapshot is outside first-party enforcement under its
+existing provenance/hygiene controls and grants no other `third_party/` path
+a vendor exemption. Markdown, declarative configuration/manifests/workflows,
+function span and the cumulative runtime diff remain advisory under their
+existing references. `scripts/check_structure.py` keeps its advisory
+size/hygiene inventory unchanged; this ratchet removes reviewer discretion
+to accept NEW_OVER, CROSSED or REGRESSED growth.
+
+A file at or below its threshold may grow up to it. NEW_OVER (new
+over-threshold file), CROSSED (compliant file crossing it) or REGRESSED (net
+growth of retained over-threshold debt) fails the gate. An unchanged
+oversized file is RETAINED and a smaller one IMPROVED; both remain reported
+as debt. Retained debt may cross a pure rename only when exactly one deleted
+source and one added destination share identical normalized text and the same
+category/threshold; copies, modified moves, ambiguous identities and
+category-changing moves are new files at their destination threshold. Without
+`--head`, the working tree is measured with real bytes (staged, unstaged and
+nonignored untracked files, deletions included); with `--head` an immutable
+committed candidate is measured. Exit 0 passes with debt still reported, 1 is
+a size regression and 2 is an input/measurement failure — never a zero-count
+pass. The required `metrics` job runs it on the same resolved base as the
+McCabe ratchet.
+
+A numeric LOC failure is corrected within the allowed outcome by cohesive
+extraction or shrinking the added code; it is not itself a new packet or
+architecture STOP. Same-size replacement still requires semantic review —
+LOC is not a God-Object proof.
 
 ### Function and dispatch classification
 
@@ -127,7 +165,8 @@ function, reason and smallest remedy; the executor must not raise a
 threshold to make its own PR green.
 
 Enforcement wiring:
-`scripts/check_complexity.py` (ratchet, exit 0/1/2) and
+`scripts/check_complexity.py` (ratchet, exit 0/1/2),
+`scripts/check_file_loc.py` (ratchet, exit 0/1/2) and
 `scripts/check_runtime_budget.py` (advisory, exit 0 on measurement) run in
 the `metrics` job of `.github/workflows/doc-check.yml`, which is required
 through `ci-ok`. CI resolves the ratchet base before measurement — PR:

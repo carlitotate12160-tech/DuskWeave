@@ -116,8 +116,9 @@ jobs:
         run: ./tests/test_dev_entrypoint.ps1
 
   metrics:
-    # Required metrics gate: McCabe ratchet enforced (exit 1 on regression);
-    # runtime diff budget and LOC remain advisory reporting.
+    # Required metrics gate: McCabe ratchet and first-party file LOC
+    # growth ratchet enforced (exit 1 on regression); runtime diff budget
+    # remains advisory reporting.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -170,6 +171,23 @@ jobs:
           git rev-parse --verify "$BASE^{commit}"
           echo "event=$EVENT checkout=$CHECKOUT github_sha=${{ github.sha }} base=$BASE"
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: File-size ratchet unit tests
+        run: python -m unittest discover -s tests -p test_file_loc.py
+
+      - name: File-size (LOC) ratchet measurement and reporting
+        shell: bash
+        run: |
+          set +e
+          output="$(python scripts/check_file_loc.py --base "${{ steps.base.outputs.base }}" --head HEAD 2>&1)"
+          rc=$?
+          set -e
+          echo "### File-Size Ratchet (first-party LOC)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$output" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$output"
+          exit "$rc"
 
       - name: Runtime-budget checker unit tests
         run: python -m unittest discover -s tests -p test_runtime_budget.py
