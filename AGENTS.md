@@ -231,13 +231,19 @@ Production/tooling file review reference point:
 ```
 
 Large modules should be split by cohesive responsibility. Test/benchmark files
-have a 500-line reference point; Markdown has a separate 600-line reference point, subordinate to any
+have a 500-line threshold; Markdown has a separate 600-line reference point, subordinate to any
 narrower document-specific rule. See QUALITY_BAR.md for canonical policy.
 
-Runtime diff and file size are advisory metrics informing review, not hard ceilings.
-Prefer runtime diffs below 300; above 400 is an advisory review trigger; 600 is a
-reference point. A crossing produces a warning and a reviewer decision: retain with
-a concrete cohesion/readability reason, or refactor in the same PR. Numerical
+First-party source-file LOC growth is enforced, not advisory:
+`python scripts/check_file_loc.py --base <commit>` fails on a new
+over-threshold file, a compliant file crossing its threshold, or net growth
+of retained over-threshold debt, and runs in the required metrics CI job.
+Retained oversized files may stay or shrink and remain reported as debt.
+Markdown, declarative configuration/manifests/workflows, function span and
+the cumulative runtime diff stay advisory. Prefer runtime diffs below 300;
+above 400 is an advisory review trigger; 600 is a reference point. An
+advisory crossing produces a warning and a reviewer decision: retain with a
+concrete cohesion/readability reason, or refactor in the same PR. Numerical
 crossings alone do not require an exception, a new packet, or SPLIT_REQUIRED.
 
 Apply QUALITY_BAR.md's conditional maintenance disposition before handoff and in
@@ -245,8 +251,8 @@ review. The architect resolves material mechanism, consumer/file scope and retir
 the executor retains routine local choices. Do not silently change those decisions
 or add dependencies, operator commands or operational steps.
 
-McCabe complexity is different: it is an enforced per-function ratchet, not an
-advisory metric. New functions above threshold 7 fail the required CI gate,
+McCabe complexity is the second enforced ratchet: a per-function ratchet, not
+an advisory metric. New functions above threshold 7 fail the required CI gate,
 previously compliant functions crossing above 7 fail, and retained debt may
 stay or decrease but never increase. The single reviewed pure-dispatch
 `src/main.rs::run` holds cap 10. QUALITY_BAR.md is canonical for the ratchet

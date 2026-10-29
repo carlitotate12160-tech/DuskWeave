@@ -180,12 +180,13 @@ For a behavior fix require a genuine failing assertion; for a refactor of
 already-correct behavior require honest passing-baseline characterization,
 not fabricated RED history or an introduced defect.
 Before issuing a ready packet, inspect current source, consumers, test fixtures,
-CI and supported environments. Runtime diff, file size and function span are
-advisory review reference points under QUALITY_BAR.md, not hard failure ceilings
-or reasons for new packets; McCabe is an enforced per-function ratchet
-(QUALITY_BAR.md canonical), so a packet that must introduce or worsen an
-over-threshold function names the function, reason and smallest remedy instead
-of a bypass. Resolve known file-map,
+CI and supported environments. First-party source-file LOC growth and McCabe
+are enforced ratchets under QUALITY_BAR.md (canonical); runtime diff, Markdown
+size and function span are advisory review reference points, not hard failure
+ceilings or reasons for new packets. A packet that must add an over-threshold
+file, grow retained LOC debt, or introduce/worsen an over-threshold function
+names the file/function, reason and smallest remedy instead of a bypass.
+Resolve known file-map,
 environment, and dependency conflicts here; do not knowingly send an impossible packet.
 Apply QUALITY_BAR.md's conditional maintenance disposition before handoff: inspect
 affected files/consumers; use one line for routine changes and four brief facts only

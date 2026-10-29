@@ -138,8 +138,9 @@ Prefer the smallest complete vertical behavior that preserves required invariant
 Packets must include preconditions, exact allowed files, STOP conditions,
 expected verification, review gates, and exact completion criteria.
 Check file-map, fixture, environment, dependency and scope feasibility before issuing
-the packet; LOC/diff/span metrics are advisory review reference points under
-QUALITY_BAR.md, while McCabe is an enforced per-function ratchet there.
+the packet; first-party source-file LOC growth and McCabe are enforced
+ratchets under QUALITY_BAR.md, while diff/span/Markdown metrics stay advisory
+review reference points there.
 Resolve known conflicts before handing work to the IDE.
 Separate editable paths from read-only authority/caller/consumer references.
 Tie quality claims to actual assertions, candidate commit and tested environment;

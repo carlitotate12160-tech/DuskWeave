@@ -37,7 +37,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 - Maintenance per QUALITY_BAR.md: one inspected/no-trigger line for routine changes; when triggered, four brief facts (mechanism/alternative/reason, estimated additions/removals by category, new responsibilities or none, retirement/replacement evidence or retained consumer). Reuse existing decisions; no separate artifact.
 - Fix the mechanism, consumer scope and permitted operational steps before handoff. Estimates do not authorize scope expansion; routine local choices remain with the executor.
 - For affected contracts, specify producer/artifact/consumer semantics (units, identity role/order and state), actual serialized byte bounds including request/configuration/repair, and lifecycle timing against freshness/deadlines. Preserve required information and original evidence times.
-- Runtime diff, file LOC and function span are advisory review reference points under QUALITY_BAR.md, not hard ceilings; a crossing produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR. McCabe is an enforced per-function ratchet (QUALITY_BAR.md canonical): a packet that must add or worsen an over-threshold function names the function, reason and smallest remedy.
+- First-party source-file LOC growth and McCabe are enforced ratchets under QUALITY_BAR.md (canonical): a packet that must add an over-threshold file, grow retained LOC debt, or add/worsen an over-threshold function names the file/function, reason and smallest remedy. Runtime diff, Markdown size and function span are advisory review reference points; a crossing produces a warning and reviewer decision: retain with a concrete cohesion reason or refactor in the same PR.
 - No budget exception ledgers, separate authorization packets, or pure-dispatch digest allowances are required for numerical crossings.
 
 ## Acceptance Criteria
@@ -51,7 +51,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 - DESIGN: document conventions, authority references, links, invariants; runtime wiring is N/A.
 - IMPLEMENT/FIX: unit, integration, and scenario tests; conflict markers, hygiene, formatting, and Clippy.
 - Exercise an artifact from the real producer through the real consumer where executable, including language/process boundaries; do not substitute mutually consistent mocks. Record evidence in the existing packet/review, not a new gate or report family.
-- McCabe ratchet is enforced in the required `metrics` job (exit 1 on regression); LOC/diff metrics remain advisory reports.
+- McCabe and first-party file-LOC ratchets are enforced in the required `metrics` job (exit 1 on regression); runtime diff remains an advisory report.
 - Material failures (broken tests, compiler errors, hygiene violations, invalid input) must be corrected before merge in the same PR.
 - CI and review may overlap drafting an independent next design under isolated resources — its own worktree and artifact/service ownership; the overlap grants no dependent runtime acceptance and permits no concurrent cluster-role mutation.
 
