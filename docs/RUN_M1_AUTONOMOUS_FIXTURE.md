@@ -83,8 +83,8 @@ complete graph and final candidate; no additional license is implicitly allowed.
 
 ## What the owner should see
 
-The successor qualification uses `m1_inference_permission_v4`,
-`m1_autonomous_run_request_v2` and the provider-independent
+The retained legacy v4/v2 successor qualification uses
+`m1_inference_permission_v4`, `m1_autonomous_run_request_v2` and the provider-independent
 `autonomous-dns-fixture-v2` run profile in `controlled_fixture` mode. The run
 request explicitly selects `fixture-responses-v1` or
 `fixture-chat-completions-v1`, bound to the registered permission. Its closed
@@ -160,8 +160,9 @@ heartbeat while building/testing, then the test result and terminal receipt.
 
 ## Operational commands
 
-For new v2 runs use v4 permission and explicit `inference_profile`, as exercised
-by `tests/m1_inference_lifecycle.rs` and its private support. Launch with
+For runs on the retained legacy v4/v2 binding, use v4 permission and explicit
+`inference_profile`, as exercised by `tests/m1_inference_lifecycle.rs` and its
+private support. Launch with
 `m1-run --timing-profile reasoning-bounded-v1 --input <registered-v2-run.json>`;
 the timing hint is a CLI flag, not a request/context JSON field. Keep the registered
 profile/recipient/settings and request binding identical. The following v1/v3
@@ -257,7 +258,13 @@ there is no new M1 acceptance, deployment qualification or target authorization.
 
 ## Provider-fixture lane: opt-in, not inherited consent
 
-For the delivered successor, bind `m1_inference_permission_v4` and
+Retained legacy instructions: this lane keeps the v4/v2 bindings on its
+explicitly selected legacy transport. New SDK episodes instead use
+`m1_inference_permission_v5`, `m1_autonomous_run_request_v3` and
+`m1_context_pack_autonomous_v3` from the SDK section above; never mix the
+bindings or their consent and timer values.
+
+For this retained legacy successor lane, bind `m1_inference_permission_v4` and
 `m1_autonomous_run_request_v2` to `autonomous-dns-fixture-v2`, `controlled_fixture`,
 `inference_profile: deepseek-responses-low-v1`. Pass the CLI timing hint
 `--timing-profile reasoning-bounded-v1` at start. Only inference contacts
@@ -327,16 +334,22 @@ Offline fixtures prove owner wiring/failure semantics, not LLM cognition,
 live target facts or an M1 seal. A failed/partial paid episode stays recorded;
 do not replay it to obtain a preferred strategy or a successful-looking report.
 
-## Accepted SDK transport transition (not delivered)
+## Accepted SDK transport transition (delivered)
 
-An accepted amendment selects a trusted `rust-genai` SDK adapter to replace
-this lane's owned direct-libcurl inference transport under the semantic
+The accepted amendment's trusted `rust-genai` SDK adapter replaced this lane's
+owned direct-libcurl inference transport under the semantic
 `dw-inference-intent-v1` binding; see
 [ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
 and
 [enabling contract section 8](contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28).
-It is not delivered: there is no SDK CLI, no new command and no changed
-behavior in the commands, profiles, bindings or qualification above. Adoption
-arrives only through a bounded runtime packet, qualified fixture/provider-
-fixture evidence, new versioned permission/run bindings and fresh consent —
-never by reusing an existing episode or approval.
+The SDK runtime was delivered by PR #132 (merge `a85afcb`). Its bindings,
+profiles, consent, commands and qualification are owned by the
+[SDK section](#sdk-loopback-qualification-and-fresh-consent) above and by
+[ENGINEERING_STATE](ENGINEERING_STATE.md#6-current-slices-and-next-action);
+the v4/v2 lanes above remain supported as retained legacy instructions.
+
+Current SDK support: real inference may use the consented
+`deepseek-genai-responses-low-v1` profile, but acquisition remains
+`controlled_fixture`. Real target acquisition still requires a separately
+delivered and qualified Linux runtime. Each episode still requires fresh
+consent — no existing run, episode or approval carries over.
