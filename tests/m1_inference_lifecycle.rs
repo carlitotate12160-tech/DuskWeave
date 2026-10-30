@@ -898,55 +898,11 @@ fn t8_populated_legacy_owner_records_survive_forward_migration_and_repeatable_re
     println!("t8_upgrade_worker_complete");
 }
 
+#[path = "m1_inference_lifecycle/missing_key.rs"]
+mod missing_key;
+
+// Keep externally selected test identities and libtest ordering stable.
 #[test]
 fn t5_deepseek_cli_without_a_key_keeps_its_profile_and_never_falls_back_or_replays() {
-    let _guard = native::db();
-    run_support::refresh();
-    for (i, profile) in [
-        "deepseek-responses-reasoning-v1",
-        "deepseek-responses-low-v1",
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let q = lifecycle::registered(0xe610 + i as u128, profile);
-        let path = run_support::path(&q);
-        let output = run_support::command()
-            .env("DW_M1_RUN_CONTROL_ROOT", run_support::control_root())
-            .args([
-                "m1-run",
-                "--input",
-                path.to_str().unwrap(),
-                "--timing-profile",
-                "reasoning-bounded-v1",
-            ])
-            .output()
-            .unwrap();
-        assert!(!output.status.success(), "{profile}");
-        let text = String::from_utf8_lossy(&output.stdout);
-        let receipt: Value = text
-            .lines()
-            .find(|line| line.starts_with('{'))
-            .map(|line| serde_json::from_str(line).unwrap())
-            .unwrap_or_else(|| panic!("missing run receipt: {text}"));
-        assert_eq!(receipt["inference_profile"], profile);
-        assert_eq!(receipt["inference"], json!([]));
-        assert_eq!(receipt["effect_count"], 0);
-        assert_eq!(
-            receipt["recorded_decisions"][0]["disposition"],
-            "live_key_missing"
-        );
-        assert_eq!(
-            receipt["recorded_decisions"][0]["current_use"],
-            "not_admitted"
-        );
-        for _ in 0..2 {
-            let (ok, after) =
-                run_support::cli("m1-run-recover", "--run", q["run_id"].as_str().unwrap());
-            assert!(ok, "{after}");
-            assert_eq!(after["inference"], json!([]));
-            assert_eq!(after["effect_count"], 0);
-        }
-        std::fs::remove_file(path).unwrap();
-    }
+    missing_key::t5_deepseek_cli_without_a_key_keeps_its_profile_and_never_falls_back_or_replays();
 }

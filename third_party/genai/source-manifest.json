@@ -1,0 +1,819 @@
+{
+  "upstream_revision": "a9504f1fe3641b4d21a8c44bea4379bed4394f4b",
+  "probe_revision": "1b985204723d9ae36d2fd494eb407d7f2edd463e",
+  "qualified_patch_sha256": "781f8e64531654c7b7fa322cc9731277038cc217c61e4bc332946957ab980936",
+  "files": [
+    {
+      "path": "Cargo.toml",
+      "upstream_blob": "c6e6b8ba408a1ae32bd28554418e4a00e9a09991",
+      "sha256": "9631f9ac5a7fd7992161653b5407a6ffaa1a86a2de22e50c3f13dfd104712970"
+    },
+    {
+      "path": "LICENSE-APACHE",
+      "upstream_blob": "05ccf1c5491f33d1d2dbb55d0f05653f25d55f9b",
+      "sha256": "b30eaf580f67b95e5cec404a129a50a345536a07ae22bd11fef31e62c4694212"
+    },
+    {
+      "path": "LICENSE-MIT",
+      "upstream_blob": "cb8b6a090c807503a1760d22c61af12ba67350bf",
+      "sha256": "8d8c7da8bba808062a123cdfe7ed16825c4f075f70473cbdfc8bd44f21f1ce1f"
+    },
+    {
+      "path": "src/adapter/adapter_kind.rs",
+      "upstream_blob": "34af9b36eca91ace57775b07a306a5ebf2c3269b",
+      "sha256": "0754c3030ae67a4f73f9ae8683169e93106f0ecb88c766fbb200c816f4ed2e19"
+    },
+    {
+      "path": "src/adapter/adapter_types.rs",
+      "upstream_blob": "684e46f047f5ca884942f27f97531f4506feeef1",
+      "sha256": "d933ca54cc2ddc144cc2ed8e80ee0c4ab3f65944549acefa0499a75a5816d6cb"
+    },
+    {
+      "path": "src/adapter/adapters/all_adapters.rs",
+      "upstream_blob": "4db5ed053fddecf5e65293881556d63910393fb9",
+      "sha256": "33956211eef71475ed8d91a602441124695ad2be0c099a195c04d145748e0fbb"
+    },
+    {
+      "path": "src/adapter/adapters/all_adapters_tests.rs",
+      "upstream_blob": "44764ea392252e09d74649e3ffe902ea3d82f3fb",
+      "sha256": "532a76a86a0c5f96ed285002930f4537198b248d44887c8d15b609388d8965cd"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/adapter_impl.rs",
+      "upstream_blob": "388ce7abf94f0bd8bf972c39fd56fdac3d447fae",
+      "sha256": "c4fcc45856330874770e44bcbb31f02580e7d83bc52dd36877075d7f308ab7a4"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/adapter_shared.rs",
+      "upstream_blob": "3c1b2eced34b044e5be66023ed39c6676d695ea9",
+      "sha256": "ef217324e976f8f8f11505d02df6d53edccf2b1b2cfc359a099a147f9d4553b8"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/adapter_shared_tests.rs",
+      "upstream_blob": "30762d38bfbf7e4daed8d35d7df7a9f70948280d",
+      "sha256": "8482d9cef8d52635f9e07e5cdbc30d9a8e5e50945d2a411d96ac848e008ba586"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/ant_model.rs",
+      "upstream_blob": "dfa8861f68c7065b94e3b5e76a878818ac7e1202",
+      "sha256": "56e86e231775d1cec3e6c520112433621c89dbfc56c7ebb376bab9d12947c14a"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/ant_model_tests.rs",
+      "upstream_blob": "91386b0a8b8a353d4ad6a0a983e981443ab9c6df",
+      "sha256": "7d0938c2fc0bbd5e26bb217632df3e055f21b4e286d14f6fec1606b94b934bbd"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/ant_reasoning.rs",
+      "upstream_blob": "d24637112143cca7aef7b26ca32c0c0d3d580c4c",
+      "sha256": "488e176cb26d79753775d6842c69c8a237e48d4c2596c00a19193264d6b07031"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/ant_reasoning_legacy.rs",
+      "upstream_blob": "6542ea66d896b489dccfb6d33690768b99f458f3",
+      "sha256": "e324a989e475c2c353573c1cbc53b5357b8a480d31664cda511f60fc77a96de1"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/ant_reasoning_tests.rs",
+      "upstream_blob": "e8e8e03145373374a573ceb97f592cd9265448fa",
+      "sha256": "347aa848ff9e79f264552aba676b17fdef627c8414e5ea9e700079857f996770"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/mod.rs",
+      "upstream_blob": "453bc0f567bac10a454e4013f04322357ddade4d",
+      "sha256": "2fa693708a094b75265c4112a7d98070ef76aba52e7563046eff97ce2d41ee0d"
+    },
+    {
+      "path": "src/adapter/adapters/anthropic/streamer.rs",
+      "upstream_blob": "acf64d50749667fc7b291c7e17a7bef85e1a37c7",
+      "sha256": "e7b67699a2629400a7ab251019928d27211a6761582c95de07287beed641e83e"
+    },
+    {
+      "path": "src/adapter/adapters/baidu/adapter_impl.rs",
+      "upstream_blob": "90f38045e0525777faa667f416b16b1322eb48fa",
+      "sha256": "808a8767caba5e0fa5596dd20524075e78d81a966a01b4e2e7907a09b0f43443"
+    },
+    {
+      "path": "src/adapter/adapters/baidu/mod.rs",
+      "upstream_blob": "fc85b5ca08a6d96d30eaa940cfefde7d00680be0",
+      "sha256": "1595d03624b2181db819d1d9b5c0207abb52c897405867eea1f19317016742be"
+    },
+    {
+      "path": "src/adapter/adapters/bedrock/adapter_api.rs",
+      "upstream_blob": "6c06d3135e53d56de2ff810855f8519e367b7271",
+      "sha256": "a548a6a738ddc0484d69b345151c16f52fb9f64ef33d9203b97f4bcce8ab5a40"
+    },
+    {
+      "path": "src/adapter/adapters/bedrock/adapter_sigv4.rs",
+      "upstream_blob": "e58e87ceca147c8220ba1d45161ecb89bd37e3ba",
+      "sha256": "b36c17489fbbe2c5441628dab8238a8cb3d8b3f5b9de34e02d8a6e9a65359216"
+    },
+    {
+      "path": "src/adapter/adapters/bedrock/converse.rs",
+      "upstream_blob": "8f291de635fefff46db00b887fc70b56502ae1b1",
+      "sha256": "9d8fe46ea5452bca4708a2622ea1147097254b739b65c6372259e0f43ba5a1ab"
+    },
+    {
+      "path": "src/adapter/adapters/bedrock/mod.rs",
+      "upstream_blob": "a9ce2f95b1672782edb54c8ce072d86fc6966347",
+      "sha256": "2a448f20d3a09e9706ff66148ea3ac7b891b87b8ec1d8b7b9b80bd809b66e06f"
+    },
+    {
+      "path": "src/adapter/adapters/bedrock/shared.rs",
+      "upstream_blob": "f9ea6182c6b440357c1809d355b0f4ede6d6dfe0",
+      "sha256": "136077f823fd764df0e6caf665bf6475dd19ed5f2b83ffb035336c3e08600047"
+    },
+    {
+      "path": "src/adapter/adapters/bedrock/sigv4.rs",
+      "upstream_blob": "a765485dc440567be64ce092fb6108d95e44ca13",
+      "sha256": "6d4212ddea8fbd65c705364defbe01cc6548b2d05b73ccfdd7fdd5e6aa065d50"
+    },
+    {
+      "path": "src/adapter/adapters/bedrock/streamer.rs",
+      "upstream_blob": "e254b963ca781b4d3791cd8792964d865ba96c4b",
+      "sha256": "eef1f46ef4ad96e05cfa67bf540a6c6d8c131f3214c4016f424eb9b3bbb10665"
+    },
+    {
+      "path": "src/adapter/adapters/cohere/adapter_impl.rs",
+      "upstream_blob": "70114884fc5ca91836b2ac8661a33cebdc9163ca",
+      "sha256": "825e24822069e704dc7e480e774d1c44d87006db2249cee1e1d13914092d60d1"
+    },
+    {
+      "path": "src/adapter/adapters/cohere/adapter_impl_tests.rs",
+      "upstream_blob": "fe319ef5a472ecb06496f1918e790b96f820bcf5",
+      "sha256": "27235ee27da6448f571ddd3ac9c9c1e523fc9ac509301c07b56f1d763f733973"
+    },
+    {
+      "path": "src/adapter/adapters/cohere/embed.rs",
+      "upstream_blob": "218f98e2a7dbb16fa89f8dca8e9ea371d7b38e92",
+      "sha256": "242208476363b6252c65c60a453376e2745f74b0945525ea00150078e8d740c7"
+    },
+    {
+      "path": "src/adapter/adapters/cohere/mod.rs",
+      "upstream_blob": "d105ec4e070af99da19e6813fbf1034e3ae40fa5",
+      "sha256": "f93c417f2357bf869dcc05aac9fb91a0cd643e4719e89ba145dc92564d21f184"
+    },
+    {
+      "path": "src/adapter/adapters/cohere/streamer.rs",
+      "upstream_blob": "bf2fcb0ab42af1413985c670970f73b4791ea9e6",
+      "sha256": "23c865d2291bb6645a2fd97259ccb3a3b8bd88491b044f95c005f11974fa3cc9"
+    },
+    {
+      "path": "src/adapter/adapters/custom/adapter_impl.rs",
+      "upstream_blob": "7fb907f3a50f002d324d81debba83120bed485a3",
+      "sha256": "4bee6a6cb5ea829ebdf9412fd072b61c873c3e17a88400fe22e3d9da1f751b56"
+    },
+    {
+      "path": "src/adapter/adapters/custom/mod.rs",
+      "upstream_blob": "44cc3384b3776c01a3aa1c0f83787536712600e0",
+      "sha256": "35c2baa448028d27dc57ef0721dd04c81b8b254b6b4206824e53a23c998af709"
+    },
+    {
+      "path": "src/adapter/adapters/fireworks/adapter_impl.rs",
+      "upstream_blob": "7930edfcf81a5b21ab36246fdae7972db32504ad",
+      "sha256": "5eb3b2cbbbb48a65364c42a629a481d842412ed71e3cd3d277bfa48e940b3093"
+    },
+    {
+      "path": "src/adapter/adapters/fireworks/mod.rs",
+      "upstream_blob": "f7a984f832bc7bbdfacaa727ccc690d6408b052f",
+      "sha256": "13080b45041543a2e0f3a73ef3745f1c726468b39fc8996f379ca995f08e14a5"
+    },
+    {
+      "path": "src/adapter/adapters/gemini/adapter_impl.rs",
+      "upstream_blob": "709b2ebdd6ca4ce77e224072791b5ef31cf55128",
+      "sha256": "22103d53b64b00944a71cad3a15c01ed0594e9ae6cc6bea106f8c1960f43ea87"
+    },
+    {
+      "path": "src/adapter/adapters/gemini/adapter_impl_tests.rs",
+      "upstream_blob": "280163e7fcff6b2f2c5776996269ddd005bec2cf",
+      "sha256": "983b448cd7a51c4afed375d739664d7830f85b80c3342837d5aad854a3023d12"
+    },
+    {
+      "path": "src/adapter/adapters/gemini/embed.rs",
+      "upstream_blob": "2564e3180491f709314bec9673be8b96106b1d75",
+      "sha256": "d5428ca6d79933253535351860a12539ecad3fa3f872001228103944db68735f"
+    },
+    {
+      "path": "src/adapter/adapters/gemini/mod.rs",
+      "upstream_blob": "d62d74926b7c938cc21d7e43f2c8c73c1a2b1341",
+      "sha256": "2076601693d50c9cacea56b63b32e86104f491e5372ffdf06862781c2c28d910"
+    },
+    {
+      "path": "src/adapter/adapters/gemini/streamer.rs",
+      "upstream_blob": "cb8560021973dcd380e2d4df1081eef6fc69d646",
+      "sha256": "90ddc8f4b37eef2cba5c707f0a66840959941bdc48e659eec35dbfad9eb5f657"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/adapter_impl.rs",
+      "upstream_blob": "521951e314857cd31699ec29d18f1668c2584b8a",
+      "sha256": "76d7a4f9c991372bb498b1a7f0f36cde25ece7763cff52844fbd6627b1bda0bd"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/adapter_impl_tests.rs",
+      "upstream_blob": "6ac6bf00558bfcba506eb43fde754fca887adb3b",
+      "sha256": "b795b46b8edfcfcf727912b1a95763de4b74526ef8f347aee981d5044c214db0"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/ix_enriched.rs",
+      "upstream_blob": "136a8548ef1e4f721c4ac935ee2233d384d2a0ff",
+      "sha256": "1fde68c039ec1eee54f1b798d289deb149bd67be1d9184fc023e7d7491e5457c"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/ix_enriched_tests.rs",
+      "upstream_blob": "091a52ba2b7301c74c473862f1ba9c6351eea803",
+      "sha256": "4787b9c43e4d49af3c5018d3c79667b5a18337efa2e476ed7f434681eda35c54"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/ix_types/ix_response.rs",
+      "upstream_blob": "96aa49d0ca1840f261fc7a911d67bcb539240c0c",
+      "sha256": "8498e07a19d92e0919b7d9b3164af2b92c1ab78210218f01d57d141e6dc94b7a"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/ix_types/ix_step.rs",
+      "upstream_blob": "4277dfc36b0b038e58817f9fbf0dcdcd1e47b615",
+      "sha256": "8e56ac152a61076c3da7c600e78a45f76f2ff080f63d58efdabfd6b7dcfc72df"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/ix_types/ix_usage.rs",
+      "upstream_blob": "5f2eeca920fd1adae50196eda3449a2d3de4f0a8",
+      "sha256": "e53fb4f7c57bc2ef204efb0b9b85f548dfdc0f565f54105206b0bb59107b8fa7"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/ix_types/ix_usage_tests.rs",
+      "upstream_blob": "c8c48fc5cdf70d48d80a72b63ff80e277a1770da",
+      "sha256": "6c12dbf0f40e7b33589af5263698eba05b86239cfe167f22459f9cbadea1398a"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/ix_types/mod.rs",
+      "upstream_blob": "7b1940596bef1a8f733977d0f845023487229b08",
+      "sha256": "f0f4b433fa69abc9636bd06be90a05e8c059fd912284912c5f9caac415a19992"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/mod.rs",
+      "upstream_blob": "f924d87a291fcfda297a85bbe6da3420a6ed0bfd",
+      "sha256": "5d4114ee6e389242805d56b939a085a02770541c15f53290546eb7a243790779"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/streamer.rs",
+      "upstream_blob": "b6e55c80c4b72db48b940f5c338d7158df2d7d57",
+      "sha256": "514f6ae46ffd2e393232df8d5cd172694bb4037a3958d6a062c61e93d55d8c5b"
+    },
+    {
+      "path": "src/adapter/adapters/gemini_ix/streamer_tests.rs",
+      "upstream_blob": "8c536dba0ed32a31711579e284ad665bc8483a65",
+      "sha256": "fd420415bd76c1141b13619904f98d4211faa692e71aebb7c5aa1b87b7bf29ea"
+    },
+    {
+      "path": "src/adapter/adapters/github_copilot/adapter_impl.rs",
+      "upstream_blob": "467595beee50be91c7bd38530bf3e4d6315fd412",
+      "sha256": "d891c0b80f7a74307723fef2a059c904d339afe3061427e6b9b32a8ebca5b093"
+    },
+    {
+      "path": "src/adapter/adapters/github_copilot/mod.rs",
+      "upstream_blob": "2e5a2177a50da86ea0173455b56c09ff3e4b8201",
+      "sha256": "01faccef9f51a35ce63002bfaeba5d7ae7eb59bb29fd385614f694298f43d85a"
+    },
+    {
+      "path": "src/adapter/adapters/mod.rs",
+      "upstream_blob": "ce946858d267c97927bbd0085601847e01eeb7da",
+      "sha256": "ffcfbcd27b676023c0a6673f7a80c1e8e7aba26c57a8f74c1736b65ad949c539"
+    },
+    {
+      "path": "src/adapter/adapters/ollama/adapter_impl.rs",
+      "upstream_blob": "36dc060f0c2c87e7de93c8baeb3245470d3604bf",
+      "sha256": "187b38628c9d1efbb498d38a21881d2dbf5b5132494cc884ad17400e598d4f8e"
+    },
+    {
+      "path": "src/adapter/adapters/ollama/adapter_shared.rs",
+      "upstream_blob": "919f47b6e27fd07aec48f49d8c14aafcdd095fa1",
+      "sha256": "645fccce01e1a8a0db68dd47e7cc5f4f7844ade54552d1d584cab222133e9308"
+    },
+    {
+      "path": "src/adapter/adapters/ollama/mod.rs",
+      "upstream_blob": "d25fb65e43721dd6cc3a3cda707f7f6d268dfef2",
+      "sha256": "6e960b1678b6bc9ee313acd742858e0a06e66df552fa95555c95295c9829ad77"
+    },
+    {
+      "path": "src/adapter/adapters/ollama/streamer.rs",
+      "upstream_blob": "be03f831281a4db2178205105d937918a6069016",
+      "sha256": "83d9ce53b330802ff84eb22ec326d0c19d28d00096fafe951894f2b629beaae8"
+    },
+    {
+      "path": "src/adapter/adapters/ollama_cloud/adapter_impl.rs",
+      "upstream_blob": "919fe846ffe51b6247ef947a97faa713428a52d9",
+      "sha256": "ac6b3df21fafc5a9f623f5a160e5bda22d80bd2eb68b9cb8e9618e50520c99b4"
+    },
+    {
+      "path": "src/adapter/adapters/ollama_cloud/mod.rs",
+      "upstream_blob": "ee5c40787be32e98f22c3431eca3acc92bf617f8",
+      "sha256": "47568a40c9cb26ee25fb3b0c3ed7918b04b1a9a22d2d74bb2aeb4daf70735cef"
+    },
+    {
+      "path": "src/adapter/adapters/omlx/adapter_impl.rs",
+      "upstream_blob": "87942f13243b0f8e460d3399c7d48f7d5d5b3d63",
+      "sha256": "3e2e2dbfadb1c8651ec91d29c98149e868bcd1dc66a8b6427ae6e1dd8de8e9af"
+    },
+    {
+      "path": "src/adapter/adapters/omlx/mod.rs",
+      "upstream_blob": "997f386a54e4145a5b816fdd31a7f5f1c7f660c7",
+      "sha256": "64d649d8ccf6789880c733a8fa01226b18ac3fb7ab623b65f681f084a0c0927e"
+    },
+    {
+      "path": "src/adapter/adapters/openai/adapter_impl.rs",
+      "upstream_blob": "de0717a59545ce0bd9784c3325a1ae9f8b2ab45c",
+      "sha256": "2835d6d71d6e80499a98ebe305f87d4799833129534fb0b6616dd37172abd23f"
+    },
+    {
+      "path": "src/adapter/adapters/openai/adapter_shared.rs",
+      "upstream_blob": "ccb88e545f3b1dda27023415727e281cefade32e",
+      "sha256": "7c221c8b818a5292f64e6dda16852dc39220f12e368613af2c2a11087a72a3fe"
+    },
+    {
+      "path": "src/adapter/adapters/openai/adapter_shared_tests.rs",
+      "upstream_blob": "c114e078ce9361d0b34b385a7a9caa151dba359c",
+      "sha256": "a8c4e1095a99e220c4053be85f96150696e781bde41c208ad0805b9a2314806a"
+    },
+    {
+      "path": "src/adapter/adapters/openai/cache_policy.rs",
+      "upstream_blob": "15f40d1d99b1f016c322bc31f94db3ec2bac41d1",
+      "sha256": "3e56960ffef1107ca201d43220c3f7bf92ab941cbe8cbed269b7212210cf9245"
+    },
+    {
+      "path": "src/adapter/adapters/openai/embed.rs",
+      "upstream_blob": "25aebf11dcd591ba4559a591f8833b8bb39546ba",
+      "sha256": "5a05dffcaa2747f9b7257e5534e04dc9fcfb19c9cdffedaf7f648d670c553ba4"
+    },
+    {
+      "path": "src/adapter/adapters/openai/mod.rs",
+      "upstream_blob": "723fd412eac2d4b8498f35ed00ceb1fe30f58b8f",
+      "sha256": "d4000bb8c68b8c0e90a7f5abf4bc8aa2b2f93e21ae07adbbcd14e35d955554a8"
+    },
+    {
+      "path": "src/adapter/adapters/openai/openai_model.rs",
+      "upstream_blob": "9154aa2396996eaa5eef01c714f23945e7fcd832",
+      "sha256": "39b2968bc8b12ab8c3cd949a68abd49e0d24d7f29dea4f411aac1902da296e90"
+    },
+    {
+      "path": "src/adapter/adapters/openai/schema.rs",
+      "upstream_blob": "dd1d5c57687ed804d8e6a63836d6c7ae82317e02",
+      "sha256": "c2f0731940d33cf225195c0daaa533cd34a63c6838c9a0484fe50939986c1829"
+    },
+    {
+      "path": "src/adapter/adapters/openai/streamer.rs",
+      "upstream_blob": "98f63432389cb20838b74f905cfe06024a5fdb67",
+      "sha256": "8c02da302f39e19ca714449457261b4b7b625a4deac569ffccb73eae2b92e918"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/adapter_impl.rs",
+      "upstream_blob": "79e412b3bf80aa69d6f4d55eca2bcf21e887a173",
+      "sha256": "79d999933d044ab7bf51cc8b2e5c774157d50d3e9983165a0a0f469c4f51da49"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/adapter_impl_tests.rs",
+      "upstream_blob": "809f3c89908453d3e1da82fcba59f813152be466",
+      "sha256": "d86311103eeea0a6f96935179a0d2d33d951341ad41989360fe085b3088a7f19"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/mod.rs",
+      "upstream_blob": "74faa78795b4c9994e248cb6834a20408d11471f",
+      "sha256": "be5266cc1c99f80177f0b4e89d85fd205af64529aa67e9c80ed4fc38c2856bc1"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/resp_types/mod.rs",
+      "upstream_blob": "b84eac007b2a5e2da43816f15da18265b76dc5fc",
+      "sha256": "9a40d5ed5bf6c3d8e5a0d15fde844c3d4e7961bc7ad6267bfcb6189ebc5add59"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/resp_types/resp_output_helper.rs",
+      "upstream_blob": "51fd7a7a64b12833ef506e6c22e2485382b154cd",
+      "sha256": "5def3744f9255f5912986d2041076e97504364db5eadaff9bca50248f032263a"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/resp_types/resp_response.rs",
+      "upstream_blob": "726333903c936a8759bd10cf1673fda6cb9dcbe0",
+      "sha256": "df43f135ff14f4a7ce7a6246e10eb2cc8a6c13899b4cb963657d3398490ab11e"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/resp_types/resp_usage.rs",
+      "upstream_blob": "d7c25880e05b5f5ef0606a8bd75e045f36dfeab0",
+      "sha256": "7f0f7b758b7df6b8f954aa14b14d2345524f723784aa639872112e0411df1c91"
+    },
+    {
+      "path": "src/adapter/adapters/openai_resp/streamer.rs",
+      "upstream_blob": "5a30b406c7fdd4262374cc55a878cf51f036d188",
+      "sha256": "2339901920d0e02664cd8fe0b08cc005db05f2ce47ee4a19bb7051a835927d1e"
+    },
+    {
+      "path": "src/adapter/adapters/opencode_go/adapter_impl.rs",
+      "upstream_blob": "03be42e371c69ec59fc885266235da6bbcd3d471",
+      "sha256": "7ed67325cdd64d028586446a20f6a0562f3d7141cda09961b100e59c643caf1f"
+    },
+    {
+      "path": "src/adapter/adapters/opencode_go/mod.rs",
+      "upstream_blob": "c1658b25379a1f163ac774a305d38eea418f3926",
+      "sha256": "5859a2777bb23082942e80e08eba1d02a822b2f66b5727ff2ca68e4b19861139"
+    },
+    {
+      "path": "src/adapter/adapters/support.rs",
+      "upstream_blob": "937902de55cd10c5ca4659d91d4c6ea4f8d84b99",
+      "sha256": "1361e80519de0faf3d456a5e2dc555e35d419b15cd749c667457ad265478e8ec"
+    },
+    {
+      "path": "src/adapter/adapters/vertex/adapter_impl.rs",
+      "upstream_blob": "35ada94be5aa9a697331da9b7b599041d7daf9a3",
+      "sha256": "eb84f78dffa659ca9e7bc0c0fccc600afce0f1aa2bd8da6708d60204414af42f"
+    },
+    {
+      "path": "src/adapter/adapters/vertex/mod.rs",
+      "upstream_blob": "09efb107214f59146f4ca3ae87f323aceb5f6eec",
+      "sha256": "427cd0c186dfd135eeb37d81249217db26eabbf8952221f08d7e8e6ee05e313a"
+    },
+    {
+      "path": "src/adapter/adapters/zai/adapter_impl.rs",
+      "upstream_blob": "2109bc1853bdbe5f29f7f68b5b5faed49159ee29",
+      "sha256": "682b64ea7c9d1f634ed5a346db85f3687b5bdc1913d24a7419d67eef1878df01"
+    },
+    {
+      "path": "src/adapter/adapters/zai/mod.rs",
+      "upstream_blob": "fd543db3eaada60fbe41d41ec6ba05415e03014a",
+      "sha256": "13b28ca3e1c3f003f1d12ff3d6290681466e5d2e7c7ffb9866c9266810e1a721"
+    },
+    {
+      "path": "src/adapter/dispatcher.rs",
+      "upstream_blob": "43d8805d64518bd022728840635266316dbce3e4",
+      "sha256": "ae749b4ac1c81bdf67ad267333d1c84a3d7c076b645662849ba7a40f184fc201"
+    },
+    {
+      "path": "src/adapter/inter_stream.rs",
+      "upstream_blob": "72b4a25c540bb050b151fe12f0f9ee553b8daeca",
+      "sha256": "a7add769b4ddaff2c0f2b626b3e4f28101e046c46145cc1cfc1d92e4d5e97998"
+    },
+    {
+      "path": "src/adapter/macros/adapter_impl_macros.rs",
+      "upstream_blob": "f26058ce0b5a9f23765a685d11bf5bb8281f2eb8",
+      "sha256": "d79da34836d1550f229c1f0253183195a219a52bda98c7e921dff98afd5c9ba9"
+    },
+    {
+      "path": "src/adapter/macros/adapter_kind_macros.rs",
+      "upstream_blob": "69b735fb296ac8c2dfc84863edf9b581727eee03",
+      "sha256": "aa5d7190e1edb76b2069b8c1bf60be1a5f21df2eb428daf4a063a98ab3b87580"
+    },
+    {
+      "path": "src/adapter/macros/dispatcher_macros.rs",
+      "upstream_blob": "24e9a01d4d35e598a0efd644d70ce5a17fc936c4",
+      "sha256": "48995108badee584f26610f1630f27a7bbd01302ad8e9a3e77d5267adf36e079"
+    },
+    {
+      "path": "src/adapter/macros/mod.rs",
+      "upstream_blob": "3db9634fb905b73a43b69d89d9271e4e597c63e4",
+      "sha256": "863e466e53fdf7ed26655296d61c7a7dc2d932f9f151ac8146774163d6e8b7a4"
+    },
+    {
+      "path": "src/adapter/mod.rs",
+      "upstream_blob": "f20384cdc7a6d8d16b5577b227f79423abdfb229",
+      "sha256": "29e8b47c5e4ae07088f82dc338672ba3a9f8dd2d2f942ae8d34f79dbf9cca33d"
+    },
+    {
+      "path": "src/chat/binary.rs",
+      "upstream_blob": "5f272cbafa507f0b54046f4676f1c4b8801e5d3d",
+      "sha256": "08e7f907d930d04ead656448ec529b55068728e4a11d32df81d75c04ceb4f14c"
+    },
+    {
+      "path": "src/chat/chat_message.rs",
+      "upstream_blob": "11e1384462412621340645dc30a1500fa53b289c",
+      "sha256": "5f9943d6d69b17bc7a3d222bc82fc99bb113671c35a334b18ce400c3770b6579"
+    },
+    {
+      "path": "src/chat/chat_options.rs",
+      "upstream_blob": "568079e7bc43a2ae3914435de7f2c24c625f468d",
+      "sha256": "092b7160ae6937c707df09df34444b6b400bd15135c6165bfff9b34e880f3c2f"
+    },
+    {
+      "path": "src/chat/chat_req_response_format.rs",
+      "upstream_blob": "a6ec22664e21dbde80079cd4bcb627912654c090",
+      "sha256": "cc21d0a71abc614e364fff97a32dbc504ba0b678c05adba54416de405ec36f41"
+    },
+    {
+      "path": "src/chat/chat_req_tool_choice.rs",
+      "upstream_blob": "ed50a4729ee8eeed65504731091eabae17b95dc6",
+      "sha256": "a9ddd8dd3105f156d149f634979404d45350f59080ff5f4bdc7c71ce15fdef32"
+    },
+    {
+      "path": "src/chat/chat_request.rs",
+      "upstream_blob": "a738420798552ddd433dc9d8b08e11745ddc24de",
+      "sha256": "1698a0e4bb6407826a59100f47e1028b7b486e548daf9b13439b36d802e6b970"
+    },
+    {
+      "path": "src/chat/chat_response.rs",
+      "upstream_blob": "459bc3839f3f8a4f6d7a3e65659ce8faf8628dc1",
+      "sha256": "d5260da6a91a5c651a78ad6bbb1c347c7bd7217017db1041e744b338e8c74a2c"
+    },
+    {
+      "path": "src/chat/chat_stream.rs",
+      "upstream_blob": "6fa64eab08fab992aca5ff66b721c82655410540",
+      "sha256": "de727734e8bfaaa5a9f2bfd0a99a2ca519cbbdcae5366977791af52538e92f53"
+    },
+    {
+      "path": "src/chat/content_part/common.rs",
+      "upstream_blob": "cc020155dd9664795a45818977b5bc71313d6530",
+      "sha256": "adc3e8ed31ef0263b36af15654e00d27f748b8d8e34ec09e76c67d3cb5e1c794"
+    },
+    {
+      "path": "src/chat/content_part/custom_part.rs",
+      "upstream_blob": "c208f22b69306f69564e9520ec68fd91b60004fc",
+      "sha256": "6956963485fc819eacdeea4120c360573e98686f9d4b1bfe7fdc6a3392bba3ae"
+    },
+    {
+      "path": "src/chat/content_part/mod.rs",
+      "upstream_blob": "6fb25367029cecd0a7fdc4ef4bde07802fd04624",
+      "sha256": "2ad9c01467e6e9329c9a3a074086165be0b5e4bd66d2edd3d590e324c4f6bcb5"
+    },
+    {
+      "path": "src/chat/frame_sink.rs",
+      "upstream_blob": "c7507508016815a9d8d24c227e24a22b77ffc744",
+      "sha256": "fb2a1a65b1fb72f15dc18400ef0cb6a1af76cd860f72bebd8f5cf1a57be0775e"
+    },
+    {
+      "path": "src/chat/json_schema.rs",
+      "upstream_blob": "12c9106d21a14bf7957bb29b08368b0f7bc82bb6",
+      "sha256": "6d1419c00d05c5f55b920bf5f6ca7f2d0e7c424eb1f23a233b1e71ff5be4931b"
+    },
+    {
+      "path": "src/chat/message_content.rs",
+      "upstream_blob": "09efcd1667ae861bfe6a1484677678f055c33e2b",
+      "sha256": "48cba85b73af47814945224cf48855da49c538c9f72e137b9eb330ace985d08e"
+    },
+    {
+      "path": "src/chat/mod.rs",
+      "upstream_blob": "775ac4e7e9fb2d326a597e37ce6cdf90f5b652d5",
+      "sha256": "af42ecf0b7747195b69c7eeee51f78d983b67d3e52659d3280b3a6451c4416de"
+    },
+    {
+      "path": "src/chat/printer.rs",
+      "upstream_blob": "758d17aaf5c74c0e0fe4bc05f75666eb5d7062fa",
+      "sha256": "9f0dce6610b3e5281a4f56151b8e19475045f0162403dbc32b551a6b31632ab2"
+    },
+    {
+      "path": "src/chat/tool/mod.rs",
+      "upstream_blob": "2f412af778241864431ff931b4909b2bf7627b0c",
+      "sha256": "d70fea7973542f169cded5a90d68cc2e646cec77a18b3dd2793584d01e682bef"
+    },
+    {
+      "path": "src/chat/tool/tool_base.rs",
+      "upstream_blob": "aa73c6e64e39f051bafe784bd5a8bdd6d7bab93b",
+      "sha256": "81de795565f4382600a0739b16663f029033e7f002d7c2f5a0260ce40bf3aa8c"
+    },
+    {
+      "path": "src/chat/tool/tool_call.rs",
+      "upstream_blob": "6567a85eb6735f5e49fb0a1505c1b5c6d2b242ce",
+      "sha256": "8675d9eb42c9d6928804e69fc0232f2265f1588bef087520cdcaa9b5f49c0d00"
+    },
+    {
+      "path": "src/chat/tool/tool_response.rs",
+      "upstream_blob": "7afcaad2d703c8e44035a5fa8057dc8590623c2c",
+      "sha256": "363e799f238a1cf894829f116a6308ecfeb46566da88a8457daf5fc5b4760b61"
+    },
+    {
+      "path": "src/chat/tool/tool_types.rs",
+      "upstream_blob": "f714ef593dbadb939f22dd19a277d5937bd489f2",
+      "sha256": "9df125b7be49927f31927872d4465cf9650fe4aa1128896e3cd8d1c5eb5d0d96"
+    },
+    {
+      "path": "src/chat/tool/web_search_config.rs",
+      "upstream_blob": "db056c3c7d23e6c585799ecffc43215a7ea590c8",
+      "sha256": "fe047dfd763f9754485899b406c884e25333f7f1e2082a8c0ab40eee448846da"
+    },
+    {
+      "path": "src/chat/usage.rs",
+      "upstream_blob": "cebf79c337a1b6e1051ca3e1de080cbd115a7420",
+      "sha256": "7071771836ce2478db139365fffc4b16c9048825e41610860b1559291075043d"
+    },
+    {
+      "path": "src/client/builder.rs",
+      "upstream_blob": "06d1942d0662bc3765a542e1f1bbb9e34be31316",
+      "sha256": "65d35d2c79c029b9924c749002453d02faa826fb7e5d76129b499891e4ad6073"
+    },
+    {
+      "path": "src/client/client_impl.rs",
+      "upstream_blob": "0df4f2a218957ec5cc2e6ce5e9cafe59ebcb8000",
+      "sha256": "5b77c0dc74a1ce1ba2311d68cbadb4fdf7a1aa7be846dba996c124bd86ed8074"
+    },
+    {
+      "path": "src/client/client_types.rs",
+      "upstream_blob": "37a46e36b4024bae39ac824098ce4c12c061023b",
+      "sha256": "e5eb7ac37d5b6dd70c2fc60d5239ec9fbc49cf7b7a0071979221f1da045ef171"
+    },
+    {
+      "path": "src/client/config.rs",
+      "upstream_blob": "b8720ea9cc658d0b252a72064834780cc48ed1f5",
+      "sha256": "8eed704f5166e6895758dbbb497701b401c0742891882e9dd28274c02620f6ab"
+    },
+    {
+      "path": "src/client/headers.rs",
+      "upstream_blob": "2b3a74ef247dcaf82dbf80ed87073dc16b312e92",
+      "sha256": "4e2bbce8c617a449b30749ae1e34945366dcfe5fad220dd25cbe27bc3a11c0d8"
+    },
+    {
+      "path": "src/client/mod.rs",
+      "upstream_blob": "3fbb6d75fb71cfeaee6ab397a1962ab28e8f8b74",
+      "sha256": "53707fa4c8ddf02eef2b5c6c8170c7b93f03ecbceef6592f7e9d8dfaa54c91c9"
+    },
+    {
+      "path": "src/client/model_spec.rs",
+      "upstream_blob": "2641eded4d7eebc6b371819433ecef940af50832",
+      "sha256": "83c0b1d93eb5aca41bf0e41176635dc48166e5f3ecfb934a03ab15d7ca31bbd5"
+    },
+    {
+      "path": "src/client/service_target.rs",
+      "upstream_blob": "a2d5a37e2c6e5945ea28766b42b36d290a9bf6c4",
+      "sha256": "d2a67ab5e7a6a5d77087e674a8a1ab5b6595f4cc694965a717df5cdd4ec0669a"
+    },
+    {
+      "path": "src/client/web_config.rs",
+      "upstream_blob": "719ece2f5b4ea2eeb33a31c262a95f858a7ca92e",
+      "sha256": "cd6a9447a143950786003a22682b7f92f711f4baa2410a964b73c6f09eda1f8d"
+    },
+    {
+      "path": "src/common/mod.rs",
+      "upstream_blob": "a97940b5d73a378559bb729dbc249bf0498db2b1",
+      "sha256": "008cd22581b5e87b453f9e41d966d4251a27ed200c67cffa2f41bb1137b39825"
+    },
+    {
+      "path": "src/common/model_iden.rs",
+      "upstream_blob": "ed40c64ef6b00dfdc445dce4b31645ed05b8a981",
+      "sha256": "5ab4e31ad5e085d170ae4b38c367a1a0a42685f7f491b9d96b8056e8df3df6b2"
+    },
+    {
+      "path": "src/common/model_name.rs",
+      "upstream_blob": "087a4d6b028b2932c5a2438dffa7073deace83bb",
+      "sha256": "963b69c79b99a36fb3090a5e97b24517aac488f9b51c2055091f4a2f17e51b37"
+    },
+    {
+      "path": "src/embed/embed_options.rs",
+      "upstream_blob": "363845bc7df99f83b81d1997f59b8239bc5eff88",
+      "sha256": "29901ab666729a1ceaf1483ddc64848478d8aae032c15a85b25aabacced5ca7e"
+    },
+    {
+      "path": "src/embed/embed_request.rs",
+      "upstream_blob": "7feaccce2bbaeddbb263d04e56a2306dad4cd953",
+      "sha256": "403a64c7b3de45960af0cb34339c89d7b7c8abb531fee054b98308a290cdd973"
+    },
+    {
+      "path": "src/embed/embed_response.rs",
+      "upstream_blob": "3b5477e1850970ffc3e6a82e4ccc9a4ae08de795",
+      "sha256": "f6afe795dee66edc64940d920270dfe0c8b15619d377d7f7d7e2d7b530fba27d"
+    },
+    {
+      "path": "src/embed/mod.rs",
+      "upstream_blob": "a3f4b5e5e806800b518cc3bd5351ae12f555aad6",
+      "sha256": "7fa24ca8eda59564282d10e2c32ca529cb71fffecfc5db5118fcb46156e32129"
+    },
+    {
+      "path": "src/error.rs",
+      "upstream_blob": "d2a94a2ad1b50a62cfa1adfe2317273066aa7d7f",
+      "sha256": "3166d4ea859411c74a6bcaaa56faf9977f7f2a8614ba0ea4e089aede778d681d"
+    },
+    {
+      "path": "src/lib.rs",
+      "upstream_blob": "21c6502b763c4c465037808671f1c943137209fe",
+      "sha256": "5a07cf2a12cb42967e53e95dc17a7293c83214c8593f61578f3b9f4cef33c280"
+    },
+    {
+      "path": "src/otel/agent.rs",
+      "upstream_blob": "036d64c8bda37b6eb44c2eba5e618adc2be81e66",
+      "sha256": "9b1f88dfec6105dcb45adb38fd5544f5fb32343095ddd700b7913d559609e91f"
+    },
+    {
+      "path": "src/otel/attrs.rs",
+      "upstream_blob": "9030349f40988d54aca5d6b06568ea7de3d27c54",
+      "sha256": "6576f2b34981fc1a19c4e01e1bc22b17692b53d9e2942a6e63ad75e2dbda4108"
+    },
+    {
+      "path": "src/otel/conventions.rs",
+      "upstream_blob": "d3641865dad40c901821b5f50bafbfec37fb3f19",
+      "sha256": "c481bbf9a2f5e0284646b1de49ec837e3767f011ab163fb95484cc2eb1fbe18e"
+    },
+    {
+      "path": "src/otel/error.rs",
+      "upstream_blob": "618b789662ee8e752a2a850ad8bc621acb40ca80",
+      "sha256": "3c2aba0e479279f1a331fddc8f883ac18749434caf57d126c39889010e46859e"
+    },
+    {
+      "path": "src/otel/events.rs",
+      "upstream_blob": "3ad6a65503847c64916a2a83cdc930b7b5af1f22",
+      "sha256": "1f85f1f384645ae601b6339396296a4e6e1a218983de32e77ccdb94bfc3a6bbb"
+    },
+    {
+      "path": "src/otel/mod.rs",
+      "upstream_blob": "914fc1993a7b499a8605a25859c6963ad9369132",
+      "sha256": "41f43922e2282c881b268bbac29fcc0379ccec1cbcd89508a0f4515d6005da3b"
+    },
+    {
+      "path": "src/otel/span.rs",
+      "upstream_blob": "00186394cf396c989cef62f15ee37e94b714df3a",
+      "sha256": "b69cea2c5b1e8e237da6153b50e0d36a5763cb470db0e6a12cfac0186cffcfcd"
+    },
+    {
+      "path": "src/otel/tests.rs",
+      "upstream_blob": "578a9e19d53298540341da71e5a4a7901a587160",
+      "sha256": "566967e5d15c3046832fd11b7b0ce870944a9af3eedd47322d7625b54248d397"
+    },
+    {
+      "path": "src/resolver/auth_data.rs",
+      "upstream_blob": "24084f7e3d53703fad3edd274578fd0555549a60",
+      "sha256": "740c8aed7c30af101430e56859b527a2c03a2abd84a6420c17b88f159129edf1"
+    },
+    {
+      "path": "src/resolver/auth_resolver.rs",
+      "upstream_blob": "28a933fef968ca9b535c723c07e21e631232081b",
+      "sha256": "d16885e06fb28899d971d2cc833eb5dc0222f77cab52990bada4b934ea3f93ae"
+    },
+    {
+      "path": "src/resolver/endpoint.rs",
+      "upstream_blob": "6e37610818041a890162cd18c3073b89628b0bfe",
+      "sha256": "4d01adba5d517a1e2fa248d4931ff1c766e77cf737b6a145e7364b8f84523cbe"
+    },
+    {
+      "path": "src/resolver/error.rs",
+      "upstream_blob": "390c4c0a58d15ba9027a89eec7d454f14b029ff7",
+      "sha256": "47cf193147d7d777ae728b5a9b5df94bde60b3d8d2ad26ee93cbef61ea03d100"
+    },
+    {
+      "path": "src/resolver/mod.rs",
+      "upstream_blob": "251e744675a7ce84b702659f86ea7ab7af5521af",
+      "sha256": "2f5004bdacec45ddf97182c5d603cf2a3c698035902e86044aefb14678313260"
+    },
+    {
+      "path": "src/resolver/model_mapper.rs",
+      "upstream_blob": "e4e7dd468e41c53c66d235e86435b166e0aebb24",
+      "sha256": "545bc073e417e7bb6ee74421767eb06b4548bd2a85049db6b222bea714791a20"
+    },
+    {
+      "path": "src/resolver/provider_config.rs",
+      "upstream_blob": "cf02f950bedd19ecf4d8dc0cf03891a606dcc283",
+      "sha256": "1cfe950f4d11b4b626eabeca56c18f7b77b4eb3948eda07bc8126bea08c77ee3"
+    },
+    {
+      "path": "src/resolver/service_target_resolver.rs",
+      "upstream_blob": "a7dc4934b8ea1d58d58196a786b5e8138cd3a869",
+      "sha256": "ae095563c1ff46d2c0dbbb9e575d036acce34ae41f950eba3287d2ca77eb9919"
+    },
+    {
+      "path": "src/support.rs",
+      "upstream_blob": "29362504a48530a678be5843289d79ac9b6c3f61",
+      "sha256": "40196f97256cee90a48e234239eb4ef3db37ee0a7794110550a2270e02a7dde7"
+    },
+    {
+      "path": "src/webc/error.rs",
+      "upstream_blob": "cd097cbcd4244a68ef199252f734640fc6c96dd7",
+      "sha256": "34b6d27e2c92dc3462bcb443a29f8849b9f24af579c8b96367c6cd912929fc0e"
+    },
+    {
+      "path": "src/webc/event_source_stream.rs",
+      "upstream_blob": "112e3325e1400953b91b239a3a9404bd5ca1db8e",
+      "sha256": "d8900d8273d7d5dc89b175206c178a6ddf7b6fdb41675525a81421251fe69318"
+    },
+    {
+      "path": "src/webc/frame_tap.rs",
+      "upstream_blob": "c526d3bd8402a00ec82e608f53885a5ae70b5959",
+      "sha256": "86496229f4430b7b74becf05cf727f9350af698a6dacb0304e1d3d3c32aa264d"
+    },
+    {
+      "path": "src/webc/mod.rs",
+      "upstream_blob": "538e1a3d710b5b72b92707f2f75fbe07abd194ed",
+      "sha256": "af7756ba23ab0fe13e837243ee3af0ddc457ea634f68729b2483bd48d4972683"
+    },
+    {
+      "path": "src/webc/stream_transport.rs",
+      "upstream_blob": "5b8f5ae4d592a5f4ecb49ddefd62d62d78a8ea5d",
+      "sha256": "6e4c5c6066a8ba2ea39f2280da3394a80f88a8d6d7fe4387301e032ced197264"
+    },
+    {
+      "path": "src/webc/web_client.rs",
+      "upstream_blob": "f1dcf565db240ae9fc0bbbbbe8d2ace75acd8b32",
+      "sha256": "f8d60aa7c5971c69b5fa0f223e4ae30d1b0a971f6a460a7c7d086cb4ca106095"
+    },
+    {
+      "path": "src/webc/web_stream.rs",
+      "upstream_blob": "87f4bdfb34e4b70220fcae4d173e5170851d7f97",
+      "sha256": "9c5e2d94126bf183fca99abf6dc9422077e5a3cf3a897398e7408bec8429b57e"
+    },
+    {
+      "path": "src/webc/web_stream_tests.rs",
+      "upstream_blob": "14ddc2911160567af7c62d1aa3259921432572fb",
+      "sha256": "375887b77c18963344a994286d1d028670d103209c2bb7841a99a60cd109ada4"
+    }
+  ],
+  "dependency_licenses": [
+    {
+      "name": "webpki-root-certs",
+      "version": "1.0.11",
+      "spdx": "CDLA-Permissive-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_file": "LICENSE",
+      "license_text": "# Community Data License Agreement - Permissive - Version 2.0\n\nThis is the Community Data License Agreement - Permissive, Version\n2.0 (the \"agreement\"). Data Provider(s) and Data Recipient(s) agree\nas follows:\n\n## 1. Provision of the Data\n\n1.1. A Data Recipient may use, modify, and share the Data made\navailable by Data Provider(s) under this agreement if that Data\nRecipient follows the terms of this agreement.\n\n1.2. This agreement does not impose any restriction on a Data\nRecipient's use, modification, or sharing of any portions of the\nData that are in the public domain or that may be used, modified,\nor shared under any other legal exception or limitation.\n\n## 2. Conditions for Sharing Data\n\n2.1. A Data Recipient may share Data, with or without modifications, so\nlong as the Data Recipient makes available the text of this agreement\nwith the shared Data.\n\n## 3. No Restrictions on Results\n\n3.1. This agreement does not impose any restriction or obligations\nwith respect to the use, modification, or sharing of Results.\n\n## 4. No Warranty; Limitation of Liability\n\n4.1. All Data Recipients receive the Data subject to the following\nterms:\n\nTHE DATA IS PROVIDED ON AN \"AS IS\" BASIS, WITHOUT REPRESENTATIONS,\nWARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED\nINCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE,\nNON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.\n\nNO DATA PROVIDER SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT,\nINCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING\nWITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE DATA OR RESULTS,\nEVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.\n\n## 5. Definitions\n\n5.1. \"Data\" means the material received by a Data Recipient under\nthis agreement.\n\n5.2. \"Data Provider\" means any person who is the source of Data\nprovided under this agreement and in reliance on a Data Recipient's\nagreement to its terms.\n\n5.3. \"Data Recipient\" means any person who receives Data directly\nor indirectly from a Data Provider and agrees to the terms of this\nagreement.\n\n5.4. \"Results\" means any outcome obtained by computational analysis\nof Data, including for example machine learning models and models'\ninsights.\n"
+    }
+  ],
+  "integration_patch_sha256": "1c775aefb6999869b6bfc1905e02e26cb3101d9a6d628d177457b60a8d3a4969",
+  "hash_representation": "git-lf"
+}

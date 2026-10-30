@@ -63,7 +63,10 @@ impl Authority {
         authority_deadline(started, wall, until, self.deadline)
     }
     fn premise_limit(&mut self, source: &serde_json::Value, until: i64) -> Res<i64> {
-        if source["fields"]["m1_inference_permission"]["version"] == "m1_inference_permission_v4" {
+        if matches!(
+            source["fields"]["m1_inference_permission"]["version"].as_str(),
+            Some("m1_inference_permission_v4" | "m1_inference_permission_v5")
+        ) {
             self.terrain.recording_integrity().map_err(Fail::State)?;
             Ok(until)
         } else {

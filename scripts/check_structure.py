@@ -17,6 +17,9 @@ Exit code 0 when clean of hard violations (file size excess is advisory),
 1 when any forbidden path, conflict marker, or Rust hygiene violation is found.
 """
 import os
+import hashlib
+import json
+from pathlib import Path, PurePosixPath
 import re
 import sys
 
@@ -122,15 +125,83 @@ def check_rust_hygiene(rel, text):
     return hits
 
 
+SDK_REVISION = "a9504f1fe3641b4d21a8c44bea4379bed4394f4b"
+SDK_BASELINE_TREE = "a4673c51b9a276b7fa012f716a1de130db9aab60"
+SDK_PATCH_FILES = {"src/client/web_config.rs", "src/webc/web_client.rs", "src/webc/error.rs",
+                   "src/client/client_impl.rs", "src/client/client_types.rs"}
+# Pin the authorized whitespace correction exactly; this is not a general patch allowance.
+SDK_COSMETIC_BLOBS = {"src/adapter/adapters/zai/mod.rs": "8c5c856234d7829fdf87108a229adbb310b0f387"}
+
+
+def git_object(kind, data):
+    return hashlib.sha1(kind.encode() + b" " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+
+def baseline_tree(entries):
+    tree = {}
+    for path, blob in entries:
+        parts, node = path.split("/"), tree
+        for name in parts[:-1]:
+            node = node.setdefault(name, {})
+        node[parts[-1]] = blob
+
+    def digest(node):
+        raw = bytearray()
+        for name in sorted(node, key=lambda n: (n + "/" if isinstance(node[n], dict) else n).encode()):
+            value = node[name]
+            mode, oid = ("40000", digest(value)) if isinstance(value, dict) else ("100644", value)
+            raw.extend(mode.encode() + b" " + name.encode() + b"\0" + bytes.fromhex(oid))
+        return git_object("tree", raw)
+    return digest(tree)
+
+
+def sdk_scope(root):
+    directory = Path(root) / "third_party" / "genai"
+    if not directory.exists():
+        return set(), []
+    try:
+        manifest = json.loads((directory / "source-manifest.json").read_text(encoding="utf-8"))
+        if manifest.get("hash_representation") != "git-lf":
+            raise ValueError("unexpected source hash representation")
+        files = manifest["files"]
+        if manifest["upstream_revision"] != SDK_REVISION or len(files) != 160:
+            raise ValueError("unexpected snapshot revision or count")
+        paths = [entry["path"] for entry in files]
+        if len(set(paths)) != len(paths):
+            raise ValueError("duplicate snapshot member")
+        if any(PurePosixPath(p).is_absolute() or ".." in PurePosixPath(p).parts or "\\" in p for p in paths):
+            raise ValueError("invalid snapshot member")
+        if baseline_tree([(entry["path"], entry["upstream_blob"]) for entry in files]) != SDK_BASELINE_TREE:
+            raise ValueError("baseline membership or identity differs")
+        actual = {p.relative_to(directory).as_posix() for p in directory.rglob("*") if p.is_file()}
+        if actual != set(paths) | {"source-manifest.json"}:
+            raise ValueError("snapshot membership differs")
+        for entry in files:
+            path = directory / entry["path"]
+            # Git text custody is LF; Windows autocrlf may materialize CRLF.
+            # Normalize only that representation, never whitespace or content.
+            data = path.read_bytes().replace(b"\r\n", b"\n")
+            if path.is_symlink() or hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                raise ValueError("patched member identity differs")
+            if entry["path"] not in SDK_PATCH_FILES:
+                expected = SDK_COSMETIC_BLOBS.get(entry["path"], entry["upstream_blob"])
+                if git_object("blob", data) != expected:
+                    raise ValueError("out-of-map SDK modification")
+        return {"third_party/genai/" + p for p in paths}, []
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return set(), [f"third_party/genai: {error}"]
+
+
 def main():
     oversize, forbidden, markers, rust = [], [], [], []
+    sdk, provenance = sdk_scope(ROOT)
     for path in sorted(iter_files(ROOT)):
         rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
         name = os.path.basename(path).lower()
         ext = os.path.splitext(name)[1]
 
         bad = check_forbidden_path(rel)
-        if bad:
+        if bad and rel not in sdk:
             forbidden.append(f"{rel} (forbidden: {', '.join(bad)})")
 
         if ext not in CHECKED_EXTS or name in SKIP_FILES:
@@ -140,10 +211,10 @@ def main():
             continue
         lines = split_physical(text)
         cap = file_limit(rel)
-        if len(lines) > cap:
+        if len(lines) > cap and rel not in sdk:
             oversize.append(f"{rel} ({len(lines)} lines > {cap})")
         markers.extend(check_conflict_markers(rel, lines))
-        if ext == ".rs":
+        if ext == ".rs" and rel not in sdk:
             rust.extend(check_rust_hygiene(rel, text))
 
     print(f"Files over category LOC reference point (advisory): {len(oversize)}")
@@ -152,6 +223,7 @@ def main():
 
     failed = False
     for label, items in (
+        ("SDK provenance", provenance),
         ("Forbidden dumping-ground paths", forbidden),
         ("Conflict markers", markers),
         ("Rust production hygiene", rust),

@@ -16,7 +16,7 @@ from urllib.parse import quote
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 NAMESPACE = "dw_native_"
 KINDS = ("fixture", "live")
-SCHEMA_REVISIONS = ("0020", "0021")
+SCHEMA_REVISIONS = ("0020", "0021", "0022")
 ROOT = Path(__file__).resolve().parents[2]
 SUPERVISOR_VARIABLE = "DW_TEST_FIXTURE_SUPERVISOR"
 # Development-tool policy ceiling for legacy no-ceiling callers; selected
@@ -291,7 +291,7 @@ class Fixture:
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
+        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
         for number in numbers:
             if number > int(self.schema_revision):
                 continue

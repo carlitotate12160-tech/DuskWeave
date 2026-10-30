@@ -8,6 +8,7 @@ use super::proposal::{self, ProposalBasis};
 use super::provider_diagnostic::{
     Classification, ErrorParam, ErrorType, Phase, ProviderDiagnostic,
 };
+use std::cell::Cell;
 use std::time::Duration;
 type Res<T> = Result<T, &'static str>;
 // libcurl owns transfer framing; this admits only the bounded header/body callback bytes.
@@ -257,4 +258,93 @@ fn assistant_text(output: &[serde_json::Value]) -> Res<&str> {
         }
     }
     text.ok_or("provider_protocol")
+}
+
+struct KeyExclusion<'a> {
+    owner: &'a mut dyn ProposalBasis,
+    key: &'a str,
+    reflected: Cell<bool>,
+}
+impl KeyExclusion<'_> {
+    fn clear(&self, text: &str) -> bool {
+        if text.contains(self.key) {
+            self.reflected.set(true);
+            return false;
+        }
+        true
+    }
+}
+impl ProposalBasis for KeyExclusion<'_> {
+    fn reference_eligible(&self, r: &str) -> bool {
+        self.clear(r) && self.owner.reference_eligible(r)
+    }
+    fn manifest_eligible(&self, r: &str) -> bool {
+        self.clear(r) && self.owner.manifest_eligible(r)
+    }
+    fn safe_explanation(&self, text: &str) -> bool {
+        self.clear(text) && self.owner.safe_explanation(text)
+    }
+    fn current_authority_and_premises(&mut self) -> Res<()> {
+        self.owner.current_authority_and_premises()
+    }
+    fn current_authority_for_references(&mut self, refs: &[String]) -> Res<()> {
+        if !refs.iter().all(|r| self.clear(r)) {
+            return Err("provider_unsafe_response");
+        }
+        self.owner.current_authority_for_references(refs)
+    }
+}
+/// One key-exclusion owner shared by the retained HTTP and SDK adapters.
+pub(super) fn screened(
+    key: &str,
+    basis: &mut dyn ProposalBasis,
+    diagnostic: &mut ProviderDiagnostic,
+    admit: impl FnOnce(&mut dyn ProposalBasis, &mut ProviderDiagnostic) -> Res<Received>,
+) -> Res<Received> {
+    let mut screened = KeyExclusion {
+        owner: basis,
+        key,
+        reflected: Cell::new(false),
+    };
+    let result = admit(&mut screened, diagnostic);
+    let reflected_report = diagnostic
+        .report
+        .as_ref()
+        .is_some_and(|r| serde_json::to_string(r).map_or(true, |s| s.contains(key)));
+    if screened.reflected.get() || reflected_report {
+        diagnostic.report = None;
+        return Err("provider_unsafe_response");
+    }
+    result
+}
+
+/// SDK content remains the proposal source; the existing envelope gate preserves
+/// terminal metadata and verifies that no unsupported output was silently lost.
+pub(super) fn admit_sdk(
+    raw: &[u8],
+    content: Option<&str>,
+    decoded: bool,
+    elapsed: Duration,
+    basis: &mut dyn ProposalBasis,
+    d: &mut ProviderDiagnostic,
+) -> Res<Received> {
+    let v = parse_envelope(raw, d)?;
+    let report = report(&v, raw.len(), elapsed);
+    let usage = report.usage.clone();
+    d.report = Some(report);
+    if !decoded {
+        return Err("provider_protocol");
+    }
+    let original = output_text(&v, d)?;
+    if content != Some(original) {
+        return Err("provider_protocol");
+    }
+    let admission = proposal::admit(content.ok_or("provider_protocol")?.as_bytes(), basis);
+    d.phase = Phase::Completion;
+    d.classification = Classification::Completed;
+    Ok(Received {
+        admission,
+        usage,
+        accounting_confirmed: false,
+    })
 }

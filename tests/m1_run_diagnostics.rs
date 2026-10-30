@@ -322,33 +322,118 @@ fn expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget() {
     let routed =
         terrain::terrain_support::through_dsn("DW_INFERENCE_BROKER_DATABASE_URL", relay.port());
     let launched = Instant::now();
-    let mut parent = command()
+    let out = std::fs::File::create(&log).unwrap();
+    let child = command()
         .env("DW_INFERENCE_BROKER_DATABASE_URL", routed)
         .args(["m1-run", "--input", input.to_str().unwrap()])
-        .stdout(std::fs::File::create(&log).unwrap())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(out.try_clone().unwrap()))
+        .stderr(Stdio::from(out))
         .spawn()
         .unwrap();
-    let reached = relay.observed(Duration::from_secs(10));
-    let end = launched + Duration::from_secs(70);
-    while parent.try_wait().unwrap().is_none() && Instant::now() < end {
-        std::thread::sleep(Duration::from_millis(25));
+    // Owned custody is installed before the first panicking barrier: the
+    // parent, its phase children, the input and the log are all settled by
+    // the custodian even on a failed witness.
+    let mut parent = OwnedRun::new(child, r);
+    parent.own_file(&input);
+    parent.own_file(&log);
+    // Stage reached: the client's reserve Q/P frame must reach the relay —
+    // arming reply withholding before the frame is forwarded — inside the
+    // original acquisition/run envelope while the owned parent still runs.
+    // A dead parent, an exhausted bound or an unqualified observation is a
+    // failed witness, never a restarted clock.
+    let mut observer = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
+    let mut bounds: Option<PhaseBounds> = None;
+    let mut bounds_at = Instant::now();
+    let mut bound_now: Option<Instant> = None;
+    let outcome = original_barrier(
+        |within| relay.observed(within),
+        || parent.try_wait().unwrap().is_none(),
+        || {
+            if Instant::now() >= bounds_at {
+                if let Some(b) = phase_bounds_for(&mut observer, r, RunPhase::Acquisition, 60000) {
+                    bounds = Some(b);
+                }
+                bound_now = match &bounds {
+                    Some(b) => Some(b.expiry_upper(60000)),
+                    None => run_stop(&mut observer, r),
+                };
+                bounds_at = Instant::now() + Duration::from_millis(200);
+            }
+            bound_now
+        },
+        Instant::now,
+        std::thread::sleep,
+    );
+    let observed = Instant::now();
+    match outcome {
+        Barrier::Reached => {}
+        Barrier::ParentExited => panic!(
+            "reached stage failed: parent exited before the reserve barrier: {}",
+            parent_log(&log)
+        ),
+        Barrier::BoundPassed(end) => panic!(
+            "reached stage failed: reserve was never withheld inside the \
+             original acquisition envelope ({}ms over bound): {}",
+            observed.saturating_duration_since(end).as_millis(),
+            parent_log(&log)
+        ),
     }
-    let finished = parent.try_wait().unwrap().is_some();
-    if !finished {
-        let _ = parent.kill();
-    }
-    let status = parent.wait().unwrap();
+    // The relayed reserve frame proves the child issued the call, and its own
+    // same-run, same-acquisition claim commits before that call; the
+    // started/claimed records bracket the local child launch with measured
+    // projection uncertainty.
+    let brackets = phase_bounds_for(&mut observer, r, RunPhase::Acquisition, 60000)
+        .filter(|b| b.claimed.is_some())
+        .expect("reached stage failed: same-acquisition claim must precede the reserve call");
+    assert!(
+        brackets.uncertainty <= Duration::from_millis(100),
+        "acquisition bracket observation round trip unqualified"
+    );
+    assert!(
+        observer
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM execution.autonomous_phases \
+                 WHERE run_id=$1 AND phase='decision_one' AND status='completed')",
+                &[&r],
+            )
+            .unwrap()
+            .get::<_, bool>(0),
+        "acquisition began without a completed first decision"
+    );
+    // The acquisition child, not a cached decision-one PID, is the owned
+    // expiry witness: product termination must precede the upper expiry
+    // bracket, and a custodian kill never satisfies this witness.
+    assert!(
+        parent.phase_for(RunPhase::Acquisition).is_some(),
+        "owned same-acquisition phase child must be discoverable"
+    );
+    let expiry_upper = brackets.expiry_upper(60000);
+    let child_done = parent.observe_phase_exit(expiry_upper).unwrap_or_else(|| {
+        panic!(
+            "finished stage failed: acquisition child survived its original \
+             phase expiry: {}",
+            parent_log(&log)
+        )
+    });
+    // A positive observation alone does not qualify: the projected completion
+    // timestamp must precede the expiry upper bracket, so a custodian kill or
+    // a late disappearance can never satisfy this witness.
+    assert!(
+        child_done <= expiry_upper,
+        "finished stage failed: acquisition child completion could not be \
+         qualified inside its original expiry bracket ({}ms over): {}",
+        child_done
+            .saturating_duration_since(expiry_upper)
+            .as_millis(),
+        parent_log(&log)
+    );
+    // The absolute publication outer bound is the admitted original run_stop
+    // — no grace is added and no clock restarts; collector settlement is not
+    // the product verdict.
+    let done = wait_parent_exit(&mut parent, brackets.run_stop, "acquisition");
     let parent_ms = launched.elapsed().as_millis();
     drop(relay);
     let output = std::fs::read_to_string(&log).unwrap();
-    std::fs::remove_file(log).unwrap();
-    std::fs::remove_file(input).unwrap();
-    assert!(
-        reached && finished,
-        "phase publication barrier/parent bound not reached"
-    );
-    assert!(!status.success());
     let receipt: Value = output
         .lines()
         .find_map(|line| serde_json::from_str(line).ok())
@@ -357,7 +442,10 @@ fn expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget() {
     assert!(ok);
     assert_eq!(fresh["effect_count"], 0);
     assert_eq!(fresh["decision_count"], 1);
-    assert_eq!(fresh["diagnostic_publication"], "committed", "{receipt}");
+    assert_eq!(
+        fresh["diagnostic_publication"], "committed",
+        "publication stage failed: {receipt}"
+    );
     let diagnostic = fresh["diagnostics"]
         .as_array()
         .unwrap()
@@ -373,5 +461,22 @@ fn expired_acquisition_phase_publishes_diagnosis_within_remaining_run_budget() {
     for key in ["diagnostics", "effect_count", "decision_count"] {
         assert_eq!(recovered[key], fresh[key], "{key}");
     }
-    println!("expired_phase_parent_ms={parent_ms} diagnostic={diagnostic}");
+    println!(
+        "expired_phase parent_ms={parent_ms} started={}ms claimed={}ms \
+         expiry_slack={}ms child_done={}ms parent_done={}ms diagnostic={diagnostic}",
+        brackets
+            .started
+            .saturating_duration_since(launched)
+            .as_millis(),
+        brackets
+            .claimed
+            .unwrap()
+            .saturating_duration_since(launched)
+            .as_millis(),
+        expiry_upper
+            .saturating_duration_since(child_done)
+            .as_millis(),
+        child_done.saturating_duration_since(launched).as_millis(),
+        done.saturating_duration_since(launched).as_millis()
+    );
 }

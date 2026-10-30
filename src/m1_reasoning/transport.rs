@@ -213,40 +213,6 @@ fn finish_transfer(
     }
     admit_without_key(&raw, elapsed, key, basis, diagnostic)
 }
-struct KeyExclusion<'a> {
-    owner: &'a mut dyn ProposalBasis,
-    key: &'a str,
-    reflected: Cell<bool>,
-}
-impl KeyExclusion<'_> {
-    fn clear(&self, text: &str) -> bool {
-        if text.contains(self.key) {
-            self.reflected.set(true);
-            return false;
-        }
-        true
-    }
-}
-impl ProposalBasis for KeyExclusion<'_> {
-    fn reference_eligible(&self, r: &str) -> bool {
-        self.clear(r) && self.owner.reference_eligible(r)
-    }
-    fn manifest_eligible(&self, r: &str) -> bool {
-        self.clear(r) && self.owner.manifest_eligible(r)
-    }
-    fn safe_explanation(&self, text: &str) -> bool {
-        self.clear(text) && self.owner.safe_explanation(text)
-    }
-    fn current_authority_and_premises(&mut self) -> Res<()> {
-        self.owner.current_authority_and_premises()
-    }
-    fn current_authority_for_references(&mut self, refs: &[String]) -> Res<()> {
-        if !refs.iter().all(|r| self.clear(r)) {
-            return Err("provider_unsafe_response");
-        }
-        self.owner.current_authority_for_references(refs)
-    }
-}
 fn admit_without_key(
     raw: &[u8],
     elapsed: Duration,
@@ -254,23 +220,11 @@ fn admit_without_key(
     basis: &mut dyn ProposalBasis,
     diagnostic: &mut ProviderDiagnostic,
 ) -> Res<Received> {
-    let mut screened = KeyExclusion {
-        owner: basis,
-        key,
-        reflected: Cell::new(false),
-    };
-    // Screen decoded text before calling owners; raw matching misses both JSON escape layers.
-    let received = super::response::admit_http(raw, elapsed, &mut screened, diagnostic);
-    let reflected_report = diagnostic
-        .report
-        .as_ref()
-        .is_some_and(|r| serde_json::to_string(r).map_or(true, |s| s.contains(key)));
-    if screened.reflected.get() || reflected_report {
-        diagnostic.report = None;
-        return Err("provider_unsafe_response");
-    }
-    received
+    super::response::screened(key, basis, diagnostic, |screened, diagnostic| {
+        super::response::admit_http(raw, elapsed, screened, diagnostic)
+    })
 }
+
 fn transport_current(
     until: Instant,
     cancelled: &std::sync::atomic::AtomicBool,
@@ -349,7 +303,14 @@ fn transport_profile(p: &serde_json::Value) -> Res<&str> {
             Some("autonomous-dns-fixture-v2"),
             Some(profile),
         ) if crate::m1_inference_profile::lookup(profile)
-            .map(|p| p.connection.credential_environment.is_some())
+            .map(|p| {
+                [
+                    p.backend == crate::m1_inference_profile::Backend::Legacy,
+                    p.connection.credential_environment.is_some(),
+                ]
+                .into_iter()
+                .all(|v| v)
+            })
             .unwrap_or(false) =>
         {
             Ok(profile)

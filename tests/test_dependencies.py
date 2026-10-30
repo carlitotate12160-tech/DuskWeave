@@ -37,3 +37,17 @@ class Direction(unittest.TestCase):
         use crate::{mission::AssetRef, m1_terrain_view::{TerrainDependency as Input}};
         '''
         self.assertEqual(check.violations('m1_context.rs', source), [])
+
+
+class SdkBoundary(unittest.TestCase):
+    def test_sdk_aliases_reexports_and_paths_are_confined(self):
+        for name in ('m1_reasoning/inference_intent.rs', 'm1_run_inference.rs', 'mission.rs'):
+            for source in ('use genai::Client as Narrow;', 'pub use reqwest::{Client as Safe};',
+                           'extern crate tokio as runtime;', 'fn x() { let _ = ::genai::Client::builder(); }',
+                           'pub use ::tokio::{runtime as hidden};'):
+                with self.subTest(name=name, source=source):
+                    self.assertTrue(check.violations(name, source))
+        for name in ('mission.rs', 'm1_reasoning/inference_intent.rs'):
+            self.assertTrue(check.violations(name, 'use crate::m1_reasoning::sdk_transport as infrastructure;'))
+        self.assertEqual(check.violations('m1_run_inference.rs', 'use crate::m1_reasoning::sdk_transport::SdkProvider;'), [])
+        self.assertEqual(check.violations('m1_reasoning/sdk_transport.rs', 'use genai::Client;'), [])

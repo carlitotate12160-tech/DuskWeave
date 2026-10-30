@@ -123,15 +123,39 @@ class DependencyGateControls(unittest.TestCase):
             self.assertIn(f"checking {check}", p.stderr)
         self.assertNotIn("error[", p.stderr)
 
+    def license_fixture(self, name, license_expression=None):
+        fix = mkcrate(Path(self.tmp, name), name)
+        manifest = fix / "Cargo.toml"
+        text = manifest.read_text().replace("publish = false", "publish = true")
+        if license_expression is not None:
+            text += f'license = "{license_expression}"\n'
+        manifest.write_text(text)
+        generated = run(["cargo", "generate-lockfile", "--offline"], cwd=fix)
+        self.assertEqual(generated.returncode, 0, generated.stderr)
+        return fix
+
     def test_policy_rejects_unallowed_license(self):
-        fix = mkcrate(Path(self.tmp, "lic"), "licfixture",
-                      '\n[dependencies]\nencoding_rs = "=0.8.35"\n')
-        gen = run(["cargo", "generate-lockfile"], cwd=fix)
-        self.assertEqual(gen.returncode, 0, gen.stderr)
+        fix = self.license_fixture("licunallowed", "AGPL-3.0-only")
         p = self.keep("deny-license-reject.log", self.deny("licenses", fix))
         self.assertNotEqual(p.returncode, 0)
-        self.assertIn("encoding_rs", p.stderr)
-        self.assertIn("BSD-3-Clause", p.stderr)
+        self.assertIn("error[rejected]", p.stderr)
+        self.assertIn("AGPL-3.0-only", p.stderr)
+
+    def test_policy_accepts_sdk_permissive_licenses(self):
+        for name, expression in (("licisc", "ISC"), ("licbsd", "BSD-3-Clause"),
+                                 ("liczlib", "Zlib"), ("liccdla", "CDLA-Permissive-2.0")):
+            with self.subTest(license=expression):
+                fix = self.license_fixture(name, expression)
+                p = self.keep(f"deny-{name}-accept.log", self.deny("licenses", fix))
+                self.assertEqual(p.returncode, 0, p.stderr)
+                self.assertIn("checking licenses", p.stderr)
+                self.assertNotIn("error[", p.stderr)
+
+    def test_policy_rejects_unlicensed_publishable_crate(self):
+        fix = self.license_fixture("licmissing")
+        p = self.keep("deny-unlicensed-reject.log", self.deny("licenses", fix))
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("error[unlicensed]", p.stderr)
 
     def test_policy_rejects_git_source_offline(self):
         dep = mkcrate(Path(self.tmp, "gitdep"), "gitdep")

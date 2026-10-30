@@ -2,12 +2,14 @@
 use super::{BoundCall, bytes, compute_binding, input, schema};
 use serde_json::{Value, json};
 
+pub(super) const AUTONOMOUS_INSTRUCTIONS: &str = "DuskWeave autonomous inference v1: propose one objective-led hypothesis, alternative, expected and falsifying observation and next intent over this immutable pack. APT41, Lazarus and Volt Typhoon are behavioral lenses, not playbooks or permission. Operator seeds are premises, observations are not facts, and historical decisions do not grant current authority. Use exact references[].id and qualified manifests[].reference values only. observe_more with a DNS manifest proposes one observation for one seed; observe_more with view_request requests only an owner view. Do not combine them. Do not invent endpoints, references, availability, access or scope. Missing, stale, conflicted and fixture sources retain their limits. Explain uncertainty and any retention/revision from predecessor feedback. Retain, defer and stop are valid choices. Synthesis/unsupported effects are explanations of a capability gap, never permission to execute. Return concise safe explanation, never private reasoning or raw client content. Output grants no dispatch. Fixture results cannot establish live target facts.";
+
 fn template() -> Value {
     json!({
         "adapter_release": "autonomous-libcurl-v1",
         "content_type": "application/json",
         "execution_mode": "live",
-        "instructions": "DuskWeave autonomous inference v1: propose one objective-led hypothesis, alternative, expected and falsifying observation and next intent over this immutable pack. APT41, Lazarus and Volt Typhoon are behavioral lenses, not playbooks or permission. Operator seeds are premises, observations are not facts, and historical decisions do not grant current authority. Use exact references[].id and qualified manifests[].reference values only. observe_more with a DNS manifest proposes one observation for one seed; observe_more with view_request requests only an owner view. Do not combine them. Do not invent endpoints, references, availability, access or scope. Missing, stale, conflicted and fixture sources retain their limits. Explain uncertainty and any retention/revision from predecessor feedback. Retain, defer and stop are valid choices. Synthesis/unsupported effects are explanations of a capability gap, never permission to execute. Return concise safe explanation, never private reasoning or raw client content. Output grants no dispatch. Fixture results cannot establish live target facts.",
+        "instructions": AUTONOMOUS_INSTRUCTIONS,
         "limits": {
             "accounting_window_ms": 3000,
             "calls_per_decision": 2,
@@ -112,17 +114,20 @@ fn configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'static str> 
 
 fn successor_configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'static str> {
     use crate::m1_inference_profile::{self as profiles, Protocol};
-    if parsed["run_profile"] != profiles::RUN_PROFILE
-        || parsed["execution_mode"] != "controlled_fixture"
-    {
-        return Err("request_encode");
-    }
     let profile = profiles::lookup(
         parsed["inference_profile"]
             .as_str()
             .ok_or("request_encode")?,
     )
     .map_err(|_| "request_encode")?;
+    let valid = [
+        parsed["run_profile"] == profiles::RUN_PROFILE,
+        parsed["execution_mode"] == "controlled_fixture",
+        profile.backend == profiles::Backend::Legacy,
+    ];
+    if !valid.into_iter().all(|v| v) {
+        return Err("request_encode");
+    }
     let mut c = template();
     c["execution_mode"] = json!("controlled_fixture");
     c["run_profile"] = json!(profiles::RUN_PROFILE);
@@ -194,7 +199,7 @@ fn profile(p: &Value) -> Result<Profile, &'static str> {
     }
 }
 
-fn autonomous_schema(p: &Value, ids: &[String]) -> Result<Value, &'static str> {
+pub(super) fn autonomous_schema(p: &Value, ids: &[String]) -> Result<Value, &'static str> {
     let mut schema = schema(ids);
     let refs: Vec<_> = p["manifests"]
         .as_array()

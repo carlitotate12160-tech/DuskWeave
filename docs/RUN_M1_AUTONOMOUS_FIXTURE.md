@@ -1,15 +1,85 @@
 # Run the controlled autonomous fixture
 
-This first Walking Skeleton runs the production supervisor and restricted
-PostgreSQL owners. Inference and DNS are deterministic, explicitly labeled
-fixtures. It sends no provider or target request. A passing run proves the
-connected workflow. The separately bound provider-fixture lane below replaces
-only inference; live acquisition remains a later, independently qualified slice.
+The original deterministic lane uses the production supervisor and restricted
+PostgreSQL owners with fixture inference and DNS. SDK qualification adds loopback
+provider HTTP. The separately bound provider-fixture lane replaces only inference;
+live acquisition remains a later, independently qualified slice. Fixture success
+proves the connected workflow and makes no live target claim.
 
-Use the delivered successor v4 permission / v2 run bindings below for new
-qualification. [ENGINEERING_STATE](ENGINEERING_STATE.md#6-current-slices-and-next-action)
+The SDK lane below uses fresh v5 permission / v3 run bindings. Existing v4
+permission / v2 run bindings retain their explicitly selected legacy transport. [ENGINEERING_STATE](ENGINEERING_STATE.md#6-current-slices-and-next-action)
 owns delivery/readiness; [the lifecycle record](workflows/DW-IMPLEMENT-M1-INFERENCE-LIFECYCLE.md#r2-completed-runtime-and-qualification-ledger)
 indexes tested assertions. Neither a guide nor old qualification grants new consent.
+
+## SDK loopback qualification and fresh consent
+
+The SDK lane pairs `m1_inference_permission_v5`,
+`m1_autonomous_run_request_v3` and `m1_context_pack_autonomous_v3` with
+`autonomous-dns-fixture-v2`, `controlled_fixture` and the existing
+`reasoning-bounded-v1` timers. Register fresh consent with the exact selected
+profile/recipient; old permissions and old run versions cannot select SDK.
+Keep the existing registration/context/seed fields and finite campaign limits.
+The request explicitly names the same `inference_profile` as its permission.
+SDK v5 requires the fixed 16384-byte per-call request budget because the SDK
+performs serialization/counting internally. Lower request budgets refuse;
+preflight is not an estimate authorizing a larger transfer. Context and intent
+still obey their separately admitted caps.
+
+| Explicit SDK profile | Fixed recipient | Infrastructure credential |
+| --- | --- | --- |
+| `fixture-genai-responses-v1` | `http://127.0.0.1:18083/responses` | Fixed synthetic fixture auth; no provider key |
+| `deepseek-genai-responses-low-v1` | `https://api.deepseek.com/responses` | `DEEPSEEK_API_KEY`; separate fresh authorization required to call |
+
+Only the fixture profile permits loopback HTTP. Port 18083 has no override;
+if occupied, refuse and preserve its owner. The owning `m1_genai_integration`
+test target starts the synthetic HTTP provider, registers fresh consent and
+invokes the actual CLI. It uses explicit schema revision 0022 through the
+existing restricted native bootstrap; its default remains 0021 for legacy
+qualification. The test custodian must hold the dedicated Cargo target and
+cluster-role fixture ownership for the whole action.
+
+```text
+cargo test --locked --test m1_genai_integration sdk_real_cli_completes_feedback_and_fresh_key_free_recovery -- --exact --test-threads=1
+```
+
+Inside that authorized fixture session, the operator CLI remains:
+
+```text
+duskweave m1-run --input <fresh-registered-sdk-run.json> --timing-profile reasoning-bounded-v1
+duskweave m1-run-stop --run <run-id>
+duskweave m1-run-inspect --run <run-id>
+duskweave m1-run-recover --run <run-id>
+```
+
+Inspect/recover/stop require their existing Broker configuration and no inference
+key. They preserve durable identities and never repeat inference or DNS.
+Possible sends remain charged; incomplete/unknown responses do not publish a
+usable proposal or open repair. SDK repair is limited to the existing eligible
+codec errors and one reserved repair call. Raw HTTP/provider content and private
+reasoning do not enter ordinary output or persistence. Historical decisions
+still require current owner admission before any consequence.
+
+The offline episode is **synthetic provider + DNS fixture**. It qualifies
+orchestration and executed adapter boundaries, not real-provider cognition,
+paid-provider quality, live target facts, Linux acquisition or production
+readiness. The installed DeepSeek profile is not invocation authority.
+
+### Dependency and distribution obligations
+
+The vendored SDK is pinned at `a9504f1fe3641b4d21a8c44bea4379bed4394f4b` with
+the five identified boundary/evidence files patched and one exact trailing-
+whitespace correction in `src/adapter/adapters/zai/mod.rs`. Source and combined
+patch identities are in `third_party/genai/source-manifest.json`. Snapshot
+hashes identify canonical Git LF text; the provenance guard also accepts a CRLF
+checkout without changing content, membership or conflict-marker checks. Retain its
+MIT/Apache notices and modified-source notices. The locked TLS graph also
+contains permissive ISC, BSD-3-Clause, Zlib and CDLA-Permissive-2.0 components.
+The manifest retains the exact `webpki-root-certs` certificate-data LICENSE
+text/provenance. Redistributing that data, including in an embedding binary,
+must make its license text available alongside the data. A Cargo cache alone
+does not fulfill distribution obligations. This packet does not implement or
+qualify release packaging. Dependency curation/audit still applies to the
+complete graph and final candidate; no additional license is implicitly allowed.
 
 ## What the owner should see
 

@@ -18,13 +18,14 @@ pub struct AutonomousContext {
     pub predecessor: Option<Value>,
 }
 impl AutonomousContext {
-    pub(crate) fn extend(&self, pack: &mut Value) -> Res<()> {
+    pub(crate) fn extend(
+        &self,
+        pack: &mut Value,
+        context_cap: usize,
+        configuration_cap: usize,
+    ) -> Res<()> {
         self.binding.validate()?;
-        pack["version"] = json!(if self.binding.inference_profile.is_some() {
-            "m1_context_pack_autonomous_v2"
-        } else {
-            "m1_context_pack_autonomous_v1"
-        });
+        pack["version"] = json!(self.binding.pack_version());
         if let Some(profile) = &self.binding.inference_profile {
             pack["inference_profile"] = json!(profile);
         }
@@ -44,9 +45,14 @@ impl AutonomousContext {
                 reference["source"] = json!("admitted_operator_seed");
             }
         }
-        self.attach_feedback(pack)
+        let caps = if pack["version"] == "m1_context_pack_autonomous_v3" {
+            (context_cap, configuration_cap)
+        } else {
+            (8192, 16384)
+        };
+        self.attach_feedback(pack, caps)
     }
-    fn attach_feedback(&self, pack: &mut Value) -> Res<()> {
+    fn attach_feedback(&self, pack: &mut Value, caps: (usize, usize)) -> Res<()> {
         let Some(prior) = &self.predecessor else {
             pack["predecessor"] = json!({"availability":"absent","reason":"first_decision"});
             return Ok(());
@@ -59,21 +65,20 @@ impl AutonomousContext {
             "id":"previous_decision","owner":"campaign_trajectory","source":"cognition",
             "entity":metadata["entity"],"event":metadata["event"],"recorded_at":metadata["recorded_at"],"status":"committed_historical_decision"}));
         set_trajectory_view(pack, prior.get("decision_event").cloned())?;
-        fit_optional_summary(pack)?;
+        fit_optional_summary(pack, caps)?;
         Ok(())
     }
 }
-fn fit_optional_summary(pack: &mut Value) -> Res<()> {
-    if pack["version"] != "m1_context_pack_autonomous_v2"
-        || pack["predecessor"].get("hypothesis_summary").is_none()
+fn fit_optional_summary(pack: &mut Value, caps: (usize, usize)) -> Res<()> {
+    if !matches!(
+        pack["version"].as_str(),
+        Some("m1_context_pack_autonomous_v2" | "m1_context_pack_autonomous_v3")
+    ) || pack["predecessor"].get("hypothesis_summary").is_none()
     {
         return Ok(());
     }
     let raw = serde_json::to_vec(pack).map_err(|_| Fail::Store("context_encode"))?;
-    let fits = raw.len() <= 8192
-        && [None, Some(&["unexpected_view_request"; 8][..])]
-            .into_iter()
-            .all(|repair| crate::m1_reasoning::request::bind(&raw, repair).is_ok());
+    let fits = crate::m1_reasoning::request::capacity_fits(&raw, caps.0, caps.1, 16384);
     if !fits {
         pack["predecessor"]
             .as_object_mut()
@@ -98,6 +103,20 @@ fn set_trajectory_view(pack: &mut Value, event: Option<Value>) -> Res<()> {
 }
 
 impl RunContextBinding {
+    fn pack_version(&self) -> &'static str {
+        use crate::m1_inference_profile::{Backend, lookup};
+        match self
+            .inference_profile
+            .as_deref()
+            .and_then(|name| lookup(name).ok())
+            .map(|p| p.backend)
+        {
+            Some(Backend::Genai) => "m1_context_pack_autonomous_v3",
+            Some(Backend::Legacy) => "m1_context_pack_autonomous_v2",
+            None => "m1_context_pack_autonomous_v1",
+        }
+    }
+
     fn effect_profile(&self) -> &'static str {
         if self.execution_mode == "controlled_fixture" {
             "dns-routing-fixture-v1"
@@ -186,4 +205,42 @@ fn bind_selected_seed(prior: &mut Value, pack: &Value) -> Res<()> {
         .ok_or(Fail::State("context_required_seed_missing"))?;
     prior["selected_seed_reference"] = json!(selected);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn sdk_optional_summary_omission_retains_required_feedback_and_shared_capacity() {
+        let id = "00000000-0000-0000-0000-000000000021";
+        let required = json!({"availability":"committed","selected_seed_reference":"asset_0",
+            "disposition":"validated_proposal","required_owner_feedback":"retained"});
+        let mut pack = json!({"version":"m1_context_pack_autonomous_v3","run_profile":"autonomous-dns-fixture-v2",
+            "execution_mode":"controlled_fixture","inference_profile":"fixture-genai-responses-v1",
+            "engagement_id":id,"campaign_id":id,"decision_id":id,"permission_id":id,"mission_revision":1,
+            "references":[{"id":"asset_0"},{"id":"previous_decision"}],"manifests":[{"reference":"dns_udp"}],
+            "predecessor":required,"pending_unknown":vec!["x".repeat(900);8]});
+        pack["predecessor"]["hypothesis_summary"] = json!("h".repeat(900));
+        let raw = serde_json::to_vec(&pack).unwrap();
+        assert!(!crate::m1_reasoning::request::capacity_fits(
+            &raw, 8192, 16384, 16384
+        ));
+        fit_optional_summary(&mut pack, (8192, 16384)).unwrap();
+        assert!(pack["predecessor"].get("hypothesis_summary").is_none());
+        assert_eq!(
+            pack["predecessor"]["hypothesis_summary_omission"],
+            "byte_bound"
+        );
+        assert_eq!(
+            pack["predecessor"].as_object().unwrap().len(),
+            required.as_object().unwrap().len() + 1
+        );
+        for (key, value) in required.as_object().unwrap() {
+            assert_eq!(&pack["predecessor"][key], value);
+        }
+        let raw = serde_json::to_vec(&pack).unwrap();
+        assert!(crate::m1_reasoning::request::capacity_fits(
+            &raw, 8192, 16384, 16384
+        ));
+    }
 }

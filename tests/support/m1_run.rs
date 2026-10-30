@@ -137,118 +137,23 @@ fn actual_binary() -> std::path::PathBuf {
         .unwrap_or_else(|| env!("CARGO_BIN_EXE_duskweave").into())
 }
 
-/// Observe the actual direct binary child, independently of its parent's SQL/receipt work.
+#[path = "m1_run/phase_observation.rs"]
+mod phase_observation;
+#[path = "m1_run/process.rs"]
+mod process;
+// Integration harnesses use different subsets of these fixture-only exports.
+#[allow(unused_imports)]
+pub use phase_observation::{
+    Barrier, PhaseBounds, original_barrier, phase_bounds, phase_bounds_for, run_stop,
+};
 #[cfg(windows)]
-pub fn phase_child(parent: u32, run: Uuid) -> (u32, std::time::Instant) {
-    let script = format!(
-        "$ErrorActionPreference='Stop'; $c=Get-CimInstance Win32_Process -Filter \"ParentProcessId={parent}\" | Where-Object {{ $_.CommandLine -like '*{run}*' }}; $p=[Diagnostics.Process]::GetProcessById($c.ProcessId); [Console]::WriteLine(('{{0}} {{1}}' -f $p.Id,([DateTimeOffset]$p.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()))"
-    );
-    let output = Command::new(
-        std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
-            .join("System32/WindowsPowerShell/v1.0/powershell.exe"),
-    )
-    .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-    .output()
-    .unwrap();
-    assert!(output.status.success());
-    let text = String::from_utf8(output.stdout).unwrap();
-    let (pid, started) = text.trim().split_once(' ').expect("one owned phase child");
-    (pid.parse().unwrap(), wall_instant(started.parse().unwrap()))
-}
-pub fn wall_instant(ms: u64) -> std::time::Instant {
-    let wall = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    std::time::Instant::now() - wall.saturating_sub(std::time::Duration::from_millis(ms))
-}
-#[cfg(not(windows))]
-pub fn phase_child(parent: u32, run: Uuid) -> (u32, std::time::Instant) {
-    let matches: Vec<u32> = std::fs::read_dir("/proc")
-        .unwrap()
-        .filter_map(Result::ok)
-        .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
-        .filter(|pid| {
-            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
-            let ppid = stat
-                .rsplit_once(')')
-                .and_then(|(_, s)| s.split_whitespace().nth(1))
-                .and_then(|s| s.parse::<u32>().ok());
-            let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
-            ppid == Some(parent) && cmd.windows(36).any(|s| s == run.to_string().as_bytes())
-        })
-        .collect();
-    assert_eq!(matches.len(), 1, "one owned phase child");
-    let pid = matches[0];
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
-    let ticks: f64 = stat
-        .rsplit_once(')')
-        .unwrap()
-        .1
-        .split_whitespace()
-        .nth(19)
-        .unwrap()
-        .parse()
-        .unwrap();
-    let hz = Command::new("getconf").arg("CLK_TCK").output().unwrap();
-    assert!(hz.status.success());
-    let hz: f64 = String::from_utf8(hz.stdout)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
-    let uptime: f64 = std::fs::read_to_string("/proc/uptime")
-        .unwrap()
-        .split_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    (
-        pid,
-        std::time::Instant::now()
-            - std::time::Duration::from_secs_f64((uptime - ticks / hz).max(0.0)),
-    )
-}
+#[allow(unused_imports)]
+pub use process::stale_phase_snapshot_accepted;
+#[allow(unused_imports)]
+pub use process::{
+    OwnedRun, observe_child_exit, parent_log, phase_child, wait_parent_exit, wall_instant,
+};
 
-/// Returns product termination evidence. A timeout is reported before custodian cleanup.
-#[cfg(windows)]
-pub fn observe_child_exit(pid: u32, end: std::time::Instant) -> bool {
-    let wall_end = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis()
-        + end
-            .saturating_duration_since(std::time::Instant::now())
-            .as_millis();
-    let script = format!(
-        "$ErrorActionPreference='Stop'; try {{ $p=[Diagnostics.Process]::GetProcessById({pid}); $ms=[Math]::Max(0,{wall_end}-[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()); if ($p.WaitForExit([int]$ms)) {{ 'exited' }} else {{ 'alive' }} }} catch [ArgumentException] {{ 'exited' }}"
-    );
-    let output = Command::new(
-        std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
-            .join("System32/WindowsPowerShell/v1.0/powershell.exe"),
-    )
-    .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-    .output()
-    .unwrap();
-    output.status.success() && output.stdout.starts_with(b"exited")
-}
-#[cfg(not(windows))]
-pub fn observe_child_exit(pid: u32, end: std::time::Instant) -> bool {
-    loop {
-        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
-        if stat.is_empty()
-            || stat
-                .rsplit_once(')')
-                .is_some_and(|(_, s)| s.trim_start().starts_with('Z'))
-        {
-            return true;
-        }
-        if std::time::Instant::now() >= end {
-            return false;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-}
 pub fn cli(command: &str, flag: &str, value: &str) -> (bool, Value) {
     let mut c = self::command();
     let o = c.arg(command).arg(flag).arg(value).output().unwrap();

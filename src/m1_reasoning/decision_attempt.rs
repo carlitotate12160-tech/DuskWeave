@@ -14,6 +14,10 @@ fn call(
     call_id: Uuid,
     bound: &BoundCall,
 ) -> Result<Received, (bool, &'static str)> {
+    if super::inference_intent::sdk_pack(&bound.pack) {
+        super::inference_intent::verify_owned(bound, scope, reservation, call_id)
+            .map_err(|e| (false, e))?;
+    }
     provider
         .prepare(bound, reservation.shared_deadline)
         .map_err(|code| (false, code))?;
@@ -92,7 +96,7 @@ pub(super) fn decide(
     pack: &[u8],
 ) -> Res<(Admission, Vec<Uuid>, Vec<String>)> {
     let reservation = broker.reserve(scope, pack)?;
-    let first = request::bind(pack, None)?;
+    let first = bind_call(scope, &reservation, reservation.generation_call, pack, None)?;
     let mut bindings = Vec::new();
     let admission = generate(
         broker,
@@ -131,7 +135,13 @@ fn generate(
     let received = record(result, first.digest, bindings)?;
     match generation_admission(received) {
         Admission::Repairable(codes) => {
-            let repair = request::bind(&first.pack, Some(&codes))?;
+            let repair = bind_call(
+                scope,
+                reservation,
+                reservation.repair_call,
+                &first.pack,
+                Some(&codes),
+            )?;
             let result = call(
                 broker,
                 provider,
@@ -160,4 +170,17 @@ fn generation_admission(received: Received) -> Admission {
         Admission::Accepted(p) => Admission::Accepted(p),
         _ => Admission::Rejected("accounting_unknown"),
     }
+}
+
+fn bind_call(
+    scope: &Scope,
+    reservation: &Reservation,
+    call: Uuid,
+    pack: &[u8],
+    codes: Option<&[&str]>,
+) -> Res<BoundCall> {
+    if super::inference_intent::sdk_pack(pack) {
+        return super::inference_intent::bind(scope, reservation, call, pack, codes);
+    }
+    request::bind(pack, codes)
 }

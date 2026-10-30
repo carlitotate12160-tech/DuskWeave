@@ -139,6 +139,13 @@ class MigrationSelectionAndOrder(unittest.TestCase):
         fx.migrate(initial=initial)
         return calls
 
+    def test_explicit_sdk_revision_installs_after_unchanged_predecessor(self):
+        for initial, count in ((True, 20), (False, 11)):
+            calls = self.run_migrate(initial, "0022")
+            self.assertEqual(len(calls), count)
+            self.assertIn("inference_decision_windows", calls[-2])
+            self.assertIn("genai_expected_intent", calls[-1])
+
     def test_predecessor_initial_and_refresh_never_install_successor(self):
         for initial, expected in ((True, 18), (False, 9)):
             calls = self.run_migrate(initial, "0020")

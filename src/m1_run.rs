@@ -81,7 +81,10 @@ impl RunRequest {
     }
 
     pub fn successor(&self) -> bool {
-        self.version == "m1_autonomous_run_request_v2"
+        matches!(
+            self.version.as_str(),
+            "m1_autonomous_run_request_v2" | "m1_autonomous_run_request_v3"
+        )
     }
 
     pub fn supervised_inference(&self) -> bool {
@@ -95,7 +98,13 @@ impl RunRequest {
             }
             ("m1_autonomous_run_request_v2", Some(name)) => {
                 self.run_profile == crate::m1_inference_profile::RUN_PROFILE
-                    && crate::m1_inference_profile::lookup(name).is_ok()
+                    && crate::m1_inference_profile::lookup(name)
+                        .is_ok_and(|p| p.backend == crate::m1_inference_profile::Backend::Legacy)
+            }
+            ("m1_autonomous_run_request_v3", Some(name)) => {
+                self.run_profile == crate::m1_inference_profile::RUN_PROFILE
+                    && crate::m1_inference_profile::lookup(name)
+                        .is_ok_and(|p| p.backend == crate::m1_inference_profile::Backend::Genai)
             }
             _ => false,
         }
