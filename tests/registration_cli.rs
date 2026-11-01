@@ -324,6 +324,8 @@ fn cli_rejects_without_mutation() {
                     == json!({
                         "result": "rejected", "operation": null,
                         "reason": "invalid_args", "action": "reconcile_authority",
+                        "local_stop": {"stop_latched": false, "disposal_confirmed": false},
+                        "scope": null,
                         "current_permission": false, "continuation_blocked": true
                     }),
                 "withdrawal rejection receipt mismatch"

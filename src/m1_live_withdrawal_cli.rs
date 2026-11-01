@@ -94,11 +94,12 @@ fn receipt(
             json!({"result":"not_committed","operation":operation,"action":"reconcile_authority"})
         }
         Err(error)
-            if live
-                || matches!(
-                    error,
-                    Fail::Store(_) | Fail::Unresolved(_) | Fail::Config(_)
-                ) =>
+            if *error != Fail::Store("serialization_retry")
+                && (live
+                    || matches!(
+                        error,
+                        Fail::Store(_) | Fail::Unresolved(_) | Fail::Config(_)
+                    )) =>
         {
             json!({"result":"unknown","operation":operation,
             "reason":super::category(*error),"action":"recover_before_retry"})
