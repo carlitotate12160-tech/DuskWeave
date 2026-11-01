@@ -53,31 +53,31 @@ pub use super::custom::CustomAdapter;
 // -- Aihubmix
 pub struct AihubmixAdapter;
 impl_pass_through_adapter!(
-    name: AihubmixAdapter,
-    kind: AdapterKind::Aihubmix,
-    key_env: Some("AIHUBMIX_API_KEY"),
-    endpoint: "https://aihubmix.com/v1/",
-    delegate: OpenAIAdapter,
+	name: AihubmixAdapter,
+	kind: AdapterKind::Aihubmix,
+	key_env: Some("AIHUBMIX_API_KEY"),
+	endpoint: "https://aihubmix.com/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- Aliyun
 pub struct AliyunAdapter;
 impl_pass_through_adapter!(
-    name: AliyunAdapter,
-    kind: AdapterKind::Aliyun,
-    key_env: Some("ALIYUN_API_KEY"),
-    endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/",
-    delegate: OpenAIAdapter,
+	name: AliyunAdapter,
+	kind: AdapterKind::Aliyun,
+	key_env: Some("ALIYUN_API_KEY"),
+	endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- Aliyun
 pub struct QwenCloudAdapter;
 impl_pass_through_adapter!(
-    name: QwenCloudAdapter,
-    kind: AdapterKind::QwenCloud,
-    key_env: Some("QWEN_CLOUD_API_KEY"),
-    endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/",
-    delegate: OpenAIAdapter,
+	name: QwenCloudAdapter,
+	kind: AdapterKind::QwenCloud,
+	key_env: Some("QWEN_CLOUD_API_KEY"),
+	endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- BigModel
@@ -88,52 +88,52 @@ impl_pass_through_adapter!(
 /// Pricing:           <https://bigmodel.cn/pricing>
 pub struct BigModelAdapter;
 impl_pass_through_adapter!(
-    name: BigModelAdapter,
-    kind: AdapterKind::BigModel,
-    key_env: Some("BIGMODEL_API_KEY"),
-    endpoint: "https://open.bigmodel.cn/api/paas/v4/",
-    delegate: OpenAIAdapter,
+	name: BigModelAdapter,
+	kind: AdapterKind::BigModel,
+	key_env: Some("BIGMODEL_API_KEY"),
+	endpoint: "https://open.bigmodel.cn/api/paas/v4/",
+	delegate: OpenAIAdapter,
 );
 
 // -- Atlas Cloud
 pub struct AtlasCloudAdapter;
 impl_pass_through_adapter!(
-    name: AtlasCloudAdapter,
-    kind: AdapterKind::AtlasCloud,
-    key_env: Some("ATLASCLOUD_API_KEY"),
-    endpoint: "https://api.atlascloud.ai/v1/",
-    delegate: OpenAIAdapter,
+	name: AtlasCloudAdapter,
+	kind: AdapterKind::AtlasCloud,
+	key_env: Some("ATLASCLOUD_API_KEY"),
+	endpoint: "https://api.atlascloud.ai/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- DeepSeek
 pub struct DeepSeekAdapter;
 impl_pass_through_adapter!(
-    name: DeepSeekAdapter,
-    kind: AdapterKind::DeepSeek,
-    key_env: Some("DEEPSEEK_API_KEY"),
-    endpoint: "https://api.deepseek.com/v1/",
-    delegate: OpenAIAdapter,
-    managed_body_thinking: true,
+	name: DeepSeekAdapter,
+	kind: AdapterKind::DeepSeek,
+	key_env: Some("DEEPSEEK_API_KEY"),
+	endpoint: "https://api.deepseek.com/v1/",
+	delegate: OpenAIAdapter,
+	managed_body_thinking: true,
 );
 
 pub struct MistralAdapter;
 impl_pass_through_adapter!(
-    name: MistralAdapter,
-    kind: AdapterKind::Mistral,
-    key_env: Some("MISTRAL_API_KEY"),
-    endpoint: "https://api.mistral.ai/v1/",
-    delegate: OpenAIAdapter,
+	name: MistralAdapter,
+	kind: AdapterKind::Mistral,
+	key_env: Some("MISTRAL_API_KEY"),
+	endpoint: "https://api.mistral.ai/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- Groq
 pub struct GroqAdapter;
 impl_pass_through_adapter!(
-    name: GroqAdapter,
-    kind: AdapterKind::Groq,
-    key_env: Some("GROQ_API_KEY"),
-    endpoint: "https://api.groq.com/openai/v1/",
-    delegate: OpenAIAdapter,
-    unsupported: [embeddings],
+	name: GroqAdapter,
+	kind: AdapterKind::Groq,
+	key_env: Some("GROQ_API_KEY"),
+	endpoint: "https://api.groq.com/openai/v1/",
+	delegate: OpenAIAdapter,
+	unsupported: [embeddings],
 );
 
 // -- Kimi (Moonshot.ai)
@@ -141,124 +141,124 @@ impl_pass_through_adapter!(
 // TODO: need to support thinking with extra_body
 pub struct KimiAdapter;
 impl_pass_through_adapter!(
-    name: KimiAdapter,
-    kind: AdapterKind::Kimi,
-    key_env: Some("KIMI_API_KEY"),
-    endpoint: "https://api.moonshot.ai/v1/",
-    delegate: OpenAIAdapter,
-    unsupported: [embeddings],
+	name: KimiAdapter,
+	kind: AdapterKind::Kimi,
+	key_env: Some("KIMI_API_KEY"),
+	endpoint: "https://api.moonshot.ai/v1/",
+	delegate: OpenAIAdapter,
+	unsupported: [embeddings],
 );
 
 // -- Moonshot (Moonshot.cn)
 pub struct MoonshotAdapter;
 impl_pass_through_adapter!(
-    name: MoonshotAdapter,
-    kind: AdapterKind::Moonshot,
-    key_env: Some("MOONSHOT_API_KEY"),
-    endpoint: "https://api.moonshot.cn/v1/",
-    delegate: OpenAIAdapter,
+	name: MoonshotAdapter,
+	kind: AdapterKind::Moonshot,
+	key_env: Some("MOONSHOT_API_KEY"),
+	endpoint: "https://api.moonshot.cn/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- MiniMax (AnthropicAdapter)
 pub struct MiniMaxAdapter;
 impl_pass_through_adapter!(
-    name: MiniMaxAdapter,
-    kind: AdapterKind::MiniMax,
-    key_env: Some("MINIMAX_API_KEY"),
-    endpoint: "https://api.minimax.io/anthropic/v1/",
-    delegate: AnthropicAdapter,
-    unsupported: [embeddings],
+	name: MiniMaxAdapter,
+	kind: AdapterKind::MiniMax,
+	key_env: Some("MINIMAX_API_KEY"),
+	endpoint: "https://api.minimax.io/anthropic/v1/",
+	delegate: AnthropicAdapter,
+	unsupported: [embeddings],
 );
 
 // -- Mimo
 pub struct MimoAdapter;
 impl_pass_through_adapter!(
-    name: MimoAdapter,
-    kind: AdapterKind::Mimo,
-    key_env: Some("MIMO_API_KEY"),
-    endpoint: "https://api.mimo.com/openai/v1/",
-    delegate: OpenAIAdapter,
+	name: MimoAdapter,
+	kind: AdapterKind::Mimo,
+	key_env: Some("MIMO_API_KEY"),
+	endpoint: "https://api.mimo.com/openai/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- Nebius
 pub struct NebiusAdapter;
 impl_pass_through_adapter!(
-    name: NebiusAdapter,
-    kind: AdapterKind::Nebius,
-    key_env: Some("NEBIUS_API_KEY"),
-    endpoint: "https://api.studio.nebius.ai/v1/",
-    delegate: OpenAIAdapter,
+	name: NebiusAdapter,
+	kind: AdapterKind::Nebius,
+	key_env: Some("NEBIUS_API_KEY"),
+	endpoint: "https://api.studio.nebius.ai/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- OpenRouter
 pub struct OpenRouterAdapter;
 impl_pass_through_adapter!(
-    name: OpenRouterAdapter,
-    kind: AdapterKind::OpenRouter,
-    key_env: Some("OPEN_ROUTER_API_KEY"),
-    endpoint: "https://openrouter.ai/api/v1/",
-    delegate: OpenAIAdapter,
+	name: OpenRouterAdapter,
+	kind: AdapterKind::OpenRouter,
+	key_env: Some("OPEN_ROUTER_API_KEY"),
+	endpoint: "https://openrouter.ai/api/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- Requesty
 pub struct RequestyAdapter;
 impl_pass_through_adapter!(
-    name: RequestyAdapter,
-    kind: AdapterKind::Requesty,
-    key_env: Some("REQUESTY_API_KEY"),
-    endpoint: "https://router.requesty.ai/v1/",
-    delegate: OpenAIAdapter,
+	name: RequestyAdapter,
+	kind: AdapterKind::Requesty,
+	key_env: Some("REQUESTY_API_KEY"),
+	endpoint: "https://router.requesty.ai/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- API Route
 pub struct ApiRouteAdapter;
 impl_pass_through_adapter!(
-    name: ApiRouteAdapter,
-    kind: AdapterKind::ApiRoute,
-    key_env: Some("API_ROUTE_API_KEY"),
-    endpoint: "https://global.api-route.com/v1/",
-    delegate: OpenAIAdapter,
+	name: ApiRouteAdapter,
+	kind: AdapterKind::ApiRoute,
+	key_env: Some("API_ROUTE_API_KEY"),
+	endpoint: "https://global.api-route.com/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- Heabsy
 pub struct HeabsyAdapter;
 impl_pass_through_adapter!(
-    name: HeabsyAdapter,
-    kind: AdapterKind::Heabsy,
-    key_env: Some("HEABSY_API_KEY"),
-    endpoint: "https://api.heabsy.com/v1/",
-    delegate: OpenAIAdapter,
-    unsupported: [embeddings],
+	name: HeabsyAdapter,
+	kind: AdapterKind::Heabsy,
+	key_env: Some("HEABSY_API_KEY"),
+	endpoint: "https://api.heabsy.com/v1/",
+	delegate: OpenAIAdapter,
+	unsupported: [embeddings],
 );
 
 // -- Runcrate
 pub struct RuncrateAdapter;
 impl_pass_through_adapter!(
-    name: RuncrateAdapter,
-    kind: AdapterKind::Runcrate,
-    key_env: Some("RUNCRATE_API_KEY"),
-    endpoint: "https://api.runcrate.ai/v1/",
-    delegate: OpenAIAdapter,
+	name: RuncrateAdapter,
+	kind: AdapterKind::Runcrate,
+	key_env: Some("RUNCRATE_API_KEY"),
+	endpoint: "https://api.runcrate.ai/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- TogetherAdapter
 pub struct TogetherAdapter;
 impl_pass_through_adapter!(
-    name: TogetherAdapter,
-    kind: AdapterKind::Together,
-    key_env: Some("TOGETHER_API_KEY"),
-    endpoint: "https://api.together.xyz/v1/",
-    delegate: OpenAIAdapter,
+	name: TogetherAdapter,
+	kind: AdapterKind::Together,
+	key_env: Some("TOGETHER_API_KEY"),
+	endpoint: "https://api.together.xyz/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // -- XaiAdapter
 pub struct XaiAdapter;
 impl_pass_through_adapter!(
-    name: XaiAdapter,
-    kind: AdapterKind::Xai,
-    key_env: Some("XAI_API_KEY"),
-    endpoint: "https://api.x.ai/v1/",
-    delegate: OpenAIAdapter,
+	name: XaiAdapter,
+	kind: AdapterKind::Xai,
+	key_env: Some("XAI_API_KEY"),
+	endpoint: "https://api.x.ai/v1/",
+	delegate: OpenAIAdapter,
 );
 
 // endregion: --- Pass-through adapters (with macros)

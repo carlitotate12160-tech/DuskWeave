@@ -36,7 +36,7 @@ pub mod otel;
 // bring-your-own-client path (`with_reqwest`).
 #[cfg(all(feature = "rustls-tls", feature = "native-tls"))]
 compile_error!(
-    "genai: `rustls-tls` and `native-tls` are mutually exclusive. \
+	"genai: `rustls-tls` and `native-tls` are mutually exclusive. \
 	 To use native-tls, set `default-features = false` and enable `native-tls`."
 );
 

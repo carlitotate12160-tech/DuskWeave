@@ -13,50 +13,50 @@ use crate::chat::{CustomPart, StopReason, Usage};
 /// flattening multiple reasoning blocks into a single string.
 #[derive(Debug)]
 pub enum InterStreamThoughtBlock {
-    /// A reasoning block with its opaque continuation signature.
-    Signed {
-        reasoning_content: Option<String>,
-        signature: String,
-    },
-    /// A provider-native block replayed as is (e.g. Anthropic `redacted_thinking`).
-    Custom(CustomPart),
+	/// A reasoning block with its opaque continuation signature.
+	Signed {
+		reasoning_content: Option<String>,
+		signature: String,
+	},
+	/// A provider-native block replayed as is (e.g. Anthropic `redacted_thinking`).
+	Custom(CustomPart),
 }
 
 #[derive(Debug, Default)]
 pub struct InterStreamEnd {
-    // When `ChatOptions..capture_usage == true`
-    pub captured_usage: Option<Usage>,
+	// When `ChatOptions..capture_usage == true`
+	pub captured_usage: Option<Usage>,
 
-    // Normalised stop reason.
-    pub captured_stop_reason: Option<StopReason>,
+	// Normalised stop reason.
+	pub captured_stop_reason: Option<StopReason>,
 
-    // When `ChatOptions..capture_content == true`
-    pub captured_text_content: Option<String>,
+	// When `ChatOptions..capture_content == true`
+	pub captured_text_content: Option<String>,
 
-    // When `ChatOptions..capture_reasoning_content == true`
-    pub captured_reasoning_content: Option<String>,
+	// When `ChatOptions..capture_reasoning_content == true`
+	pub captured_reasoning_content: Option<String>,
 
-    // When `ChatOptions..capture_tool_calls == true`
-    pub captured_tool_calls: Option<Vec<crate::chat::ToolCall>>,
+	// When `ChatOptions..capture_tool_calls == true`
+	pub captured_tool_calls: Option<Vec<crate::chat::ToolCall>>,
 
-    // Provider continuation metadata captured whenever the provider emits it.
-    pub captured_thought_signatures: Option<Vec<String>>,
+	// Provider continuation metadata captured whenever the provider emits it.
+	pub captured_thought_signatures: Option<Vec<String>>,
 
-    // Paired provider reasoning/signature blocks and custom blocks in original block order.
-    pub captured_thought_blocks: Option<Vec<InterStreamThoughtBlock>>,
+	// Paired provider reasoning/signature blocks and custom blocks in original block order.
+	pub captured_thought_blocks: Option<Vec<InterStreamThoughtBlock>>,
 
-    // Response ID for stateful sessions (OpenAI Responses API).
-    pub captured_response_id: Option<String>,
+	// Response ID for stateful sessions (OpenAI Responses API).
+	pub captured_response_id: Option<String>,
 }
 
 /// Intermediary StreamEvent
 #[derive(Debug)]
 pub enum InterStreamEvent {
-    Start,
-    Chunk(String),
-    ReasoningChunk(String),
-    ThoughtSignatureChunk(String),
-    ToolCallChunk(crate::chat::ToolCall),
-    Heartbeat,
-    End(InterStreamEnd),
+	Start,
+	Chunk(String),
+	ReasoningChunk(String),
+	ThoughtSignatureChunk(String),
+	ToolCallChunk(crate::chat::ToolCall),
+	Heartbeat,
+	End(InterStreamEnd),
 }
