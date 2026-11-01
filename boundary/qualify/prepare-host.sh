@@ -27,8 +27,13 @@ install -d -m 0755 "$TOOLS" "$ROOT/src" "$ROOT/build" "$ROOT/build/normal"
 install -d -m 0700 "$REPORT" "$TOOLS/downloads"
 
 download() {
-    local url=$1 output=$2 expected=$3
-    if [[ ! -e $output ]]; then curl --fail --silent --show-error --location --max-time 300 "$url" -o "$output"; fi
+    local url=$1 output=$2 expected=$3 staged=$2.next
+    if [[ -e $staged ]]; then rm -f -- "$staged"; fi
+    if [[ ! -e $output ]]; then
+        curl --fail --silent --show-error --location --max-time 300 "$url" -o "$staged"
+        printf '%s  %s\n' "$expected" "$staged" | sha256sum --check --status || refuse toolchain_hash_refused
+        mv -- "$staged" "$output"
+    fi
     printf '%s  %s\n' "$expected" "$output" | sha256sum --check --status || refuse toolchain_hash_refused
 }
 
@@ -47,7 +52,11 @@ prepare_rust() {
     local archive=$TOOLS/downloads/$stem.tar.xz
     local checksum=$archive.sha256
     if [[ ! -e $checksum ]]; then
-        curl --fail --silent --show-error --max-time 60 "https://static.rust-lang.org/dist/$stem.tar.xz.sha256" -o "$checksum"
+        local staged_checksum=$checksum.next
+        rm -f -- "$staged_checksum"
+        curl --fail --silent --show-error --max-time 60 "https://static.rust-lang.org/dist/$stem.tar.xz.sha256" -o "$staged_checksum"
+        grep -q '^[0-9a-f]\{64\} ' "$staged_checksum" || { rm -f -- "$staged_checksum"; refuse rust_checksum_refused; }
+        mv -- "$staged_checksum" "$checksum"
     fi
     local expected
     expected=$(cut -d ' ' -f1 "$checksum")
@@ -111,11 +120,13 @@ prepare_raw_sinks() {
     if awk 'NR>1 {print $1}' /proc/swaps | grep -qvx /swapfile; then refuse unexpected_swap_refused; fi
     if awk 'NR>1 {print $1}' /proc/swaps | grep -qx /swapfile; then swapoff /swapfile; fi
     # Preserve every unrelated mount line and retain only the non-sensitive swap line above.
-    local temporary
-    temporary=$(mktemp)
+    # Replace fstab through an owned same-directory file, then atomic rename so a
+    # killed run never leaves a truncated file behind.
+    local temporary=/etc/fstab.next
     awk '!($1=="/swapfile" && $3=="swap")' /etc/fstab > "$temporary"
-    cat "$temporary" > /etc/fstab
-    rm -- "$temporary"
+    chown --reference=/etc/fstab "$temporary"
+    chmod --reference=/etc/fstab "$temporary"
+    mv -- "$temporary" /etc/fstab
     systemctl mask --now swapfile.swap
     if [[ -f /etc/default/apport ]]; then sed -i 's/^enabled=1$/enabled=0/' /etc/default/apport; fi
     systemctl mask --now apport.service

@@ -4,7 +4,7 @@ set -euo pipefail
 umask 077
 ROOT=/srv/duskweave
 BUILD=/srv/duskweave-build
-SOURCE=$ROOT/src/live-dns-20261030
+SOURCE=$ROOT/src/pr139-qualified-lab-r2
 REPORT=$ROOT/reports/live-dns-20261030
 CONTAINER=dw-live-dns-20261030-pg
 VOLUME=dw-live-dns-20261030-pg17
@@ -16,7 +16,7 @@ refuse() { printf '%s\n' "$1" >&2; exit 1; }
 [[ $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
 
 # Fixed output/cache/temp components consumed by compiler, Go and Docker steps.
-STORAGE_COMPONENTS="normal go-cache tmp tmp/go tmp/build go-release boundary-release coverage"
+STORAGE_COMPONENTS="normal normal/release normal/release/build normal/release/deps normal/release/examples normal/release/incremental normal/release/.fingerprint go-cache tmp tmp/go tmp/build go-release boundary-release coverage"
 
 require_storage_component() {
     # An absent fixed component is allowed; an existing one must be a real
@@ -179,13 +179,13 @@ prepare_lab_database() {
     cd "$SOURCE"
     python3 - <<'PY'
 import importlib.util,json,os,pathlib,pwd
-source=pathlib.Path('/srv/duskweave/src/live-dns-20261030')
+source=pathlib.Path('/srv/duskweave/src/pr139-qualified-lab-r2')
 spec=importlib.util.spec_from_file_location('native_bootstrap',source/'tests/support/m1_native_bootstrap.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-fixture=module.Fixture('dw-live-dns-20261030-pg','fixture',database='dw_native_live_dns_20261031b',
-                       schema_revision='0030',role_prefix='dw_ldns31')
+fixture=module.Fixture('dw-live-dns-20261030-pg','fixture',database='dw_native_pr139_r2_20261101a',
+                       schema_revision='0030',role_prefix='dw_p139r2a')
 uid=pwd.getpwnam('duskweave-core').pw_uid
-config=pathlib.Path('/etc/duskweave/m1/lab-20261031b')
+config=pathlib.Path('/etc/duskweave/m1/lab-pr139-r2-20261101a')
 config.mkdir(mode=0o700)
 os.chown(config,uid,uid)
 variables={}
@@ -214,7 +214,7 @@ PY
 
 bind_lab_release() {
     python3 - <<'PY'
-import hashlib,json,os,pathlib,pwd,subprocess,time,uuid
+import hashlib,json,os,pathlib,pwd,shutil,subprocess,time,uuid
 root=pathlib.Path('/usr/local/libexec/duskweave')
 base=pathlib.Path('/etc/duskweave/m1')
 assert (base/'.live-dns-owner').read_text().strip()=='DW-IMPLEMENT-M1-LIVE-DNS-GENAI'
@@ -224,6 +224,35 @@ manifest={name+'_sha256':hashlib.sha256((root/binary).read_bytes()).hexdigest()
 image=subprocess.check_output(['docker','image','inspect','--format','{{.Id}}',
                                'dw-live-dns-20261030:candidate'],text=True).strip()
 assert image.startswith('sha256:') and len(image)==71
+# Bind the actual worker bytes inside this exact image: a never-started,
+# network-none, owned inspection container yields only the two fixed paths.
+inspect_dir=pathlib.Path('/tmp/dw-bind-inspect-'+uuid.uuid4().hex)
+inspect_dir.mkdir(mode=0o700)
+inspect_name='dw-bind-inspect-'+uuid.uuid4().hex[:12]
+def confirm_removed():
+    subprocess.run(['docker','rm','-f','-v',inspect_name],capture_output=True,timeout=60)
+    if subprocess.run(['docker','inspect',inspect_name],capture_output=True).returncode==0:
+        raise SystemExit('lab_bind_cleanup_unconfirmed')
+try:
+    subprocess.run(['docker','create','--name',inspect_name,'--network','none',image,'/bin/true'],
+                   check=True,capture_output=True,timeout=60)
+    for binary,key in [('dw-dns-capture','capture_sha256'),('dw-dns-exporter','exporter_sha256')]:
+        target=inspect_dir/binary
+        subprocess.run(['docker','cp',inspect_name+':/'+binary,str(target)],
+                       check=True,capture_output=True,timeout=60)
+        if target.stat().st_size>64*1024*1024:
+            raise SystemExit('lab_image_worker_size_refused:'+binary)
+        if hashlib.sha256(target.read_bytes()).hexdigest()!=manifest[key]:
+            raise SystemExit('lab_image_worker_mismatch:'+binary)
+    confirm_removed()
+except SystemExit:
+    confirm_removed()
+    raise
+except (subprocess.CalledProcessError,subprocess.TimeoutExpired):
+    confirm_removed()
+    raise SystemExit('lab_image_inspection_failed')
+finally:
+    shutil.rmtree(inspect_dir,ignore_errors=True)
 now=time.time_ns()//1000000
 manifest.update(qualification_ref=str(uuid.uuid4()),purpose='LAB',run_profile='autonomous-dns-genai-lab-v1',
                 image_digest=image,boot_id=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
@@ -237,7 +266,7 @@ values=[str(record[k]) for k in columns]
 assert all("'" not in v for v in values)
 sql="INSERT INTO execution.live_qualifications ("+','.join(columns)+") VALUES ("+','.join("'"+v+"'" for v in values)+");"
 r=subprocess.run(['docker','exec','-i','dw-live-dns-20261030-pg','psql','-X','-U','postgres',
-                  '-d','dw_native_live_dns_20261031b','-v','ON_ERROR_STOP=1','-At'],
+                  '-d','dw_native_pr139_r2_20261101a','-v','ON_ERROR_STOP=1','-At'],
                  input=sql,capture_output=True,text=True)
 if r.returncode: raise SystemExit('lab_qualification_write_failed')
 path=base/'deployment.json'
@@ -248,8 +277,8 @@ temporary=base/'deployment.next'
 fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o444)
 with os.fdopen(fd,'wb') as stream:stream.write(encoded)
 os.replace(temporary,path)
-report=pathlib.Path('/srv/duskweave/reports/live-dns-20261030/completion-20261031a')
-report.mkdir(mode=0o700,exist_ok=True)
+report=pathlib.Path('/srv/duskweave/reports/live-dns-20261030/completion-20261031a/pr139-fix-20261101/restart-r2')
+report.mkdir(mode=0o700,parents=True,exist_ok=True)
 m=report.lstat()
 assert m.st_uid==0 and m.st_mode&0o777==0o700 and not report.is_symlink()
 (report/('deployment-'+manifest['qualification_ref']+'.json')).write_bytes(encoded)

@@ -101,7 +101,7 @@ func (r *Reader) Read(dst any, limit uint32) error {
 		return ErrFrame
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(data, &fields) != nil || !required(reflect.TypeOf(dst), fields) {
+	if json.Unmarshal(data, &fields) != nil || !closed(reflect.TypeOf(dst), fields) {
 		return ErrFrame
 	}
 	d := json.NewDecoder(bytes.NewReader(data))
@@ -113,8 +113,10 @@ func (r *Reader) Read(dst any, limit uint32) error {
 	return nil
 }
 
-// Every field in this closed protocol is required, including legal zero values.
-func required(t reflect.Type, fields map[string]json.RawMessage) bool {
+// Every field in this closed protocol is required, including legal zero
+// values, and every object key must match a declared JSON name exactly at
+// every level — embedded structs and struct-slice elements included.
+func closed(t reflect.Type, fields map[string]json.RawMessage) bool {
 	if t == nil {
 		return false
 	}
@@ -124,23 +126,47 @@ func required(t reflect.Type, fields map[string]json.RawMessage) bool {
 	if t.Kind() != reflect.Struct {
 		return false
 	}
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Anonymous {
-			if !required(field.Type, fields) {
-				return false
+	declared := map[string]reflect.Type{}
+	var collect func(reflect.Type)
+	collect = func(st reflect.Type) {
+		for i := 0; i < st.NumField(); i++ {
+			f := st.Field(i)
+			if f.Anonymous {
+				collect(f.Type)
+				continue
 			}
-			continue
-		}
-		name := strings.Split(field.Tag.Get("json"), ",")[0]
-		if _, found := fields[name]; !found {
-			return false
-		}
-		if bytes.Equal(bytes.TrimSpace(fields[name]), []byte("null")) {
-			return false
+			declared[strings.Split(f.Tag.Get("json"), ",")[0]] = f.Type
 		}
 	}
-	return true
+	collect(t)
+	for name, raw := range fields {
+		ft, found := declared[name]
+		if !found || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return false
+		}
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		switch {
+		case ft.Kind() == reflect.Struct:
+			var nested map[string]json.RawMessage
+			if json.Unmarshal(raw, &nested) != nil || !closed(ft, nested) {
+				return false
+			}
+		case ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.Struct:
+			var elements []json.RawMessage
+			if json.Unmarshal(raw, &elements) != nil {
+				return false
+			}
+			for _, element := range elements {
+				var member map[string]json.RawMessage
+				if json.Unmarshal(element, &member) != nil || !closed(ft.Elem(), member) {
+					return false
+				}
+			}
+		}
+	}
+	return len(fields) == len(declared)
 }
 func (w *Writer) Write(value any, limit uint32) error {
 	if w.Count >= MaxFrames || limit == 0 || limit > Limit {

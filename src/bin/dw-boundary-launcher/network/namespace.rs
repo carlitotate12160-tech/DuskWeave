@@ -102,6 +102,9 @@ pub(super) fn destroy(n: &Names, end: Instant) -> bool {
         || !std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists();
     let ns = run(IP, &["netns", "del", &n.netns], end).is_ok()
         || !std::path::Path::new(&format!("/run/netns/{}", n.netns)).exists();
-    let table = nft(None, &format!("delete table inet {}\n", n.table), end).is_ok();
+    let listed = nft(None, "list tables inet\n", end).is_ok();
+    let present = listed && nft(None, &format!("list table inet {}\n", n.table), end).is_ok();
+    let table =
+        (!present && listed) || nft(None, &format!("delete table inet {}\n", n.table), end).is_ok();
     link && ns && table
 }
