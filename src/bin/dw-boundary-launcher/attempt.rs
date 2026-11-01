@@ -386,3 +386,6 @@ pub(super) fn transport_cleared(attempt: Uuid) -> bool {
     let path = dir(attempt).join("transport.pending");
     std::fs::remove_file(&path).is_ok() || !path.exists()
 }
+#[cfg(test)]
+#[path = "../../../tests/m1_live_dns/units/launcher_attempt.rs"]
+mod tests;

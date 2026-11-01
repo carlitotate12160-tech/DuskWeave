@@ -108,3 +108,6 @@ pub(super) fn destroy(n: &Names, end: Instant) -> bool {
         !listed || !present || nft(None, &format!("delete table inet {}\n", n.table), end).is_ok();
     link && ns && table
 }
+#[cfg(test)]
+#[path = "../../../../tests/m1_live_dns/units/network_namespace.rs"]
+mod tests;
