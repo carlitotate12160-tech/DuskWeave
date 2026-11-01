@@ -113,6 +113,14 @@ fn prepare_resources(
     // Attach completes before any raw-transporter child is spawned.
     Ok((Attach::connect(&capture.id, end)?, exporter, dir))
 }
+fn clear_failed_transport(error: &Fail, attempt: uuid::Uuid) {
+    // An unconfirmed reap keeps the marker honest; a spawn that never
+    // produced a child, or a restore failure after a confirmed reap,
+    // proves none survives, so the marker is stale and cleared.
+    if !matches!(error, Fail::Unresolved(u) if *u == "live_disposal_unconfirmed") {
+        let _ = super::attempt::transport_cleared(attempt);
+    }
+}
 fn exporter_channels(
     container: &Container,
     dir: &Path,
@@ -126,12 +134,7 @@ fn exporter_channels(
     let process = match exporter(container, dir, child_in, child_out, raw, end) {
         Ok(process) => process,
         Err(error) => {
-            // An unconfirmed reap keeps the marker honest; a spawn that never
-            // produced a child, or a restore failure after a confirmed reap,
-            // proves none survives, so the marker is stale and cleared.
-            if !matches!(&error, Fail::Unresolved(u) if *u == "live_disposal_unconfirmed") {
-                let _ = super::attempt::transport_cleared(attempt);
-            }
+            clear_failed_transport(&error, attempt);
             return Err(error);
         }
     };

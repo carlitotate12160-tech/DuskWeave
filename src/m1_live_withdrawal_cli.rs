@@ -39,13 +39,10 @@ impl RestrictedWithdrawal for Writer {
             }
         };
         let mut store = PgMissionStore::new(client);
-        self.live = match live_registration(&mut store, q) {
+        self.live = match check_live(&mut store, q) {
             Ok(live) => live,
-            Err(error) => {
-                self.live = !matches!(
-                    error,
-                    Fail::Input(_) | Fail::State(_) | Fail::Conflict(_)
-                );
+            Err((error, live)) => {
+                self.live = live;
                 return Err(error);
             }
         };
@@ -54,6 +51,15 @@ impl RestrictedWithdrawal for Writer {
         }
         let mut allocator = PgAllocator::new(super::connect()?);
         WithdrawalStore::withdraw(&mut store, q, operation, recover, &mut allocator)
+    }
+}
+fn check_live(store: &mut PgMissionStore, q: &WithdrawalRequest) -> Result<bool, (Fail, bool)> {
+    match live_registration(store, q) {
+        Ok(live) => Ok(live),
+        Err(e) => {
+            let live = !matches!(e, Fail::Input(_) | Fail::State(_) | Fail::Conflict(_));
+            Err((e, live))
+        }
     }
 }
 fn live_registration(store: &mut PgMissionStore, q: &WithdrawalRequest) -> Res<bool> {

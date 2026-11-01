@@ -97,16 +97,17 @@ pub(super) fn absent(n: &Names) -> bool {
     !std::path::Path::new(&format!("/run/netns/{}", n.netns)).exists()
         && !std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists()
 }
+fn table_disposed(table: &str, end: Instant) -> bool {
+    let listed = nft(None, "list tables inet\n", end).is_ok();
+    let present = listed && nft(None, &format!("list table inet {table}\n"), end).is_ok();
+    (!present && listed) || nft(None, &format!("delete table inet {table}\n"), end).is_ok()
+}
 pub(super) fn destroy(n: &Names, end: Instant) -> bool {
     let link = run(IP, &["link", "del", &n.host], end).is_ok()
         || !std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists();
     let ns = run(IP, &["netns", "del", &n.netns], end).is_ok()
         || !std::path::Path::new(&format!("/run/netns/{}", n.netns)).exists();
-    let listed = nft(None, "list tables inet\n", end).is_ok();
-    let present = listed && nft(None, &format!("list table inet {}\n", n.table), end).is_ok();
-    let table =
-        (!present && listed) || nft(None, &format!("delete table inet {}\n", n.table), end).is_ok();
-    link && ns && table
+    link && ns && table_disposed(&n.table, end)
 }
 
 #[cfg(test)]
