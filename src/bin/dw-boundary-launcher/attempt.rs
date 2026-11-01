@@ -377,5 +377,12 @@ pub(super) fn transport_started(attempt: Uuid) -> Res<()> {
         .map_err(|_| Fail::Config("live_host_unqualified"))
 }
 pub(super) fn transport_reaped(attempt: Uuid) -> bool {
-    std::fs::remove_file(dir(attempt).join("transport.pending")).is_ok()
+    transport_cleared(attempt)
+}
+/// Clears a stale pending marker only when the parent has proven that no
+/// raw-transporter child survives (spawn never produced one, or its reap was
+/// confirmed). Callers must not use this to mask an unconfirmed reap.
+pub(super) fn transport_cleared(attempt: Uuid) -> bool {
+    let path = dir(attempt).join("transport.pending");
+    std::fs::remove_file(&path).is_ok() || !path.exists()
 }

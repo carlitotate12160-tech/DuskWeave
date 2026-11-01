@@ -123,7 +123,18 @@ fn exporter_channels(
     let (input, child_in) = socket_pair()?;
     let (output, child_out) = socket_pair()?;
     super::attempt::transport_started(attempt)?;
-    let process = exporter(container, dir, child_in, child_out, raw, end)?;
+    let process = match exporter(container, dir, child_in, child_out, raw, end) {
+        Ok(process) => process,
+        Err(error) => {
+            // An unconfirmed reap keeps the marker honest; a spawn that never
+            // produced a child, or a restore failure after a confirmed reap,
+            // proves none survives, so the marker is stale and cleared.
+            if !matches!(&error, Fail::Unresolved(u) if *u == "live_disposal_unconfirmed") {
+                let _ = super::attempt::transport_cleared(attempt);
+            }
+            return Err(error);
+        }
+    };
     Ok((
         TimedSocket { io: input, end },
         TimedSocket { io: output, end },
