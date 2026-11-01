@@ -230,14 +230,6 @@ manifest.update(qualification_ref=str(uuid.uuid4()),purpose='LAB',run_profile='a
                 resolver_ipv4='192.0.2.53',valid_from_ms=now,valid_until_ms=now+86400000,
                 core_uid=pwd.getpwnam('duskweave-core').pw_uid)
 encoded=(json.dumps(manifest,sort_keys=True,separators=(',',':'))+chr(10)).encode()
-path=base/'deployment.json'
-if path.exists():
- m=path.lstat()
- assert m.st_uid==0 and m.st_nlink==1 and m.st_mode&0o22==0 and not path.is_symlink()
-temporary=base/'deployment.next'
-fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o444)
-with os.fdopen(fd,'wb') as stream:stream.write(encoded)
-os.replace(temporary,path)
 columns=['qualification_ref','run_profile','purpose','release_sha256','launcher_sha256','capture_sha256',
          'exporter_sha256','image_digest','manifest_sha256','boot_id','resolver_ipv4','valid_from_ms','valid_until_ms']
 record=dict(manifest,manifest_sha256=hashlib.sha256(encoded).hexdigest())
@@ -248,6 +240,14 @@ r=subprocess.run(['docker','exec','-i','dw-live-dns-20261030-pg','psql','-X','-U
                   '-d','dw_native_live_dns_20261031b','-v','ON_ERROR_STOP=1','-At'],
                  input=sql,capture_output=True,text=True)
 if r.returncode: raise SystemExit('lab_qualification_write_failed')
+path=base/'deployment.json'
+if path.exists():
+ m=path.lstat()
+ assert m.st_uid==0 and m.st_nlink==1 and m.st_mode&0o22==0 and not path.is_symlink()
+temporary=base/'deployment.next'
+fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o444)
+with os.fdopen(fd,'wb') as stream:stream.write(encoded)
+os.replace(temporary,path)
 report=pathlib.Path('/srv/duskweave/reports/live-dns-20261030/completion-20261031a')
 report.mkdir(mode=0o700,exist_ok=True)
 m=report.lstat()
