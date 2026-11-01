@@ -148,8 +148,17 @@ refusal is fail-closed behavior under a competing owner, not a proved
 implementation defect; the historical lock holder remains unidentified and
 both attempts' identities, charged state and receipts stay preserved.
 Storage separation removes the demonstrated coupling but is
-not a universal readiness guarantee; final r5 release rebinding, committed
-CI/coverage and review remain open. External qualification evidence retains
+not a universal readiness guarantee. Committed-head CI on the draft PR
+(#139, head 8a27d28) passes every functional gate — builds, both test
+shards, mutation, structure, metrics, CodeQL, geiger, links, dependencies,
+Go boundary and the guarded qualification lane — but the production
+coverage floor remains UNVERIFIED: total 83.84% (<90%) and 21 new
+host-bound files under 80%, because their only witnesses are
+root/namespace/Docker-bound Oracle tests that CI cannot run. Meeting the
+floor needs either a dedicated coverage slice (new CI-runnable owner
+tests) or an accepted gate amendment — both outside this packet's file
+map — so the reproducible-release readiness claim stays blocked, not
+relabeled. External qualification evidence retains
 the source/version identities and metadata-only traces.
 Distinct review found run-STOP serialization and ordinary launcher-child reaping
 defects; focused regressions pass after correction. Remaining loss cases,
