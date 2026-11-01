@@ -101,12 +101,7 @@ fn receipt(
     }
 }
 fn unrecoverable(error: &Fail, live: bool) -> bool {
-    *error != Fail::Store("serialization_retry")
-        && (live
-            || matches!(
-                error,
-                Fail::Store(_) | Fail::Unresolved(_) | Fail::Config(_)
-            ))
+    live && *error != Fail::Store("serialization_retry")
 }
 pub(super) fn command(args: &[String]) -> Res<()> {
     let mut operation = None;
