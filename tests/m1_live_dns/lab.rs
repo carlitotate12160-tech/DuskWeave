@@ -116,7 +116,7 @@ pub(super) fn registered(host: &mut Host, name: &str) -> Value {
 pub(super) fn server() -> Server {
     server_with("observe_more")
 }
-fn server_with(action: &'static str) -> Server {
+pub(super) fn server_with(action: &'static str) -> Server {
     Server::lab(move |incoming| {
         let body: Value = serde_json::from_slice(&incoming.body).unwrap();
         let pack = pack_in(&body).expect("actual v4 SDK request pack");

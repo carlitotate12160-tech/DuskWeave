@@ -31,6 +31,14 @@ BEGIN
    OR jsonb_typeof(v->'asset_ref') IS DISTINCT FROM 'string'
    OR coalesce(v->>'priority','') NOT IN ('high','medium','low')))
  THEN RAISE EXCEPTION 'run_request_refused'; END IF;
+ -- v4 requires exactly one seed/candidate; reject before identity/session/lease writes.
+ -- LAB names must match Rust's canonical nonempty-prefix .duskweave.test rule.
+ IF q->>'version'='m1_autonomous_run_request_v4' AND (
+  jsonb_array_length(q->'seed_names')<>1 OR jsonb_array_length(q#>'{context,candidates}')<>1
+  OR (q->>'run_profile'='autonomous-dns-genai-lab-v1'
+   AND (q#>>'{seed_names,0,name}' IS NULL
+    OR q#>>'{seed_names,0,name}' !~ '^.+\.duskweave\.test$')))
+ THEN RAISE EXCEPTION 'run_request_refused'; END IF;
  r:=(q->>'run_id')::uuid; e:=(q#>>'{context,mission,engagement_id}')::uuid; c:=(q#>>'{context,mission,campaign_id}')::uuid;
  IF '00000000-0000-0000-0000-000000000000'::uuid IN(r,e,c) THEN RAISE EXCEPTION 'run_request_refused'; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended(e::text||':'||c::text,0));
@@ -244,7 +252,7 @@ BEGIN
  status:=CASE WHEN y.status='running' AND least(y.lease_until_ms,x.deadline_at_ms)<=floor(extract(epoch FROM clock_timestamp())*1000)::bigint
  THEN 'unknown_supervisor_lost' ELSE y.status END;
  summary:=jsonb_build_object('kind','m1_autonomous_run_receipt_v1','run_id',r,'run_profile',x.request->'run_profile',
- 'execution_mode',x.request->'execution_mode','status',status,'phase',y.phase,'dispatch_granted',false,'live_qualified',x.request->>'version'='m1_autonomous_run_request_v4' AND coalesce((SELECT n>=z.valid_from_ms AND n<z.valid_until_ms FROM execution.live_qualifications z WHERE z.qualification_ref=x.qualification_ref),false),
+ 'execution_mode',x.request->'execution_mode','status',status,'phase',y.phase,'dispatch_granted',false,'live_qualified',x.request->>'version'='m1_autonomous_run_request_v4' AND coalesce((SELECT n>=z.valid_from_ms AND n<z.valid_until_ms AND z.run_profile=x.request->>'run_profile' AND z.release_sha256=x.release_sha256 AND host(z.resolver_ipv4)=x.request#>>'{live_binding,resolver_ipv4}' AND z.purpose=CASE x.request->>'run_profile' WHEN 'autonomous-dns-genai-live-v1' THEN 'LIVE' ELSE 'LAB' END FROM execution.live_qualifications z WHERE z.qualification_ref=x.qualification_ref),false),
  'decision_one',x.decision_one,'decision_two',x.decision_two,'attempt',x.attempt,'result',x.result,
  'terrain_operation',x.terrain_operation,
  'phases',(SELECT coalesce(jsonb_agg(jsonb_build_object('phase',p.phase,'status',p.status,'recorded_at_ms',p.recorded_at_ms) ORDER BY p.recorded_at_ms),'[]') FROM execution.autonomous_phases p WHERE run_id=r),

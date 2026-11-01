@@ -387,3 +387,7 @@ fn normal_withdrawal_stops_first_uses_stop_writer_and_publishes_existing_history
     )
     .unwrap();
 }
+
+#[cfg(target_os = "linux")]
+#[path = "withdrawal/pre_acquisition.rs"]
+mod pre_acquisition;
