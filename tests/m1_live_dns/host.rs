@@ -7,9 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
-const REPORT: &str =
-    "/srv/duskweave/reports/live-dns-20261030/completion-20261031a/pr139-fix-20261101";
-const CONFIG: &str = "/etc/duskweave/m1/lab-pr139-fix-20261101a";
+const REPORT: &str = "/srv/duskweave/reports/live-dns-20261030/completion-20261031a";
+const CONFIG: &str = "/etc/duskweave/m1/lab-20261031b";
 pub const CORE: &str = "/usr/local/libexec/duskweave/duskweave";
 
 pub fn command(binary: &str, args: &[&str]) -> std::process::Output {
@@ -81,7 +80,7 @@ impl Host {
             .get(0);
         let tag = &id.simple().to_string()[..12];
         let report = Path::new(REPORT).join(id.simple().to_string());
-        std::fs::create_dir_all(&report).unwrap();
+        std::fs::create_dir(&report).unwrap();
         let manifest =
             serde_json::from_slice(&std::fs::read("/etc/duskweave/m1/deployment.json").unwrap())
                 .unwrap();

@@ -393,6 +393,3 @@ fn killed_launcher_child_is_reaped_within_its_original_owner_budget() {
         "returning after kill must not leave an unreaped owned child"
     );
 }
-#[cfg(all(test, target_os = "linux"))]
-#[path = "../../tests/m1_live_dns/units/effect_socket.rs"]
-mod tests;

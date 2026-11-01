@@ -376,9 +376,7 @@ and fixed failure categories.
 Prerequisite: an operator-provisioned owned volume at the fixed path
 (UUID fstab entry with `_netdev`; iSCSI auto-login). Rollback: the
 volume holds only rebuildable outputs — losing it fails closed; the
-retained `/srv/duskweave/build` tree is untouched: its retired
-build outputs are never consulted, while the explicitly retained Cargo
-dependency cache under it may still be read by builds.
+retained `/srv/duskweave/build` tree is untouched and never consulted.
 Limits: the separate filesystem removes the demonstrated build-writeback
 stall of containerd temporary-layer unmount; it is not a readiness
 guarantee against other device/VM coupling. The original 5000-ms

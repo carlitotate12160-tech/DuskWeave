@@ -29,23 +29,8 @@ impl RestrictedWithdrawal for Writer {
             let _ = super::m1_run_control::signal_campaign(q.engagement_id.0, q.campaign_id.0);
         }
         // This read happens only after the local-stop port has returned.
-        let client = match super::connect() {
-            Ok(client) => client,
-            // Indeterminate lookup failures cannot prove rejection; the live
-            // lane classifies them as unknown rather than a refused write.
-            Err(error) => {
-                self.live = true;
-                return Err(error);
-            }
-        };
-        let mut store = PgMissionStore::new(client);
-        self.live = match live_registration(&mut store, q) {
-            Ok(live) => live,
-            Err(error) => {
-                self.live = !matches!(error, Fail::Input(_) | Fail::State(_) | Fail::Conflict(_));
-                return Err(error);
-            }
-        };
+        let mut store = PgMissionStore::new(super::connect()?);
+        self.live = live_registration(&mut store, q)?;
         if self.live {
             return live_write(q, operation, recover);
         }
@@ -81,9 +66,8 @@ fn live_write(
         "DW_STOP_WRITER_DATABASE_URL_FILE",
     )?;
     let client = super::database_wait::connect_owner(config, stop_role)?;
-    // Campaign-scoped atomic path: the fenced Mission function resolves the
-    // current session itself; absent sessions still withdraw durably.
-    let mut writer = PgStopWriter::scoped(client);
+    let mut writer = PgStopWriter::latest(client, q.engagement_id.0, q.campaign_id.0)?
+        .ok_or(Fail::Unresolved("live_stop_generation_absent"))?;
     RestrictedWithdrawal::withdraw(&mut writer, q, operation, recover)
 }
 fn publication(event: MissionAuthorityWithdrawn, recover: bool) -> Value {

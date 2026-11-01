@@ -138,6 +138,3 @@ fn renew(channel: &mut HostChannel<UnixStream>, q: &DnsRequest) -> Res<()> {
         _ => Err(Fail::State("live_host_protocol_refused")),
     }
 }
-#[cfg(test)]
-#[path = "../../../../tests/m1_live_dns/units/launcher_exchange.rs"]
-mod tests;

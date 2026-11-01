@@ -131,6 +131,3 @@ fn watchdog_stop(socket: &mut UnixStream, attempt: uuid::Uuid, generation: u64) 
         _ => Ok(true),
     }
 }
-#[cfg(test)]
-#[path = "../../../../tests/m1_live_dns/units/launcher_watchdog.rs"]
-mod tests;

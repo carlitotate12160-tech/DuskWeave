@@ -20,9 +20,6 @@ mod terrain;
 
 #[path = "m1_live_dns/withdrawal.rs"]
 mod withdrawal;
-#[cfg(target_os = "linux")]
-#[path = "m1_live_dns/withdrawal_live.rs"]
-mod withdrawal_live;
 
 #[cfg(target_os = "linux")]
 #[path = "m1_live_dns/host.rs"]

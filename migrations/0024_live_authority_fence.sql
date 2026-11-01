@@ -84,15 +84,6 @@ BEGIN
   AND b.publication_obligation='terrain.issued_dns.v2'
   AND payload->>'operation_id'=a.terrain_operation::text)
  THEN allowed:=true; END IF;
- -- A detected integrity conflict against that same committed lineage must be
- -- persisted before the refusal returns; only INSERT reaches the fence.
- IF TG_TABLE_SCHEMA='terrain' AND TG_TABLE_NAME='integrity_conflicts' AND TG_OP='INSERT'
- AND execution.private_live_actor('dw_m1_terrain')
- AND EXISTS(SELECT 1 FROM execution.autonomous_runs a JOIN execution.live_dns_results b USING(run_id)
-  WHERE a.run_id=s.run_id AND b.result=s.result_ref AND b.attempt=s.attempt
-  AND b.publication_obligation='terrain.issued_dns.v2'
-  AND payload->>'operation_id'=a.terrain_operation::text)
- THEN allowed:=true; END IF;
  -- The parent may renew only its existing run lease, never any authority or phase.
  IF TG_TABLE_SCHEMA='execution' AND TG_TABLE_NAME='autonomous_control' AND TG_OP='UPDATE'
  AND s.writer_oid=(SELECT oid FROM pg_roles WHERE rolname=session_user)
@@ -123,7 +114,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE e uuid;c uuid;s execution.live_effect_sessions;m mission.missions;prior mission.withdrawals;
  event uuid;n bigint;contract jsonb;
 BEGIN
- IF NOT execution.private_live_actor('dw_m1_stop_writer') OR (g IS NOT NULL AND g<1) OR op IS NULL
+ IF NOT execution.private_live_actor('dw_m1_stop_writer') OR g IS NULL OR g<1 OR op IS NULL
  OR op='00000000-0000-0000-0000-000000000000'::uuid OR jsonb_typeof(q) IS DISTINCT FROM 'object'
  OR q-ARRAY['engagement_id','campaign_id','operator_ref','expected_mission_revision','reason']<>'{}'
  OR NOT q ?& ARRAY['engagement_id','campaign_id','operator_ref','expected_mission_revision','reason']
@@ -138,15 +129,8 @@ BEGIN
  THEN RAISE EXCEPTION 'live_withdrawal_refused'; END IF;
  e:=(q->>'engagement_id')::uuid;c:=(q->>'campaign_id')::uuid;
  PERFORM pg_advisory_xact_lock(hashtextextended(e::text||':'||c::text,0));
- -- NULL g resolves the current session under this fence; an explicit
- -- generation must still exist. No session is ever manufactured.
- IF g IS NULL THEN
-  SELECT * INTO s FROM execution.live_effect_sessions a WHERE (a.e,a.c)=(e,c)
-  ORDER BY a.generation DESC LIMIT 1;
- ELSE
-  SELECT * INTO s FROM execution.live_effect_sessions a WHERE (a.e,a.c,a.generation)=(e,c,g);
- END IF;
- IF s.run_id IS NULL AND g IS NOT NULL THEN RAISE EXCEPTION 'live_withdrawal_refused'; END IF;
+ SELECT * INTO s FROM execution.live_effect_sessions a WHERE (a.e,a.c,a.generation)=(e,c,g);
+ IF s.run_id IS NULL THEN RAISE EXCEPTION 'live_withdrawal_refused'; END IF;
  SELECT * INTO prior FROM mission.withdrawals a WHERE (a.engagement_id,a.campaign_id)=(e,c);
  IF FOUND THEN
   IF prior.operation_id<>op OR prior.contract->'request' IS DISTINCT FROM q THEN RAISE EXCEPTION 'live_withdrawal_conflict'; END IF;
@@ -157,19 +141,13 @@ BEGIN
  IF m.operation_id IS NULL OR m.revision<>1 OR m.operator_ref::text IS DISTINCT FROM q->>'operator_ref'
  OR EXISTS(SELECT 1 FROM mission.registration_outbox a WHERE (a.engagement_id,a.campaign_id,a.operation_id)=(e,c,op))
  OR EXISTS(SELECT 1 FROM mission.planning_assessments a WHERE (a.engagement_id,a.campaign_id,a.operation_id)=(e,c,op))
- OR NOT EXISTS(SELECT 1 FROM mission.registration_outbox a WHERE (a.engagement_id,a.campaign_id,a.operation_id)=(e,c,m.operation_id)
-  AND jsonb_typeof(a.contract#>'{fields,m1_inference_permission,live_binding}')='object')
  THEN RAISE EXCEPTION 'live_withdrawal_refused'; END IF;
  event:=gen_random_uuid();n:=floor(extract(epoch FROM transaction_timestamp()))::bigint;
  contract:=jsonb_build_object('event_id',event,'operation_id',op,'request',q,'registration_operation_id',m.operation_id,
  'producer','mission','affected_entity',c,'owner_revision',2,'kind','mission_authority_withdrawn','version',1,
  'causation_id',op,'correlation_id',op,'occurred_at',n,'recorded_at',n);
- -- The writer context exists only to pass the active-session fence; with no
- -- session there is no fence to pass, so no context or session is invented.
- IF s.run_id IS NOT NULL THEN
-  INSERT INTO execution.private_live_writer_context VALUES(pg_backend_pid(),pg_current_xact_id(),e,c,s.generation,
-  (SELECT oid FROM pg_roles WHERE rolname=session_user),'withdraw');
- END IF;
+ INSERT INTO execution.private_live_writer_context VALUES(pg_backend_pid(),pg_current_xact_id(),e,c,g,
+ (SELECT oid FROM pg_roles WHERE rolname=session_user),'withdraw');
  INSERT INTO mission.withdrawals(engagement_id,campaign_id,operation_id,event_id,registration_operation_id,contract)
  VALUES(e,c,op,event,m.operation_id,contract);
  DELETE FROM execution.private_live_writer_context w WHERE w.backend_pid=pg_backend_pid()

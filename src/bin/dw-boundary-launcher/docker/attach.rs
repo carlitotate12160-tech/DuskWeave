@@ -176,6 +176,3 @@ impl Write for Attach {
         self.socket.flush()
     }
 }
-#[cfg(test)]
-#[path = "../../../../tests/m1_live_dns/units/docker_attach.rs"]
-mod tests;

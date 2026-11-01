@@ -96,27 +96,24 @@ impl EffectStore for PgEffectStore {
 }
 
 /// Only the restrictive Mission function is callable with this connection.
-/// A None generation asks the fenced Mission function to resolve the current
-/// session itself; it never invents generation 0.
 pub struct PgStopWriter {
     client: Client,
-    generation: Option<i64>,
+    generation: i64,
 }
 impl PgStopWriter {
     pub fn new(client: Client, generation: i64) -> Self {
-        Self {
-            client,
-            generation: Some(generation),
-        }
-    }
-    pub fn scoped(client: Client) -> Self {
-        Self {
-            client,
-            generation: None,
-        }
+        Self { client, generation }
     }
 }
 impl PgStopWriter {
+    pub fn latest(mut client: Client, e: Uuid, c: Uuid) -> Res<Option<Self>> {
+        let generation: Option<i64> = client
+            .query_one("SELECT execution.live_stop_generation($1,$2)", &[&e, &c])
+            .map_err(|_| Fail::Unresolved("live_stop_metadata_pending"))?
+            .try_get(0)
+            .map_err(|_| Fail::Store("contract_decode"))?;
+        Ok(generation.map(|generation| Self { client, generation }))
+    }
     fn record(
         &mut self,
         q: &WithdrawalRequest,

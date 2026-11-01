@@ -20,8 +20,6 @@ BEGIN
  OR q->>'execution_mode' IS DISTINCT FROM (CASE WHEN q->>'version'='m1_autonomous_run_request_v4' THEN 'live' ELSE 'controlled_fixture' END)
  OR jsonb_typeof(q->'seed_names') IS DISTINCT FROM 'array' OR jsonb_array_length(q->'seed_names') NOT BETWEEN 1 AND 8
  OR jsonb_array_length(q#>'{context,candidates}')<>jsonb_array_length(q->'seed_names')
- OR (q->>'version'='m1_autonomous_run_request_v4' AND (jsonb_array_length(q->'seed_names')<>1
-  OR (q->>'run_profile'='autonomous-dns-genai-lab-v1' AND NOT coalesce(q->'seed_names'->0->>'name','') ~ '^.+\.duskweave\.test$')))
  THEN RAISE EXCEPTION 'run_request_refused'; END IF;
  IF q->>'version' IN ('m1_autonomous_run_request_v2','m1_autonomous_run_request_v3','m1_autonomous_run_request_v4') AND (
   jsonb_typeof(q->'context') IS DISTINCT FROM 'object'
@@ -246,7 +244,7 @@ BEGIN
  status:=CASE WHEN y.status='running' AND least(y.lease_until_ms,x.deadline_at_ms)<=floor(extract(epoch FROM clock_timestamp())*1000)::bigint
  THEN 'unknown_supervisor_lost' ELSE y.status END;
  summary:=jsonb_build_object('kind','m1_autonomous_run_receipt_v1','run_id',r,'run_profile',x.request->'run_profile',
- 'execution_mode',x.request->'execution_mode','status',status,'phase',y.phase,'dispatch_granted',false,'live_qualified',x.request->>'version'='m1_autonomous_run_request_v4' AND coalesce((SELECT n>=z.valid_from_ms AND n<z.valid_until_ms AND z.run_profile=x.request->>'run_profile' AND z.release_sha256=x.release_sha256 AND host(z.resolver_ipv4)=x.request#>>'{live_binding,resolver_ipv4}' AND z.purpose=CASE x.request->>'run_profile' WHEN 'autonomous-dns-genai-live-v1' THEN 'LIVE' ELSE 'LAB' END FROM execution.live_qualifications z WHERE z.qualification_ref=x.qualification_ref),false),
+ 'execution_mode',x.request->'execution_mode','status',status,'phase',y.phase,'dispatch_granted',false,'live_qualified',x.request->>'version'='m1_autonomous_run_request_v4' AND coalesce((SELECT n>=z.valid_from_ms AND n<z.valid_until_ms FROM execution.live_qualifications z WHERE z.qualification_ref=x.qualification_ref),false),
  'decision_one',x.decision_one,'decision_two',x.decision_two,'attempt',x.attempt,'result',x.result,
  'terrain_operation',x.terrain_operation,
  'phases',(SELECT coalesce(jsonb_agg(jsonb_build_object('phase',p.phase,'status',p.status,'recorded_at_ms',p.recorded_at_ms) ORDER BY p.recorded_at_ms),'[]') FROM execution.autonomous_phases p WHERE run_id=r),

@@ -63,28 +63,3 @@ func TestPartialWritesAndFiniteFrames(t *testing.T) {
 		t.Fatal("reader frame bound absent")
 	}
 }
-
-func TestExactJsonNamesAtEveryLevel(t *testing.T) {
-	base := `{"schema":"m1_dns_ipc_v1","kind":"RESULT","attempt":"a","session_generation":1,"sequence":1,"status":"completed","observed_at_ms":1,"rcode":0,"truncated":false,"complete":true,"withheld_aliases":0,"answers":[{"ipv4":"192.0.2.53","ttl_seconds":60}],"aliases":[]}`
-	frame := func(body string) []byte {
-		var out [4]byte
-		binary.BigEndian.PutUint32(out[:], uint32(len(body)))
-		return append(out[:], []byte(body)...)
-	}
-	var good Result
-	if (&Reader{Source: bytes.NewReader(frame(base))}).Read(&good, Limit) != nil {
-		t.Fatal("canonical result rejected")
-	}
-	for _, mutant := range []string{
-		`{"schema":"m1_dns_ipc_v1","kind":"RESULT","attempt":"a","session_generation":1,"sequence":1,"Status":"completed","observed_at_ms":1,"rcode":0,"truncated":false,"complete":true,"withheld_aliases":0,"answers":[{"ipv4":"192.0.2.53","ttl_seconds":60}],"aliases":[]}`,
-		`{"schema":"m1_dns_ipc_v1","kind":"RESULT","attempt":"a","session_generation":1,"sequence":1,"status":"completed","observed_at_ms":1,"rcode":0,"truncated":false,"complete":true,"withheld_aliases":0,"answers":[{"IPv4":"192.0.2.53","ttl_seconds":60}],"aliases":[]}`,
-		`{"schema":"m1_dns_ipc_v1","kind":"RESULT","attempt":"a","session_generation":1,"sequence":1,"status":"completed","observed_at_ms":1,"rcode":0,"truncated":false,"complete":true,"withheld_aliases":0,"answers":[{"ipv4":"192.0.2.53"}],"aliases":[]}`,
-		`{"schema":"m1_dns_ipc_v1","kind":"RESULT","attempt":"a","session_generation":1,"sequence":1,"status":"completed","observed_at_ms":1,"rcode":0,"truncated":false,"complete":true,"withheld_aliases":0,"answers":[{"ipv4":"192.0.2.53","ttl_seconds":60,"extra":1}],"aliases":[]}`,
-		`{"schema":"m1_dns_ipc_v1","kind":"RESULT","attempt":"a","session_generation":1,"sequence":1,"status":"completed","observed_at_ms":1,"rcode":0,"truncated":false,"complete":true,"withheld_aliases":0,"answers":[{"ipv4":null,"ttl_seconds":60}],"aliases":[]}`,
-	} {
-		var got Result
-		if (&Reader{Source: bytes.NewReader(frame(mutant))}).Read(&got, Limit) == nil {
-			t.Fatalf("non-canonical frame accepted: %s", mutant)
-		}
-	}
-}

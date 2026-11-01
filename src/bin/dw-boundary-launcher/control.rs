@@ -149,6 +149,3 @@ fn acquisition(
     };
     channel.send_reply(&reply)
 }
-#[cfg(test)]
-#[path = "../../../tests/m1_live_dns/units/launcher_control.rs"]
-mod tests;

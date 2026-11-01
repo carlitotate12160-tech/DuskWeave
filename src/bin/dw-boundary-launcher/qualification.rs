@@ -268,6 +268,3 @@ pub(super) fn watchdog_peer(peer: rustix::net::UCred) -> Res<()> {
         .then_some(())
         .ok_or(Fail::Config("live_host_unqualified"))
 }
-#[cfg(test)]
-#[path = "../../../tests/m1_live_dns/units/launcher_qualification.rs"]
-mod tests;

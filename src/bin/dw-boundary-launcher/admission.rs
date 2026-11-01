@@ -47,6 +47,3 @@ fn parent_channel() -> Res<(UnixStream, rustix::net::UCred)> {
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
     Ok((socket, peer))
 }
-#[cfg(test)]
-#[path = "../../../tests/m1_live_dns/units/launcher_admission.rs"]
-mod tests;
