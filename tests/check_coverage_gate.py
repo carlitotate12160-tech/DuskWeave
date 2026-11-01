@@ -42,6 +42,19 @@ EXEC_TOKENS = re.compile(
     r"|(?<!')\bstatic\b"
     r"|[A-Za-z_]\w*!\s*[\(\{\[]|=>"
 )
+# Literal constants emit no coverable lines: only scalar literal
+# initializers qualify; calls, operators, paths or macro input stay
+# executable and fail closed.
+CONST_LITERAL = re.compile(
+    r"^\s*(pub\s+)?const\s+[A-Za-z_]\w*\s*:\s*[^={;]+?=\s*"
+    r"(\"\"|true|false|'([^'\\]|\\.)'|-?\d[\d_]*(\.\d+)?\w*"
+    r"|&\s*\"\"|&\s*'static\s+\"\")\s*;?\s*$"
+)
+# A trait method declaration ends its signature with `;` and carries no
+# body; any `{`, multiline signature or default body stays executable.
+ABSTRACT_METHOD = re.compile(
+    r"^\s*(pub\s+)?(unsafe\s+|async\s+)?fn\s+[A-Za-z_]\w*[^{;]*;\s*$"
+)
 
 
 def declarations_only(path):
@@ -58,11 +71,23 @@ def declarations_only(path):
         return False
     text = re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text)
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    depth = 0
+    trait_depth = None
     for raw in text.split("\n"):
         t = raw.split("//", 1)[0].strip()
+        opens, closes = t.count("{"), t.count("}")
+        if trait_depth is None and opens and DECL_HEADER.match(t) and "trait" in t:
+            trait_depth = depth + opens
+        depth += opens - closes
+        if trait_depth is not None and depth < trait_depth:
+            trait_depth = None
         if not t or t.startswith("#"):
             continue
+        if CONST_LITERAL.match(t):
+            continue
         if EXEC_TOKENS.search(t):
+            if trait_depth is not None and depth >= trait_depth and ABSTRACT_METHOD.match(t):
+                continue
             return False
         if DECL_HEADER.match(t) or PUNCT_ONLY.match(t):
             continue
@@ -157,6 +182,14 @@ DECL_SRC = (
     "pub type R<T> = Result<T, E>;\n"
 )
 CODE_SRC = "pub fn f() -> i32 {\n    1\n}\n"
+CONST_TRAIT_SRC = (
+    "pub const A: &str = \"x\";\npub const B: usize = 3;\npub const C: bool = true;\n"
+    "pub trait P {\n    fn f(&self) -> i32;\n    fn g(&mut self, n: u32) -> Result<i32>;\n}\n"
+)
+SNEAKY_CONST_SRC = "pub const A: u32 = compute();\n"
+DEFAULT_BODY_SRC = "pub trait P {\n    fn f(&self) -> i32 {\n        1\n    }\n}\n"
+INLINE_BODY_SRC = "pub trait P {\n    fn f(&self) -> i32 { 1 }\n}\n"
+MACRO_SRC = "lazy_static! { pub static ref X: i32 = 1; }\n"
 
 
 def _fixture(root, entries):
@@ -226,6 +259,31 @@ def selftest():
             [("src/a.rs", 10, 10), ("src/b.rs", 10, 9),
              ("src/ghost.rs", 10, 10)],
             [], False,
+        ))
+        cases.append((
+            "literal consts and abstract trait methods absent from report",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/port.rs", CONST_TRAIT_SRC)], True,
+        ))
+        cases.append((
+            "executable const initializer absent from report fails",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/port.rs", SNEAKY_CONST_SRC)], False,
+        ))
+        cases.append((
+            "trait default body absent from report fails",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/port.rs", DEFAULT_BODY_SRC)], False,
+        ))
+        cases.append((
+            "inline default trait body absent from report fails",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/port.rs", INLINE_BODY_SRC)], False,
+        ))
+        cases.append((
+            "macro-form construct absent from report fails",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/port.rs", MACRO_SRC)], False,
         ))
 
         failed = 0
