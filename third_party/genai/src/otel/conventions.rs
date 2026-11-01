@@ -115,59 +115,62 @@ pub const OUTPUT_TYPE_JSON: &str = "json";
 /// Uses the spec's well-known provider names where one exists; otherwise falls
 /// back to the adapter's lower-case identifier (the spec permits custom values).
 pub fn provider_name(adapter_kind: AdapterKind) -> &'static str {
-	match adapter_kind {
-		AdapterKind::OpenAI | AdapterKind::OpenAIResp => "openai",
-		AdapterKind::Anthropic => "anthropic",
-		AdapterKind::Gemini | AdapterKind::GeminiIx => "gcp.gemini",
-		AdapterKind::Vertex => "gcp.vertex_ai",
-		AdapterKind::BedrockApi => "aws.bedrock",
-		#[cfg(feature = "bedrock-sigv4")]
-		AdapterKind::BedrockSigv4 => "aws.bedrock",
-		AdapterKind::Groq => "groq",
-		AdapterKind::Cohere => "cohere",
-		AdapterKind::DeepSeek => "deepseek",
-		AdapterKind::Mistral => "mistral_ai",
-		AdapterKind::Xai => "x_ai",
-		AdapterKind::Moonshot => "moonshot_ai",
-		AdapterKind::AtlasCloud => "atlascloud",
-		// -- Not in the spec's well-known list: fall back to the adapter's lower-case id.
-		other => other.as_lower_str(),
-	}
+    match adapter_kind {
+        AdapterKind::OpenAI | AdapterKind::OpenAIResp => "openai",
+        AdapterKind::Anthropic => "anthropic",
+        AdapterKind::Gemini | AdapterKind::GeminiIx => "gcp.gemini",
+        AdapterKind::Vertex => "gcp.vertex_ai",
+        AdapterKind::BedrockApi => "aws.bedrock",
+        #[cfg(feature = "bedrock-sigv4")]
+        AdapterKind::BedrockSigv4 => "aws.bedrock",
+        AdapterKind::Groq => "groq",
+        AdapterKind::Cohere => "cohere",
+        AdapterKind::DeepSeek => "deepseek",
+        AdapterKind::Mistral => "mistral_ai",
+        AdapterKind::Xai => "x_ai",
+        AdapterKind::Moonshot => "moonshot_ai",
+        AdapterKind::AtlasCloud => "atlascloud",
+        // -- Not in the spec's well-known list: fall back to the adapter's lower-case id.
+        other => other.as_lower_str(),
+    }
 }
 
 // endregion: --- Provider name mapping
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn test_otel_provider_name_well_known() {
-		assert_eq!(provider_name(AdapterKind::OpenAI), "openai");
-		assert_eq!(provider_name(AdapterKind::OpenAIResp), "openai");
-		assert_eq!(provider_name(AdapterKind::Anthropic), "anthropic");
-		assert_eq!(provider_name(AdapterKind::Gemini), "gcp.gemini");
-		assert_eq!(provider_name(AdapterKind::Vertex), "gcp.vertex_ai");
-		assert_eq!(provider_name(AdapterKind::BedrockApi), "aws.bedrock");
-		assert_eq!(provider_name(AdapterKind::Groq), "groq");
-		assert_eq!(provider_name(AdapterKind::Cohere), "cohere");
-		assert_eq!(provider_name(AdapterKind::DeepSeek), "deepseek");
-		assert_eq!(provider_name(AdapterKind::Xai), "x_ai");
-		assert_eq!(provider_name(AdapterKind::Moonshot), "moonshot_ai");
-		assert_eq!(provider_name(AdapterKind::AtlasCloud), "atlascloud");
-	}
+    #[test]
+    fn test_otel_provider_name_well_known() {
+        assert_eq!(provider_name(AdapterKind::OpenAI), "openai");
+        assert_eq!(provider_name(AdapterKind::OpenAIResp), "openai");
+        assert_eq!(provider_name(AdapterKind::Anthropic), "anthropic");
+        assert_eq!(provider_name(AdapterKind::Gemini), "gcp.gemini");
+        assert_eq!(provider_name(AdapterKind::Vertex), "gcp.vertex_ai");
+        assert_eq!(provider_name(AdapterKind::BedrockApi), "aws.bedrock");
+        assert_eq!(provider_name(AdapterKind::Groq), "groq");
+        assert_eq!(provider_name(AdapterKind::Cohere), "cohere");
+        assert_eq!(provider_name(AdapterKind::DeepSeek), "deepseek");
+        assert_eq!(provider_name(AdapterKind::Xai), "x_ai");
+        assert_eq!(provider_name(AdapterKind::Moonshot), "moonshot_ai");
+        assert_eq!(provider_name(AdapterKind::AtlasCloud), "atlascloud");
+    }
 
-	#[test]
-	fn test_otel_provider_name_fallback() {
-		// Not in the spec's well-known list → adapter lower-case id.
-		assert_eq!(provider_name(AdapterKind::Ollama), AdapterKind::Ollama.as_lower_str());
-		assert_eq!(
-			provider_name(AdapterKind::Together),
-			AdapterKind::Together.as_lower_str()
-		);
-		assert_eq!(
-			provider_name(AdapterKind::Fireworks),
-			AdapterKind::Fireworks.as_lower_str()
-		);
-	}
+    #[test]
+    fn test_otel_provider_name_fallback() {
+        // Not in the spec's well-known list → adapter lower-case id.
+        assert_eq!(
+            provider_name(AdapterKind::Ollama),
+            AdapterKind::Ollama.as_lower_str()
+        );
+        assert_eq!(
+            provider_name(AdapterKind::Together),
+            AdapterKind::Together.as_lower_str()
+        );
+        assert_eq!(
+            provider_name(AdapterKind::Fireworks),
+            AdapterKind::Fireworks.as_lower_str()
+        );
+    }
 }

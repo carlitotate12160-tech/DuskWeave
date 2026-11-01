@@ -36,40 +36,40 @@ use crate::{ModelIden, ModelName, ServiceTarget};
 /// ```
 #[derive(Debug, Clone)]
 pub enum ModelSpec {
-	/// Model name - without or without model namespace
-	Name(ModelName),
+    /// Model name - without or without model namespace
+    Name(ModelName),
 
-	/// Explicit [`ModelIden`] - skips adapter inference, still resolves auth/endpoint.
-	Iden(ModelIden),
+    /// Explicit [`ModelIden`] - skips adapter inference, still resolves auth/endpoint.
+    Iden(ModelIden),
 
-	/// Complete [`ServiceTarget`] - used directly, bypasses model mapping and auth resolution
-	Target(ServiceTarget),
+    /// Complete [`ServiceTarget`] - used directly, bypasses model mapping and auth resolution
+    Target(ServiceTarget),
 }
 
 // region:    --- Constructors
 
 impl ModelSpec {
-	/// Creates a `ModelSpec::Name` from a string.
-	pub fn from_name(name: impl Into<ModelName>) -> Self {
-		ModelSpec::Name(name.into())
-	}
+    /// Creates a `ModelSpec::Name` from a string.
+    pub fn from_name(name: impl Into<ModelName>) -> Self {
+        ModelSpec::Name(name.into())
+    }
 
-	/// Creates a `ModelSpec::Name` from a static str.
-	pub fn from_static_name(name: &'static str) -> Self {
-		let name = ModelName::from_static(name);
-		ModelSpec::Name(name)
-	}
+    /// Creates a `ModelSpec::Name` from a static str.
+    pub fn from_static_name(name: &'static str) -> Self {
+        let name = ModelName::from_static(name);
+        ModelSpec::Name(name)
+    }
 
-	/// Creates a `ModelSpec::Iden` from a ModelIden
-	pub fn from_iden(model_iden: impl Into<ModelIden>) -> Self {
-		let model_iden = model_iden.into();
-		Self::Iden(model_iden)
-	}
+    /// Creates a `ModelSpec::Iden` from a ModelIden
+    pub fn from_iden(model_iden: impl Into<ModelIden>) -> Self {
+        let model_iden = model_iden.into();
+        Self::Iden(model_iden)
+    }
 
-	/// Creates a `ModelSpec::Target` from a complete service target.
-	pub fn from_target(target: ServiceTarget) -> Self {
-		ModelSpec::Target(target)
-	}
+    /// Creates a `ModelSpec::Target` from a complete service target.
+    pub fn from_target(target: ServiceTarget) -> Self {
+        ModelSpec::Target(target)
+    }
 }
 
 // endregion: --- Constructors
@@ -77,57 +77,57 @@ impl ModelSpec {
 // region:    --- From Implementations
 
 impl From<&str> for ModelSpec {
-	fn from(name: &str) -> Self {
-		ModelSpec::Name(name.into())
-	}
+    fn from(name: &str) -> Self {
+        ModelSpec::Name(name.into())
+    }
 }
 
 impl From<&&str> for ModelSpec {
-	fn from(name: &&str) -> Self {
-		ModelSpec::Name((*name).into())
-	}
+    fn from(name: &&str) -> Self {
+        ModelSpec::Name((*name).into())
+    }
 }
 
 impl From<String> for ModelSpec {
-	fn from(name: String) -> Self {
-		ModelSpec::Name(name.into())
-	}
+    fn from(name: String) -> Self {
+        ModelSpec::Name(name.into())
+    }
 }
 
 impl From<&String> for ModelSpec {
-	fn from(name: &String) -> Self {
-		ModelSpec::Name(name.into())
-	}
+    fn from(name: &String) -> Self {
+        ModelSpec::Name(name.into())
+    }
 }
 
 impl From<ModelName> for ModelSpec {
-	fn from(model: ModelName) -> Self {
-		ModelSpec::Name(model)
-	}
+    fn from(model: ModelName) -> Self {
+        ModelSpec::Name(model)
+    }
 }
 
 impl From<&ModelName> for ModelSpec {
-	fn from(model: &ModelName) -> Self {
-		ModelSpec::Name(model.clone())
-	}
+    fn from(model: &ModelName) -> Self {
+        ModelSpec::Name(model.clone())
+    }
 }
 
 impl From<ModelIden> for ModelSpec {
-	fn from(model: ModelIden) -> Self {
-		ModelSpec::Iden(model)
-	}
+    fn from(model: ModelIden) -> Self {
+        ModelSpec::Iden(model)
+    }
 }
 
 impl From<&ModelIden> for ModelSpec {
-	fn from(model: &ModelIden) -> Self {
-		ModelSpec::Iden(model.clone())
-	}
+    fn from(model: &ModelIden) -> Self {
+        ModelSpec::Iden(model.clone())
+    }
 }
 
 impl From<ServiceTarget> for ModelSpec {
-	fn from(target: ServiceTarget) -> Self {
-		ModelSpec::Target(target)
-	}
+    fn from(target: ServiceTarget) -> Self {
+        ModelSpec::Target(target)
+    }
 }
 
 // endregion: --- From Implementations

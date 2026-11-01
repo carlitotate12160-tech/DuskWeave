@@ -21,5 +21,8 @@ fn watchdog_serve_refuses_non_ack_commands_and_unknown_sessions() {
         generation: 9,
     })
     .unwrap();
-    assert!(serve(a).is_err(), "unknown session refuses the watchdog lane");
+    assert!(
+        serve(a).is_err(),
+        "unknown session refuses the watchdog lane"
+    );
 }

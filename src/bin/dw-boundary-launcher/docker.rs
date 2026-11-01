@@ -164,4 +164,3 @@ fn remove_owned(name: &str, image: &str, attempt: Uuid, deadline: Instant) -> Re
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/docker.rs"]
 mod tests;
-

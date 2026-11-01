@@ -42,10 +42,7 @@ impl RestrictedWithdrawal for Writer {
         self.live = match live_registration(&mut store, q) {
             Ok(live) => live,
             Err(error) => {
-                self.live = !matches!(
-                    error,
-                    Fail::Input(_) | Fail::State(_) | Fail::Conflict(_)
-                );
+                self.live = !matches!(error, Fail::Input(_) | Fail::State(_) | Fail::Conflict(_));
                 return Err(error);
             }
         };

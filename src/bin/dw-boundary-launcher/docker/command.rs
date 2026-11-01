@@ -196,7 +196,6 @@ fn drain(source: &mut impl Read, bytes: &mut Vec<u8>) -> Res<bool> {
 #[path = "../../../../tests/m1_live_dns/units/docker_command.rs"]
 mod tests;
 
-
 #[cfg(test)]
 type Runner = dyn FnMut(&[&str], Instant) -> Res<String>;
 #[cfg(test)]

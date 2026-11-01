@@ -3,21 +3,21 @@
 //! inside a supervised dw_native_ fixture for the ignored `sql_live` group.
 #![allow(dead_code)]
 
-#[path = "support/m1_live_sql.rs"]
-mod sql;
 #[path = "support/registration_db.rs"]
 mod db_support;
+#[path = "support/m1_live_sql.rs"]
+mod sql;
 #[path = "support/m1_terrain.rs"]
 mod terrain_support;
 
+use duskweave::m1_effect_control::authority::RestrictedWithdrawal;
+use duskweave::mission::{CampaignId, EngagementId, OperationId, OperatorRef};
+use duskweave::postgres_m1_effect::PgStopWriter;
+use duskweave::withdrawal::{WithdrawalReason, WithdrawalRequest};
 use postgres::NoTls;
 use serde_json::{Value, json};
 use sql::*;
 use uuid::Uuid;
-use duskweave::mission::{CampaignId, EngagementId, OperationId, OperatorRef};
-use duskweave::m1_effect_control::authority::RestrictedWithdrawal;
-use duskweave::postgres_m1_effect::PgStopWriter;
-use duskweave::withdrawal::{WithdrawalReason, WithdrawalRequest};
 
 const GROUP: &str = "sql_live";
 
@@ -196,7 +196,8 @@ fn sql_live_withdrawal_resolves_session_and_leaves_no_execution_grant() {
     let (run, generation, _result) = fabricate_live_run(e, c, true, true);
     let q = withdrawal_q(e, c, operator);
     // The fenced function resolves the current session itself and stops the run.
-    let contract = live_withdrawal(&q, Uuid::new_v4(), None, false).unwrap_or_else(|e| panic!("{}", db_message(&e)));
+    let contract = live_withdrawal(&q, Uuid::new_v4(), None, false)
+        .unwrap_or_else(|e| panic!("{}", db_message(&e)));
     assert_eq!(contract["kind"], json!("mission_authority_withdrawn"));
     let status: String = admin()
         .query_one(
@@ -229,7 +230,10 @@ fn sql_live_withdrawal_resolves_session_and_leaves_no_execution_grant() {
     let refused = broker()
         .query_one("SELECT execution.live_effect_reserve($1)", &[&run2])
         .unwrap_err();
-    assert!(db_message(&refused).contains("run_not_current"), "{refused}");
+    assert!(
+        db_message(&refused).contains("run_not_current"),
+        "{refused}"
+    );
     assert_eq!(
         admin()
             .query_one(
@@ -344,7 +348,11 @@ fn sql_live_terrain_integrity_hold_persists_under_active_fence() {
         (_ev.0, _ev.1, now),
     )
     .unwrap();
-    let mut tx = terrain.build_transaction().isolation_level(postgres::IsolationLevel::Serializable).start().unwrap();
+    let mut tx = terrain
+        .build_transaction()
+        .isolation_level(postgres::IsolationLevel::Serializable)
+        .start()
+        .unwrap();
     terrain_support::sql_accept(
         &mut tx,
         &serde_json::to_value(&req).unwrap(),

@@ -251,4 +251,3 @@ fn connect(path: &Path) -> Res<UnixStream> {
 #[cfg(test)]
 #[path = "../../tests/m1_live_dns/units/effect_session.rs"]
 mod tests;
-

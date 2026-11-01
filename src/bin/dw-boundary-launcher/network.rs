@@ -214,4 +214,3 @@ pub(super) fn destroy(attempt: Uuid, end: Instant) -> bool {
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/launcher_network.rs"]
 mod tests;
-

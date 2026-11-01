@@ -15,7 +15,10 @@ fn an_unready_boundary_never_sends_host_commands() {
 #[test]
 fn exited_reports_clean_exit_and_reaps_killed_children() {
     let mut child = std::process::Command::new("/bin/true").spawn().unwrap();
-    assert!(exited(&mut child, 5000).unwrap(), "clean exit reports success");
+    assert!(
+        exited(&mut child, 5000).unwrap(),
+        "clean exit reports success"
+    );
     let mut child = std::process::Command::new("/bin/sleep")
         .arg("5")
         .spawn()

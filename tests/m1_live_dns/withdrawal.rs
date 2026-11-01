@@ -387,4 +387,3 @@ fn normal_withdrawal_stops_first_uses_stop_writer_and_publishes_existing_history
     )
     .unwrap();
 }
-

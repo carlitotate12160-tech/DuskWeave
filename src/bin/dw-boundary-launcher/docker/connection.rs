@@ -46,4 +46,3 @@ fn authenticate(fd: std::os::fd::OwnedFd) -> Res<UnixStream> {
 #[cfg(test)]
 #[path = "../../../../tests/m1_live_dns/units/docker_connection.rs"]
 mod tests;
-

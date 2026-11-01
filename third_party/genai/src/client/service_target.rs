@@ -11,7 +11,7 @@ use crate::resolver::{AuthData, Endpoint};
 /// - `model`: Target model identifier.
 #[derive(Debug, Clone)]
 pub struct ServiceTarget {
-	pub endpoint: Endpoint,
-	pub auth: AuthData,
-	pub model: ModelIden,
+    pub endpoint: Endpoint,
+    pub auth: AuthData,
+    pub model: ModelIden,
 }

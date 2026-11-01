@@ -3,12 +3,12 @@
 //! administrator handle fabricates only pre-requisite run/session rows.
 #![allow(dead_code)]
 
+#[path = "m1_inference_permission.rs"]
+mod consent;
 #[path = "registration_db.rs"]
 pub mod db_support;
 #[path = "m1_genai_fixture.rs"]
 mod genai;
-#[path = "m1_inference_permission.rs"]
-mod consent;
 #[path = "m1_terrain.rs"]
 pub mod terrain_support;
 
@@ -154,7 +154,10 @@ pub fn register_live_campaign(
     (
         e,
         c,
-        (OperationId(row.get(0)), duskweave::mission::EventId(row.get(1))),
+        (
+            OperationId(row.get(0)),
+            duskweave::mission::EventId(row.get(1)),
+        ),
         now,
     )
 }
@@ -266,4 +269,3 @@ pub fn fabricate_live_run(e: Uuid, c: Uuid, session: bool, running: bool) -> (Uu
     }
     (run, generation, result)
 }
-

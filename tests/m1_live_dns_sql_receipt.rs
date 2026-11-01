@@ -3,21 +3,21 @@
 //! inside a supervised dw_native_ fixture for the ignored `sql_live` group.
 #![allow(dead_code)]
 
-#[path = "support/m1_live_sql.rs"]
-mod sql;
 #[path = "support/registration_db.rs"]
 mod db_support;
+#[path = "support/m1_live_sql.rs"]
+mod sql;
 #[path = "support/m1_terrain.rs"]
 mod terrain_support;
 
+use duskweave::m1_effect_control::authority::RestrictedWithdrawal;
+use duskweave::mission::{CampaignId, EngagementId, OperationId, OperatorRef};
+use duskweave::postgres_m1_effect::PgStopWriter;
+use duskweave::withdrawal::{WithdrawalReason, WithdrawalRequest};
 use postgres::NoTls;
 use serde_json::{Value, json};
 use sql::*;
 use uuid::Uuid;
-use duskweave::mission::{CampaignId, EngagementId, OperationId, OperatorRef};
-use duskweave::m1_effect_control::authority::RestrictedWithdrawal;
-use duskweave::postgres_m1_effect::PgStopWriter;
-use duskweave::withdrawal::{WithdrawalReason, WithdrawalRequest};
 
 const GROUP: &str = "sql_live";
 
@@ -130,4 +130,3 @@ fn sql_live_receipt_binds_qualification_fields() {
         "expired qualification cannot be live_qualified"
     );
 }
-
