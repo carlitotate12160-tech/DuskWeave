@@ -40,6 +40,18 @@ class Direction(unittest.TestCase):
 
 
 class SdkBoundary(unittest.TestCase):
+    def test_owner_local_extraction_does_not_escape_protected_imports(self):
+        for owner in check.PROTECTED_OWNERS:
+            for suffix in ('source.rs', 'nested/implementation.rs'):
+                name = owner + suffix
+                for source in ('use postgres::Client;', 'pub use crate::postgres_mission as hidden;',
+                               'use std::process::Command;', 'use crate::m1_reasoning::sdk_transport::SdkProvider;',
+                               'pub use genai::Client as Narrow;'):
+                    with self.subTest(name=name, source=source):
+                        self.assertTrue(check.violations(name, source))
+        self.assertEqual(check.violations('m1_run/live.rs', 'use crate::m1_run::RunRequest;'), [])
+        self.assertTrue(check.violations('m1_context/live.rs', 'use crate::m1_run::RunRequest;'))
+
     def test_sdk_aliases_reexports_and_paths_are_confined(self):
         for name in ('m1_reasoning/inference_intent.rs', 'm1_run_inference.rs', 'mission.rs'):
             for source in ('use genai::Client as Narrow;', 'pub use reqwest::{Client as Safe};',

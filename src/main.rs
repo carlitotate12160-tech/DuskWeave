@@ -10,10 +10,7 @@ use duskweave::postgres_mission::{PgAllocator, PgMissionStore};
 use duskweave::postgres_trajectory::PgTrajectory;
 use duskweave::registration;
 use duskweave::trajectory::HistoryStatus;
-use duskweave::withdrawal::{
-    MissionAuthorityWithdrawn, OBLIGATION, WithdrawalHistoryPort, WithdrawalRequest,
-    WithdrawalStore,
-};
+use duskweave::withdrawal::{MissionAuthorityWithdrawn, OBLIGATION, WithdrawalRequest};
 use duskweave::withdrawal_input::read_withdrawal_file;
 use duskweave::{Fail, Res};
 use std::env;
@@ -27,6 +24,7 @@ mod m1_cli;
 mod m1_context_cli;
 mod m1_inference_budget_cli;
 mod m1_inference_control;
+mod m1_live_withdrawal_cli;
 mod m1_policy_cli;
 mod m1_prepared_withdrawal_cli;
 mod m1_reasoning_cli;
@@ -253,50 +251,7 @@ fn failure_receipt(error: &Fail, operation: Option<OperationId>) -> serde_json::
 }
 
 fn cmd_withdraw(args: &[String]) -> Res<()> {
-    let mut operation = None;
-    let mut local_control_failed = false;
-    let outcome = (|| {
-        let (operation, recover, request) = parse_withdrawal_command(args, &mut operation)?;
-        let control = if recover {
-            Ok(())
-        } else {
-            m1_run_control::signal_campaign(request.engagement_id.0, request.campaign_id.0)
-        };
-        local_control_failed = control.is_err();
-        let mut store = PgMissionStore::new(connect()?);
-        let mut allocator = PgAllocator::new(connect()?);
-        let Some(event) = store.withdraw(&request, operation, recover, &mut allocator)? else {
-            return Ok(
-                serde_json::json!({"result": "not_committed", "operation": operation,
-            "action": "reconcile_authority"}),
-            );
-        };
-        // Publish failure stays unknown; it cannot reject a committed withdrawal.
-        let history = connect().and_then(|client| {
-            let mut consumer = PgTrajectory::new(client);
-            if recover {
-                consumer.inspect(&event)
-            } else {
-                consumer.publish(&event)
-            }
-        });
-        let mut receipt = durable_receipt(event, history);
-        if control.is_err() {
-            receipt["local_control"] = serde_json::json!("unresolved");
-        }
-        Ok(receipt)
-    })();
-    let mut receipt = match &outcome {
-        Ok(receipt) => receipt.clone(),
-        Err(error) => failure_receipt(error, operation),
-    };
-    if local_control_failed {
-        receipt["local_control"] = serde_json::json!("unresolved");
-    }
-    receipt["current_permission"] = false.into();
-    receipt["continuation_blocked"] = true.into();
-    println!("{receipt}");
-    outcome.map(|_| ())
+    m1_live_withdrawal_cli::command(args)
 }
 
 fn cmd_reconcile(args: &[String]) -> Res<()> {

@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::net::Ipv4Addr;
 use uuid::Uuid;
+mod source;
+pub use source::{TerrainRequestVersion, TerrainSourceKind};
 
 pub const MAX_INPUT_BYTES: usize = 16_384;
 pub const MAX_JSON_DEPTH: usize = 8;
@@ -15,22 +17,6 @@ pub const MAX_DNS_ANSWERS: usize = 4;
 pub const MAX_LIMITATIONS: usize = 4;
 pub const MAX_TTL_SECONDS: u32 = 86_400;
 pub const MAX_UNCERTAINTY_SECONDS: u32 = 300;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TerrainRequestVersion {
-    #[serde(rename = "m1_terrain_dns_observation_v1")]
-    M1TerrainDnsObservationV1,
-    #[serde(rename = "m1_terrain_dns_issued_observation_v1")]
-    M1TerrainDnsIssuedObservationV1,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TerrainSourceKind {
-    #[serde(rename = "operator_reviewed_dns")]
-    OperatorReviewedDns,
-    #[serde(rename = "fixture_dns_acquisition")]
-    FixtureDnsAcquisition,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -345,18 +331,7 @@ impl TerrainDnsRequest {
         if !ok.into_iter().all(|b| b) {
             return Err(Fail::Input("invalid_bounds"));
         }
-        if !matches!(
-            (self.version, self.source_kind),
-            (
-                TerrainRequestVersion::M1TerrainDnsObservationV1,
-                TerrainSourceKind::OperatorReviewedDns
-            ) | (
-                TerrainRequestVersion::M1TerrainDnsIssuedObservationV1,
-                TerrainSourceKind::FixtureDnsAcquisition
-            )
-        ) {
-            return Err(Fail::Input("invalid_source_binding"));
-        }
+        self.validate_source()?;
         validate_dns_hostname(&self.subject_name)?;
         canonical_ipv4(&self.resolver_ipv4)?;
         validate_limitations(&self.limitations)?;

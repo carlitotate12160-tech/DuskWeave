@@ -16,7 +16,9 @@ from urllib.parse import quote
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 NAMESPACE = "dw_native_"
 KINDS = ("fixture", "live")
-SCHEMA_REVISIONS = ("0020", "0021", "0022")
+SCHEMA_REVISIONS = ("0020", "0021", "0022", "0030")
+LIVE_CONTAINER = "dw-live-dns-20261030-pg"
+LIVE_IMAGE = "postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d"
 ROOT = Path(__file__).resolve().parents[2]
 SUPERVISOR_VARIABLE = "DW_TEST_FIXTURE_SUPERVISOR"
 # Development-tool policy ceiling for legacy no-ceiling callers; selected
@@ -83,8 +85,10 @@ def supervisor_request(arguments, environment):
     return result.stdout
 
 
-def service_qualified(container, ci=False, version_prefix=None, version_exact=None):
+def service_qualified(container, ci=False, version_prefix=None, version_exact=None, schema_revision="0021"):
     """Delegate the fixed Docker/PostgreSQL service qualification to the helper."""
+    if container == LIVE_CONTAINER and schema_revision == "0030" and not ci:
+        return live_service_qualified(container)
     arguments = ["service-check", "--container", container]
     if ci:
         arguments.append("--ci")
@@ -93,6 +97,23 @@ def service_qualified(container, ci=False, version_prefix=None, version_exact=No
     else:
         arguments += ["--version-exact", version_exact]
     return supervisor_request(arguments, os.environ)
+
+
+def live_service_qualified(container):
+    """The new host lane owns a distinct pinned ARM64 service, never a forwarded one."""
+    info = json.loads(private_run(["docker", "inspect", container]))[0]
+    binding = [{"HostIp": "127.0.0.1", "HostPort": "5432"}]
+    valid = (info["Config"]["Image"] == LIVE_IMAGE,
+             info["Config"].get("Labels", {}).get("org.duskweave.owner") == "live-dns-20261030",
+             info["State"]["Running"], info["HostConfig"]["LogConfig"]["Type"] == "none",
+             info["NetworkSettings"]["Ports"].get("5432/tcp") == binding,
+             any(v.get("Type") == "volume" and v.get("Name") == "dw-live-dns-20261030-pg17"
+                 and v.get("Destination") == "/var/lib/postgresql/data" for v in info["Mounts"]))
+    host = private_run(["docker", "info", "--format", "{{.Name}}/{{.Architecture}}"]).strip()
+    version = private_run(["docker", "exec", container, "psql", "-X", "-U", "postgres", "-Atc",
+                           "SELECT current_setting('server_version_num')"]).strip()
+    if not all(valid) or host != "pica-arm-01/aarch64" or version != "170011":
+        raise RuntimeError("native_service_unqualified")
 
 
 def relay_progress(stream):
@@ -189,7 +210,7 @@ class Fixture:
         if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
             raise RuntimeError("native_schema_revision_refused")
         self.schema_revision = schema_revision
-        if container not in ("dwpg-r3", "dwpg"):
+        if container not in ("dwpg-r3", "dwpg") and not (schema_revision == "0030" and container == LIVE_CONTAINER):
             raise RuntimeError("native_service_unqualified")
         if ci and container != "dwpg":
             raise RuntimeError("native_service_unqualified")
@@ -205,12 +226,14 @@ class Fixture:
         self.secrets = []
         # The helper owns inspect/port/version qualification; null port
         # metadata and unsafe bindings are refused there as one closed category.
-        service_qualified(container, ci=ci, version_prefix="17.")
+        service_qualified(container, ci=ci, version_prefix="17.", schema_revision=schema_revision)
         if self.sql(f"SELECT 1 FROM pg_database WHERE datname='{self.database}'", database="postgres").strip():
             raise RuntimeError("native_database_collision")
         self.role_suffix = secrets.token_hex(6)
         suffix = self.role_suffix
         owners = ["admin", "core", "broker", "cognition", "history", "terrain"]
+        if schema_revision == "0030":
+            owners.append("stop")
         if kind == "fixture":
             owners.append("otherbroker")
         self.roles = {name: identifier(f"{self.role_prefix}_{suffix}_{name}") for name in owners}
@@ -227,21 +250,24 @@ class Fixture:
                          "--no-superuser", "--no-createdb", "--no-createrole", "--no-replication",
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
         self.sql(f"CREATE DATABASE {self.database} OWNER {self.roles['admin']}", database="postgres")
-        for group in ("dw_runtime", "dw_m1_broker", "dw_m1_cognition", "dw_m1_trajectory", "dw_m1_terrain"):
+        groups = ["dw_runtime", "dw_m1_broker", "dw_m1_cognition", "dw_m1_trajectory", "dw_m1_terrain"]
+        if schema_revision == "0030":
+            groups.append("dw_m1_stop_writer")
+        for group in groups:
             self.sql(f"DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='{group}') "
                      f"THEN CREATE ROLE {group} NOLOGIN NOSUPERUSER NOBYPASSRLS; END IF; END $$")
         self.migrate(initial=True)
         for name, groups in (("core", "dw_runtime"), ("broker", "dw_m1_broker"),
                              ("otherbroker", "dw_m1_broker"),
                              ("cognition", "dw_m1_cognition"), ("history", "dw_m1_trajectory"),
-                             ("terrain", "dw_m1_terrain")):
+                             ("terrain", "dw_m1_terrain"), ("stop", "dw_m1_stop_writer")):
             if name not in self.roles:
                 continue
             self.sql(f"GRANT {groups} TO {self.roles[name]}")
         variables = {"admin": "DW_TEST_ADMIN_DATABASE_URL", "core": "DW_TEST_DATABASE_URL",
                      "broker": "DW_INFERENCE_BROKER_DATABASE_URL", "cognition": "DW_COGNITION_DATABASE_URL",
                      "history": "DW_TRAJECTORY_DATABASE_URL", "terrain": "DW_TERRAIN_DATABASE_URL",
-                     "otherbroker": "DW_NATIVE_OTHER_BROKER_DATABASE_URL"}
+                     "otherbroker": "DW_NATIVE_OTHER_BROKER_DATABASE_URL", "stop": "DW_STOP_WRITER_DATABASE_URL"}
         for owner, variable in variables.items():
             if owner not in self.roles:
                 continue
@@ -292,6 +318,8 @@ class Fixture:
 
     def migrate(self, initial=False):
         numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
+        if self.schema_revision == "0030":
+            numbers += tuple(range(23, 31))
         for number in numbers:
             if number > int(self.schema_revision):
                 continue

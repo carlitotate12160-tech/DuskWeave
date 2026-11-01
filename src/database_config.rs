@@ -3,6 +3,23 @@ use std::env;
 
 const LIMIT: usize = 16 * 1024;
 
+pub(super) fn preflight_live() -> Res<()> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err(Fail::Config("live_host_platform_unqualified"))
+    }
+    #[cfg(target_os = "linux")]
+    match env::var("DW_DATABASE_CONFIG_MODE") {
+        Ok(mode) if mode != "file" => Err(Fail::Config("live_database_file_mode_required")),
+        Err(env::VarError::NotUnicode(_)) => Err(Fail::Config("invalid_database_config_mode")),
+        _ => owner_config(
+            "DW_STOP_WRITER_DATABASE_URL",
+            "DW_STOP_WRITER_DATABASE_URL_FILE",
+        )
+        .map(|_| ()),
+    }
+}
+
 /// Parse the selected source for every admitted owner before any run write or connection.
 /// Qualification and current authority remain with the actual owner connection.
 pub(super) fn preflight_run(provider: bool) -> Res<()> {

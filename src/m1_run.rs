@@ -5,6 +5,7 @@ use crate::mission::AssetRef;
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+mod live;
 
 pub const FIXTURE_PROFILE: &str = "autonomous-dns-fixture-v1";
 pub const PROVIDER_FIXTURE_PROFILE: &str = "autonomous-dns-provider-fixture-v1";
@@ -39,6 +40,12 @@ pub struct RunRequest {
         deserialize_with = "present_profile"
     )]
     pub inference_profile: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present_live_binding"
+    )]
+    pub live_binding: Option<crate::m1_inference_permission::LiveBinding>,
     pub deadline_at_ms: i64,
     pub context: ContextRequest,
     pub seed_names: Vec<RunSeed>,
@@ -56,8 +63,12 @@ impl RunRequest {
 
     pub fn validate(&self) -> Res<()> {
         self.context.validate_ingress()?;
+        if self.live() {
+            return self.validate_live();
+        }
         let valid = [
             self.valid_version_profile(),
+            self.live_binding.is_none(),
             !self.run_id.is_nil(),
             controlled_fixture_profile(&self.run_profile),
             self.execution_mode == FIXTURE_MODE,
@@ -83,7 +94,9 @@ impl RunRequest {
     pub fn successor(&self) -> bool {
         matches!(
             self.version.as_str(),
-            "m1_autonomous_run_request_v2" | "m1_autonomous_run_request_v3"
+            "m1_autonomous_run_request_v2"
+                | "m1_autonomous_run_request_v3"
+                | "m1_autonomous_run_request_v4"
         )
     }
 
@@ -113,6 +126,11 @@ impl RunRequest {
 
 fn present_profile<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     String::deserialize(d).map(Some)
+}
+fn present_live_binding<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<crate::m1_inference_permission::LiveBinding>, D::Error> {
+    crate::m1_inference_permission::LiveBinding::deserialize(d).map(Some)
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]

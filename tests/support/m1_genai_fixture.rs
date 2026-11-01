@@ -87,6 +87,9 @@ pub struct Server {
     worker: Option<std::thread::JoinHandle<()>>,
 }
 impl Server {
+    pub fn lab(reply: impl FnMut(&Incoming) -> Reply + Send + 'static) -> Self {
+        Self::start("127.0.0.1:18083", reply)
+    }
     pub fn start(
         address: &str,
         mut reply: impl FnMut(&Incoming) -> Reply + Send + 'static,

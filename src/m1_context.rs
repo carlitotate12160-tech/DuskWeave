@@ -9,7 +9,9 @@ use crate::mission::{AssetRef, MissionRegistered, OperationId};
 use crate::{Fail, Res};
 use serde_json::{Value, json};
 
+mod live;
 mod terrain_projection;
+use live::check_autonomous_basis;
 use terrain_projection::{terrain_owner_view, terrain_reference_json};
 
 pub const QUESTION: &str = "Which already-authorized, mission-relevant HTTPS candidate is the best next subject for access-validation planning within the permitted contact envelope, and which routing or response premise still needs observation, a different candidate, or deferral?";
@@ -168,7 +170,7 @@ fn fit_pack(
             &kept,
             omitted_bytes,
         )?;
-        let utf8 = serialize_pack(&mut raw, autonomous, disclosure)?;
+        let utf8 = serialize_pack(&mut raw, autonomous, disclosure, basis)?;
         if wire_fits(&utf8, disclosure, autonomous.is_some()) {
             return Ok(PreparedContext {
                 decision_id: op,
@@ -413,30 +415,6 @@ pub fn prepare_autonomous(
     let terrain = resolve_terrain(&basis, &disclosure, q)?;
     fit_pack(&basis, &disclosure, q, op, &terrain, Some(a))
 }
-fn check_autonomous_basis(
-    b: &ContextBasis,
-    a: &crate::m1_autonomous_context::AutonomousContext,
-) -> Res<()> {
-    let configured = b
-        .mission
-        .fields
-        .m1_inference_permission()
-        .and_then(|p| p.autonomous_binding());
-    let expected = Some((
-        a.binding.run_profile.as_str(),
-        a.binding.execution_mode.as_str(),
-    ));
-    let valid = [
-        configured == expected,
-        b.mission.engagement_id == a.binding.engagement_id,
-        b.mission.campaign_id == a.binding.campaign_id,
-    ];
-    valid
-        .into_iter()
-        .all(|v| v)
-        .then_some(())
-        .ok_or(Fail::State("context_basis_mismatch"))
-}
 fn can_shrink(
     autonomous: bool,
     cands: &[Candidate],
@@ -465,7 +443,9 @@ fn serialize_pack(
     raw: &mut Value,
     autonomous: Option<&crate::m1_autonomous_context::AutonomousContext>,
     disclosure: &ContextDisclosure,
+    basis: &ContextBasis,
 ) -> Res<String> {
+    live::bind(raw, basis, autonomous)?;
     if let Some(a) = autonomous {
         a.extend(
             raw,

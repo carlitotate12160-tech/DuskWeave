@@ -353,3 +353,31 @@ Current SDK support: real inference may use the consented
 `controlled_fixture`. Real target acquisition still requires a separately
 delivered and qualified Linux runtime. Each episode still requires fresh
 consent — no existing run, episode or approval carries over.
+
+## Linux LAB build storage (owned Oracle ARM64)
+
+The LAB deployment on `pica-arm-01` uses `boundary/qualify/qualify.sh`
+(`service`, `release`, `lab-database`, `lab-bind`, `build-storage`).
+Build output, caches and temporary writes must land on a separately
+mounted ext4 block volume at `/srv/duskweave-build`; source, reports,
+toolchains, Docker, containerd and PostgreSQL stay on the boot
+filesystem. The `release` and `build-storage` commands fail closed
+before any compiler or Docker write when the mount is absent, not a
+mountpoint, a symlink, shares a device with `/`, `/var/lib/docker` or
+`/var/lib/containerd`, is not ext4, or carries foreign content —
+including names beginning with dots. Each existing fixed output/cache/
+temporary component (`normal`, `go-cache`, `tmp`, `tmp/go`, `tmp/build`,
+`go-release`, `boundary-release`, `coverage`) must itself be a real
+root-owned directory on the same filesystem: no symlink, file, nested
+mount or group/world write. Newly created fixed directories receive the
+same validation before consumption. The check emits only mount identity
+and fixed failure categories.
+
+Prerequisite: an operator-provisioned owned volume at the fixed path
+(UUID fstab entry with `_netdev`; iSCSI auto-login). Rollback: the
+volume holds only rebuildable outputs — losing it fails closed; the
+retained `/srv/duskweave/build` tree is untouched and never consulted.
+Limits: the separate filesystem removes the demonstrated build-writeback
+stall of containerd temporary-layer unmount; it is not a readiness
+guarantee against other device/VM coupling. The original 5000-ms
+preparation deadline is unchanged and re-measured, never raised.

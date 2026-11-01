@@ -213,7 +213,11 @@ pub fn infer(
     let successor = serde_json::from_slice::<serde_json::Value>(pack).is_ok_and(|v| {
         matches!(
             v["version"].as_str(),
-            Some("m1_context_pack_autonomous_v2" | "m1_context_pack_autonomous_v3")
+            Some(
+                "m1_context_pack_autonomous_v2"
+                    | "m1_context_pack_autonomous_v3"
+                    | "m1_context_pack_autonomous_v4"
+            )
         )
     });
     let (proposal, disposition) = recorded_proposal(admission, successor, basis);

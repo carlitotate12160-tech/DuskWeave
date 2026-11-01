@@ -60,11 +60,23 @@ fn launch_flags(args: &[String]) -> Res<(Vec<(&str, &str)>, bool)> {
 
 fn start(args: &[String]) -> Res<()> {
     let q = read_request(args)?;
-    super::database_config::preflight_run(q.supervised_inference())?;
+    preflight(&q)?;
     let mut store = store()?;
     let outcome = start_run(&mut store, &q, &release()?);
     let inspected = emit(&mut store, q.run_id);
     outcome.and(inspected)
+}
+fn preflight(q: &RunRequest) -> Res<()> {
+    if q.live() {
+        super::database_config::preflight_live()?;
+        duskweave::m1_effect_control::qualify(
+            q.live_binding
+                .as_ref()
+                .ok_or(Fail::Input("invalid_run_request"))?,
+            &q.run_profile,
+        )?;
+    }
+    super::database_config::preflight_run(q.supervised_inference())
 }
 fn start_run(store: &mut PgRunStore, q: &RunRequest, release: &str) -> Res<()> {
     let first = store.start(q, release)?;
@@ -270,19 +282,41 @@ fn child(args: &[String]) -> Res<()> {
 }
 fn inspect(command: &str, args: &[String]) -> Res<()> {
     let r = run_reference(args)?;
-    let control = if command == "m1-run-stop" {
-        super::m1_run_control::signal_run(r)
+    if command == "m1-run-stop" {
+        return stop_run(r);
+    }
+    let mut store = store()?;
+    let authoritative = if command == "m1-run-recover" {
+        recover(&mut store, r)
     } else {
         Ok(())
     };
-    let mut store = store()?;
-    let authoritative = match command {
-        "m1-run-stop" => store.stop(r),
-        "m1-run-recover" => recover(&mut store, r),
-        _ => Ok(()),
-    };
     let receipt = emit(&mut store, r);
-    authoritative.and(control).and(receipt)
+    authoritative.and(receipt)
+}
+fn stop_run(run: Uuid) -> Res<()> {
+    let local = super::m1_live_withdrawal_cli::stop_run(run);
+    match stop_record(run) {
+        Ok((mut receipt, durable)) => {
+            receipt["local_stop"] = serde_json::json!(local);
+            receipt["stop_pending"] = durable.is_err().into();
+            println!("{receipt}");
+            durable
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                serde_json::json!({"run_id":run,"local_stop":local,"result":"unknown",
+                "reason":super::category(error),"continuation_blocked":true})
+            );
+            Err(error)
+        }
+    }
+}
+fn stop_record(run: Uuid) -> Res<(serde_json::Value, Res<()>)> {
+    let mut store = store()?;
+    let durable = store.stop(run);
+    Ok((store.summary(run)?, durable))
 }
 fn recover(store: &mut PgRunStore, r: Uuid) -> Res<()> {
     let run = store.inspect(r)?;

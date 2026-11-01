@@ -16,7 +16,16 @@ PROTECTED = (
     'm1_run.rs', 'm1_reasoning/inference.rs', 'm1_reasoning/decision_attempt.rs',
     'm1_reasoning/proposal.rs', 'm1_reasoning/request.rs', 'm1_reasoning/request_autonomous.rs',
     'm1_reasoning/bounded_json.rs', 'm1_reasoning/response.rs', 'm1_reasoning/inference_intent.rs',
+    'm1_dns.rs', 'm1_effect_session.rs', 'm1_inference_profile.rs',
 )
+PROTECTED_OWNERS = ('m1_dns/', 'm1_run/', 'm1_context/', 'm1_inference_permission/',
+                    'm1_terrain_input/', 'm1_terrain_view/')
+
+
+def protected(name):
+    return name in PROTECTED or name.startswith(PROTECTED_OWNERS)
+
+
 TOKEN = re.compile(r'//[^\n]*|/\*|r(\#*)"|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'|[a-zA-Z_][a-zA-Z_0-9]*|::|[{};,*]', re.S)
 IDENT = re.compile(r'^[a-zA-Z_][a-zA-Z_0-9]*$')
 
@@ -96,9 +105,9 @@ def violations(name, source):
     for path in paths(source):
         if name != 'm1_reasoning/sdk_transport.rs' and any(p in ('genai', 'reqwest', 'tokio') for p in path):
             errors.add('::'.join(path))
-        if name in PROTECTED and 'sdk_transport' in path:
+        if protected(name) and 'sdk_transport' in path:
             errors.add('::'.join(path))
-        if name not in PROTECTED:
+        if not protected(name):
             continue
         if any(p == 'postgres' or p.startswith('postgres_') or p == 'curl' or p.endswith('_cli') for p in path):
             errors.add('::'.join(path))
@@ -106,7 +115,7 @@ def violations(name, source):
             errors.add('::'.join(path))
         if 'm1_reasoning' in path and any(p in ('transport', 'postgres_terrain') for p in path):
             errors.add('::'.join(path))
-        if 'm1_run' in path and name != 'm1_run.rs':
+        if 'm1_run' in path and name != 'm1_run.rs' and not name.startswith('m1_run/'):
             errors.add('::'.join(path))
         if name.startswith('m1_reasoning/') and 'transport' in path:
             errors.add('::'.join(path))

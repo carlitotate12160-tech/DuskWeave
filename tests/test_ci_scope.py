@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/ci_scope.py"
-JOBS = ("changes", "links", "structure", "metrics", "rust", "codeql", "dependencies")
+JOBS = ("changes", "links", "structure", "metrics", "rust", "codeql", "dependencies", "go-boundary")
 
 
 class ScopeHistory(unittest.TestCase):
@@ -74,7 +74,8 @@ class ScopeHistory(unittest.TestCase):
                 self.base = self.git("rev-parse", "HEAD").strip()
 
     def test_mixed_or_unknown_inputs_require_full_verification(self):
-        for name in ("src/lib.rs", "migrations/001.sql", "Cargo.lock",
+        for name in ("src/lib.rs", "migrations/001.sql", "Cargo.lock", "boundary/go.mod",
+                     "boundary/internal/dns/decode.go", "boundary/Dockerfile",
                      "tests/t.rs", ".github/workflows/test.yml",
                      "docs/contracts/fixture.json", "unknown.md", ".gitignore",
                      "Cargo.toml", "rust-toolchain.toml", ".cargo/config.toml",
@@ -154,6 +155,7 @@ class RequiredGate(unittest.TestCase):
     def test_explicit_docs_skip_and_full_success_pass(self):
         self.assertEqual(self.run_gate().returncode, 0)
         self.assertEqual(self.run_gate("docs", {"rust": "skipped"}).returncode, 0)
+        self.assertEqual(self.run_gate("docs", {"rust": "skipped", "go-boundary": "skipped"}).returncode, 0)
 
     def test_missing_failed_cancelled_and_unclassified_results_fail(self):
         cases = [("full", {"rust": "skipped"}, None),
@@ -161,6 +163,10 @@ class RequiredGate(unittest.TestCase):
                  ("docs", {"rust": "cancelled"}, None),
                  ("docs", {"changes": "failure", "rust": "skipped"}, None),
                  ("docs", {"codeql": "skipped"}, None),
+                 ("full", {"go-boundary": "skipped"}, None),
+                 ("docs", {"go-boundary": "failure"}, None),
+                 ("docs", {"go-boundary": "cancelled"}, None),
+                 ("full", {}, "go-boundary"), ("docs", {}, "go-boundary"),
                  ("unknown", {}, None), ("full", {}, "rust")]
         for scope, states, missing in cases:
             with self.subTest(scope=scope, states=states, missing=missing):
@@ -224,8 +230,16 @@ class WorkflowWiring(unittest.TestCase):
         self.assertEqual(set(needs_of(self.jobs["rust"])),
                          {"changes", "rust-build", "rust-tests"})
 
-    def test_ci_ok_gate_set_is_unchanged(self):
+    def test_ci_ok_gate_set_matches_all_required_results(self):
         self.assertEqual(set(needs_of(self.jobs["ci-ok"])), set(JOBS))
+
+    def test_go_boundary_is_required_and_compiles_both_linux_architectures(self):
+        block = self.jobs['go-boundary']
+        self.assertEqual(needs_of(block), ['changes'])
+        for text in ("needs.changes.outputs.scope != 'docs'", "needs.changes.result != 'success'",
+                     'go1.27.3.linux-amd64.tar.gz', 'sha256sum --check',
+                     'go vet ./...', 'go test -race -count=1 ./...', 'amd64 arm64', 'CGO_ENABLED=0'):
+            self.assertIn(text, block)
 
     def test_docs_scope_skip_and_failure_propagation_guards(self):
         for name in ("rust-build", "rust-tests", "rust"):

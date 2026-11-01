@@ -244,6 +244,43 @@ jobs:
           python scripts/check_runtime_budget.py --base "${{ steps.base.outputs.base }}" --head HEAD | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+  go-boundary:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.scope != 'docs') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: boundary
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify and install pinned Go compiler for this job
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/go1.27.3.linux-amd64.tar.gz"
+          curl --fail --silent --show-error --location --max-time 180 https://go.dev/dl/go1.27.3.linux-amd64.tar.gz -o "$archive"
+          printf '65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40  %s\n' "$archive" | sha256sum --check
+          mkdir "$RUNNER_TEMP/dw-go-1.27.3"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/dw-go-1.27.3" --strip-components=1
+          echo "$RUNNER_TEMP/dw-go-1.27.3/bin" >> "$GITHUB_PATH"
+      - name: Format, vet, race tests and static Linux builds
+        env:
+          GOTOOLCHAIN: local
+          GOPROXY: 'off'
+          GOSUMDB: 'off'
+        run: |
+          set -euo pipefail
+          test "$(go version)" = 'go version go1.27.3 linux/amd64'
+          test -z "$(gofmt -l cmd internal qualify)"
+          go vet ./...
+          go test -race -count=1 ./...
+          for arch in amd64 arm64; do
+            for command in dw-dns-capture dw-dns-exporter; do
+              CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/$command-linux-$arch" "./cmd/$command"
+              sha256sum "$RUNNER_TEMP/$command-linux-$arch"
+            done
+          done
+
   rust-build:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.scope != 'docs') }}
@@ -716,7 +753,7 @@ jobs:
 
   ci-ok:
     name: ci-ok
-    needs: [changes, links, structure, metrics, rust, codeql, dependencies]
+    needs: [changes, links, structure, metrics, rust, codeql, dependencies, go-boundary]
     if: always()
     runs-on: ubuntu-latest
     steps:
