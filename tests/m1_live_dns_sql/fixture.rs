@@ -141,7 +141,10 @@ pub fn register_live_campaign(
     (
         e,
         c,
-        (OperationId(row.get(0)), duskweave::mission::EventId(row.get(1))),
+        (
+            OperationId(row.get(0)),
+            duskweave::mission::EventId(row.get(1)),
+        ),
         now,
     )
 }

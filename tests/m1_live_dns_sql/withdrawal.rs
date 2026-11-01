@@ -111,7 +111,8 @@ fn sql_live_withdrawal_resolves_session_and_leaves_no_execution_grant() {
     let (run, generation, _result) = fabricate_live_run(e, c, true, true);
     let q = withdrawal_q(e, c, operator);
     // The fenced function resolves the current session itself and stops the run.
-    let contract = live_withdrawal(&q, Uuid::new_v4(), None, false).unwrap_or_else(|e| panic!("{}", db_message(&e)));
+    let contract = live_withdrawal(&q, Uuid::new_v4(), None, false)
+        .unwrap_or_else(|e| panic!("{}", db_message(&e)));
     assert_eq!(contract["kind"], json!("mission_authority_withdrawn"));
     let status: String = admin()
         .query_one(
@@ -144,7 +145,10 @@ fn sql_live_withdrawal_resolves_session_and_leaves_no_execution_grant() {
     let refused = broker()
         .query_one("SELECT execution.live_effect_reserve($1)", &[&run2])
         .unwrap_err();
-    assert!(db_message(&refused).contains("run_not_current"), "{refused}");
+    assert!(
+        db_message(&refused).contains("run_not_current"),
+        "{refused}"
+    );
     assert_eq!(
         admin()
             .query_one(
