@@ -93,19 +93,20 @@ fn receipt(
         Ok(None) => {
             json!({"result":"not_committed","operation":operation,"action":"reconcile_authority"})
         }
-        Err(error)
-            if *error != Fail::Store("serialization_retry")
-                && (live
-                    || matches!(
-                        error,
-                        Fail::Store(_) | Fail::Unresolved(_) | Fail::Config(_)
-                    )) =>
-        {
+        Err(error) if unrecoverable(error, live) => {
             json!({"result":"unknown","operation":operation,
             "reason":super::category(*error),"action":"recover_before_retry"})
         }
         Err(error) => super::failure_receipt(error, operation),
     }
+}
+fn unrecoverable(error: &Fail, live: bool) -> bool {
+    *error != Fail::Store("serialization_retry")
+        && (live
+            || matches!(
+                error,
+                Fail::Store(_) | Fail::Unresolved(_) | Fail::Config(_)
+            ))
 }
 pub(super) fn command(args: &[String]) -> Res<()> {
     let mut operation = None;
