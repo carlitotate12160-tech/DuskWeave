@@ -42,15 +42,37 @@ EXEC_TOKENS = re.compile(
     r"|(?<!')\bstatic\b"
     r"|[A-Za-z_]\w*!\s*[\(\{\[]|=>"
 )
+LITERAL = (
+    r"(?:"
+    r'""|b""'
+    r"|'(\\.|[^\\'])'|b'(\\.|[^\\'])'"
+    r"|true|false"
+    r"|-?(?:0x[0-9a-fA-F_]+|0b[01_]+|0o[0-7_]+|[0-9][0-9_]*)(?:[ui](?:8|16|32|64|128|size))?"
+    r"|-?[0-9][0-9_]*\.[0-9_]+(?:[eE][+-]?[0-9_]+)?(?:f32|f64)?"
+    r"|\(\)|\[\]"
+    r")"
+)
+LITERAL_CONST = re.compile(
+    r"^\s*(pub\b([^\n]*?\s+)?)?const\s+[A-Za-z_]\w*\s*:\s*[^=;]+\s*=\s*"
+    + LITERAL
+    + r"\s*;\s*$"
+)
+ABSTRACT_CONST = re.compile(
+    r"^\s*(pub\b([^\n]*?\s+)?)?const\s+[A-Za-z_]\w*\s*:\s*[^=;]+\s*;\s*$"
+)
+ABSTRACT_FN = re.compile(
+    r'^\s*(pub\b([^\n]*?\s+)?)?(async\s+)?(unsafe\s+)?(extern(\s+""|\s+[A-Za-z_]\w*)?\s+)?fn\s+[A-Za-z_]\w*(\s*<[^>]*>)?\s*\([^;{}]*\)(\s*->\s*[^;{}]+)?(\s+where\s+[^;{}]+)?\s*;\s*$'
+)
 
 
 def declarations_only(path):
     """True iff the file contains only Rust items that emit no coverable
     lines: attributes, mod/use declarations, type aliases, data
-    declarations and their fields/variants. Any executable construct —
-    fn, impl, static/const with a value, expressions, macro calls — even
-    packed onto a shared line returns False, so the file must appear in
-    the report. Uncertainty fails closed."""
+    declarations and their fields/variants, literal constants, and abstract
+    trait declarations. Any executable construct — fn with body, trait defaults,
+    executable const initializers, expressions, macro calls — even packed onto
+    a shared line returns False, so the file must appear in the report.
+    Uncertainty fails closed."""
     try:
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
@@ -60,7 +82,13 @@ def declarations_only(path):
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     for raw in text.split("\n"):
         t = raw.split("//", 1)[0].strip()
-        if not t or t.startswith("#"):
+        if not t:
+            continue
+        if re.match(r"^#!?\[.*\]\s*$", t):
+            continue
+        if t.startswith("#"):
+            t = re.sub(r"^(#!?\[.*?\]\s*)+", "", t)
+        if LITERAL_CONST.match(t) or ABSTRACT_CONST.match(t) or ABSTRACT_FN.match(t):
             continue
         if EXEC_TOKENS.search(t):
             return False
@@ -226,6 +254,70 @@ def selftest():
             [("src/a.rs", 10, 10), ("src/b.rs", 10, 9),
              ("src/ghost.rs", 10, 10)],
             [], False,
+        ))
+        cases.append((
+            "declarations-only file with literal constants and abstract trait absent",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/decl_const_trait.rs",
+              "pub const SCHEMA: &str = \"m1\";\n"
+              "pub const LIMIT: usize = 100;\n"
+              "pub const FLAG: bool = true;\n"
+              "pub trait Port {\n"
+              "    fn call(&self) -> bool;\n"
+              "    fn query(&mut self, id: u64) -> Result<(), ()>;\n"
+              "}\n")],
+            True,
+        ))
+        cases.append((
+            "missing file with executable const initializer (call)",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/exec_const_call.rs", "pub const X: i32 = calc();\n")],
+            False,
+        ))
+        cases.append((
+            "missing file with executable const block",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/exec_const_block.rs", "pub const X: i32 = { 42 };\n")],
+            False,
+        ))
+        cases.append((
+            "missing file with trait default method body",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/trait_default.rs", "pub trait T { fn f(&self) -> i32 { 1 } }\n")],
+            False,
+        ))
+        cases.append((
+            "missing file with multi-line trait default method",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/trait_default_multi.rs",
+              "pub trait T {\n    fn f(&self) -> i32\n    {\n        1\n    }\n}\n")],
+            False,
+        ))
+        cases.append((
+            "missing file hiding single-line code after literal const",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/sneaky_const.rs", "pub const X: i32 = 1; pub fn f() {}\n")],
+            False,
+        ))
+        cases.append((
+            "missing file hiding single-line code after abstract fn",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/sneaky_fn.rs", "pub trait T { fn f(&self); pub fn g() {} }\n")],
+            False,
+        ))
+        cases.append((
+            "declarations-only file with const string containing fn and comment containing fn",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/misleading.rs",
+              "pub const S: &str = \"fn sneaky() {}\";\n"
+              "pub const N: u32 = 5; // pub fn f() {}\n")],
+            True,
+        ))
+        cases.append((
+            "missing file hiding executable code on attribute line",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/sneaky_attr.rs", "#[inline] fn sneaky() { let x = 1; }\n")],
+            False,
         ))
 
         failed = 0

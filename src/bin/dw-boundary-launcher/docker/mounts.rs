@@ -64,3 +64,7 @@ fn allowed_system_mount(path: &str) -> bool {
     ]
     .contains(&path)
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/m1_live_dns/units/docker_mounts.rs"]
+mod tests;
