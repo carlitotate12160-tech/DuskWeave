@@ -25,20 +25,15 @@ impl RestrictedWithdrawal for Writer {
         operation: OperationId,
         recover: bool,
     ) -> Res<Option<MissionAuthorityWithdrawn>> {
-        if !recover {
-            let _ = super::m1_run_control::signal_campaign(q.engagement_id.0, q.campaign_id.0);
-        }
+        signal_campaign(q, recover);
         // This read happens only after the local-stop port has returned.
-        let client = match super::connect() {
-            Ok(client) => client,
-            // Indeterminate lookup failures cannot prove rejection; the live
-            // lane classifies them as unknown rather than a refused write.
-            Err(error) => {
-                self.live = true;
+        let mut store = match connect_store() {
+            Ok(store) => store,
+            Err((error, live)) => {
+                self.live = live;
                 return Err(error);
             }
         };
-        let mut store = PgMissionStore::new(client);
         self.live = match check_live(&mut store, q) {
             Ok(live) => live,
             Err((error, live)) => {
@@ -46,12 +41,35 @@ impl RestrictedWithdrawal for Writer {
                 return Err(error);
             }
         };
+        self.finish_withdraw(&mut store, q, operation, recover)
+    }
+}
+impl Writer {
+    fn finish_withdraw(
+        &mut self,
+        store: &mut PgMissionStore,
+        q: &WithdrawalRequest,
+        operation: OperationId,
+        recover: bool,
+    ) -> Res<Option<MissionAuthorityWithdrawn>> {
         if self.live {
             return live_write(q, operation, recover);
         }
         let mut allocator = PgAllocator::new(super::connect()?);
-        WithdrawalStore::withdraw(&mut store, q, operation, recover, &mut allocator)
+        WithdrawalStore::withdraw(store, q, operation, recover, &mut allocator)
     }
+}
+fn signal_campaign(q: &WithdrawalRequest, recover: bool) {
+    if !recover {
+        let _ = super::m1_run_control::signal_campaign(q.engagement_id.0, q.campaign_id.0);
+    }
+}
+fn connect_store() -> Result<PgMissionStore, (Fail, bool)> {
+    // Indeterminate lookup failures cannot prove rejection; the live
+    // lane classifies them as unknown rather than a refused write.
+    super::connect()
+        .map(PgMissionStore::new)
+        .map_err(|error| (error, true))
 }
 fn check_live(store: &mut PgMissionStore, q: &WithdrawalRequest) -> Result<bool, (Fail, bool)> {
     match live_registration(store, q) {
