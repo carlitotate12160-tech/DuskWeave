@@ -109,19 +109,45 @@ fn live_boundary_peer_framing_and_transitions() {
     let req = sample_request();
     let run = Uuid::new_v4();
     let (client, server) = UnixStream::pair().unwrap();
-    let child = std::process::Command::new("/bin/sleep")
-        .arg("30")
+    // Owned child that exits naturally once the server releases its stdin gate.
+    let mut child = std::process::Command::new("/bin/cat")
+        .env_clear()
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
+    let gate = child.stdin.take().unwrap();
+    // Socket IO and thread completion stay bounded on every path.
+    client
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    server
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    // Narrow cleanup guard: reap the fake peer and disarm only the fixture
+    // request so boundary Drop never invokes the installed launcher.
+    struct Guard(LiveBoundary);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            if let Some(mut peer) = self.0.peer.take() {
+                drop(peer.channel);
+                let _ = exited(&mut peer.process, 1000);
+            }
+            self.0.request = None;
+        }
+    }
 
     let (res_tx, res_rx) = std::sync::mpsc::channel();
-    let mut boundary = LiveBoundary::with_peer(
+    let mut guard = Guard(LiveBoundary::with_peer(
         run,
         Some(req.clone()),
         HostChannel::new(client),
         child,
         res_rx,
-    );
+    ));
+    let boundary = &mut guard.0;
 
     // ready on already charged boundary fails
     assert_eq!(
@@ -174,6 +200,8 @@ fn live_boundary_peer_framing_and_transitions() {
                 disposal_confirmed: true,
             })
             .unwrap();
+        // Releasing the stdin gate lets the owned child exit on its own.
+        drop(gate);
     });
 
     boundary.start(&req, 5000).unwrap();

@@ -46,28 +46,58 @@ fn sql_live_receipt_binds_qualification_fields() {
 
 #[test]
 #[ignore = "runs only inside the dedicated schema-0030 fixture worker"]
-fn sql_live_pg_effect_store_adapter_paths() {
+fn sql_live_pg_effect_store_rejects_unadmitted_run() {
     assert!(worker());
     use duskweave::m1_effect_session::EffectStore;
     use duskweave::postgres_m1_effect::PgEffectStore;
+    use duskweave::Fail;
 
     let (e, c, _operator) = register_live(0x5d02, true);
+    // fabricate_live_run(...,session=false,running=true) bypasses run_start:
+    // context.mission is empty, the qualification does not match, and there is
+    // no D1/closure/pack provenance. This run must never be admitted.
     let (run, _gen, _result_ref) = fabricate_live_run(e, c, false, true);
 
+    let scoped_state = |run: Uuid| -> Value {
+        let mut a = admin();
+        let run_rows = |a: &mut postgres::Client, sql: &str| -> Value {
+            a.query_one(sql, &[&run]).unwrap().get::<_, Value>(0)
+        };
+        let scope_rows = |a: &mut postgres::Client, sql: &str| -> Value {
+            a.query_one(sql, &[&e, &c]).unwrap().get::<_, Value>(0)
+        };
+        serde_json::json!({
+            "runs": run_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.autonomous_runs t WHERE t.run_id=$1"),
+            "control": run_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.autonomous_control t WHERE t.run_id=$1"),
+            "fence": scope_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.session_fences t WHERE t.engagement_id=$1 AND t.campaign_id=$2"),
+            "sessions": run_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.live_effect_sessions t WHERE t.run_id=$1"),
+            "effect_control": run_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.live_effect_control t WHERE t.run_id=$1"),
+            "events": run_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.live_effect_events t WHERE t.run_id=$1"),
+            "reservations": scope_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.inference_reservations t WHERE t.engagement_id=$1 AND t.campaign_id=$2"),
+            "closures": scope_rows(&mut a, "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]'::jsonb) FROM execution.inference_closures t WHERE t.e=$1 AND t.c=$2"),
+        })
+    };
+    let before = scoped_state(run);
+
+    // The restricted broker function itself refuses this malformed request at
+    // run_current with the public reason, before any adapter mapping.
+    let error = broker()
+        .query_one("SELECT execution.run_current($1)", &[&run])
+        .unwrap_err();
+    assert_eq!(db_message(&error), "run_authority_unavailable");
+
+    // The adapter maps that refusal without inventing a session.
     let mut store = PgEffectStore::new(broker());
+    assert_eq!(
+        store.reserve(run).map(|_| ()),
+        Err(Fail::State("live_effect_unavailable"))
+    );
 
-    let session = store.reserve(run).expect("reserve session in store");
-    assert_eq!(session.run_id, run);
-
-    let inspected = store.inspect(run).expect("inspect session in store");
-    assert_eq!(inspected.run_id, run);
-
-    let dl1 = store.may_start(&session).expect("may_start deadline");
-    let dl2 = store.current_deadline(&session).expect("current deadline");
-    assert_eq!(dl1, dl2);
-
-    store.stop(&session).expect("stop session");
-    store
-        .close_disposed(&session)
-        .expect("close disposed session");
+    // An exception alone is not proof: compare scoped run/control, session
+    // fence, effect session/control/event and inference reservation/closure
+    // rows. No new session, fence advance, charge or effect may be written.
+    assert!(
+        scoped_state(run) == before,
+        "refused calls must not write scoped run/fence/effect or inference state"
+    );
 }
