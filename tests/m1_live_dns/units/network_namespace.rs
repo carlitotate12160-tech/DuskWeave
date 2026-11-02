@@ -16,6 +16,9 @@ fn derived_names_are_deterministic_and_tagged() {
 fn absent_and_destroy_tolerate_resources_that_never_existed() {
     let n = super::super::names(uuid::Uuid::new_v4());
     assert!(absent(&n), "fresh names map to no host resources");
+    if rustix::process::geteuid().as_raw() != 0 {
+        return;
+    }
     // Destroy must not fail when the link, netns and nft table are all absent;
     // absent nft tables are skipped via the list checks, never blindly deleted.
     let end = Instant::now() + std::time::Duration::from_secs(5);

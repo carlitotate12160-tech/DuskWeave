@@ -231,7 +231,7 @@ inspect_dir.mkdir(mode=0o700)
 inspect_name='dw-bind-inspect-'+uuid.uuid4().hex[:12]
 def confirm_removed():
     subprocess.run(['docker','rm','-f','-v',inspect_name],capture_output=True,timeout=60)
-    if subprocess.run(['docker','inspect',inspect_name],capture_output=True).returncode==0:
+    if subprocess.run(['docker','inspect',inspect_name],capture_output=True,timeout=60).returncode==0:
         raise SystemExit('lab_bind_cleanup_unconfirmed')
 try:
     subprocess.run(['docker','create','--name',inspect_name,'--network','none',image,'/bin/true'],
@@ -248,7 +248,7 @@ try:
 except SystemExit:
     confirm_removed()
     raise
-except (subprocess.CalledProcessError,subprocess.TimeoutExpired):
+except Exception:
     confirm_removed()
     raise SystemExit('lab_image_inspection_failed')
 finally:
