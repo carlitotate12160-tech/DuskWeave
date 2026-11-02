@@ -69,6 +69,145 @@ fn full_stop_ingress_backlog_cannot_block_the_host_fallback() {
         "full ingress backlog must refuse promptly for the fixed host fallback"
     );
 }
+
+#[test]
+fn binding_admission_and_path_generation() {
+    let run = Uuid::new_v4();
+    let engagement = Uuid::new_v4();
+    let campaign = Uuid::new_v4();
+    let b = Binding {
+        run,
+        engagement,
+        campaign,
+        generation: 1,
+    };
+
+    assert!(b.admits(StopTarget::Run { run_id: run }));
+    assert!(!b.admits(StopTarget::Run {
+        run_id: Uuid::new_v4()
+    }));
+    assert!(b.admits(StopTarget::Campaign {
+        engagement_id: engagement,
+        campaign_id: campaign,
+    }));
+    assert!(!b.admits(StopTarget::Campaign {
+        engagement_id: Uuid::new_v4(),
+        campaign_id: campaign,
+    }));
+    assert!(!b.admits(StopTarget::Campaign {
+        engagement_id: engagement,
+        campaign_id: Uuid::new_v4(),
+    }));
+
+    let p = b.path("sock");
+    assert!(p.ends_with(format!("{}.sock", run.simple())));
+}
+
+#[test]
+fn root_directory_validation_enforces_directory_mode_and_uid() {
+    let directory = Directory::new();
+    set_test_control_root(Some(directory.path().to_path_buf()));
+    assert!(root().is_ok());
+
+    // Nonexistent directory fails
+    let missing = directory.path().join("missing");
+    set_test_control_root(Some(missing));
+    assert_eq!(root().unwrap_err(), unavailable());
+
+    // File instead of directory fails
+    let file = directory.path().join("file.txt");
+    std::fs::write(&file, b"content").unwrap();
+    set_test_control_root(Some(file));
+    assert_eq!(root().unwrap_err(), unavailable());
+
+    set_test_control_root(None);
+}
+
+#[test]
+fn ingress_lifecycle_publishes_and_cleans_endpoints() {
+    let directory = Directory::new();
+    set_test_control_root(Some(directory.path().to_path_buf()));
+
+    let run = Uuid::new_v4();
+    let request_val = serde_json::json!({
+        "schema": "m1_dns_ipc_v1",
+        "kind": "REQUEST",
+        "attempt": "00000000-0000-0000-0000-000000000001",
+        "session_generation": 1,
+        "sequence": 0,
+        "engagement_id": "00000000-0000-0000-0000-000000000002",
+        "campaign_id": "00000000-0000-0000-0000-000000000003",
+        "decision_id": "00000000-0000-0000-0000-000000000004",
+        "profile": "dns-routing-v2",
+        "execution_mode": "live",
+        "run_profile": "autonomous-dns-genai-lab-v1",
+        "release_sha256": "a".repeat(64),
+        "qualification_ref": "00000000-0000-0000-0000-000000000005",
+        "name": "example.com",
+        "resolver_ipv4": "192.0.2.53",
+        "transport": "udp",
+        "query_id": 1,
+        "allowed_names": ["example.com"],
+        "deadline_at_ms": 2000,
+        "max_duration_ms": 2000
+    });
+    let request: DnsRequest = serde_json::from_value(request_val).unwrap();
+
+    let sock_path = directory.path().join(format!("{}.sock", run.simple()));
+    let json_path = directory.path().join(format!("{}.json", run.simple()));
+
+    {
+        let ingress = Ingress::start(run, &request).expect("start ingress");
+        assert!(sock_path.exists());
+        assert!(json_path.exists());
+
+        // Validate journal reading
+        let b = binding(&json_path).expect("read binding journal");
+        assert_eq!(b.run, run);
+        assert_eq!(b.generation, 1);
+
+        // Connect client and test communication
+        let client = connect(&sock_path).expect("connect to ingress socket");
+        assert!(peer(&client).is_ok());
+
+        // Oversized file (>1024 bytes) in journal fails
+        let big_json = directory.path().join("big.json");
+        std::fs::write(&big_json, vec![b' '; 1025]).unwrap();
+        assert_eq!(binding(&big_json).unwrap_err(), unavailable());
+
+        drop(ingress);
+    }
+
+    // Endpoints cleaned up after drop
+    assert!(!sock_path.exists());
+    assert!(!json_path.exists());
+
+    set_test_control_root(None);
+}
+
+#[test]
+fn signal_enumerates_and_ignores_irrelevant_or_missing_files() {
+    let directory = Directory::new();
+    set_test_control_root(Some(directory.path().to_path_buf()));
+
+    // Empty dir returns None
+    let outcome = signal(StopTarget::Run {
+        run_id: Uuid::new_v4(),
+    })
+    .unwrap();
+    assert!(outcome.is_none());
+
+    // Non-json file is ignored
+    std::fs::write(directory.path().join("other.tmp"), b"data").unwrap();
+    let outcome = signal(StopTarget::Run {
+        run_id: Uuid::new_v4(),
+    })
+    .unwrap();
+    assert!(outcome.is_none());
+
+    set_test_control_root(None);
+}
+
 #[test]
 #[ignore = "bounded subprocess probe for the ingress backlog regression"]
 fn backlog_probe() {

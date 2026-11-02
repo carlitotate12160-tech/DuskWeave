@@ -18,8 +18,8 @@ fn remaining(end: Instant) -> Res<Duration> {
         .ok_or(Fail::State("live_effect_deadline"))
 }
 pub(super) struct RawPipe {
-    read: UnixStream,
-    write: UnixStream,
+    pub(super) read: UnixStream,
+    pub(super) write: UnixStream,
 }
 pub(super) fn private_raw() -> Res<RawPipe> {
     // Admission calls this before opening any other descriptor. Only the exporter

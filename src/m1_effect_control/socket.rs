@@ -128,6 +128,26 @@ impl LiveBoundary {
             ingress: None,
         }
     }
+    #[cfg(test)]
+    pub(super) fn with_peer(
+        run: Uuid,
+        request: Option<DnsRequest>,
+        channel: HostChannel<std::os::unix::net::UnixStream>,
+        process: std::process::Child,
+        result: std::sync::mpsc::Receiver<Res<HostReply>>,
+    ) -> Self {
+        Self {
+            run,
+            request,
+            peer: Some(Peer {
+                channel,
+                process,
+                result,
+            }),
+            closed: false,
+            ingress: None,
+        }
+    }
     fn peer(&mut self) -> Res<&mut Peer> {
         self.peer
             .as_mut()
@@ -368,30 +388,6 @@ fn stop_command(target: super::authority::StopTarget) -> HostCommand {
             campaign_id,
         },
     }
-}
-
-#[cfg(test)]
-#[cfg(target_os = "linux")]
-#[test]
-fn killed_launcher_child_is_reaped_within_its_original_owner_budget() {
-    let mut process = std::process::Command::new("/bin/sleep")
-        .arg("10")
-        .env_clear()
-        .spawn()
-        .unwrap();
-    let path = std::path::PathBuf::from(format!("/proc/{}", process.id()));
-    let clean = exited(&mut process, 100).unwrap();
-    let end = Instant::now() + Duration::from_millis(50);
-    while path.exists() && Instant::now() < end {
-        std::thread::sleep(Duration::from_millis(1));
-    }
-    let reaped = !path.exists();
-    let _ = process.wait(); // Always reap the RED witness before asserting.
-    assert!(!clean);
-    assert!(
-        reaped,
-        "returning after kill must not leave an unreaped owned child"
-    );
 }
 
 #[cfg(all(test, target_os = "linux"))]

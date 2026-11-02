@@ -41,3 +41,11 @@ fn writable_mount_parsing_keeps_only_allowed_system_mounts() {
         assert!(!allowed_system_mount(denied), "{denied}");
     }
 }
+
+#[test]
+fn seal_mounts_fails_closed_when_mountinfo_unavailable() {
+    assert_eq!(
+        seal_mounts(999999, Instant::now() + Duration::from_secs(1)).unwrap_err(),
+        Fail::Config("live_host_unqualified")
+    );
+}

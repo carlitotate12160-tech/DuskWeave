@@ -43,3 +43,31 @@ fn sql_live_receipt_binds_qualification_fields() {
         "expired qualification cannot be live_qualified"
     );
 }
+
+#[test]
+#[ignore = "runs only inside the dedicated schema-0030 fixture worker"]
+fn sql_live_pg_effect_store_adapter_paths() {
+    assert!(worker());
+    use duskweave::m1_effect_session::EffectStore;
+    use duskweave::postgres_m1_effect::PgEffectStore;
+
+    let (e, c, _operator) = register_live(0x5d02, true);
+    let (run, _gen, _result_ref) = fabricate_live_run(e, c, false, true);
+
+    let mut store = PgEffectStore::new(broker());
+
+    let session = store.reserve(run).expect("reserve session in store");
+    assert_eq!(session.run_id, run);
+
+    let inspected = store.inspect(run).expect("inspect session in store");
+    assert_eq!(inspected.run_id, run);
+
+    let dl1 = store.may_start(&session).expect("may_start deadline");
+    let dl2 = store.current_deadline(&session).expect("current deadline");
+    assert_eq!(dl1, dl2);
+
+    store.stop(&session).expect("stop session");
+    store
+        .close_disposed(&session)
+        .expect("close disposed session");
+}

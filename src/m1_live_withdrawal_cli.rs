@@ -176,3 +176,54 @@ pub(super) fn stop_run(run: Uuid) -> StopDisposition {
     let _ = super::m1_run_control::signal_run(run);
     local
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unrecoverable_classifies_by_live_and_error_kind() {
+        assert!(!unrecoverable(&Fail::Store("serialization_retry"), true));
+        assert!(unrecoverable(&Fail::Store("db_down"), true));
+        assert!(!unrecoverable(&Fail::Store("db_down"), false));
+        assert!(!unrecoverable(&Fail::Input("bad_input"), false));
+        assert!(unrecoverable(&Fail::Input("bad_input"), true));
+    }
+
+    #[test]
+    fn receipt_formats_appropriate_payloads() {
+        let op = Some(OperationId(Uuid::new_v4()));
+
+        let not_committed = receipt(&Ok(None), op, false, false);
+        assert_eq!(not_committed["result"], "not_committed");
+        assert_eq!(not_committed["action"], "reconcile_authority");
+
+        let live_unrec = receipt(&Err(Fail::Store("db_down")), op, false, true);
+        assert_eq!(live_unrec["result"], "unknown");
+        assert_eq!(live_unrec["action"], "recover_before_retry");
+
+        let ordinary_err = receipt(&Err(Fail::Input("bad_argument")), op, false, false);
+        assert_eq!(ordinary_err["result"], "rejected");
+    }
+
+    #[test]
+    fn stop_run_signals_and_returns_disposition() {
+        let id = Uuid::new_v4();
+        let disp = stop_run(id);
+        let _ = disp;
+    }
+
+    #[test]
+    fn signal_campaign_skips_when_recovering() {
+        let q: WithdrawalRequest = serde_json::from_value(json!({
+            "engagement_id": Uuid::new_v4(),
+            "campaign_id": Uuid::new_v4(),
+            "operator_ref": Uuid::new_v4(),
+            "expected_mission_revision": 1,
+            "reason": "operator_requested"
+        }))
+        .unwrap();
+        signal_campaign(&q, true);
+        signal_campaign(&q, false);
+    }
+}

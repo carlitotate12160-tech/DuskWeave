@@ -10,6 +10,22 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 const ROOT: &str = "/run/duskweave/launcher";
 
+#[cfg(test)]
+thread_local! {
+    static TEST_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+#[cfg(test)]
+pub(super) fn set_test_root(path: Option<PathBuf>) {
+    TEST_ROOT.with(|c| *c.borrow_mut() = path);
+}
+fn root() -> PathBuf {
+    #[cfg(test)]
+    if let Some(r) = TEST_ROOT.with(|c| c.borrow().clone()) {
+        return r;
+    }
+    PathBuf::from(ROOT)
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Session {
@@ -23,10 +39,10 @@ pub(super) struct Session {
     pub handling_deadline_at_ms: i64,
 }
 fn dir(attempt: Uuid) -> PathBuf {
-    Path::new(ROOT).join(attempt.simple().to_string())
+    root().join(attempt.simple().to_string())
 }
 fn stop_path(e: Uuid, c: Uuid, g: u64) -> PathBuf {
-    Path::new(ROOT).join(format!("stop-{}-{}-{g}", e.simple(), c.simple()))
+    root().join(format!("stop-{}-{}-{g}", e.simple(), c.simple()))
 }
 
 pub(super) struct Guard(File);
@@ -46,9 +62,8 @@ fn guard_path(name: String, end: Instant) -> Res<Guard> {
         .read(true)
         .write(true)
         .create(true)
-        .truncate(false)
         .mode(0o600)
-        .open(Path::new(ROOT).join(name))
+        .open(root().join(name))
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
     loop {
         match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
@@ -62,10 +77,10 @@ fn guard_path(name: String, end: Instant) -> Res<Guard> {
     Ok(Guard(file))
 }
 fn campaign_path(e: Uuid, c: Uuid) -> PathBuf {
-    Path::new(ROOT).join(format!("campaign-stop-{}-{}", e.simple(), c.simple()))
+    root().join(format!("campaign-stop-{}-{}", e.simple(), c.simple()))
 }
 fn run_path(run: Uuid) -> PathBuf {
-    Path::new(ROOT).join(format!("run-stop-{}", run.simple()))
+    root().join(format!("run-stop-{}", run.simple()))
 }
 pub(super) fn stopped(q: &DnsRequest) -> bool {
     stop_path(q.engagement_id, q.campaign_id, q.session_generation).exists()
@@ -75,18 +90,18 @@ fn blocked(s: &Session) -> bool {
     stopped(&s.request) || run_path(s.run_id).exists()
 }
 fn session_guard(s: &Session, end: Instant) -> Res<(Guard, Guard)> {
-    let run = run_guard(s.run_id, end)?;
-    Ok((
-        run,
-        guard(s.request.engagement_id, s.request.campaign_id, end)?,
-    ))
+    let r = run_guard(s.run_id, end)?;
+    let c = guard(s.request.engagement_id, s.request.campaign_id, end)?;
+    Ok((r, c))
 }
 fn owned_root() -> Res<()> {
+    #[cfg(test)]
+    if TEST_ROOT.with(|c| c.borrow().is_some()) {
+        return Ok(());
+    }
     let m = std::fs::symlink_metadata(ROOT).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    [m.is_dir(), m.uid() == 0, m.mode() & 0o077 == 0]
-        .into_iter()
-        .all(|v| v)
-        .then_some(())
+    let ok = m.is_dir() && m.uid() == 0 && m.mode() & 0o077 == 0;
+    ok.then_some(())
         .ok_or(Fail::Config("live_host_unqualified"))
 }
 pub(super) fn load(attempt: Uuid, generation: u64) -> Res<Session> {
@@ -100,16 +115,16 @@ fn record(attempt: Uuid) -> Res<Session> {
     let path = dir(attempt).join("session.json");
     let meta =
         std::fs::symlink_metadata(&path).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    if ![
-        meta.is_file(),
-        meta.uid() == 0,
-        meta.nlink() == 1,
-        meta.mode() & 0o077 == 0,
-        meta.len() <= 16384,
-    ]
-    .into_iter()
-    .all(|v| v)
-    {
+    #[cfg(not(test))]
+    let uid_ok = meta.uid() == 0;
+    #[cfg(test)]
+    let uid_ok = true;
+    let ok = meta.is_file()
+        && uid_ok
+        && meta.nlink() == 1
+        && meta.mode() & 0o077 == 0
+        && meta.len() <= 16384;
+    if !ok {
         return Err(Fail::Config("live_host_unqualified"));
     }
     let file = File::open(path).map_err(|_| Fail::Config("live_host_unqualified"))?;
@@ -163,10 +178,9 @@ fn validate_open(run: Uuid, request: &DnsRequest, now: i64) -> Res<()> {
     Ok(())
 }
 fn new_session(run_id: Uuid, request: &DnsRequest, now: i64, monotonic: Instant) -> Session {
+    let prep_ms = (request.deadline_at_ms - now).min(5000) as u64;
     Session {
-        preparation_deadline: Some(
-            monotonic + Duration::from_millis((request.deadline_at_ms - now).min(5000) as u64),
-        ),
+        preparation_deadline: Some(monotonic + Duration::from_millis(prep_ms)),
         run_id,
         request: Box::new(request.clone()),
         opened_at_ms: now,
@@ -214,18 +228,14 @@ fn charge(s: &mut Session, deadline: i64) -> Res<()> {
     save(s)
 }
 fn validate_start(s: &Session, now: i64, deadline: i64) -> Res<()> {
-    let valid = [
-        !blocked(s),
-        s.ready_at_ms.is_some(),
-        now < s.handling_deadline_at_ms,
-        deadline > now,
-        deadline <= s.request.deadline_at_ms,
-        deadline <= now + 2000,
-        s.attempt_deadline_at_ms.is_none(),
-    ];
+    let valid = !blocked(s)
+        && s.ready_at_ms.is_some()
+        && now < s.handling_deadline_at_ms
+        && deadline > now
+        && deadline <= s.request.deadline_at_ms
+        && deadline <= now + 2000
+        && s.attempt_deadline_at_ms.is_none();
     valid
-        .into_iter()
-        .all(|v| v)
         .then_some(())
         .ok_or(Fail::State("live_effect_start_refused"))
 }
@@ -248,7 +258,7 @@ fn latch(path: PathBuf) -> Res<()> {
         .open(path)
     {
         Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(_) => Err(Fail::Config("live_host_unqualified")),
     }
 }
@@ -297,22 +307,18 @@ pub(super) fn stop_until(e: Uuid, c: Uuid, g: u64, end: Instant) -> bool {
     stop_scope(StopScope::Generation(e, c, g), end).1
 }
 pub(super) fn stop_run(run: Uuid) -> (bool, bool) {
-    stop_scope(
-        StopScope::Run(run),
-        Instant::now() + Duration::from_millis(1000),
-    )
+    let deadline = Instant::now() + Duration::from_millis(1000);
+    stop_scope(StopScope::Run(run), deadline)
 }
 pub(super) fn stop_campaign(e: Uuid, c: Uuid) -> (bool, bool) {
-    stop_scope(
-        StopScope::Campaign(e, c),
-        Instant::now() + Duration::from_millis(1000),
-    )
+    let deadline = Instant::now() + Duration::from_millis(1000);
+    stop_scope(StopScope::Campaign(e, c), deadline)
 }
 fn stop_scope(scope: StopScope, end: Instant) -> (bool, bool) {
     if scope.latch(end).is_err() {
         return (false, false);
     }
-    let Ok(entries) = std::fs::read_dir(ROOT) else {
+    let Ok(entries) = std::fs::read_dir(root()) else {
         return (true, false);
     };
     let mut disposed = true;
@@ -356,11 +362,8 @@ pub(super) fn dispose_until(attempt: Uuid, end: Instant) -> bool {
     let containers = super::docker::remove(attempt, false, end).is_ok()
         & super::docker::remove(attempt, true, end).is_ok();
     let network = super::network::destroy(attempt, end);
-    if !containers
-        || !network
-        || dir(attempt).join("transport.pending").exists()
-        || Instant::now() >= end
-    {
+    let pending = dir(attempt).join("transport.pending").exists();
+    if !containers || !network || pending || Instant::now() >= end {
         return false;
     }
     std::fs::remove_dir_all(dir(attempt)).is_ok() || !dir(attempt).exists()

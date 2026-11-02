@@ -7,6 +7,14 @@ pub(super) fn serve() -> Res<()> {
     harden()?;
     let raw = super::relay::private_raw()?;
     let (socket, peer) = parent_channel()?;
+    serve_connection(socket, peer, raw)
+}
+
+fn serve_connection(
+    socket: UnixStream,
+    peer: rustix::net::UCred,
+    raw: super::relay::RawPipe,
+) -> Res<()> {
     if peer.uid.as_raw() == 0 {
         super::qualification::watchdog_peer(peer)?;
         return super::control::watchdog(socket);

@@ -75,3 +75,7 @@ pub(super) fn check_autonomous_basis(
         .then_some(())
         .ok_or(Fail::State("context_basis_mismatch"))
 }
+
+#[cfg(test)]
+#[path = "../../tests/m1_live_dns/units/context_live.rs"]
+mod tests;

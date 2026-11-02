@@ -39,11 +39,30 @@ impl Binding {
         }
     }
     fn path(&self, extension: &str) -> PathBuf {
-        Path::new(CONTROL_ROOT).join(format!("{}.{}", self.run.simple(), extension))
+        control_root().join(format!("{}.{}", self.run.simple(), extension))
     }
 }
+
+#[cfg(test)]
+thread_local! {
+    static TEST_CONTROL_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) fn set_test_control_root(p: Option<PathBuf>) {
+    TEST_CONTROL_ROOT.with(|r| *r.borrow_mut() = p);
+}
+
+fn control_root() -> PathBuf {
+    #[cfg(test)]
+    if let Some(p) = TEST_CONTROL_ROOT.with(|r| r.borrow().clone()) {
+        return p;
+    }
+    PathBuf::from(CONTROL_ROOT)
+}
+
 fn root() -> Res<()> {
-    let m = std::fs::symlink_metadata(CONTROL_ROOT).map_err(|_| unavailable())?;
+    let m = std::fs::symlink_metadata(control_root()).map_err(|_| unavailable())?;
     [
         m.is_dir(),
         m.uid() == rustix::process::geteuid().as_raw(),
@@ -200,7 +219,7 @@ fn binding(path: &Path) -> Res<Binding> {
 }
 pub(super) fn signal(target: StopTarget) -> Res<Option<StopDisposition>> {
     root()?;
-    for entry in std::fs::read_dir(CONTROL_ROOT).map_err(|_| unavailable())? {
+    for entry in std::fs::read_dir(control_root()).map_err(|_| unavailable())? {
         let entry = entry.map_err(|_| unavailable())?;
         if let Some(outcome) = signal_entry(&entry.path(), target)? {
             return Ok(Some(outcome));

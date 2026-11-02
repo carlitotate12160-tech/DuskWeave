@@ -71,3 +71,120 @@ fn receive_start_accepts_only_the_matching_attempt_generation() {
         Fail::State("live_effect_start_refused")
     );
 }
+
+#[test]
+fn acknowledged_accepts_matching_ack_and_renew_rejects_others() {
+    let attempt = Uuid::new_v4();
+    let q = request(attempt, 2);
+
+    // 1. Matching Renew returns Ok(false)
+    let (a, b) = UnixStream::pair().unwrap();
+    let mut host = HostChannel::new(a);
+    let mut client = HostChannel::new(b);
+    client
+        .send_command(&HostCommand::Renew {
+            attempt,
+            generation: 2,
+            deadline_at_ms: 100,
+        })
+        .unwrap();
+    assert_eq!(acknowledged(&mut host, &q).unwrap(), false);
+
+    // 2. Matching Ack returns Ok(true)
+    let (a, b) = UnixStream::pair().unwrap();
+    let mut host = HostChannel::new(a);
+    let mut client = HostChannel::new(b);
+    client
+        .send_command(&HostCommand::Ack {
+            attempt,
+            generation: 2,
+        })
+        .unwrap();
+    assert_eq!(acknowledged(&mut host, &q).unwrap(), true);
+
+    // 3. Mismatched Ack returns protocol refused
+    let (a, b) = UnixStream::pair().unwrap();
+    let mut host = HostChannel::new(a);
+    let mut client = HostChannel::new(b);
+    client
+        .send_command(&HostCommand::Ack {
+            attempt: Uuid::new_v4(),
+            generation: 2,
+        })
+        .unwrap();
+    assert_eq!(
+        acknowledged(&mut host, &q).unwrap_err(),
+        Fail::State("live_host_protocol_refused")
+    );
+
+    // 4. Other command returns protocol refused
+    let (a, b) = UnixStream::pair().unwrap();
+    let mut host = HostChannel::new(a);
+    let mut client = HostChannel::new(b);
+    client
+        .send_command(&HostCommand::StopRun {
+            run_id: Uuid::new_v4(),
+        })
+        .unwrap();
+    assert_eq!(
+        acknowledged(&mut host, &q).unwrap_err(),
+        Fail::State("live_host_protocol_refused")
+    );
+}
+
+#[test]
+fn completed_channels_and_control_readable() {
+    use std::io::Write;
+    let (send, recv) = std::sync::mpsc::channel();
+
+    // Empty channel
+    assert!(completed(&recv).unwrap().is_none());
+
+    // Successful result
+    let sample_res: duskweave::m1_dns::DnsResult = serde_json::from_value(serde_json::json!({
+        "schema": "m1_dns_ipc_v1",
+        "kind": "RESULT",
+        "attempt": "00000000-0000-0000-0000-000000000001",
+        "session_generation": 1,
+        "sequence": 3,
+        "status": "completed",
+        "observed_at_ms": 1000,
+        "rcode": 0,
+        "truncated": false,
+        "complete": true,
+        "withheld_aliases": 0,
+        "answers": [{"ipv4": "198.51.100.7", "ttl_seconds": 30}],
+        "aliases": []
+    }))
+    .unwrap();
+    send.send(Ok(sample_res.clone())).unwrap();
+    let res = completed(&recv).unwrap().unwrap();
+    assert_eq!(res.sequence, 3);
+
+    // Disconnected channel
+    drop(send);
+    assert_eq!(
+        completed(&recv).unwrap_err(),
+        Fail::State("dns_ipc_failure")
+    );
+
+    // control_readable tests
+    let (a, mut b) = UnixStream::pair().unwrap();
+    a.set_nonblocking(true).unwrap();
+
+    // No data available -> Ok(false)
+    assert_eq!(control_readable(&a).unwrap(), false);
+
+    // Data available -> Ok(true)
+    b.write_all(b"x").unwrap();
+    assert_eq!(control_readable(&a).unwrap(), true);
+
+    // Closed peer -> Err
+    drop(b);
+    let mut buf = [0u8; 1];
+    let _ = a.read(&mut buf);
+    assert_eq!(
+        control_readable(&a).unwrap_err(),
+        Fail::State("live_host_unavailable")
+    );
+}

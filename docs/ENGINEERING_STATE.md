@@ -153,14 +153,14 @@ not a universal readiness guarantee. Committed-head CI on the draft PR
 (#139, candidate `517e92c`) passes every functional gate — builds, both test
 shards, mutation, structure, metrics, CodeQL, geiger, links, dependencies,
 Go boundary and the guarded qualification lane — on run `41370937004` /
-`41370936961` (mutation). The production coverage floor remains UNVERIFIED:
-total 83.84% (<90%) and 21 new host-bound files under 80%, because their
-only witnesses are root/namespace/Docker-bound Oracle tests that CI cannot
-run. Meeting the floor needs either a dedicated coverage slice (new
-CI-runnable owner tests) or an accepted gate amendment — both outside this
-packet's file map — so the reproducible-release readiness claim stays
-blocked, not relabeled. External qualification evidence retains source/version
-identities and metadata-only traces.
+`41370936961` (mutation). The production coverage floor is FAIL/BLOCKED
+(measured coverage below the floor is FAIL/BLOCKED, not merely UNVERIFIED):
+run `41377109367` reached total 84.99% (<90% floor) with 21 host-bound files
+under the 80% per-file floor. Option A (B2 completion) expands CI-runnable
+owner unit tests across launcher admission, attempt journal, control/exchange,
+watchdog, docker, network namespace disposal, qualification, relay, effect
+session/socket, context live binding, run effect and live withdrawal CLI.
+External qualification evidence retains source/version identities and metadata-only traces.
 `DW-FIX-PR139-QUALIFIED-LAB` (r2.1/r2.2) physical Oracle ARM64 LAB
 qualification (`qualification_ref: 93318766-3139-423d-962b-c91bc588db04`,
 `purpose: LAB`, DB `dw_native_pr139_r2_20261101a`, cloned at `4c59ef2`):

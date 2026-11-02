@@ -26,3 +26,30 @@ fn watchdog_serve_refuses_non_ack_commands_and_unknown_sessions() {
         "unknown session refuses the watchdog lane"
     );
 }
+
+#[test]
+fn watchdog_current_monitors_child_process_status() {
+    let (parent, _child) = UnixStream::pair().unwrap();
+    let process = Command::new("/bin/sleep").arg("30").spawn().unwrap();
+    let mut watchdog = Watchdog {
+        process,
+        channel: parent,
+    };
+    assert!(watchdog.current().is_ok());
+
+    // Drop cleanly kills and reaps
+    drop(watchdog);
+
+    // Watchdog on already exited child reports unavailable
+    let (parent, _child) = UnixStream::pair().unwrap();
+    let mut process = Command::new("/bin/true").spawn().unwrap();
+    let _ = process.wait();
+    let mut watchdog = Watchdog {
+        process,
+        channel: parent,
+    };
+    assert_eq!(
+        watchdog.current().unwrap_err(),
+        Fail::State("live_watchdog_unavailable")
+    );
+}

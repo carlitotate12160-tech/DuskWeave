@@ -78,3 +78,26 @@ fn attempt_label_alone_cannot_authorize_removing_a_collision() {
         "deployment label AND image must agree before removal"
     );
 }
+
+#[test]
+fn names_generation_is_stable_and_distinct() {
+    let u = Uuid::from_u128(0x42);
+    let n = names(u);
+    assert!(n[0].starts_with("dwcap"));
+    assert!(n[1].starts_with("dwexp"));
+    assert_ne!(n[0], n[1]);
+}
+
+#[test]
+fn qualify_image_and_child_reaping() {
+    let _ = qualify("sha256:test");
+
+    let mut child = std::process::Command::new("/bin/sleep")
+        .arg("5")
+        .spawn()
+        .unwrap();
+    assert!(reap_child(
+        &mut child,
+        Instant::now() + Duration::from_millis(50)
+    ));
+}

@@ -1,5 +1,5 @@
 //! Namespace/veth preparation and exact owned-resource teardown.
-use super::{IP, Names, addresses, nft, run};
+use super::{IP, Names, addresses, nft, nft_output, run};
 use duskweave::Res;
 use std::time::Instant;
 
@@ -32,7 +32,7 @@ fn attach(n: &Names, pid: u32, end: Instant) -> Res<()> {
         end,
     )
 }
-fn deny_rules(n: &Names, resolver: &str, end: Instant) -> Res<()> {
+fn rule_sets(n: &Names, resolver: &str) -> (String, String) {
     let (_, inner, subnet) = addresses(n);
     let inside = format!(
         "table inet {t} {{ chain o {{ type filter hook output priority 0; policy drop; ip daddr {resolver} udp dport 53 accept; }}; chain i {{ type filter hook input priority 0; policy drop; ip saddr {resolver} udp sport 53 ct state established accept; }}; }}\n",
@@ -43,6 +43,10 @@ fn deny_rules(n: &Names, resolver: &str, end: Instant) -> Res<()> {
         t = n.table,
         v = n.host
     );
+    (inside, outside)
+}
+fn deny_rules(n: &Names, resolver: &str, end: Instant) -> Res<()> {
+    let (inside, outside) = rule_sets(n, resolver);
     nft(Some(&n.netns), &inside, end)?;
     nft(None, &outside, end)
 }
@@ -97,17 +101,64 @@ pub(super) fn absent(n: &Names) -> bool {
     !std::path::Path::new(&format!("/run/netns/{}", n.netns)).exists()
         && !std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists()
 }
+fn line_matches_table(line: &str, table: &str) -> bool {
+    let mut parts = line.split_whitespace();
+    parts.next() == Some("table")
+        && parts.next() == Some("inet")
+        && parts.next() == Some(table)
+        && parts.next().is_none()
+}
+fn table_listed(output: &str, table: &str) -> bool {
+    output.lines().any(|line| line_matches_table(line, table))
+}
+fn table_disposed_with<L, D>(table: &str, end: Instant, list: L, delete: D) -> bool
+where
+    L: FnOnce(&str, Instant) -> Res<String>,
+    D: FnOnce(&str, Instant) -> Res<()>,
+{
+    if Instant::now() >= end {
+        return false;
+    }
+    let output = match list("list tables inet\n", end) {
+        Ok(out) => out,
+        Err(_) => return false,
+    };
+    if !table_listed(&output, table) {
+        return true;
+    }
+    delete(&format!("delete table inet {table}\n"), end).is_ok()
+}
 fn table_disposed(table: &str, end: Instant) -> bool {
-    let listed = nft(None, "list tables inet\n", end).is_ok();
-    let present = listed && nft(None, &format!("list table inet {table}\n"), end).is_ok();
-    (!present && listed) || nft(None, &format!("delete table inet {table}\n"), end).is_ok()
+    table_disposed_with(
+        table,
+        end,
+        |rules, deadline| nft_output(None, rules, deadline),
+        |rules, deadline| nft(None, rules, deadline),
+    )
+}
+pub(super) fn destroy_with<R, L, D>(n: &Names, end: Instant, run_cmd: R, list: L, delete: D) -> bool
+where
+    R: Fn(&[&str], Instant) -> Res<()>,
+    L: FnOnce(&str, Instant) -> Res<String>,
+    D: FnOnce(&str, Instant) -> Res<()>,
+{
+    if Instant::now() >= end {
+        return false;
+    }
+    let link = run_cmd(&["link", "del", &n.host], end).is_ok()
+        || !std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists();
+    let ns = run_cmd(&["netns", "del", &n.netns], end).is_ok()
+        || !std::path::Path::new(&format!("/run/netns/{}", n.netns)).exists();
+    link && ns && table_disposed_with(&n.table, end, list, delete)
 }
 pub(super) fn destroy(n: &Names, end: Instant) -> bool {
-    let link = run(IP, &["link", "del", &n.host], end).is_ok()
-        || !std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists();
-    let ns = run(IP, &["netns", "del", &n.netns], end).is_ok()
-        || !std::path::Path::new(&format!("/run/netns/{}", n.netns)).exists();
-    link && ns && table_disposed(&n.table, end)
+    destroy_with(
+        n,
+        end,
+        |args, deadline| run(IP, args, deadline),
+        |rules, deadline| nft_output(None, rules, deadline),
+        |rules, deadline| nft(None, rules, deadline),
+    )
 }
 
 #[cfg(test)]

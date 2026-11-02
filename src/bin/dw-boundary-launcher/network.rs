@@ -67,6 +67,39 @@ fn finish(mut child: std::process::Child, end: Instant) -> Res<()> {
         std::thread::sleep(Duration::from_millis(1));
     }
 }
+fn read_child_output(mut stdout: std::process::ChildStdout, success: bool) -> Res<String> {
+    if !success {
+        return Err(Fail::Config("live_host_unqualified"));
+    }
+    use std::io::Read;
+    let mut out = String::new();
+    stdout
+        .take(65536)
+        .read_to_string(&mut out)
+        .map_err(|_| Fail::Config("live_host_unqualified"))?;
+    Ok(out)
+}
+fn finish_output(mut child: std::process::Child, end: Instant) -> Res<String> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or(Fail::Config("live_host_unqualified"))?;
+    let left = end.saturating_duration_since(Instant::now());
+    let execution_end = end - (left / 2).min(Duration::from_millis(50));
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|_| Fail::Config("live_host_unqualified"))?
+        {
+            return read_child_output(stdout, status.success());
+        }
+        if Instant::now() >= execution_end {
+            let _ = super::docker::reap_child(&mut child, end);
+            return Err(Fail::Unresolved("live_host_control_unavailable"));
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
 fn run(binary: &str, args: &[&str], end: Instant) -> Res<()> {
     if Instant::now() >= end {
         return Err(Fail::Unresolved("live_host_control_unavailable"));
@@ -83,7 +116,12 @@ fn run(binary: &str, args: &[&str], end: Instant) -> Res<()> {
         end,
     )
 }
-fn nft(netns: Option<&str>, rules: &str, end: Instant) -> Res<()> {
+fn spawn_nft(
+    netns: Option<&str>,
+    rules: &str,
+    stdout_pipe: bool,
+    end: Instant,
+) -> Res<std::process::Child> {
     if Instant::now() >= end {
         return Err(Fail::Unresolved("live_host_control_unavailable"));
     }
@@ -99,10 +137,15 @@ fn nft(netns: Option<&str>, rules: &str, end: Instant) -> Res<()> {
             c
         }
     };
+    let out = if stdout_pipe {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    };
     let mut child = command
         .env_clear()
         .stdin(Stdio::piped())
-        .stdout(Stdio::null())
+        .stdout(out)
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
@@ -115,7 +158,13 @@ fn nft(netns: Option<&str>, rules: &str, end: Instant) -> Res<()> {
         let _ = super::docker::reap_child(&mut child, end);
         return Err(Fail::Config("live_host_unqualified"));
     }
-    finish(child, end)
+    Ok(child)
+}
+fn nft(netns: Option<&str>, rules: &str, end: Instant) -> Res<()> {
+    finish(spawn_nft(netns, rules, false, end)?, end)
+}
+fn nft_output(netns: Option<&str>, rules: &str, end: Instant) -> Res<String> {
+    finish_output(spawn_nft(netns, rules, true, end)?, end)
 }
 fn acquire_slot(n: &Names, attempt: Uuid) -> Res<()> {
     let mut file = OpenOptions::new()

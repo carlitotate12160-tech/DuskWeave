@@ -15,12 +15,24 @@ mod qualification;
 #[cfg(target_os = "linux")]
 mod relay;
 
-fn main() {
+fn run() -> i32 {
     #[cfg(target_os = "linux")]
     let accepted = admission::serve().is_ok();
     #[cfg(not(target_os = "linux"))]
     let accepted = false;
-    if !accepted {
-        std::process::exit(1)
+    if !accepted { 1 } else { 0 }
+}
+
+fn main() {
+    std::process::exit(run());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unprivileged_launcher_run_refuses() {
+        assert_eq!(run(), 1);
     }
 }

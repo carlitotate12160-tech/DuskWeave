@@ -228,3 +228,82 @@ fn held_run_guard_prevents_stop_from_latching_a_release_in_flight() {
     assert!(super::super::attempt::stop_run(run).0);
     assert!(root.join(format!("run-stop-{}", run.simple())).exists());
 }
+
+#[test]
+fn relay_raw_framing_and_copy() {
+    use std::io::Cursor;
+
+    // 1. raw_prefix valid
+    let mut framed = (5u32).to_be_bytes().to_vec();
+    framed.extend_from_slice(b"hello");
+    let (prefix, count) = raw_prefix(&mut Cursor::new(&framed)).unwrap();
+    assert_eq!(count, 5);
+    assert_eq!(prefix, (5u32).to_be_bytes());
+
+    // 2. raw_prefix invalid (count 0)
+    assert!(raw_prefix(&mut Cursor::new([0, 0, 0, 0])).is_err());
+
+    // 3. raw_prefix invalid (count > MAX_FRAME)
+    assert!(raw_prefix(&mut Cursor::new((65537u32).to_be_bytes())).is_err());
+
+    // 4. raw_prefix truncated
+    assert!(raw_prefix(&mut Cursor::new([0, 0, 1])).is_err());
+
+    // 5. copy_raw valid
+    let mut sink = Vec::new();
+    copy_raw(&mut Cursor::new(b"abcdefgh"), &mut sink, 8).unwrap();
+    assert_eq!(&sink, b"abcdefgh");
+
+    // 6. raw_end checks EOF
+    assert!(raw_end(&mut Cursor::new([])).is_ok());
+    assert!(raw_end(&mut Cursor::new([1])).is_err());
+
+    // 7. forward_raw end-to-end
+    let mut src = (4u32).to_be_bytes().to_vec();
+    src.extend_from_slice(b"data");
+    let mut dest = Vec::new();
+    forward_raw(&mut Cursor::new(&src), &mut dest).unwrap();
+    assert_eq!(dest, src);
+}
+
+#[test]
+fn relay_config_and_remaining_helpers() {
+    let unique = uuid::Uuid::new_v4();
+    let dir = std::env::temp_dir().join(format!("dw-relay-test-{unique}"));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // /dw-dns-capture creates process.json with uid 65532
+    config(&dir, "/dw-dns-capture").unwrap();
+    let text = std::fs::read_to_string(dir.join("process.json")).unwrap();
+    let val: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(val["user"]["uid"], 65532);
+
+    // /dw-dns-exporter creates process.json with uid 65533
+    config(&dir, "/dw-dns-exporter").unwrap();
+    let text = std::fs::read_to_string(dir.join("process.json")).unwrap();
+    let val: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(val["user"]["uid"], 65533);
+
+    // Invalid binary is refused
+    assert_eq!(
+        config(&dir, "/invalid").unwrap_err(),
+        Fail::Config("live_host_unqualified")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // remaining helper
+    assert!(remaining(Instant::now() + Duration::from_secs(5)).is_ok());
+    assert_eq!(
+        remaining(Instant::now() - Duration::from_secs(1)).unwrap_err(),
+        Fail::State("live_effect_deadline")
+    );
+
+    // socket_pair
+    let (s1, s2) = socket_pair().unwrap();
+    drop((s1, s2));
+
+    // clear_failed_transport
+    let id = uuid::Uuid::new_v4();
+    clear_failed_transport(&Fail::State("some_error"), id);
+    clear_failed_transport(&Fail::Unresolved("live_disposal_unconfirmed"), id);
+}

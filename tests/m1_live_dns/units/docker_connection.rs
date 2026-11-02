@@ -262,3 +262,9 @@ fn non_root_listener_is_rejected_without_attach_bytes() {
     assert!(probe.finished_by(Instant::now() + Duration::from_secs(1)));
     assert!(probe.succeeded());
 }
+
+#[test]
+fn acquire_entrypoint_rejects_past_deadline_or_unreachable_docker_socket() {
+    assert!(acquire(Instant::now() - Duration::from_secs(1)).is_err());
+    assert!(acquire(Instant::now() + Duration::from_millis(10)).is_err());
+}

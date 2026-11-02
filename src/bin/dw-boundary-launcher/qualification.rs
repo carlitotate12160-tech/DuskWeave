@@ -29,6 +29,32 @@ pub(super) struct Manifest {
     pub core_uid: u32,
 }
 
+#[cfg(test)]
+thread_local! {
+    static TEST_CONFIG: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+    static TEST_BIN_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+    static TEST_SKIP_UID: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) };
+}
+
+#[cfg(test)]
+pub(super) fn with_test_env<F, R>(
+    config: std::path::PathBuf,
+    bin_root: std::path::PathBuf,
+    f: F,
+) -> R
+where
+    F: FnOnce() -> R,
+{
+    TEST_CONFIG.with(|c| *c.borrow_mut() = Some(config));
+    TEST_BIN_ROOT.with(|b| *b.borrow_mut() = Some(bin_root));
+    TEST_SKIP_UID.with(|s| *s.borrow_mut() = true);
+    let res = f();
+    TEST_CONFIG.with(|c| *c.borrow_mut() = None);
+    TEST_BIN_ROOT.with(|b| *b.borrow_mut() = None);
+    TEST_SKIP_UID.with(|s| *s.borrow_mut() = false);
+    res
+}
+
 pub(super) struct Qualified {
     pub manifest: Manifest,
     pub manifest_sha256: String,
@@ -46,10 +72,16 @@ pub(super) fn now_ms() -> Res<i64> {
 
 fn root_directory(path: &str) -> Res<()> {
     let m = std::fs::symlink_metadata(path).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    let valid = [m.is_dir(), m.uid() == 0, m.mode() & 0o022 == 0];
+    let mut valid = m.is_dir() && m.mode() & 0o022 == 0;
+    #[cfg(test)]
+    if !TEST_SKIP_UID.with(|s| *s.borrow()) {
+        valid = valid && m.uid() == 0;
+    }
+    #[cfg(not(test))]
+    {
+        valid = valid && m.uid() == 0;
+    }
     valid
-        .into_iter()
-        .all(|v| v)
         .then_some(())
         .ok_or(Fail::Config("live_host_unqualified"))
 }
@@ -73,16 +105,16 @@ fn qualify_file(file: &File) -> Res<()> {
     let m = file
         .metadata()
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
-    let valid = [
-        m.is_file(),
-        m.uid() == 0,
-        m.nlink() == 1,
-        m.mode() & 0o022 == 0,
-        m.len() <= 134217728,
-    ];
+    let mut valid = m.is_file() && m.nlink() == 1 && m.mode() & 0o022 == 0 && m.len() <= 134217728;
+    #[cfg(test)]
+    if !TEST_SKIP_UID.with(|s| *s.borrow()) {
+        valid = valid && m.uid() == 0;
+    }
+    #[cfg(not(test))]
+    {
+        valid = valid && m.uid() == 0;
+    }
     valid
-        .into_iter()
-        .all(|v| v)
         .then_some(())
         .ok_or(Fail::Config("live_host_unqualified"))
 }
@@ -190,24 +222,52 @@ fn protected_directories() -> Res<()> {
     Ok(())
 }
 
-fn read_manifest() -> Res<Qualified> {
-    let mut bytes = Vec::new();
-    root_file(CONFIG)?
-        .take(16385)
-        .read_to_end(&mut bytes)
-        .map_err(|_| Fail::Config("live_host_unqualified"))?;
+pub(super) fn parse_manifest(bytes: &[u8]) -> Res<Qualified> {
     if bytes.len() > 16384 {
         return Err(Fail::Config("live_host_unqualified"));
     }
     let manifest: Manifest =
-        serde_json::from_slice(&bytes).map_err(|_| Fail::Config("live_host_unqualified"))?;
+        serde_json::from_slice(bytes).map_err(|_| Fail::Config("live_host_unqualified"))?;
     Ok(Qualified {
         manifest,
-        manifest_sha256: Sha256::digest(&bytes)
+        manifest_sha256: Sha256::digest(bytes)
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect(),
     })
+}
+
+fn config_path() -> String {
+    #[cfg(test)]
+    if let Some(p) = TEST_CONFIG.with(|c| {
+        c.borrow()
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+    }) {
+        return p;
+    }
+    CONFIG.to_string()
+}
+
+fn bin_path(name: &str) -> String {
+    #[cfg(test)]
+    if let Some(root) = TEST_BIN_ROOT.with(|b| {
+        b.borrow()
+            .as_ref()
+            .map(|p| p.join(name).to_string_lossy().into_owned())
+    }) {
+        return root;
+    }
+    format!("{BIN_ROOT}/{name}")
+}
+
+fn read_manifest() -> Res<Qualified> {
+    let mut bytes = Vec::new();
+    root_file(&config_path())?
+        .take(16385)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Fail::Config("live_host_unqualified"))?;
+    parse_manifest(&bytes)
 }
 
 impl Manifest {
@@ -231,7 +291,7 @@ impl Manifest {
             ("dw-dns-capture", &self.capture_sha256),
             ("dw-dns-exporter", &self.exporter_sha256),
         ] {
-            if digest(root_file(&format!("{BIN_ROOT}/{name}"))?)? != *expected {
+            if digest(root_file(&bin_path(name))?)? != *expected {
                 return Err(Fail::Config("live_host_unqualified"));
             }
         }
