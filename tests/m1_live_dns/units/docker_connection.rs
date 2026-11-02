@@ -272,6 +272,11 @@ fn acquire_entrypoint_rejects_a_past_deadline() {
 fn acquire_at_refuses_an_absent_private_socket() {
     let private = PrivateSocket::new();
     assert!(
-        acquire_at(&private.path(), Instant::now() + Duration::from_secs(1), Instant::now).is_err()
+        acquire_at(
+            &private.path(),
+            Instant::now() + Duration::from_secs(1),
+            Instant::now
+        )
+        .is_err()
     );
 }

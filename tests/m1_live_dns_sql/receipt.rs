@@ -48,9 +48,9 @@ fn sql_live_receipt_binds_qualification_fields() {
 #[ignore = "runs only inside the dedicated schema-0030 fixture worker"]
 fn sql_live_pg_effect_store_rejects_unadmitted_run() {
     assert!(worker());
+    use duskweave::Fail;
     use duskweave::m1_effect_session::EffectStore;
     use duskweave::postgres_m1_effect::PgEffectStore;
-    use duskweave::Fail;
 
     let (e, c, _operator) = register_live(0x5d02, true);
     // fabricate_live_run(...,session=false,running=true) bypasses run_start:
