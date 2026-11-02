@@ -232,7 +232,7 @@ fn rule_sets_format_correct_firewall_and_masquerade() {
     // Outside rules must masquerade and filter veth with 2000ms timeout
     assert!(outside.contains(&format!("table inet {}", n.table)));
     assert!(outside.contains("flags timeout; timeout 2000ms;"));
-    assert!(outside.contains(&format!("masquerade")));
+    assert!(outside.contains("masquerade"));
     assert!(outside.contains(&format!("iifname \"{}\"", n.host)));
     assert!(outside.contains(&format!("oifname \"{}\"", n.host)));
 }

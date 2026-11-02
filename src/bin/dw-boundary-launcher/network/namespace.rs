@@ -128,14 +128,6 @@ where
     }
     delete(&format!("delete table inet {table}\n"), end).is_ok()
 }
-fn table_disposed(table: &str, end: Instant) -> bool {
-    table_disposed_with(
-        table,
-        end,
-        |rules, deadline| nft_output(None, rules, deadline),
-        |rules, deadline| nft(None, rules, deadline),
-    )
-}
 pub(super) fn destroy_with<R, L, D>(n: &Names, end: Instant, run_cmd: R, list: L, delete: D) -> bool
 where
     R: Fn(&[&str], Instant) -> Res<()>,

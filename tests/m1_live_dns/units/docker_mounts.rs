@@ -1,4 +1,5 @@
 use super::*;
+use std::time::Duration;
 
 #[test]
 fn writable_mount_parsing_keeps_only_allowed_system_mounts() {

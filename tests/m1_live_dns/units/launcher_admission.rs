@@ -21,7 +21,7 @@ fn parent_channel_fails_when_stdin_is_not_socket() {
 fn serve_connection_routes_by_peer_uid() {
     let (a, _b) = UnixStream::pair().unwrap();
     let (r, w) = UnixStream::pair().unwrap();
-    let raw = super::relay::RawPipe { read: r, write: w };
+    let raw = super::super::relay::RawPipe { read: r, write: w };
 
     // Root peer uid routes to watchdog_peer (which fails closed in unprivileged test)
     let root_cred = rustix::net::UCred {
@@ -34,7 +34,7 @@ fn serve_connection_routes_by_peer_uid() {
 
     let (a, _b) = UnixStream::pair().unwrap();
     let (r, w) = UnixStream::pair().unwrap();
-    let raw = super::relay::RawPipe { read: r, write: w };
+    let raw = super::super::relay::RawPipe { read: r, write: w };
 
     // Non-root peer uid routes to identity (which fails closed in unprivileged test)
     let non_root_cred = rustix::net::UCred {

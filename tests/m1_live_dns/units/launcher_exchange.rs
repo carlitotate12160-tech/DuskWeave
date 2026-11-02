@@ -88,7 +88,7 @@ fn acknowledged_accepts_matching_ack_and_renew_rejects_others() {
             deadline_at_ms: 100,
         })
         .unwrap();
-    assert_eq!(acknowledged(&mut host, &q).unwrap(), false);
+    assert!(!acknowledged(&mut host, &q).unwrap());
 
     // 2. Matching Ack returns Ok(true)
     let (a, b) = UnixStream::pair().unwrap();
@@ -100,7 +100,7 @@ fn acknowledged_accepts_matching_ack_and_renew_rejects_others() {
             generation: 2,
         })
         .unwrap();
-    assert_eq!(acknowledged(&mut host, &q).unwrap(), true);
+    assert!(acknowledged(&mut host, &q).unwrap());
 
     // 3. Mismatched Ack returns protocol refused
     let (a, b) = UnixStream::pair().unwrap();
@@ -134,7 +134,7 @@ fn acknowledged_accepts_matching_ack_and_renew_rejects_others() {
 
 #[test]
 fn completed_channels_and_control_readable() {
-    use std::io::Write;
+    use std::io::{Read, Write};
     let (send, recv) = std::sync::mpsc::channel();
 
     // Empty channel
@@ -169,20 +169,21 @@ fn completed_channels_and_control_readable() {
     );
 
     // control_readable tests
-    let (a, mut b) = UnixStream::pair().unwrap();
+    let (mut a, mut b) = UnixStream::pair().unwrap();
     a.set_nonblocking(true).unwrap();
 
     // No data available -> Ok(false)
-    assert_eq!(control_readable(&a).unwrap(), false);
+    assert!(!control_readable(&a).unwrap());
 
     // Data available -> Ok(true)
     b.write_all(b"x").unwrap();
-    assert_eq!(control_readable(&a).unwrap(), true);
+    assert!(control_readable(&a).unwrap());
 
     // Closed peer -> Err
     drop(b);
     let mut buf = [0u8; 1];
-    let _ = a.read(&mut buf);
+    assert_eq!(a.read(&mut buf).unwrap(), 1);
+    assert_eq!(buf[0], b'x');
     assert_eq!(
         control_readable(&a).unwrap_err(),
         Fail::State("live_host_unavailable")
