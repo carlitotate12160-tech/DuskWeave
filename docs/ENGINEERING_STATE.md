@@ -90,6 +90,7 @@ Relevant merged implementation/evidence pointers, not a rolling merge log:
 | Conditional maintenance and qualified skill-doc CI routing | [#118](https://github.com/carlitotate12160-tech/DuskWeave/pull/118), merged `d29a1fb` |
 | DNS selector contextual references and entity-based ordinals | [#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120), merged `e11f62f` |
 | Rejected-provider diagnostic metadata with uncertainty-only accounting | [#122](https://github.com/carlitotate12160-tech/DuskWeave/pull/122) |
+| Live DNS LAB lane + build-storage guard hardening (draft, candidate `517e92c`) | [#139](https://github.com/carlitotate12160-tech/DuskWeave/pull/139) |
 
 **Unproved:** the 2026-10-22 provider run `4a4ce477-5734-4b92-bb6a-dce74f430114`
 committed Decision 1 and fixture Terrain; Decision 2 ended exit 124 with
@@ -149,22 +150,32 @@ implementation defect; the historical lock holder remains unidentified and
 both attempts' identities, charged state and receipts stay preserved.
 Storage separation removes the demonstrated coupling but is
 not a universal readiness guarantee. Committed-head CI on the draft PR
-(#139, head 8a27d28) passes every functional gate — builds, both test
+(#139, candidate `517e92c`) passes every functional gate — builds, both test
 shards, mutation, structure, metrics, CodeQL, geiger, links, dependencies,
-Go boundary and the guarded qualification lane — but the production
-coverage floor remains UNVERIFIED: total 83.84% (<90%) and 21 new
-host-bound files under 80%, because their only witnesses are
-root/namespace/Docker-bound Oracle tests that CI cannot run. Meeting the
-floor needs either a dedicated coverage slice (new CI-runnable owner
-tests) or an accepted gate amendment — both outside this packet's file
-map — so the reproducible-release readiness claim stays blocked, not
-relabeled. External qualification evidence retains
-the source/version identities and metadata-only traces.
+Go boundary and the guarded qualification lane — on run `41370937004` /
+`41370936961` (mutation). The production coverage floor remains UNVERIFIED:
+total 83.84% (<90%) and 21 new host-bound files under 80%, because their
+only witnesses are root/namespace/Docker-bound Oracle tests that CI cannot
+run. Meeting the floor needs either a dedicated coverage slice (new
+CI-runnable owner tests) or an accepted gate amendment — both outside this
+packet's file map — so the reproducible-release readiness claim stays
+blocked, not relabeled. External qualification evidence retains source/version
+identities and metadata-only traces.
+`DW-FIX-PR139-QUALIFIED-LAB` (r2.1/r2.2) physical Oracle ARM64 LAB
+qualification (`qualification_ref: 93318766-3139-423d-962b-c91bc588db04`,
+`purpose: LAB`, DB `dw_native_pr139_r2_20261101a`, cloned at `4c59ef2`):
+4/4 LAB scenarios PASS — normal D1/DNS-exchange/result/history/D2/recovery,
+limited/negative, in-flight withdrawal, and result-COMMIT/ACK-loss recovery.
+`DW-FIX-PR139-QUALIFIED-LAB` CodeRabbit review: 15 VALID resolved
+(13 in U1/U2, 2 in `517e92c`; docker-inspect timeout + broad cleanup handler),
+7 FALSE POSITIVE / deferred (CARGO_HOME intentional disk, ACK-wait fail-fast,
+launcher-child reap deadlock risk, UUID slot M1-sequential, exporter-child
+wait-bounded, deployment.next invariant, root-cause masking).
 Distinct review found run-STOP serialization and ordinary launcher-child reaping
 defects; focused regressions pass after correction. Remaining loss cases,
-compatibility/boundary evidence, final release rebinding, committed-head
-CI/coverage and draft-PR delivery are incomplete. These selected witnesses do
-not qualify a final release, M1 seal, provider or public-target run.
+compatibility/boundary evidence, final release rebinding and an M1/full-domain
+seal remain incomplete. These selected witnesses do not qualify a final
+release, M1 seal, provider or public-target run.
 
 **Debt remains open:** use [roadmap sections 1.3-1.5](MVP_AND_DEFERRED_SCOPE.md#13-audit-disposition-attached-to-these-deliveries)
 and current candidate metrics. Legacy CLI/M0 behavior remains supported until
