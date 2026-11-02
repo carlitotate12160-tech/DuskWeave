@@ -101,22 +101,32 @@ fn root_file(path: &str) -> Res<File> {
     Ok(file)
 }
 
+fn check_file_metadata(m: &std::fs::Metadata) -> bool {
+    let checks = [
+        m.is_file(),
+        m.nlink() == 1,
+        m.mode() & 0o022 == 0,
+        m.len() <= 134217728,
+    ];
+    checks.into_iter().all(|v| v)
+}
+
+fn check_file_owner(m: &std::fs::Metadata) -> bool {
+    #[cfg(test)]
+    if TEST_SKIP_UID.with(|s| *s.borrow()) {
+        return true;
+    }
+    m.uid() == 0
+}
+
 fn qualify_file(file: &File) -> Res<()> {
     let m = file
         .metadata()
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
-    let mut valid = m.is_file() && m.nlink() == 1 && m.mode() & 0o022 == 0 && m.len() <= 134217728;
-    #[cfg(test)]
-    if !TEST_SKIP_UID.with(|s| *s.borrow()) {
-        valid = valid && m.uid() == 0;
+    if !check_file_metadata(&m) || !check_file_owner(&m) {
+        return Err(Fail::Config("live_host_unqualified"));
     }
-    #[cfg(not(test))]
-    {
-        valid = valid && m.uid() == 0;
-    }
-    valid
-        .then_some(())
-        .ok_or(Fail::Config("live_host_unqualified"))
+    Ok(())
 }
 
 fn digest(mut file: File) -> Res<String> {

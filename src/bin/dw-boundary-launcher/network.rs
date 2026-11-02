@@ -67,7 +67,7 @@ fn finish(mut child: std::process::Child, end: Instant) -> Res<()> {
         std::thread::sleep(Duration::from_millis(1));
     }
 }
-fn read_child_output(mut stdout: std::process::ChildStdout, success: bool) -> Res<String> {
+fn read_child_output(stdout: std::process::ChildStdout, success: bool) -> Res<String> {
     if !success {
         return Err(Fail::Config("live_host_unqualified"));
     }
@@ -116,16 +116,8 @@ fn run(binary: &str, args: &[&str], end: Instant) -> Res<()> {
         end,
     )
 }
-fn spawn_nft(
-    netns: Option<&str>,
-    rules: &str,
-    stdout_pipe: bool,
-    end: Instant,
-) -> Res<std::process::Child> {
-    if Instant::now() >= end {
-        return Err(Fail::Unresolved("live_host_control_unavailable"));
-    }
-    let mut command = match netns {
+fn nft_command(netns: Option<&str>) -> Command {
+    match netns {
         Some(ns) => {
             let mut c = Command::new(IP);
             c.args(["netns", "exec", ns, NFT, "-f", "-"]);
@@ -136,28 +128,41 @@ fn spawn_nft(
             c.args(["-f", "-"]);
             c
         }
-    };
+    }
+}
+fn write_nft_rules(child: &mut std::process::Child, rules: &str, end: Instant) -> Res<()> {
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or(Fail::Config("live_host_unqualified"))?;
+    if stdin.write_all(rules.as_bytes()).is_err() {
+        let _ = super::docker::reap_child(child, end);
+        return Err(Fail::Config("live_host_unqualified"));
+    }
+    Ok(())
+}
+fn spawn_nft(
+    netns: Option<&str>,
+    rules: &str,
+    stdout_pipe: bool,
+    end: Instant,
+) -> Res<std::process::Child> {
+    if Instant::now() >= end {
+        return Err(Fail::Unresolved("live_host_control_unavailable"));
+    }
     let out = if stdout_pipe {
         Stdio::piped()
     } else {
         Stdio::null()
     };
-    let mut child = command
+    let mut child = nft_command(netns)
         .env_clear()
         .stdin(Stdio::piped())
         .stdout(out)
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
-    let written = child
-        .stdin
-        .take()
-        .ok_or(Fail::Config("live_host_unqualified"))?
-        .write_all(rules.as_bytes());
-    if written.is_err() {
-        let _ = super::docker::reap_child(&mut child, end);
-        return Err(Fail::Config("live_host_unqualified"));
-    }
+    write_nft_rules(&mut child, rules, end)?;
     Ok(child)
 }
 fn nft(netns: Option<&str>, rules: &str, end: Instant) -> Res<()> {

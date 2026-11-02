@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 const ROOT: &str = "/run/duskweave/launcher";
@@ -62,6 +62,7 @@ fn guard_path(name: String, end: Instant) -> Res<Guard> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .mode(0o600)
         .open(root().join(name))
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
@@ -111,29 +112,32 @@ pub(super) fn load(attempt: Uuid, generation: u64) -> Res<Session> {
     }
     Ok(session)
 }
-fn record(attempt: Uuid) -> Res<Session> {
-    let path = dir(attempt).join("session.json");
-    let meta =
-        std::fs::symlink_metadata(&path).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    #[cfg(not(test))]
-    let uid_ok = meta.uid() == 0;
+fn qualify_session_meta(m: &std::fs::Metadata) -> bool {
     #[cfg(test)]
     let uid_ok = true;
-    let ok = meta.is_file()
-        && uid_ok
-        && meta.nlink() == 1
-        && meta.mode() & 0o077 == 0
-        && meta.len() <= 16384;
-    if !ok {
-        return Err(Fail::Config("live_host_unqualified"));
-    }
-    let file = File::open(path).map_err(|_| Fail::Config("live_host_unqualified"))?;
+    #[cfg(not(test))]
+    let uid_ok = m.uid() == 0;
+    m.is_file() && uid_ok && m.nlink() == 1 && m.mode() & 0o077 == 0 && m.len() <= 16384
+}
+
+fn parse_session_file(file: File, attempt: Uuid) -> Res<Session> {
     let session: Session = serde_json::from_reader(file.take(16385))
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
     if session.request.attempt != attempt {
         return Err(Fail::Config("live_host_unqualified"));
     }
     Ok(session)
+}
+
+fn record(attempt: Uuid) -> Res<Session> {
+    let path = dir(attempt).join("session.json");
+    let meta =
+        std::fs::symlink_metadata(&path).map_err(|_| Fail::Config("live_host_unqualified"))?;
+    if !qualify_session_meta(&meta) {
+        return Err(Fail::Config("live_host_unqualified"));
+    }
+    let file = File::open(path).map_err(|_| Fail::Config("live_host_unqualified"))?;
+    parse_session_file(file, attempt)
 }
 fn save(session: &Session) -> Res<()> {
     let path = dir(session.request.attempt).join("session.next");

@@ -289,7 +289,10 @@ fn control_lifecycle_and_frame_reader_writer() {
         ..Control::new(&req, "READY", 1)
     };
     assert!(bad_schema.validate(&req, "READY", 1).is_err());
-    let bad_schema = Control { schema: "wrong".into(), ..Control::new(&req, "READY", 1) };
+    let bad_schema = Control {
+        schema: "wrong".into(),
+        ..Control::new(&req, "READY", 1)
+    };
     assert!(bad_schema.validate(&req, "READY", 1).is_err());
 
     let mut cur = Cursor::new(Vec::new());
@@ -353,7 +356,15 @@ fn control_lifecycle_and_frame_reader_writer() {
     assert!(reader.control().is_err());
 
     // Non-object start
-    assert!(FrameReader::new(Cursor::new(vec![0, 0, 0, 2, b'[', b']'])).control().is_err());
+    assert!(
+        FrameReader::new(Cursor::new(vec![0, 0, 0, 2, b'[', b']']))
+            .control()
+            .is_err()
+    );
     // Bad JSON
-    assert!(FrameReader::new(Cursor::new(vec![0, 0, 0, 3, b'{', b'x', b'}'])).control().is_err());
+    assert!(
+        FrameReader::new(Cursor::new(vec![0, 0, 0, 3, b'{', b'x', b'}']))
+            .control()
+            .is_err()
+    );
 }
