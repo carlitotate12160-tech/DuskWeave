@@ -9,6 +9,11 @@ fn owned_lab_pair_prepares_without_start_authority() {
     prepare_closed_pair(Fault::None);
 }
 #[test]
+#[ignore = "requires the packet-owned Linux host; actual attach timeout without START"]
+fn owned_lab_pair_capture_attach_timeout_keeps_exporter_input_empty() {
+    prepare_closed_pair(Fault::CaptureTimeout);
+}
+#[test]
 #[ignore = "requires the packet-owned Linux host; journal-loss fault, no START"]
 fn owned_lab_pair_missing_journal_cannot_ack_with_workers_remaining() {
     prepare_closed_pair(Fault::JournalLoss);
@@ -21,6 +26,7 @@ fn owned_lab_pair_legacy_pending_marker_refuses_confirmed_disposal() {
 #[derive(Clone, Copy, PartialEq)]
 enum Fault {
     None,
+    CaptureTimeout,
     JournalLoss,
     LegacyPending,
 }
@@ -68,6 +74,18 @@ fn prepare_closed_pair(fault: Fault) {
     let mut pair = Pair::prepare(image.trim(), &session).expect("owned pair preparation");
     let elapsed = started.elapsed();
     let dir = Path::new("/run/duskweave/launcher").join(attempt.simple().to_string());
+    if fault == Fault::CaptureTimeout {
+        pair.capture.deadline(40).unwrap();
+        let mut exporter_input = Vec::new();
+        let waiting = Instant::now();
+        assert_eq!(
+            forward_raw(&mut pair.capture, &mut exporter_input),
+            Err(Fail::State("dns_ipc_failure"))
+        );
+        assert!(waiting.elapsed() >= Duration::from_millis(20));
+        assert!(waiting.elapsed() < Duration::from_secs(1));
+        assert!(exporter_input.is_empty(), "no RAW without capture EOF");
+    }
     if fault == Fault::JournalLoss {
         std::fs::remove_file(dir.join("session.json")).unwrap();
     }
@@ -142,14 +160,25 @@ fn held_run_guard_prevents_stop_from_latching_a_release_in_flight() {
 fn relay_stages_complete_frame_and_eof_before_exporter_write() {
     use std::io::{Cursor, Read, Write};
 
-    struct NoEof(Cursor<Vec<u8>>);
-    impl Read for NoEof {
+    struct ShortSource(Cursor<Vec<u8>>);
+    impl Read for ShortSource {
         fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-            let n = self.0.read(out)?;
-            if n == 0 {
-                return Err(std::io::ErrorKind::WouldBlock.into());
+            let count = out.len().min(1);
+            self.0.read(&mut out[..count])
+        }
+    }
+    struct StalledEof {
+        bytes: ShortSource,
+        end: Instant,
+    }
+    impl Read for StalledEof {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.bytes.read(out)?;
+            if n > 0 {
+                return Ok(n);
             }
-            Ok(n)
+            std::thread::sleep(self.end.saturating_duration_since(Instant::now()));
+            Err(std::io::ErrorKind::TimedOut.into())
         }
     }
     struct ShortSink(Vec<u8>);
@@ -168,6 +197,9 @@ fn relay_stages_complete_frame_and_eof_before_exporter_write() {
     let mut sink = ShortSink(Vec::new());
     forward_raw(&mut Cursor::new(&at_cap), &mut sink).unwrap();
     assert_eq!(sink.0, at_cap, "partial writes retain complete framing");
+    let mut sink = Vec::new();
+    forward_raw(&mut ShortSource(Cursor::new(at_cap.clone())), &mut sink).unwrap();
+    assert_eq!(sink, at_cap, "partial reads retain complete framing");
 
     for malformed in [
         vec![0, 0, 0, 0],
@@ -180,9 +212,21 @@ fn relay_stages_complete_frame_and_eof_before_exporter_write() {
         assert!(sink.is_empty(), "no candidate bytes before complete EOF");
     }
     let mut sink = Vec::new();
-    assert!(forward_raw(&mut NoEof(Cursor::new(at_cap)), &mut sink).is_err());
+    let started = Instant::now();
+    let mut stalled = StalledEof {
+        bytes: ShortSource(Cursor::new(
+            [3u32.to_be_bytes().as_slice(), b"raw"].concat(),
+        )),
+        end: started + Duration::from_millis(40),
+    };
+    assert_eq!(
+        forward_raw(&mut stalled, &mut sink),
+        Err(Fail::State("dns_ipc_failure"))
+    );
+    assert!(started.elapsed() >= Duration::from_millis(20));
+    assert!(started.elapsed() < Duration::from_secs(1));
     assert!(
         sink.is_empty(),
-        "withheld EOF cannot leak a candidate prefix"
+        "stalled EOF cannot leak a candidate prefix"
     );
 }
