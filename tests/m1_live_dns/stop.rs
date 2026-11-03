@@ -1,5 +1,6 @@
 //! Private launcher consumer tests; not linked into the ordinary core.
 use super::*;
+use std::io::Read;
 use std::path::Path;
 use std::time::Instant;
 
@@ -10,7 +11,7 @@ fn owned_lab_pair_prepares_without_start_authority() {
 }
 #[test]
 #[ignore = "requires the packet-owned Linux host; actual attach timeout without START"]
-fn owned_lab_pair_capture_attach_timeout_keeps_exporter_input_empty() {
+fn owned_lab_pair_capture_attach_read_times_out_without_start() {
     prepare_closed_pair(Fault::CaptureTimeout);
 }
 #[test]
@@ -76,15 +77,34 @@ fn prepare_closed_pair(fault: Fault) {
     let dir = Path::new("/run/duskweave/launcher").join(attempt.simple().to_string());
     if fault == Fault::CaptureTimeout {
         pair.capture.deadline(40).unwrap();
-        let mut exporter_input = Vec::new();
+        let mut byte = [0u8; 1];
         let waiting = Instant::now();
-        assert_eq!(
-            forward_raw(&mut pair.capture, &mut exporter_input),
-            Err(Fail::State("dns_ipc_failure"))
+        let error = pair
+            .capture
+            .read(&mut byte)
+            .expect_err("capture must stall without START");
+        assert!(
+            matches!(
+                error.kind(),
+                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ),
+            "capture attach must reach its socket deadline"
         );
         assert!(waiting.elapsed() >= Duration::from_millis(20));
         assert!(waiting.elapsed() < Duration::from_secs(1));
-        assert!(exporter_input.is_empty(), "no RAW without capture EOF");
+        let capture_name = super::super::docker::names(attempt)[0].clone();
+        assert_eq!(
+            super::super::docker::metadata(&[
+                "inspect",
+                "--format",
+                "{{.State.Running}}",
+                &capture_name,
+            ])
+            .unwrap()
+            .trim(),
+            "true",
+            "the capture worker must remain alive while its attach read times out"
+        );
     }
     if fault == Fault::JournalLoss {
         std::fs::remove_file(dir.join("session.json")).unwrap();
