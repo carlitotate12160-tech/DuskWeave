@@ -144,7 +144,7 @@ prepare_raw_sinks() {
     [[ $(sysctl -n kernel.core_pattern) == '|/bin/false' ]] || refuse core_sink_refused
 }
 
-for binary in curl tar xz sha256sum gcc pkg-config docker nft runc; do command -v "$binary" >/dev/null || refuse build_dependency_missing; done
+for binary in curl tar xz sha256sum gcc pkg-config docker nft; do command -v "$binary" >/dev/null || refuse build_dependency_missing; done
 pkg-config --exists openssl || refuse openssl_headers_missing
 if ip -4 route show table all | grep -Eq '(^|[[:space:]])10\.203\.'; then refuse boundary_route_collision; fi
 prepare_go

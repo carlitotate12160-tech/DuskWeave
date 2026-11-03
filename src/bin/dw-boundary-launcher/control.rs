@@ -2,7 +2,7 @@
 mod exchange;
 mod watchdog;
 use super::qualification::{Manifest, Qualified};
-use super::relay::{Pair, RawPipe};
+use super::relay::Pair;
 use duskweave::m1_dns::DnsRequest;
 use duskweave::m1_effect_control::{HostChannel, HostCommand, HostReply};
 use duskweave::m1_inference_permission::LiveBinding;
@@ -23,14 +23,13 @@ fn open(
     manifest: &Manifest,
     run: uuid::Uuid,
     q: &DnsRequest,
-    raw: RawPipe,
     peer: &UnixStream,
 ) -> Res<()> {
     if !manifest.matches(&binding_of(q), &q.run_profile) {
         return Err(Fail::Config("live_host_unqualified"));
     }
     let session = super::attempt::open(run, q)?;
-    let outcome = exchange(channel, manifest, &session, raw, peer);
+    let outcome = exchange(channel, manifest, &session, peer);
     if outcome.is_err() {
         let _ = super::attempt::stop(q.engagement_id, q.campaign_id, q.session_generation);
         let _ = super::attempt::dispose(q.attempt);
@@ -42,11 +41,10 @@ fn exchange(
     channel: &mut HostChannel<UnixStream>,
     manifest: &Manifest,
     session: &super::attempt::Session,
-    raw: RawPipe,
     peer: &UnixStream,
 ) -> Res<()> {
     let q = &session.request;
-    let (mut pair, mut watchdog) = prepare(channel, manifest, session, raw)?;
+    let (mut pair, mut watchdog) = prepare(channel, manifest, session)?;
     let deadline = release(channel, q, &mut pair, &mut watchdog)?;
     let result = exchange::await_result(channel, peer, q, deadline, &mut pair, &mut watchdog)?;
     channel.send_reply(&HostReply::Result { result })?;
@@ -56,11 +54,10 @@ fn prepare(
     channel: &mut HostChannel<UnixStream>,
     manifest: &Manifest,
     session: &super::attempt::Session,
-    raw: RawPipe,
 ) -> Res<(Pair, Watchdog)> {
     let q = &session.request;
     let mut watchdog = Watchdog::start(q)?;
-    let pair = Pair::prepare(&manifest.image_digest, session, raw)?;
+    let pair = Pair::prepare(&manifest.image_digest, session)?;
     watchdog.current()?;
     super::attempt::ready(q.attempt, q.session_generation)?;
     channel.send_reply(&HostReply::Ready {
@@ -86,7 +83,7 @@ fn release(
     })?;
     Ok(deadline)
 }
-pub(super) fn dispatch(socket: UnixStream, qualified: &Qualified, raw: RawPipe) -> Res<()> {
+pub(super) fn dispatch(socket: UnixStream, qualified: &Qualified) -> Res<()> {
     let mut channel = HostChannel::new(socket);
     let command = channel.command()?;
     match command {
@@ -119,7 +116,7 @@ pub(super) fn dispatch(socket: UnixStream, qualified: &Qualified, raw: RawPipe) 
             })
         }
         HostCommand::Qualify { .. } | HostCommand::Open { .. } => {
-            acquisition(&mut channel, qualified, command, raw)
+            acquisition(&mut channel, qualified, command)
         }
         _ => channel.send_reply(&HostReply::Refused),
     }
@@ -128,7 +125,6 @@ fn acquisition(
     channel: &mut HostChannel<UnixStream>,
     qualified: &Qualified,
     command: HostCommand,
-    raw: RawPipe,
 ) -> Res<()> {
     let peer = channel.peer()?;
     super::qualification::acquisition(qualified)?;
@@ -143,7 +139,7 @@ fn acquisition(
             boot_id: manifest.boot_id,
         },
         HostCommand::Open { run_id, request } => {
-            return open(channel, manifest, run_id, &request, raw, &peer);
+            return open(channel, manifest, run_id, &request, &peer);
         }
         _ => HostReply::Refused,
     };

@@ -29,36 +29,34 @@ fn absent_and_destroy_tolerate_resources_that_never_existed() {
 }
 
 #[test]
-fn table_listed_matches_exact_inet_family_and_name_only() {
+fn table_listing_requires_complete_inet_table_lines() {
     let target = "dwf123456789012";
-    // 1. Exact match in solitary output
-    assert!(table_listed(&format!("table inet {target}\n"), target));
-
-    // 2. Preserves foreign resources: recognized among multiple tables
-    let multi = format!("table inet filter\ntable inet {target}\ntable inet docker\n");
-    assert!(table_listed(&multi, target));
-
-    // 3. Rejects wrong family (e.g. ip instead of inet)
-    assert!(!table_listed(&format!("table ip {target}\n"), target));
-
-    // 4. Rejects prefix/suffix partial match
-    assert!(!table_listed(
-        &format!("table inet {target}_extra\n"),
-        target
-    ));
-    assert!(!table_listed(&format!("table inet pre_{target}\n"), target));
-
-    // 5. Rejects extra trailing tokens
-    assert!(!table_listed(
-        &format!("table inet {target} extra\n"),
-        target
-    ));
-
-    // 6. Rejects unrelated tables and empty output
-    assert!(!table_listed("table inet other\n", target));
-    assert!(!table_listed("", target));
+    assert_eq!(
+        table_listed(&format!("table inet {target}\n"), target),
+        Ok(true)
+    );
+    assert_eq!(table_listed("table inet other\n", target), Ok(false));
+    assert_eq!(table_listed("", target), Ok(false));
+    assert_eq!(
+        table_listed(&format!("table inet other\ntable inet {target}\n"), target),
+        Ok(true)
+    );
+    for malformed in [
+        "table ip other\n",
+        "table inet target extra\n",
+        "table inet\n",
+        "table inet other\npartial",
+        " ",
+    ] {
+        assert!(table_listed(malformed, target).is_err());
+        assert!(!table_disposed_with(
+            target,
+            Instant::now() + Duration::from_secs(1),
+            |_, _| Ok(malformed.to_string()),
+            |_, _| Ok(()),
+        ));
+    }
 }
-
 #[test]
 fn table_disposed_with_confirms_absence_when_table_not_in_listing() {
     let end = Instant::now() + Duration::from_secs(5);

@@ -301,3 +301,50 @@ fn real_timeout_keeps_the_honest_result_and_allows_bounded_outcome_feedback() {
     assert_eq!(host.count("dns_udp"), 1);
     assert_eq!(server.count(), 2);
 }
+
+#[test]
+#[ignore = "serial packet-owned LAB only; requires installed release and no active campaign"]
+fn installed_release_rejects_writable_manifest_before_provider_or_dns() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    const MANIFEST: &str = "/etc/duskweave/m1/deployment.json";
+    struct RestoreMode(u32);
+    impl Drop for RestoreMode {
+        fn drop(&mut self) {
+            std::fs::set_permissions(MANIFEST, std::fs::Permissions::from_mode(self.0))
+                .expect("restore exact packet-owned manifest mode");
+        }
+    }
+
+    let mut host = Host::new();
+    host.start_resolver();
+    let server = server();
+    let request = registered(&mut host, "seed.duskweave.test");
+    let input = host.write(&request);
+    let before = std::fs::symlink_metadata(MANIFEST).unwrap();
+    let bytes = std::fs::read(MANIFEST).unwrap();
+    assert_eq!(before.uid(), 0);
+    assert_eq!(before.nlink(), 1);
+    {
+        let _restore = RestoreMode(before.mode() & 0o7777);
+        std::fs::set_permissions(MANIFEST, std::fs::Permissions::from_mode(0o666)).unwrap();
+        let output = host.cli(&[
+            "m1-run",
+            "--input",
+            input.to_str().unwrap(),
+            "--timing-profile",
+            "reasoning-bounded-v1",
+        ]);
+        assert!(
+            !output.status.success(),
+            "writable manifest must refuse preflight"
+        );
+        assert_eq!(server.count(), 0, "no provider fixture contact");
+        assert_eq!(host.count("dns_udp"), 0, "no DNS question");
+    }
+    let after = std::fs::symlink_metadata(MANIFEST).unwrap();
+    assert_eq!(std::fs::read(MANIFEST).unwrap(), bytes);
+    assert_eq!(
+        (after.uid(), after.gid(), after.mode(), after.nlink()),
+        (before.uid(), before.gid(), before.mode(), before.nlink())
+    );
+}

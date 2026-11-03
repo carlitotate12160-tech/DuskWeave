@@ -230,17 +230,3 @@ fn test_guards_flock_and_mutual_exclusion() {
     let guard3 = guard(e, c, end).expect("acquire guard after release");
     drop(guard3);
 }
-
-#[test]
-fn test_transport_markers() {
-    let _g = TestRootGuard::new();
-    let attempt = Uuid::new_v4();
-    std::fs::create_dir_all(dir(attempt)).unwrap();
-
-    assert!(transport_cleared(attempt), "initially clear");
-    transport_started(attempt).expect("set pending marker");
-    assert!(dir(attempt).join("transport.pending").exists());
-
-    assert!(transport_reaped(attempt), "reaped clears marker");
-    assert!(!dir(attempt).join("transport.pending").exists());
-}

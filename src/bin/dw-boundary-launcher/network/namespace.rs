@@ -1,6 +1,6 @@
 //! Namespace/veth preparation and exact owned-resource teardown.
 use super::{IP, Names, addresses, nft, nft_output, run};
-use duskweave::Res;
+use duskweave::{Fail, Res};
 use std::time::Instant;
 
 pub(super) fn prepare(n: &Names, pid: u32, resolver: &str, end: Instant) -> Res<()> {
@@ -101,15 +101,29 @@ pub(super) fn absent(n: &Names) -> bool {
     !std::path::Path::new(&format!("/run/netns/{}", n.netns)).exists()
         && !std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists()
 }
-fn line_matches_table(line: &str, table: &str) -> bool {
-    let mut parts = line.split_whitespace();
-    parts.next() == Some("table")
-        && parts.next() == Some("inet")
-        && parts.next() == Some(table)
-        && parts.next().is_none()
-}
-fn table_listed(output: &str, table: &str) -> bool {
-    output.lines().any(|line| line_matches_table(line, table))
+fn table_listed(output: &str, table: &str) -> Res<bool> {
+    let mut listed = false;
+    for line in output.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let valid = parts.next() == Some("table") && parts.next() == Some("inet");
+        let name = parts.next();
+        if !valid
+            || name.is_none_or(|name| {
+                name.is_empty()
+                    || !name
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            })
+            || parts.next().is_some()
+        {
+            return Err(Fail::Config("live_host_unqualified"));
+        }
+        listed |= name == Some(table);
+    }
+    Ok(listed)
 }
 fn table_disposed_with<L, D>(table: &str, end: Instant, list: L, delete: D) -> bool
 where
@@ -123,8 +137,10 @@ where
         Ok(out) => out,
         Err(_) => return false,
     };
-    if !table_listed(&output, table) {
-        return true;
+    match table_listed(&output, table) {
+        Ok(false) => return true,
+        Ok(true) => {}
+        Err(_) => return false,
     }
     delete(&format!("delete table inet {table}\n"), end).is_ok()
 }

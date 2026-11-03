@@ -1,5 +1,8 @@
 //! Private launcher consumer tests; not linked into the ordinary core.
 use super::*;
+use std::path::Path;
+use std::time::Instant;
+
 #[test]
 #[ignore = "requires the packet-owned Linux host and namespace privileges; preparation only"]
 fn owned_lab_pair_prepares_without_start_authority() {
@@ -11,19 +14,18 @@ fn owned_lab_pair_missing_journal_cannot_ack_with_workers_remaining() {
     prepare_closed_pair(Fault::JournalLoss);
 }
 #[test]
-#[ignore = "requires the packet-owned Linux host; confirmation-loss fault, no START"]
-fn owned_lab_pair_unconfirmed_reap_remains_unresolved_across_stop() {
-    prepare_closed_pair(Fault::ReapUnknown);
+#[ignore = "requires the packet-owned Linux host; legacy pending marker, no START"]
+fn owned_lab_pair_legacy_pending_marker_refuses_confirmed_disposal() {
+    prepare_closed_pair(Fault::LegacyPending);
 }
 #[derive(Clone, Copy, PartialEq)]
 enum Fault {
     None,
     JournalLoss,
-    ReapUnknown,
+    LegacyPending,
 }
 fn prepare_closed_pair(fault: Fault) {
     // No v6 consent or release is supplied. This test cannot call START.
-    let raw = private_raw().unwrap();
     let attempt = uuid::Uuid::parse_str(
         std::fs::read_to_string("/proc/sys/kernel/random/uuid")
             .unwrap()
@@ -63,25 +65,24 @@ fn prepare_closed_pair(fault: Fault) {
     .unwrap();
     let session = super::super::attempt::open(attempt, &request).unwrap();
     let started = Instant::now();
-    let mut prepared = Pair::prepare(image.trim(), &session, raw);
+    let mut pair = Pair::prepare(image.trim(), &session).expect("owned pair preparation");
     let elapsed = started.elapsed();
-    let error = prepared.as_ref().err().copied();
-    if fault == Fault::JournalLoss && prepared.is_ok() {
-        std::fs::remove_file(
-            Path::new("/run/duskweave/launcher")
-                .join(attempt.simple().to_string())
-                .join("session.json"),
-        )
-        .unwrap();
+    let dir = Path::new("/run/duskweave/launcher").join(attempt.simple().to_string());
+    if fault == Fault::JournalLoss {
+        std::fs::remove_file(dir.join("session.json")).unwrap();
     }
-    if let (Fault::ReapUnknown, Ok(pair)) = (fault, prepared.as_mut()) {
-        // The physical child is still killed/reaped. Only the confirmation is withheld.
-        pair.reap_confirmation_unknown = true;
+    if fault == Fault::LegacyPending {
+        std::fs::write(dir.join("transport.pending"), []).unwrap();
     }
-    let disposed = match prepared.as_mut() {
-        Ok(pair) => pair.dispose(),
-        Err(_) => super::super::attempt::dispose(attempt),
-    };
+    let disposed = pair.dispose();
+    if fault == Fault::LegacyPending {
+        assert!(!disposed, "historical child marker must block disposal");
+        assert!(dir.join("transport.pending").exists());
+        assert!(!super::super::attempt::stop(attempt, attempt, 1));
+        std::fs::remove_file(dir.join("transport.pending")).unwrap();
+    }
+    let cleaned = super::super::attempt::dispose(attempt);
+    drop(pair);
     let remaining = super::super::docker::metadata(&[
         "ps",
         "--all",
@@ -91,109 +92,17 @@ fn prepare_closed_pair(fault: Fault) {
         "{{.ID}}",
     ])
     .unwrap();
-    if fault == Fault::ReapUnknown {
-        let dir = Path::new("/run/duskweave/launcher").join(attempt.simple().to_string());
-        assert!(!disposed);
-        assert!(dir.join("session.json").exists());
-        assert!(dir.join("transport.pending").exists());
-        assert!(
-            !super::super::attempt::stop(attempt, attempt, 1),
-            "a later STOP must not reinterpret unconfirmed transport as zero resources"
-        );
-        assert!(
-            prepared
-                .as_mut()
-                .unwrap()
-                .process
-                .try_wait()
-                .unwrap()
-                .is_some()
-        );
-        // Only this test observer possesses the withheld proof for its own child.
-        assert!(super::super::attempt::transport_reaped(attempt));
-    }
-    // Test ownership permits exact cleanup even when the assertion exposes false success.
-    let cleaned = super::super::attempt::dispose(attempt);
-    drop(prepared);
     eprintln!(
-        "pair_preparation_ms={} start_authority=false disposal_confirmed={} result={error:?}",
+        "pair_preparation_ms={} start_authority=false disposal_confirmed={}",
         elapsed.as_millis(),
         disposed
     );
-    assert!(error.is_none(), "pair preparation failed: {error:?}");
     assert!(cleaned, "test-owned resources must be disposed");
-    assert!(
-        !disposed || remaining.trim().is_empty(),
-        "a successful ACK cannot leave the known capture/exporter pair running"
-    );
+    assert!(remaining.trim().is_empty(), "known pair must be gone");
     if fault == Fault::None {
         assert!(disposed);
     }
 }
-
-#[test]
-fn partial_ready_cannot_refresh_the_absolute_read_deadline() {
-    let (source, mut peer) = UnixStream::pair().unwrap();
-    let mut source = TimedSocket {
-        io: source,
-        end: Instant::now() + Duration::from_millis(5000),
-    };
-    peer.write_all(&[0, 0]).unwrap();
-    let mut prefix = [0; 2];
-    source.read_exact(&mut prefix).unwrap();
-    source.end = Instant::now() - Duration::from_millis(1);
-    peer.write_all(&[0, 1, b'{']).unwrap();
-    assert!(
-        source.read_exact(&mut prefix).is_err(),
-        "partial READY must not buy another timeout"
-    );
-}
-
-#[test]
-fn failed_descriptor_restore_kills_and_reaps_the_spawned_child() {
-    let child = Command::new("/bin/sleep").arg("30").spawn().unwrap();
-    let pid = child.id();
-    assert!(
-        restored_child(
-            Ok(child),
-            Err(Fail::Config("live_host_unqualified")),
-            Instant::now() + Duration::from_millis(1000)
-        )
-        .is_err()
-    );
-    assert!(
-        !Path::new(&format!("/proc/{pid}")).exists(),
-        "child must be reaped before the failure returns"
-    );
-}
-
-#[test]
-fn capture_configuration_uses_its_non_root_identity() {
-    let unique = std::fs::read_to_string("/proc/sys/kernel/random/uuid").unwrap();
-    let dir = std::env::temp_dir().join(format!("dw-oci-{}", unique.trim()));
-    std::fs::create_dir(&dir).unwrap();
-    config(&dir, "/dw-dns-capture").unwrap();
-    let value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(dir.join("process.json")).unwrap()).unwrap();
-    std::fs::remove_file(dir.join("process.json")).unwrap();
-    std::fs::remove_dir(&dir).unwrap();
-    assert_eq!(
-        value["user"]["uid"], 65532,
-        "capture must use the UID required by its actual Go entrypoint"
-    );
-}
-#[test]
-fn raw_relay_rejects_truncation_and_extra_frames_without_interpreting_payload() {
-    let mut framed = 3u32.to_be_bytes().to_vec();
-    framed.extend_from_slice(b"raw");
-    let mut sink = Vec::new();
-    forward_raw(&mut framed.as_slice(), &mut sink).unwrap();
-    assert_eq!(sink, framed);
-    for mut malformed in [&framed[..5], &[framed.as_slice(), b"x"].concat()] {
-        assert!(forward_raw(&mut malformed, &mut Vec::new()).is_err());
-    }
-}
-
 #[test]
 #[ignore = "requires the packet-owned root journal; the held run guard is a deterministic barrier"]
 fn held_run_guard_prevents_stop_from_latching_a_release_in_flight() {
@@ -230,80 +139,50 @@ fn held_run_guard_prevents_stop_from_latching_a_release_in_flight() {
 }
 
 #[test]
-fn relay_raw_framing_and_copy() {
-    use std::io::Cursor;
+fn relay_stages_complete_frame_and_eof_before_exporter_write() {
+    use std::io::{Cursor, Read, Write};
 
-    // 1. raw_prefix valid
-    let mut framed = (5u32).to_be_bytes().to_vec();
-    framed.extend_from_slice(b"hello");
-    let (prefix, count) = raw_prefix(&mut Cursor::new(&framed)).unwrap();
-    assert_eq!(count, 5);
-    assert_eq!(prefix, (5u32).to_be_bytes());
+    struct NoEof(Cursor<Vec<u8>>);
+    impl Read for NoEof {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.0.read(out)?;
+            if n == 0 {
+                return Err(std::io::ErrorKind::WouldBlock.into());
+            }
+            Ok(n)
+        }
+    }
+    struct ShortSink(Vec<u8>);
+    impl Write for ShortSink {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.push(bytes[0]);
+            Ok(1)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
 
-    // 2. raw_prefix invalid (count 0)
-    assert!(raw_prefix(&mut Cursor::new([0, 0, 0, 0])).is_err());
+    let mut at_cap = (MAX_FRAME as u32).to_be_bytes().to_vec();
+    at_cap.extend(vec![b'x'; MAX_FRAME]);
+    let mut sink = ShortSink(Vec::new());
+    forward_raw(&mut Cursor::new(&at_cap), &mut sink).unwrap();
+    assert_eq!(sink.0, at_cap, "partial writes retain complete framing");
 
-    // 3. raw_prefix invalid (count > MAX_FRAME)
-    assert!(raw_prefix(&mut Cursor::new((65537u32).to_be_bytes())).is_err());
-
-    // 4. raw_prefix truncated
-    assert!(raw_prefix(&mut Cursor::new([0, 0, 1])).is_err());
-
-    // 5. copy_raw valid
+    for malformed in [
+        vec![0, 0, 0, 0],
+        ((MAX_FRAME + 1) as u32).to_be_bytes().to_vec(),
+        at_cap[..at_cap.len() - 1].to_vec(),
+        [at_cap.as_slice(), b"x"].concat(),
+    ] {
+        let mut sink = Vec::new();
+        assert!(forward_raw(&mut Cursor::new(malformed), &mut sink).is_err());
+        assert!(sink.is_empty(), "no candidate bytes before complete EOF");
+    }
     let mut sink = Vec::new();
-    copy_raw(&mut Cursor::new(b"abcdefgh"), &mut sink, 8).unwrap();
-    assert_eq!(&sink, b"abcdefgh");
-
-    // 6. raw_end checks EOF
-    assert!(raw_end(&mut Cursor::new([])).is_ok());
-    assert!(raw_end(&mut Cursor::new([1])).is_err());
-
-    // 7. forward_raw end-to-end
-    let mut src = (4u32).to_be_bytes().to_vec();
-    src.extend_from_slice(b"data");
-    let mut dest = Vec::new();
-    forward_raw(&mut Cursor::new(&src), &mut dest).unwrap();
-    assert_eq!(dest, src);
-}
-
-#[test]
-fn relay_config_and_remaining_helpers() {
-    let unique = uuid::Uuid::new_v4();
-    let dir = std::env::temp_dir().join(format!("dw-relay-test-{unique}"));
-    std::fs::create_dir_all(&dir).unwrap();
-
-    // /dw-dns-capture creates process.json with uid 65532
-    config(&dir, "/dw-dns-capture").unwrap();
-    let text = std::fs::read_to_string(dir.join("process.json")).unwrap();
-    let val: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(val["user"]["uid"], 65532);
-
-    // /dw-dns-exporter creates process.json with uid 65533
-    config(&dir, "/dw-dns-exporter").unwrap();
-    let text = std::fs::read_to_string(dir.join("process.json")).unwrap();
-    let val: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(val["user"]["uid"], 65533);
-
-    // Invalid binary is refused
-    assert_eq!(
-        config(&dir, "/invalid").unwrap_err(),
-        Fail::Config("live_host_unqualified")
+    assert!(forward_raw(&mut NoEof(Cursor::new(at_cap)), &mut sink).is_err());
+    assert!(
+        sink.is_empty(),
+        "withheld EOF cannot leak a candidate prefix"
     );
-    let _ = std::fs::remove_dir_all(&dir);
-
-    // remaining helper
-    assert!(remaining(Instant::now() + Duration::from_secs(5)).is_ok());
-    assert_eq!(
-        remaining(Instant::now() - Duration::from_secs(1)).unwrap_err(),
-        Fail::State("live_effect_deadline")
-    );
-
-    // socket_pair
-    let (s1, s2) = socket_pair().unwrap();
-    drop((s1, s2));
-
-    // clear_failed_transport
-    let id = uuid::Uuid::new_v4();
-    clear_failed_transport(&Fail::State("some_error"), id);
-    clear_failed_transport(&Fail::Unresolved("live_disposal_unconfirmed"), id);
 }

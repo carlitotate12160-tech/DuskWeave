@@ -58,8 +58,6 @@ fn dispatch_stop_commands_and_refused() {
 
     // 1. HostCommand::Stop
     let (client, server) = UnixStream::pair().unwrap();
-    let (r, w) = UnixStream::pair().unwrap();
-    let raw = RawPipe { read: r, write: w };
     let mut client_chan = HostChannel::new(client);
     client_chan
         .send_command(&HostCommand::Stop {
@@ -68,7 +66,7 @@ fn dispatch_stop_commands_and_refused() {
             generation: 1,
         })
         .unwrap();
-    dispatch(server, &qualified, raw).unwrap();
+    dispatch(server, &qualified).unwrap();
     match client_chan.reply().unwrap() {
         HostReply::Stopped { .. } => {}
         _ => panic!("expected Stopped reply"),
@@ -76,14 +74,12 @@ fn dispatch_stop_commands_and_refused() {
 
     // 2. HostCommand::StopRun
     let (client, server) = UnixStream::pair().unwrap();
-    let (r, w) = UnixStream::pair().unwrap();
-    let raw = RawPipe { read: r, write: w };
     let mut client_chan = HostChannel::new(client);
     let run_id = Uuid::new_v4();
     client_chan
         .send_command(&HostCommand::StopRun { run_id })
         .unwrap();
-    dispatch(server, &qualified, raw).unwrap();
+    dispatch(server, &qualified).unwrap();
     match client_chan.reply().unwrap() {
         HostReply::RunStopped { run_id: r, .. } => assert_eq!(r, run_id),
         _ => panic!("expected RunStopped reply"),
@@ -91,8 +87,6 @@ fn dispatch_stop_commands_and_refused() {
 
     // 3. HostCommand::StopCampaign
     let (client, server) = UnixStream::pair().unwrap();
-    let (r, w) = UnixStream::pair().unwrap();
-    let raw = RawPipe { read: r, write: w };
     let mut client_chan = HostChannel::new(client);
     let engagement_id = Uuid::new_v4();
     let campaign_id = Uuid::new_v4();
@@ -102,7 +96,7 @@ fn dispatch_stop_commands_and_refused() {
             campaign_id,
         })
         .unwrap();
-    dispatch(server, &qualified, raw).unwrap();
+    dispatch(server, &qualified).unwrap();
     match client_chan.reply().unwrap() {
         HostReply::CampaignStopped {
             engagement_id: e,
@@ -117,8 +111,6 @@ fn dispatch_stop_commands_and_refused() {
 
     // 4. Invalid command (e.g. Ack) sent to dispatch -> Refused
     let (client, server) = UnixStream::pair().unwrap();
-    let (r, w) = UnixStream::pair().unwrap();
-    let raw = RawPipe { read: r, write: w };
     let mut client_chan = HostChannel::new(client);
     client_chan
         .send_command(&HostCommand::Ack {
@@ -126,7 +118,7 @@ fn dispatch_stop_commands_and_refused() {
             generation: 1,
         })
         .unwrap();
-    dispatch(server, &qualified, raw).unwrap();
+    dispatch(server, &qualified).unwrap();
     match client_chan.reply().unwrap() {
         HostReply::Refused => {}
         _ => panic!("expected Refused reply"),

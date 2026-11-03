@@ -358,6 +358,23 @@ consent — no existing run, episode or approval carries over.
 
 The LAB deployment on `pica-arm-01` uses `boundary/qualify/qualify.sh`
 (`service`, `release`, `lab-database`, `lab-bind`, `build-storage`).
+For the local exporter-attach candidate, Docker starts the exporter as PID1 with
+its fixed UID and network disabled. The launcher connects to both containers
+before READY, sends the exporter its independent REQUEST and START, and stages
+one bounded capture frame through capture stdout EOF before forwarding it on
+the exporter's parent-owned attach input. The exporter returns only the safe
+RESULT; the launcher sends ACK after the core has durably handled that result.
+The input stays open through ACK. Historical unresolved `transport.pending`
+markers still block confirmed disposal, while new attempts dispose through
+container and namespace custody.
+
+Qualify that candidate from the fresh source with `build-storage`,
+`lab-database`, `release`, then `lab-bind`, recording each exit status.
+Preserve the prior installed binaries, manifest bytes and metadata, and image
+digest before `release`; restore and verify them after the packet-owned tests
+and workers finish. Do not run `prepare-host.sh` for this refactor. This
+procedure does not make a candidate the permanent installed release.
+
 Build output, caches and temporary writes must land on a separately
 mounted ext4 block volume at `/srv/duskweave-build`; source, reports,
 toolchains, Docker, containerd and PostgreSQL stay on the boot

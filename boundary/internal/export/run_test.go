@@ -19,19 +19,16 @@ func request() frame.Request {
 		Deadline: time.Now().Add(2 * time.Second).UnixMilli(), Duration: 2000, QueryID: 7}
 }
 
-func TestIndependentParentAndRawPipesProjectOnlyAllowedDNS(t *testing.T) {
+func TestOrderedParentInputProjectsOnlyAllowedDNS(t *testing.T) {
 	q := request()
 	parentR, parentW := io.Pipe()
-	rawR, rawW := io.Pipe()
 	safeR, safeW := io.Pipe()
 	defer parentR.Close()
 	defer parentW.Close()
-	defer rawR.Close()
-	defer rawW.Close()
 	defer safeR.Close()
 	defer safeW.Close()
 	finished := make(chan error, 1)
-	go func() { finished <- Run(parentR, rawR, safeW) }()
+	go func() { finished <- Run(parentR, safeW) }()
 	control := frame.Writer{Sink: parentW}
 	out := frame.Reader{Source: safeR}
 	if control.Write(q, frame.Limit) != nil {
@@ -48,10 +45,9 @@ func TestIndependentParentAndRawPipesProjectOnlyAllowedDNS(t *testing.T) {
 	packet[2], packet[3], packet[7] = 0x81, 0x80, 1
 	packet = append(packet, 0xc0, 12, 0, 1, 0, 1, 0, 0, 0, 30, 0, 4, 198, 51, 100, 7)
 	raw := frame.Raw{Identity: frame.Bound(q, "RESULT", 3), Source: q.Resolver, Status: "received", Observed: time.Now().UnixMilli(), Packet: packet}
-	if (&frame.Writer{Sink: rawW}).Write(raw, frame.Limit) != nil {
+	if (&frame.Writer{Sink: parentW}).Write(raw, frame.Limit) != nil {
 		t.Fatal("candidate")
 	}
-	rawW.Close()
 	var result frame.Result
 	if out.Read(&result, frame.Limit) != nil || result.Status != "completed" || len(result.Answers) != 1 || result.Answers[0].IPv4 != "198.51.100.7" {
 		t.Fatal("safe result")
@@ -93,40 +89,31 @@ func TestForgedIdentitySourceTimeAndRawSentinelCannotBecomeSafeResult(t *testing
 	}
 }
 
-func TestMultipleCandidateFramesFailBeforeOrdinaryProjection(t *testing.T) {
+func TestControlShapedRawCannotAdvanceACKOrBecomeResult(t *testing.T) {
 	q := request()
-	var parent, raw, safe bytes.Buffer
-	w := frame.Writer{Sink: &parent}
-	for _, value := range []any{q,
+	var parent, safe bytes.Buffer
+	writer := frame.Writer{Sink: &parent}
+	for _, value := range []any{
+		q,
 		frame.Control{Identity: frame.Bound(q, "START", 2), Deadline: q.Deadline},
-		frame.Control{Identity: frame.Bound(q, "ACK", 4), Deadline: q.Deadline}} {
-		if w.Write(value, frame.Limit) != nil {
+		frame.Control{Identity: frame.Bound(q, "ACK", 4), Deadline: q.Deadline},
+	} {
+		if writer.Write(value, frame.Limit) != nil {
 			t.Fatal("parent framing")
 		}
 	}
-	candidate := frame.Raw{Identity: frame.Bound(q, "RESULT", 3), Source: q.Resolver,
-		Status: "timeout", Observed: time.Now().UnixMilli(), Packet: []byte{}}
-	rawWriter := frame.Writer{Sink: &raw}
-	if rawWriter.Write(candidate, frame.Limit) != nil {
-		t.Fatal("raw framing")
+	if Run(&parent, &safe) == nil {
+		t.Fatal("control-shaped RAW must refuse")
 	}
-	if rawWriter.Write(candidate, frame.Limit) != nil {
-		t.Fatal("raw framing")
-	}
-	if Run(&parent, &raw, &safe) != nil {
-		t.Fatal("closed failure handshake")
-	}
-	r := frame.Reader{Source: &safe}
+	reader := frame.Reader{Source: &safe}
 	var ready frame.Control
-	var result frame.Result
-	if r.Read(&ready, frame.ControlLimit) != nil || r.Read(&result, frame.Limit) != nil {
-		t.Fatal("safe framing")
+	if reader.Read(&ready, frame.ControlLimit) != nil || !frame.Matches(ready.Identity, q, "READY", 1) {
+		t.Fatal("READY")
 	}
-	if result.Status != "ipc_failure" || len(result.Answers) != 0 || safe.Len() != 0 {
-		t.Fatal("multiple frames admitted")
+	if safe.Len() != 0 {
+		t.Fatal("control-shaped RAW reached ordinary RESULT")
 	}
 }
-
 func TestTimeoutAfterKernelDeadlineRetainsFixedFailureCategory(t *testing.T) {
 	q := request()
 	now := time.Now()

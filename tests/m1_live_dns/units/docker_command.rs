@@ -118,3 +118,39 @@ fn stalled_output_times_out_and_reaps_the_helper() {
         "stalled helper must be reaped"
     );
 }
+
+#[test]
+fn create_starts_each_worker_directly_with_fixed_isolation() {
+    for (exporter, binary, uid) in [
+        (false, "/dw-dns-capture", "65532:65532"),
+        (true, "/dw-dns-exporter", "65533:65533"),
+    ] {
+        inject(move |args, _| {
+            let has = |flag, value| args.windows(2).any(|pair| pair == [flag, value]);
+            assert_eq!(args[0], "create");
+            assert!(has("--entrypoint", binary));
+            assert!(has("--user", uid));
+            assert!(has("--network", "none"));
+            assert!(has("--ipc", "none"));
+            assert!(has("--security-opt", "no-new-privileges"));
+            assert!(has("--memory", "128m"));
+            assert!(has("--memory-swap", "128m"));
+            assert!(has("--pids-limit", "32"));
+            assert!(has("--ulimit", "core=0:0"));
+            assert!(args.contains(&"--read-only"));
+            assert!(!args.contains(&"--holder"));
+            assert!(!args.iter().any(|arg| arg.contains("seccomp=unconfined")));
+            Ok("created".into())
+        });
+        assert!(
+            create(
+                "fixed-name",
+                "sha256:fixed",
+                uuid::Uuid::new_v4(),
+                exporter,
+                Instant::now() + Duration::from_secs(1),
+            )
+            .is_ok()
+        );
+    }
+}

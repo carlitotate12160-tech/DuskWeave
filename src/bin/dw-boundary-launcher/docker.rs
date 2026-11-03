@@ -9,11 +9,12 @@ mod attach;
 mod command;
 mod connection;
 mod mounts;
-pub(super) use attach::{Attach, TimedSocket};
+pub(super) use attach::Attach;
 pub(super) fn metadata(args: &[&str]) -> Res<String> {
     command::metadata(args)
 }
 use uuid::Uuid;
+#[cfg(test)]
 pub(super) fn reap_child(child: &mut std::process::Child, deadline: Instant) -> bool {
     command::reap(child, deadline)
 }

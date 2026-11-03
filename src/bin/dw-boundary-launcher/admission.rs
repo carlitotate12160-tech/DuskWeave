@@ -5,22 +5,17 @@ use std::time::Duration;
 
 pub(super) fn serve() -> Res<()> {
     harden()?;
-    let raw = super::relay::private_raw()?;
     let (socket, peer) = parent_channel()?;
-    serve_connection(socket, peer, raw)
+    serve_connection(socket, peer)
 }
 
-fn serve_connection(
-    socket: UnixStream,
-    peer: rustix::net::UCred,
-    raw: super::relay::RawPipe,
-) -> Res<()> {
+fn serve_connection(socket: UnixStream, peer: rustix::net::UCred) -> Res<()> {
     if peer.uid.as_raw() == 0 {
         super::qualification::watchdog_peer(peer)?;
         return super::control::watchdog(socket);
     }
     let qualified = super::qualification::identity(peer)?;
-    super::control::dispatch(socket, &qualified, raw)
+    super::control::dispatch(socket, &qualified)
 }
 
 fn harden() -> Res<()> {

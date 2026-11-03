@@ -8,8 +8,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 const REPORT: &str =
-    "/srv/duskweave/reports/live-dns-20261030/completion-20261031a/pr139-fix-20261101/restart-r2";
-const CONFIG: &str = "/etc/duskweave/m1/lab-pr139-r2-20261101a";
+    "/srv/duskweave/reports/live-dns-20261030/completion-20261031a/dns-attach-20261103a";
+const CONFIG: &str = "/etc/duskweave/m1/lab-dns-attach-20261103a";
 pub const CORE: &str = "/usr/local/libexec/duskweave/duskweave";
 
 pub fn command(binary: &str, args: &[&str]) -> std::process::Output {

@@ -36,3 +36,55 @@ fn owned_lab_namespace_can_be_prepared_without_transmitting() {
     assert!(cleaned);
     assert!(!std::path::Path::new(&netns_path(attempt)).exists());
 }
+
+#[test]
+fn nft_collector_refuses_output_beyond_the_cap() {
+    use std::process::{Command, Stdio};
+
+    let child = Command::new("/usr/bin/head")
+        .args(["-c", "65537", "/dev/zero"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let result = finish_output(child, Instant::now() + Duration::from_secs(2));
+    assert_eq!(result, Err(Fail::Config("live_host_unqualified")));
+}
+
+#[test]
+fn nft_collector_requires_exit_eof_utf8_and_original_deadline() {
+    use std::process::{Command, Stdio};
+
+    let at_cap = Command::new("/usr/bin/head")
+        .args(["-c", "65536", "/dev/zero"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    assert_eq!(
+        finish_output(at_cap, Instant::now() + Duration::from_secs(2))
+            .unwrap()
+            .len(),
+        65536
+    );
+    for script in ["printf '\\377'", "printf ok; exit 2"] {
+        let child = Command::new("/bin/sh")
+            .args(["-c", script])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        assert_eq!(
+            finish_output(child, Instant::now() + Duration::from_secs(1)),
+            Err(Fail::Config("live_host_unqualified"))
+        );
+    }
+    let child = Command::new("/bin/sh")
+        .args(["-c", "exec /bin/sleep 30"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    assert_eq!(
+        finish_output(child, Instant::now() + Duration::from_millis(100)),
+        Err(Fail::Unresolved("live_host_control_unavailable"))
+    );
+}

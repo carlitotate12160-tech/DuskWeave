@@ -4,36 +4,22 @@ package main
 
 import (
 	"duskweave/boundary/internal/export"
-	"io"
 	"os"
 	"strings"
 	"syscall"
 )
 
 func main() {
-	if len(os.Args) != 1 && !(len(os.Args) == 2 && os.Args[1] == "--holder") {
+	if len(os.Args) != 1 {
 		os.Exit(2)
 	}
 	if !disableDumps() || !isolatedProcess() {
 		os.Exit(1)
 	}
-	if len(os.Args) == 2 {
-		// Fixed namespace holder; the actual exporter is exec'd with its private fd3.
-		// This process never reads a request, raw material, credentials or a path.
-		_, _ = io.CopyN(io.Discard, os.Stdin, 1)
-		return
-	}
-	// Descriptor 3 is a launcher-created private raw pipe, never parent control.
-	raw := os.NewFile(3, "capture-input")
-	if raw == nil {
-		os.Exit(1)
-	}
-	defer raw.Close()
-	if export.Run(os.Stdin, raw, os.Stdout) != nil {
+	if export.Run(os.Stdin, os.Stdout) != nil {
 		os.Exit(1)
 	}
 }
-
 func isolatedProcess() bool {
 	if os.Getuid() != 65533 || os.Geteuid() != 65533 {
 		return false

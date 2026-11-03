@@ -26,7 +26,7 @@ pub(super) fn create(
         ("/dw-dns-capture", "65532:65532")
     };
     let attempt_label = format!("org.duskweave.attempt={attempt}");
-    let mut args = vec![
+    let args = vec![
         "create",
         "--name",
         name,
@@ -64,9 +64,6 @@ pub(super) fn create(
         binary,
         image,
     ];
-    if exporter {
-        args.push("--holder");
-    }
     metadata_until(&args, deadline)
 }
 

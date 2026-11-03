@@ -4,8 +4,8 @@ set -euo pipefail
 umask 077
 ROOT=/srv/duskweave
 BUILD=/srv/duskweave-build
-SOURCE=$ROOT/src/pr139-qualified-lab-r2
-REPORT=$ROOT/reports/live-dns-20261030
+SOURCE=$ROOT/src/dns-exporter-attach-20261103
+REPORT=$ROOT/reports/live-dns-20261030/completion-20261031a/dns-attach-20261103a
 CONTAINER=dw-live-dns-20261030-pg
 VOLUME=dw-live-dns-20261030-pg17
 IMAGE=postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d
@@ -179,13 +179,13 @@ prepare_lab_database() {
     cd "$SOURCE"
     python3 - <<'PY'
 import importlib.util,json,os,pathlib,pwd
-source=pathlib.Path('/srv/duskweave/src/pr139-qualified-lab-r2')
+source=pathlib.Path('/srv/duskweave/src/dns-exporter-attach-20261103')
 spec=importlib.util.spec_from_file_location('native_bootstrap',source/'tests/support/m1_native_bootstrap.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-fixture=module.Fixture('dw-live-dns-20261030-pg','fixture',database='dw_native_pr139_r2_20261101a',
-                       schema_revision='0030',role_prefix='dw_p139r2a')
+fixture=module.Fixture('dw-live-dns-20261030-pg','fixture',database='dw_native_dns_attach_20261103a',
+                       schema_revision='0030',role_prefix='dw_da1103a')
 uid=pwd.getpwnam('duskweave-core').pw_uid
-config=pathlib.Path('/etc/duskweave/m1/lab-pr139-r2-20261101a')
+config=pathlib.Path('/etc/duskweave/m1/lab-dns-attach-20261103a')
 config.mkdir(mode=0o700)
 os.chown(config,uid,uid)
 variables={}
@@ -266,7 +266,7 @@ values=[str(record[k]) for k in columns]
 assert all("'" not in v for v in values)
 sql="INSERT INTO execution.live_qualifications ("+','.join(columns)+") VALUES ("+','.join("'"+v+"'" for v in values)+");"
 r=subprocess.run(['docker','exec','-i','dw-live-dns-20261030-pg','psql','-X','-U','postgres',
-                  '-d','dw_native_pr139_r2_20261101a','-v','ON_ERROR_STOP=1','-At'],
+                  '-d','dw_native_dns_attach_20261103a','-v','ON_ERROR_STOP=1','-At'],
                  input=sql,capture_output=True,text=True)
 if r.returncode: raise SystemExit('lab_qualification_write_failed')
 path=base/'deployment.json'
@@ -277,7 +277,7 @@ temporary=base/'deployment.next'
 fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o444)
 with os.fdopen(fd,'wb') as stream:stream.write(encoded)
 os.replace(temporary,path)
-report=pathlib.Path('/srv/duskweave/reports/live-dns-20261030/completion-20261031a/pr139-fix-20261101/restart-r2')
+report=pathlib.Path('/srv/duskweave/reports/live-dns-20261030/completion-20261031a/dns-attach-20261103a')
 report.mkdir(mode=0o700,parents=True,exist_ok=True)
 m=report.lstat()
 assert m.st_uid==0 and m.st_mode&0o777==0o700 and not report.is_symlink()

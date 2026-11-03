@@ -373,27 +373,6 @@ pub(super) fn dispose_until(attempt: Uuid, end: Instant) -> bool {
     std::fs::remove_dir_all(dir(attempt)).is_ok() || !dir(attempt).exists()
 }
 
-/// Only the parent holding Child can settle raw-transporter lifetime.
-pub(super) fn transport_started(attempt: Uuid) -> Res<()> {
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(dir(attempt).join("transport.pending"))
-        .map(|_| ())
-        .map_err(|_| Fail::Config("live_host_unqualified"))
-}
-pub(super) fn transport_reaped(attempt: Uuid) -> bool {
-    transport_cleared(attempt)
-}
-/// Clears a stale pending marker only when the parent has proven that no
-/// raw-transporter child survives (spawn never produced one, or its reap was
-/// confirmed). Callers must not use this to mask an unconfirmed reap.
-pub(super) fn transport_cleared(attempt: Uuid) -> bool {
-    let path = dir(attempt).join("transport.pending");
-    std::fs::remove_file(&path).is_ok() || !path.exists()
-}
-
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/launcher_attempt.rs"]
 mod tests;
