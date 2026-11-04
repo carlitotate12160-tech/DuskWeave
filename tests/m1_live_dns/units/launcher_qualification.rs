@@ -281,9 +281,15 @@ fn root_file_and_qualify_file_enforce_no_symlinks_and_single_link() {
             Fail::Config("live_host_unqualified")
         );
 
-        // Symlink is rejected by openat2 with NO_SYMLINKS
+        // Symlink refusal is discriminating: prove a fresh single-link target
+        // is accepted directly, then its alias refuses at openat2(NO_SYMLINKS).
+        let sym_target = directory.path().join("symlink-target.bin");
+        std::fs::write(&sym_target, b"fresh").unwrap();
+        custody_tests::simulate_root_file(&sym_target);
+        let accepted = root_file(sym_target.to_str().unwrap()).expect("single-link target accepted");
+        drop(accepted);
         let sym_path = directory.path().join("symlink.bin");
-        std::os::unix::fs::symlink(&file_path, &sym_path).expect("create symlink");
+        std::os::unix::fs::symlink(&sym_target, &sym_path).expect("create symlink");
         assert_eq!(
             root_file(sym_path.to_str().unwrap()).err(),
             Some(Fail::Config("live_host_unqualified"))
@@ -382,4 +388,44 @@ fn verify_process_rejects_mismatched_uid_or_boot() {
 fn protected_directories_and_host_sinks_fail_closed_under_unprivileged_runner() {
     let _ = protected_directories();
     let _ = host_sinks();
+}
+
+#[test]
+fn custody_portable_qualification_directory() {
+    use std::os::unix::fs::MetadataExt;
+    let directory = Directory::new();
+    let dir_path = directory.path().to_str().unwrap();
+    let meta = std::fs::symlink_metadata(dir_path).unwrap();
+    assert_ne!(meta.uid(), 0);
+    assert!(meta.is_dir() && meta.mode() & 0o022 == 0);
+    with_test_env(
+        directory.path().join("c.json"),
+        directory.path().to_path_buf(),
+        || {
+            assert_eq!(
+                root_directory(dir_path).unwrap_err(),
+                Fail::Config("live_host_unqualified")
+            );
+        },
+    );
+}
+
+#[test]
+fn custody_portable_qualification_file() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let directory = Directory::new();
+    let file_path = directory.path().join("payload.bin");
+    std::fs::write(&file_path, b"payload").unwrap();
+    std::fs::set_permissions(&file_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let meta = std::fs::symlink_metadata(&file_path).unwrap();
+    assert_ne!(meta.uid(), 0);
+    assert!(
+        meta.is_file() && meta.nlink() == 1 && meta.mode() & 0o022 == 0 && meta.len() <= 134217728
+    );
+    with_test_env(file_path.clone(), directory.path().to_path_buf(), || {
+        assert_eq!(
+            root_file(file_path.to_str().unwrap()).err(),
+            Some(Fail::Config("live_host_unqualified"))
+        );
+    });
 }

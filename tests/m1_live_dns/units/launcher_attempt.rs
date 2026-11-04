@@ -5,7 +5,10 @@ use std::cell::Cell;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-struct TestRootGuard(PathBuf);
+struct TestRootGuard {
+    path: PathBuf,
+    previous: Option<PathBuf>,
+}
 impl TestRootGuard {
     fn new() -> Self {
         let id = std::fs::read_to_string("/proc/sys/kernel/random/uuid").unwrap();
@@ -14,17 +17,18 @@ impl TestRootGuard {
             .mode(0o700)
             .create(&path)
             .unwrap();
+        let previous = TEST_ROOT.with(|c| c.borrow().clone());
         set_test_root(Some(path.clone()));
-        Self(path)
+        Self { path, previous }
     }
     fn path(&self) -> &Path {
-        &self.0
+        &self.path
     }
 }
 impl Drop for TestRootGuard {
     fn drop(&mut self) {
-        set_test_root(None);
-        let _ = std::fs::remove_dir_all(&self.0);
+        set_test_root(self.previous.take());
+        let _ = std::fs::remove_dir_all(&self.path);
     }
 }
 
@@ -286,6 +290,7 @@ fn real_custody_uses_actual_control_root_and_journal() {
     let req = sample_request(attempt, now);
 
     if euid == 0 {
+        let mut checks = 0;
         // Root-owned objects pass through open -> load -> ready.
         let session = open(run_id, &req).expect("open root-owned session");
         assert_eq!(session.run_id, run_id);
@@ -354,14 +359,59 @@ fn real_custody_uses_actual_control_root_and_journal() {
         assert!(!qualify_session_meta(
             &std::fs::symlink_metadata(&big).unwrap()
         ));
+        checks += 1;
+
+        // Control-root refusal: a nonzero owner on the real directory.
+        rustix::fs::chown(
+            &root,
+            Some(rustix::process::Uid::from_raw(65_534)),
+            Some(rustix::process::Gid::from_raw(65_534)),
+        )
+        .unwrap();
+        assert!(owned_root().is_err());
+        checks += 1;
+        rustix::fs::chown(
+            &root,
+            Some(rustix::process::Uid::from_raw(0)),
+            Some(rustix::process::Gid::from_raw(0)),
+        )
+        .unwrap();
+        assert!(owned_root().is_ok());
+        checks += 1;
+
+        // Control-root refusal: a forbidden group/world mode.
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o710)).unwrap();
+        assert!(owned_root().is_err());
+        checks += 1;
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(owned_root().is_ok());
+        checks += 1;
+
+        // Control-root refusal: a regular file in place of the directory.
+        // Restore the directory so owned-temp cleanup still removes it.
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::write(&root, b"not-a-dir").unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(owned_root().is_err());
+        checks += 1;
+        std::fs::remove_file(&root).unwrap();
+        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        eprintln!("attempt real_custody euid={euid} checks={checks}");
     } else {
+        let mut checks = 0;
         // Actual non-root temporary objects refuse.
         assert!(open(run_id, &req).is_err());
+        checks += 1;
         let j = root.join("journal.json");
         std::fs::write(&j, b"{}").unwrap();
         std::fs::set_permissions(&j, std::fs::Permissions::from_mode(0o600)).unwrap();
         assert!(!qualify_session_meta(
             &std::fs::symlink_metadata(&j).unwrap()
         ));
+        checks += 1;
+        eprintln!("attempt real_custody euid={euid} checks={checks}");
     }
 }
+
+#[path = "attempt_custody_fix.rs"]
+mod custody_fix;
