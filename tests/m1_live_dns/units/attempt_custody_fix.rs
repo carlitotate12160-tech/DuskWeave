@@ -121,8 +121,6 @@ fn custody_portable_attempt_session_meta() {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     let meta = std::fs::symlink_metadata(&path).unwrap();
     assert_ne!(meta.uid(), 0);
-    assert!(
-        meta.is_file() && meta.nlink() == 1 && meta.mode() & 0o077 == 0 && meta.len() <= 16384
-    );
+    assert!(meta.is_file() && meta.nlink() == 1 && meta.mode() & 0o077 == 0 && meta.len() <= 16384);
     assert!(!qualify_session_meta(&meta));
 }

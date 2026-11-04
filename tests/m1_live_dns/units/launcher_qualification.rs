@@ -286,7 +286,8 @@ fn root_file_and_qualify_file_enforce_no_symlinks_and_single_link() {
         let sym_target = directory.path().join("symlink-target.bin");
         std::fs::write(&sym_target, b"fresh").unwrap();
         custody_tests::simulate_root_file(&sym_target);
-        let accepted = root_file(sym_target.to_str().unwrap()).expect("single-link target accepted");
+        let accepted =
+            root_file(sym_target.to_str().unwrap()).expect("single-link target accepted");
         drop(accepted);
         let sym_path = directory.path().join("symlink.bin");
         std::os::unix::fs::symlink(&sym_target, &sym_path).expect("create symlink");

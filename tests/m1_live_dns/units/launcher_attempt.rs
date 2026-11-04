@@ -395,7 +395,10 @@ fn real_custody_uses_actual_control_root_and_journal() {
         assert!(owned_root().is_err());
         checks += 1;
         std::fs::remove_file(&root).unwrap();
-        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&root)
+            .unwrap();
         eprintln!("attempt real_custody euid={euid} checks={checks}");
     } else {
         let mut checks = 0;
