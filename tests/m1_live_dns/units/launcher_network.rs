@@ -88,3 +88,27 @@ fn nft_collector_requires_exit_eof_utf8_and_original_deadline() {
         Err(Fail::Unresolved("live_host_control_unavailable"))
     );
 }
+
+#[test]
+fn nft_collector_reap_after_elapsed_deadline_is_unresolved() {
+    use std::process::{Command, Stdio};
+
+    // Post-deadline confirmation: with stdout absent nft_stdout yields Config,
+    // and reap_nft's confirmation against the already-elapsed deadline is
+    // false, so finish_output must classify the outcome as Unresolved. The
+    // harmless child is explicitly waited before transfer, so no child or
+    // zombie survives this test.
+    let end = Instant::now();
+    let mut child = Command::new("/bin/sh")
+        .args(["-c", "exit 0"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    child.wait().unwrap();
+    assert_eq!(
+        finish_output(child, end),
+        Err(Fail::Unresolved("live_host_control_unavailable"))
+    );
+}
