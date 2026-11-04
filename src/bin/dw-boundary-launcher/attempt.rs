@@ -4,7 +4,7 @@ use duskweave::{Fail, Res};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -96,13 +96,10 @@ fn session_guard(s: &Session, end: Instant) -> Res<(Guard, Guard)> {
     Ok((r, c))
 }
 fn owned_root() -> Res<()> {
-    #[cfg(test)]
-    if TEST_ROOT.with(|c| c.borrow().is_some()) {
-        return Ok(());
-    }
-    let m = std::fs::symlink_metadata(ROOT).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    let ok = m.is_dir() && m.uid() == 0 && m.mode() & 0o077 == 0;
-    ok.then_some(())
+    let m = std::fs::symlink_metadata(root()).map_err(|_| Fail::Config("live_host_unqualified"))?;
+    let f = super::custody::observed(&m);
+    super::custody::control_root(&f)
+        .then_some(())
         .ok_or(Fail::Config("live_host_unqualified"))
 }
 pub(super) fn load(attempt: Uuid, generation: u64) -> Res<Session> {
@@ -113,11 +110,8 @@ pub(super) fn load(attempt: Uuid, generation: u64) -> Res<Session> {
     Ok(session)
 }
 fn qualify_session_meta(m: &std::fs::Metadata) -> bool {
-    #[cfg(test)]
-    let uid_ok = true;
-    #[cfg(not(test))]
-    let uid_ok = m.uid() == 0;
-    m.is_file() && uid_ok && m.nlink() == 1 && m.mode() & 0o077 == 0 && m.len() <= 16384
+    let f = super::custody::observed(m);
+    super::custody::session_journal(&f)
 }
 
 fn parse_session_file(file: File, attempt: Uuid) -> Res<Session> {

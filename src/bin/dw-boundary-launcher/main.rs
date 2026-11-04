@@ -7,6 +7,8 @@ mod attempt;
 #[cfg(target_os = "linux")]
 mod control;
 #[cfg(target_os = "linux")]
+mod custody;
+#[cfg(target_os = "linux")]
 mod docker;
 #[cfg(target_os = "linux")]
 mod network;

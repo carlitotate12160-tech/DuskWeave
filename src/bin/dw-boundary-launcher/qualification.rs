@@ -5,7 +5,6 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
 use uuid::Uuid;
 
 const CONFIG: &str = "/etc/duskweave/m1/deployment.json";
@@ -33,7 +32,6 @@ pub(super) struct Manifest {
 thread_local! {
     static TEST_CONFIG: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
     static TEST_BIN_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
-    static TEST_SKIP_UID: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) };
 }
 
 #[cfg(test)]
@@ -45,13 +43,24 @@ pub(super) fn with_test_env<F, R>(
 where
     F: FnOnce() -> R,
 {
+    struct Restore {
+        config: Option<std::path::PathBuf>,
+        bin_root: Option<std::path::PathBuf>,
+    }
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TEST_CONFIG.with(|c| *c.borrow_mut() = self.config.take());
+            TEST_BIN_ROOT.with(|b| *b.borrow_mut() = self.bin_root.take());
+        }
+    }
+    let restore = Restore {
+        config: TEST_CONFIG.with(|c| c.borrow_mut().take()),
+        bin_root: TEST_BIN_ROOT.with(|b| b.borrow_mut().take()),
+    };
     TEST_CONFIG.with(|c| *c.borrow_mut() = Some(config));
     TEST_BIN_ROOT.with(|b| *b.borrow_mut() = Some(bin_root));
-    TEST_SKIP_UID.with(|s| *s.borrow_mut() = true);
     let res = f();
-    TEST_CONFIG.with(|c| *c.borrow_mut() = None);
-    TEST_BIN_ROOT.with(|b| *b.borrow_mut() = None);
-    TEST_SKIP_UID.with(|s| *s.borrow_mut() = false);
+    drop(restore);
     res
 }
 
@@ -72,16 +81,8 @@ pub(super) fn now_ms() -> Res<i64> {
 
 fn root_directory(path: &str) -> Res<()> {
     let m = std::fs::symlink_metadata(path).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    let mut valid = m.is_dir() && m.mode() & 0o022 == 0;
-    #[cfg(test)]
-    if !TEST_SKIP_UID.with(|s| *s.borrow()) {
-        valid = valid && m.uid() == 0;
-    }
-    #[cfg(not(test))]
-    {
-        valid = valid && m.uid() == 0;
-    }
-    valid
+    let f = super::custody::observed(&m);
+    super::custody::deploy_directory(&f)
         .then_some(())
         .ok_or(Fail::Config("live_host_unqualified"))
 }
@@ -101,32 +102,14 @@ fn root_file(path: &str) -> Res<File> {
     Ok(file)
 }
 
-fn check_file_metadata(m: &std::fs::Metadata) -> bool {
-    let checks = [
-        m.is_file(),
-        m.nlink() == 1,
-        m.mode() & 0o022 == 0,
-        m.len() <= 134217728,
-    ];
-    checks.into_iter().all(|v| v)
-}
-
-fn check_file_owner(m: &std::fs::Metadata) -> bool {
-    #[cfg(test)]
-    if TEST_SKIP_UID.with(|s| *s.borrow()) {
-        return true;
-    }
-    m.uid() == 0
-}
-
 fn qualify_file(file: &File) -> Res<()> {
     let m = file
         .metadata()
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
-    if !check_file_metadata(&m) || !check_file_owner(&m) {
-        return Err(Fail::Config("live_host_unqualified"));
-    }
-    Ok(())
+    let f = super::custody::observed(&m);
+    super::custody::deploy_file(&f)
+        .then_some(())
+        .ok_or(Fail::Config("live_host_unqualified"))
 }
 
 fn digest(mut file: File) -> Res<String> {
@@ -342,3 +325,7 @@ pub(super) fn watchdog_peer(peer: rustix::net::UCred) -> Res<()> {
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/launcher_qualification.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/m1_live_dns/units/qualification_custody.rs"]
+mod custody_tests;

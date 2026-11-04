@@ -1,4 +1,5 @@
 use super::*;
+use crate::custody::tests as custody_tests;
 use std::path::{Path, PathBuf};
 
 struct Directory(PathBuf);
@@ -230,12 +231,15 @@ fn root_directory_checks_directory_mode_and_uid() {
         root_directory(file_path.to_str().unwrap()).unwrap_err(),
         Fail::Config("live_host_unqualified")
     );
-    // With test env, directory passes
+    // Path redirection grants nothing: a non-root directory still refuses.
     with_test_env(
         directory.path().join("c.json"),
         directory.path().to_path_buf(),
         || {
-            assert!(root_directory(dir_path).is_ok());
+            assert_eq!(
+                root_directory(dir_path).unwrap_err(),
+                Fail::Config("live_host_unqualified")
+            );
         },
     );
 }
@@ -254,34 +258,36 @@ fn root_file_and_qualify_file_enforce_no_symlinks_and_single_link() {
     );
 
     with_test_env(file_path.clone(), directory.path().to_path_buf(), || {
+        let _map = custody_tests::install_fixture_map();
+        custody_tests::simulate_root_file(&file_path);
+
         // Nonexistent file fails
         assert_eq!(
             root_file("/nonexistent/duskweave/file").err(),
             Some(Fail::Config("live_host_unqualified"))
         );
-        // Valid file passes
+        // Valid simulated-root file passes
         let f = root_file(f_str).expect("open root file");
         assert!(qualify_file(&f).is_ok());
 
-        // Multi-link file fails qualify_file
+        // Multi-link file fails qualify_file: the shared inode is refreshed to
+        // its real post-hardlink link count so the nlink rule, not uid, refuses.
         let link_path = directory.path().join("hardlink.bin");
-        if std::fs::hard_link(&file_path, &link_path).is_ok() {
-            let f2 = File::open(&link_path).unwrap();
-            assert_eq!(
-                qualify_file(&f2).unwrap_err(),
-                Fail::Config("live_host_unqualified")
-            );
-        }
+        std::fs::hard_link(&file_path, &link_path).expect("create hardlink");
+        custody_tests::simulate_root_file_multilink(&file_path);
+        let f2 = File::open(&link_path).unwrap();
+        assert_eq!(
+            qualify_file(&f2).unwrap_err(),
+            Fail::Config("live_host_unqualified")
+        );
 
         // Symlink is rejected by openat2 with NO_SYMLINKS
         let sym_path = directory.path().join("symlink.bin");
-        #[cfg(target_os = "linux")]
-        if std::os::unix::fs::symlink(&file_path, &sym_path).is_ok() {
-            assert_eq!(
-                root_file(sym_path.to_str().unwrap()).err(),
-                Some(Fail::Config("live_host_unqualified"))
-            );
-        }
+        std::os::unix::fs::symlink(&file_path, &sym_path).expect("create symlink");
+        assert_eq!(
+            root_file(sym_path.to_str().unwrap()).err(),
+            Some(Fail::Config("live_host_unqualified"))
+        );
     });
 }
 
@@ -293,11 +299,15 @@ fn read_manifest_reads_and_verifies_config_file() {
     std::fs::write(&cfg_path, &json).unwrap();
 
     with_test_env(cfg_path.clone(), directory.path().to_path_buf(), || {
+        let _map = custody_tests::install_fixture_map();
+        custody_tests::simulate_root_file(&cfg_path);
+
         let qualified = read_manifest().expect("read valid manifest");
         assert_eq!(qualified.manifest.purpose, "LAB");
 
         // Overwrite with bad json
         std::fs::write(&cfg_path, b"{corrupted").unwrap();
+        custody_tests::simulate_root_file(&cfg_path);
         assert!(matches!(read_manifest(),
             Err(e) if e == Fail::Config("live_host_unqualified")));
     });
@@ -323,6 +333,10 @@ fn verify_image_checks_binary_digests() {
         directory.path().join("c.json"),
         directory.path().to_path_buf(),
         || {
+            let _map = custody_tests::install_fixture_map();
+            custody_tests::simulate_root_file(&capture);
+            custody_tests::simulate_root_file(&exporter);
+
             // Mismatch in capture hash
             let mut bad = parse_manifest(json.as_bytes()).unwrap();
             bad.manifest.capture_sha256 = "0".repeat(64);
