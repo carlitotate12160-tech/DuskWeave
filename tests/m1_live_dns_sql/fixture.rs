@@ -255,6 +255,160 @@ pub fn fabricate_live_run(e: Uuid, c: Uuid, session: bool, running: bool) -> (Uu
     (run, generation, result)
 }
 
+pub fn now_ms() -> i64 {
+    admin()
+        .query_one(
+            "SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint",
+            &[],
+        )
+        .unwrap()
+        .get(0)
+}
+
+/// Read the accepted registration publication through the restricted broker port.
+pub fn live_publication(e: Uuid, c: Uuid, run: Uuid) -> Value {
+    broker()
+        .query_one(
+            "SELECT mission.current_inference_publication($1,$2,$3)",
+            &[&e, &c, &run],
+        )
+        .unwrap()
+        .get(0)
+}
+
+/// The sole authority setup insert: one SQL-fixture qualification row bound
+/// exactly to the accepted live_binding. Digests/boot bytes are synthetic
+/// fixture values, never host evidence.
+pub fn seed_live_qualification(publication: &Value) -> Uuid {
+    let binding = &publication["fields"]["m1_inference_permission"]["live_binding"];
+    assert_eq!(binding["release_sha256"], RELEASE);
+    assert_eq!(binding["resolver_ipv4"], "192.0.2.53");
+    let qualification: Uuid = binding["qualification_ref"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let hex = |ch: char| ch.to_string().repeat(64);
+    admin()
+        .execute(
+            "INSERT INTO execution.live_qualifications(qualification_ref,run_profile,purpose,release_sha256,launcher_sha256,capture_sha256,exporter_sha256,image_digest,manifest_sha256,boot_id,resolver_ipv4,valid_from_ms,valid_until_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+            &[
+                &qualification,
+                &LAB,
+                &"LAB",
+                &RELEASE,
+                &hex('c'),
+                &hex('d'),
+                &hex('e'),
+                &format!("sha256:{}", hex('f')),
+                &hex('0'),
+                &Uuid::new_v4(),
+                &"192.0.2.53".parse::<std::net::IpAddr>().unwrap(),
+                &(now_ms() - 60000),
+                &(now_ms() + 3600000),
+            ],
+        )
+        .unwrap();
+    qualification
+}
+
+/// Typed v4 live run request constructed from the accepted publication.
+pub fn live_run_request(publication: &Value, run: Uuid) -> duskweave::m1_run::RunRequest {
+    let fields = &publication["fields"];
+    let permission = &fields["m1_inference_permission"];
+    let asset = fields["included_assets"][0].as_str().unwrap();
+    let raw = json!({
+        "version":"m1_autonomous_run_request_v4","run_id":run,"run_profile":LAB,
+        "execution_mode":"live","deadline_at_ms":now_ms()+300000,
+        "inference_profile":permission["profile"],
+        "live_binding":permission["live_binding"],
+        "context":{"version":"m1_context_prepare_request_v1","mission":{
+            "version":"m1_inference_reservation_request_v1",
+            "engagement_id":publication["engagement_id"],
+            "campaign_id":publication["campaign_id"],
+            "operator_ref":fields["operator_ref"],"expected_mission_revision":1,
+            "permission_id":permission["permission_id"],"goal_ref":fields["goal_ref"],
+            "exercise_mode":fields["exercise_mode"]},
+            "candidates":[{"asset_ref":asset,"priority":"high"}]},
+        "seed_names":[{"asset_ref":asset,"name":"seed.duskweave.test"}]});
+    duskweave::m1_run::RunRequest::parse(&serde_json::to_vec(&raw).unwrap())
+        .expect("typed live run request")
+}
+
+pub struct PreparedDecision {
+    pub scope: duskweave::m1_reasoning::inference::Scope,
+    pub pack: duskweave::m1_context::PreparedContext,
+    pub input_hash: String,
+    pub window_ms: i64,
+}
+
+/// Real D1 preparation: restricted broker renew/start/claim, input binding and
+/// ContextReader provenance. No fabricated pack or accounting rows.
+pub fn prepare_decision_one(
+    runs: &mut duskweave::postgres_m1_run::PgRunStore,
+    record: &duskweave::m1_run::RunRecord,
+) -> PreparedDecision {
+    use duskweave::m1_run::RunPhase;
+    use sha2::{Digest, Sha256};
+    let run = record.request.run_id;
+    runs.renew(run).unwrap();
+    runs.start_phase(run, RunPhase::DecisionOne).unwrap();
+    runs.claim_phase(run, RunPhase::DecisionOne, RELEASE)
+        .unwrap();
+    let q = &record.request.context;
+    let e = q.mission.engagement_id.0;
+    let c = q.mission.campaign_id.0;
+    let decision = record.decision_one;
+    let input_hash = Sha256::digest(serde_json::to_vec(q).unwrap())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let mut port = broker();
+    port.execute(
+        "SELECT execution.bind_inference_input($1,$2,$3,$4)",
+        &[&e, &c, &decision, &input_hash],
+    )
+    .unwrap();
+    let window_ms: i64 = port
+        .query_one(
+            "SELECT execution.inference_window_ms($1,$2,$3)",
+            &[&e, &c, &decision],
+        )
+        .unwrap()
+        .get(0);
+    let context = duskweave::m1_autonomous_context::AutonomousContext {
+        binding: duskweave::m1_autonomous_context::RunContextBinding {
+            engagement_id: q.mission.engagement_id,
+            campaign_id: q.mission.campaign_id,
+            run_profile: record.request.run_profile.clone(),
+            execution_mode: record.request.execution_mode.clone(),
+            inference_profile: record.request.inference_profile.clone(),
+            release_sha256: record.release_sha256.clone(),
+            qualification_ref: record.qualification_ref,
+        },
+        predecessor: None,
+    };
+    let pack = duskweave::m1_context::prepare_autonomous(
+        &mut duskweave::postgres_mission::PgContextReader::new(broker()),
+        q,
+        duskweave::mission::OperationId(decision),
+        &context,
+    )
+    .unwrap();
+    PreparedDecision {
+        scope: duskweave::m1_reasoning::inference::Scope {
+            engagement: e,
+            campaign: c,
+            decision,
+            mission_revision: 1,
+            permission: q.mission.permission_id,
+        },
+        pack,
+        input_hash,
+        window_ms,
+    }
+}
+
 pub fn run_fixture_wrapper() {
     if worker() {
         return;
