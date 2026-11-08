@@ -268,9 +268,12 @@ fn sql_live_pg_effect_store_admitted_lifecycle() {
         store.current_deadline(&session),
         Ok(session.attempt_deadline_at_ms)
     );
-    let before = now_ms();
     let attempt_deadline = store.may_start(&session).unwrap();
-    assert!(attempt_deadline > before && attempt_deadline <= now_ms() + 2000);
+    let expected_deadline = q(
+        &mut view,
+        "SELECT least(s.deadline_at_ms,e.occurred_at_ms+2000) FROM execution.live_effect_sessions s JOIN execution.live_effect_events e USING(run_id) WHERE run_id=$1 AND e.phase='may_start'",
+    );
+    assert_eq!(attempt_deadline, expected_deadline);
     let charged = store.inspect(run).unwrap();
     assert_eq!(charged.phase, EffectPhase::MayStart);
     assert!(charged.possibly_started);
@@ -301,7 +304,7 @@ fn sql_live_pg_effect_store_admitted_lifecycle() {
         }],
         aliases: vec![],
     };
-    store.record_result(&session, &result).unwrap();
+    store.record_result(&charged, &result).unwrap();
     let recorded = store.inspect(run).unwrap();
     assert_eq!(recorded.phase, EffectPhase::ResultRecorded);
     assert_eq!(recorded.result, Some(result.clone()));
@@ -319,10 +322,10 @@ fn sql_live_pg_effect_store_admitted_lifecycle() {
 
     // Identical replay is idempotent; a shape-valid differing projection hits
     // the SQL conflict branch and leaves stored state unchanged.
-    store.record_result(&session, &result).unwrap();
+    store.record_result(&charged, &result).unwrap();
     let mut conflicting = result.clone();
     conflicting.answers[0].ttl_seconds = 30;
-    let conflict = store.record_result(&session, &conflicting);
+    let conflict = store.record_result(&charged, &conflicting);
     assert_eq!(
         conflict,
         Err(Fail::Unresolved("live_result_commit_unknown"))
@@ -426,8 +429,8 @@ fn sql_live_receipt_binds_qualification_fields() {
     assert!(!qualified(run), "release mismatch cannot be live_qualified");
     admin()
         .execute(
-            "UPDATE execution.live_qualifications SET valid_until_ms=2 WHERE qualification_ref=(SELECT qualification_ref FROM execution.autonomous_runs WHERE run_id=$1)",
-            &[&run],
+            "UPDATE execution.live_qualifications SET release_sha256=$1,valid_until_ms=2 WHERE qualification_ref=(SELECT qualification_ref FROM execution.autonomous_runs WHERE run_id=$2)",
+            &[&RELEASE, &run],
         )
         .unwrap();
     assert!(

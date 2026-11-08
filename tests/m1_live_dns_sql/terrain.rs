@@ -7,7 +7,13 @@ use uuid::Uuid;
 #[ignore = "runs only inside the dedicated schema-0030 fixture worker"]
 fn sql_live_terrain_integrity_hold_persists_under_active_fence() {
     assert!(worker());
-    let _g = terrain_support::db();
+    let _g = terrain_support::native::qualified_existing_db();
+    duskweave::postgres_m1_terrain::qualify_terrain(&mut terrain_support::terrain_client())
+        .expect("terrain role qualification");
+    duskweave::postgres_terrain_history::qualify_terrain_trajectory(
+        &mut terrain_support::trajectory_client(),
+    )
+    .expect("trajectory role qualification");
     let (e, c, _ev, now) = register_live_campaign(0x5e01);
     // Accept one ordinary observation first (unfenced scope).
     let req = terrain_support::parse_req(&terrain_support::dns_request_json(e, c, now - 20));
