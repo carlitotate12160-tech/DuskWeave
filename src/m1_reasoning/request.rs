@@ -131,7 +131,7 @@ fn bytes(value: &Value, cap: usize) -> Result<Vec<u8>, &'static str> {
 pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'static str> {
     let ids = reference_ids(pack)?;
     let parsed: Value = serde_json::from_slice(pack).map_err(|_| "request_encode")?;
-    if parsed["version"] == "m1_context_pack_autonomous_v3" {
+    if super::inference_intent::sdk_pack(pack) {
         return Err("request_encode");
     }
     if matches!(
@@ -140,6 +140,7 @@ pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'s
             "m1_context_pack_autonomous_v1"
                 | "m1_context_pack_autonomous_v2"
                 | "m1_context_pack_autonomous_v3"
+                | "m1_context_pack_autonomous_v4"
         )
     ) {
         return autonomous::bind(pack, &parsed, &ids, repair_codes);
@@ -317,6 +318,7 @@ fn pack_limit(value: &Value) -> usize {
             "m1_context_pack_autonomous_v1"
                 | "m1_context_pack_autonomous_v2"
                 | "m1_context_pack_autonomous_v3"
+                | "m1_context_pack_autonomous_v4"
         )
     ) {
         8192

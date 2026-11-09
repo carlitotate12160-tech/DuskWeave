@@ -16,7 +16,7 @@ SKILL_DOCS = {
     ".agents/skills/duskweave-adversarial-review/SKILL.md",
 }
 DOC_PATTERN = r"docs/(?:adr|prd|contracts|build-order|workflows)/[A-Za-z0-9_./-]+\.md"
-REQUIRED = {"changes", "links", "structure", "metrics", "rust", "codeql", "dependencies"}
+REQUIRED = {"changes", "links", "structure", "metrics", "rust", "codeql", "dependencies", "go-boundary"}
 
 
 def git(*args):
@@ -75,7 +75,7 @@ def gate(needs):
     if scope not in {"docs", "full"}:
         return False
     for name, data in needs.items():
-        skipped_docs = name == "rust" and scope == "docs" and data.get("result") == "skipped"
+        skipped_docs = name in {"rust", "go-boundary"} and scope == "docs" and data.get("result") == "skipped"
         if data.get("result") != "success" and not skipped_docs:
             return False
     return True

@@ -353,3 +353,50 @@ Current SDK support: real inference may use the consented
 `controlled_fixture`. Real target acquisition still requires a separately
 delivered and qualified Linux runtime. Each episode still requires fresh
 consent — no existing run, episode or approval carries over.
+
+## Linux LAB build storage (owned Oracle ARM64)
+
+The LAB deployment on `pica-arm-01` uses `boundary/qualify/qualify.sh`
+(`service`, `release`, `lab-database`, `lab-bind`, `build-storage`).
+For the local exporter-attach candidate, Docker starts the exporter as PID1 with
+its fixed UID and network disabled. The launcher connects to both containers
+before READY, sends the exporter its independent REQUEST and START, and stages
+one bounded capture frame through capture stdout EOF before forwarding it on
+the exporter's parent-owned attach input. The exporter returns only the safe
+RESULT; the launcher sends ACK after the core has durably handled that result.
+The input stays open through ACK. Historical unresolved `transport.pending`
+markers still block confirmed disposal, while new attempts dispose through
+container and namespace custody.
+
+Qualify that candidate from the fresh source with `build-storage`,
+`lab-database`, `release`, then `lab-bind`, recording each exit status.
+Preserve the prior installed binaries, manifest bytes and metadata, and image
+digest before `release`; restore and verify them after the packet-owned tests
+and workers finish. Do not run `prepare-host.sh` for this refactor. This
+procedure does not make a candidate the permanent installed release.
+
+Build output, caches and temporary writes must land on a separately
+mounted ext4 block volume at `/srv/duskweave-build`; source, reports,
+toolchains, Docker, containerd and PostgreSQL stay on the boot
+filesystem. The `release` and `build-storage` commands fail closed
+before any compiler or Docker write when the mount is absent, not a
+mountpoint, a symlink, shares a device with `/`, `/var/lib/docker` or
+`/var/lib/containerd`, is not ext4, or carries foreign content —
+including names beginning with dots. Each existing fixed output/cache/
+temporary component (`normal`, `go-cache`, `tmp`, `tmp/go`, `tmp/build`,
+`go-release`, `boundary-release`, `coverage`) must itself be a real
+root-owned directory on the same filesystem: no symlink, file, nested
+mount or group/world write. Newly created fixed directories receive the
+same validation before consumption. The check emits only mount identity
+and fixed failure categories.
+
+Prerequisite: an operator-provisioned owned volume at the fixed path
+(UUID fstab entry with `_netdev`; iSCSI auto-login). Rollback: the
+volume holds only rebuildable outputs — losing it fails closed; the
+retained `/srv/duskweave/build` tree is untouched: its retired
+build outputs are never consulted, while the explicitly retained Cargo
+dependency cache under it may still be read by builds.
+Limits: the separate filesystem removes the demonstrated build-writeback
+stall of containerd temporary-layer unmount; it is not a readiness
+guarantee against other device/VM coupling. The original 5000-ms
+preparation deadline is unchanged and re-measured, never raised.

@@ -22,7 +22,7 @@ curl = "=0.4.51"
 process-wrap = { version = "=10.0.1", optional = true, default-features = false, features = ["std", "job-object", "process-group"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { version = "=1.1.5", features = ["fs", "process"] }
+rustix = { version = "=1.1.5", features = ["fs", "process", "net"] }
 
 [[bin]]
 name = "duskweave"
@@ -32,6 +32,10 @@ path = "src/main.rs"
 name = "dw-fixture-supervisor"
 path = "src/bin/dw-fixture-supervisor/main.rs"
 required-features = ["fixture-supervisor"]
+
+[[bin]]
+name = "dw-boundary-launcher"
+path = "src/bin/dw-boundary-launcher/main.rs"
 
 [dev-dependencies]
 tracing = "=0.1.44"

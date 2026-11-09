@@ -44,15 +44,17 @@ impl CallIdentity {
 }
 
 pub fn sdk_pack(pack: &[u8]) -> bool {
-    serde_json::from_slice::<Value>(pack)
-        .is_ok_and(|p| p["version"] == "m1_context_pack_autonomous_v3")
+    serde_json::from_slice::<Value>(pack).is_ok_and(|p| {
+        matches!(
+            p["version"].as_str(),
+            Some("m1_context_pack_autonomous_v3" | "m1_context_pack_autonomous_v4")
+        )
+    })
 }
 fn parsed_pack(pack: &[u8]) -> Res<Value> {
     let p = super::bounded_json::parse(pack, 8192, 1024).map_err(|_| "request_encode")?;
     let valid = [
-        p["version"] == "m1_context_pack_autonomous_v3",
-        p["run_profile"] == profiles::RUN_PROFILE,
-        p["execution_mode"] == "controlled_fixture",
+        pack_binding(&p),
         p["mission_revision"].as_u64().is_some_and(|n| n > 0),
     ];
     if !valid.into_iter().all(|v| v) {
@@ -69,6 +71,26 @@ fn parsed_pack(pack: &[u8]) -> Res<Value> {
         }
     }
     Ok(p)
+}
+fn pack_binding(p: &Value) -> bool {
+    if p["version"] == "m1_context_pack_autonomous_v4" {
+        return profiles::live_binding(
+            p["run_profile"].as_str().unwrap_or_default(),
+            p["execution_mode"].as_str().unwrap_or_default(),
+            p["inference_profile"].as_str().unwrap_or_default(),
+        ) && serde_json::from_value::<crate::m1_inference_permission::LiveBinding>(
+            p["live_binding"].clone(),
+        )
+        .is_ok_and(|binding| {
+            binding
+                .validate_for(p["run_profile"].as_str().unwrap_or_default())
+                .is_ok()
+        }) && profiles::sdk_versions(p["run_profile"].as_str().unwrap_or_default())
+            .is_ok_and(|v| p["qualification_purpose"].as_str() == v.qualification_purpose);
+    }
+    p["version"] == "m1_context_pack_autonomous_v3"
+        && p["run_profile"] == profiles::RUN_PROFILE
+        && p["execution_mode"] == "controlled_fixture"
 }
 fn scope_matches(p: &Value, s: &Scope) -> bool {
     p["engagement_id"] == json!(s.engagement)
@@ -97,13 +119,11 @@ pub fn digest(pack: &[u8], intent: &[u8]) -> String {
 }
 fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
     let p = parsed_pack(pack)?;
-    let profile = sdk_profile(&p)?;
-    if let Some(codes) = codes {
-        if codes.is_empty() {
-            return Err("repair_code_ineligible");
-        }
-        super::request::validate_repair_codes(codes)?;
+    let (profile, versions) = sdk_binding(&p)?;
+    if codes.is_some_and(<[_]>::is_empty) {
+        return Err("repair_code_ineligible");
     }
+    super::request::validate_repair_codes(codes.unwrap_or_default())?;
     let (instructions, schema) = super::request::semantic_material(pack)?;
     let t = profile.timing;
     let limits = json!({"request_bytes":16384,"response_bytes":65536,"context_bytes":8192,
@@ -112,27 +132,32 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
             "decision_wall_time_ms":t.decision_ms,"phase_wall_time_ms":t.phase_ms,
             "cancel_grace_ms":t.stop_ms,"accounting_window_ms":t.accounting_ms,
             "output_tokens_per_call":4096,"calls_per_decision":2,"concurrency":1});
-    Ok(
-        json!({"version":VERSION,"permission_version":"m1_inference_permission_v5",
-        "run_version":"m1_autonomous_run_request_v3","engagement_id":p["engagement_id"],
+    let mut intent = json!({"version":VERSION,"permission_version":versions.permission,
+        "run_version":versions.run,"engagement_id":p["engagement_id"],
         "campaign_id":p["campaign_id"],"decision_id":p["decision_id"],
         "permission_id":p["permission_id"],"mission_revision":p["mission_revision"],
-        "run_profile":profiles::RUN_PROFILE,"execution_mode":"controlled_fixture",
+        "run_profile":p["run_profile"],"execution_mode":p["execution_mode"],
         "protocol":"openai-resp-v1","profile":profile.name,"recipient":profile.connection.recipient,
         "model":profile.settings.model,"adapter_release":"genai-a9504f1-dw1",
         "template_version":"m1-autonomous-inference-v3","schema_version":"m1_inference_proposal_v1",
         "instructions":instructions,"schema":schema,"timing_profile":profiles::TIMING_PROFILE,
         "settings":{"reasoning_effort":"low","max_output_tokens":4096,"stream":false,"store":false,"tools":[]},
-        "repair_error_codes":codes.unwrap_or_default(),"limits":limits}),
-    )
+        "repair_error_codes":codes.unwrap_or_default(),"limits":limits});
+    if p["version"] == "m1_context_pack_autonomous_v4" {
+        intent["live_binding"] = p["live_binding"].clone();
+        intent["qualification_purpose"] = p["qualification_purpose"].clone();
+    }
+    Ok(intent)
 }
-fn sdk_profile(p: &Value) -> Res<profiles::Profile> {
+fn sdk_binding(p: &Value) -> Res<(profiles::Profile, profiles::SdkVersions)> {
     let profile = profiles::lookup(p["inference_profile"].as_str().ok_or("request_encode")?)
         .map_err(|_| "request_encode")?;
     if profile.backend != Backend::Genai {
         return Err("request_encode");
     }
-    Ok(profile)
+    let versions = profiles::sdk_versions(p["run_profile"].as_str().ok_or("request_encode")?)
+        .map_err(|_| "request_encode")?;
+    Ok((profile, versions))
 }
 // UUID JSON values always occupy 36 text bytes plus two quotes. Generation is
 // bounded by Rust u64's 20 digits (SQL reservations are narrower positive i64).

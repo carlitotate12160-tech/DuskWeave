@@ -15,6 +15,18 @@ pub struct IssuedDnsReference {
     execution_mode: String,
 }
 impl IssuedDnsReference {
+    pub fn live(e: EngagementId, c: CampaignId, result: Uuid, run_profile: &str) -> Res<Self> {
+        let q = Self {
+            version: "m1_terrain_dns_issued_observation_v2".into(),
+            engagement_id: e,
+            campaign_id: c,
+            result_ref: result,
+            run_profile: run_profile.into(),
+            execution_mode: "live".into(),
+        };
+        q.validate()?;
+        Ok(q)
+    }
     pub fn fixture(e: EngagementId, c: CampaignId, result: Uuid) -> Res<Self> {
         Self::controlled_fixture(e, c, result, "autonomous-dns-fixture-v1")
     }
@@ -37,14 +49,7 @@ impl IssuedDnsReference {
     }
     pub fn validate(&self) -> Res<()> {
         let valid = [
-            self.version == "m1_terrain_dns_issued_observation_v1",
-            matches!(
-                self.run_profile.as_str(),
-                "autonomous-dns-fixture-v1"
-                    | "autonomous-dns-provider-fixture-v1"
-                    | "autonomous-dns-fixture-v2"
-            ),
-            self.execution_mode == "controlled_fixture",
+            self.source_binding(),
             !self.engagement_id.0.is_nil(),
             !self.campaign_id.0.is_nil(),
             !self.result_ref.is_nil(),
@@ -54,5 +59,21 @@ impl IssuedDnsReference {
             .all(|v| v)
             .then_some(())
             .ok_or(Fail::Input("invalid_issued_source_reference"))
+    }
+    fn source_binding(&self) -> bool {
+        use crate::m1_inference_profile::{LAB_RUN_PROFILE, LIVE_RUN_PROFILE};
+        match (self.version.as_str(), self.execution_mode.as_str()) {
+            ("m1_terrain_dns_issued_observation_v1", "controlled_fixture") => matches!(
+                self.run_profile.as_str(),
+                "autonomous-dns-fixture-v1"
+                    | "autonomous-dns-provider-fixture-v1"
+                    | crate::m1_inference_profile::RUN_PROFILE
+            ),
+            ("m1_terrain_dns_issued_observation_v2", "live") => matches!(
+                self.run_profile.as_str(),
+                LIVE_RUN_PROFILE | LAB_RUN_PROFILE
+            ),
+            _ => false,
+        }
     }
 }

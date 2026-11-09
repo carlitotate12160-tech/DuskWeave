@@ -66,9 +66,11 @@ fn inspect_recover_and_stop_only_parse_their_broker_configuration() {
             .output()
             .unwrap();
         assert!(!output.status.success());
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout).trim(),
+        let expected = if operation == "m1-run-stop" {
+            "{\"run_id\":\"00000000-0000-4000-8000-000000000001\",\"local_stop\":{\"stop_latched\":false,\"disposal_confirmed\":false},\"result\":\"unknown\",\"reason\":\"invalid_dsn\",\"continuation_blocked\":true}\nerror=invalid_dsn"
+        } else {
             "error=invalid_dsn"
-        );
+        };
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
     }
 }

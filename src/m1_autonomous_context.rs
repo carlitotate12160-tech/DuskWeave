@@ -25,7 +25,7 @@ impl AutonomousContext {
         configuration_cap: usize,
     ) -> Res<()> {
         self.binding.validate()?;
-        pack["version"] = json!(self.binding.pack_version());
+        pack["version"] = json!(self.binding.pack_version()?);
         if let Some(profile) = &self.binding.inference_profile {
             pack["inference_profile"] = json!(profile);
         }
@@ -45,7 +45,10 @@ impl AutonomousContext {
                 reference["source"] = json!("admitted_operator_seed");
             }
         }
-        let caps = if pack["version"] == "m1_context_pack_autonomous_v3" {
+        let caps = if matches!(
+            pack["version"].as_str(),
+            Some("m1_context_pack_autonomous_v3" | "m1_context_pack_autonomous_v4")
+        ) {
             (context_cap, configuration_cap)
         } else {
             (8192, 16384)
@@ -72,7 +75,11 @@ impl AutonomousContext {
 fn fit_optional_summary(pack: &mut Value, caps: (usize, usize)) -> Res<()> {
     if !matches!(
         pack["version"].as_str(),
-        Some("m1_context_pack_autonomous_v2" | "m1_context_pack_autonomous_v3")
+        Some(
+            "m1_context_pack_autonomous_v2"
+                | "m1_context_pack_autonomous_v3"
+                | "m1_context_pack_autonomous_v4"
+        )
     ) || pack["predecessor"].get("hypothesis_summary").is_none()
     {
         return Ok(());
@@ -103,7 +110,7 @@ fn set_trajectory_view(pack: &mut Value, event: Option<Value>) -> Res<()> {
 }
 
 impl RunContextBinding {
-    fn pack_version(&self) -> &'static str {
+    fn pack_version(&self) -> Res<&'static str> {
         use crate::m1_inference_profile::{Backend, lookup};
         match self
             .inference_profile
@@ -111,9 +118,11 @@ impl RunContextBinding {
             .and_then(|name| lookup(name).ok())
             .map(|p| p.backend)
         {
-            Some(Backend::Genai) => "m1_context_pack_autonomous_v3",
-            Some(Backend::Legacy) => "m1_context_pack_autonomous_v2",
-            None => "m1_context_pack_autonomous_v1",
+            Some(Backend::Genai) => {
+                crate::m1_inference_profile::sdk_versions(&self.run_profile).map(|v| v.pack)
+            }
+            Some(Backend::Legacy) => Ok("m1_context_pack_autonomous_v2"),
+            None => Ok("m1_context_pack_autonomous_v1"),
         }
     }
 
@@ -155,6 +164,10 @@ impl RunContextBinding {
         let Some(name) = self.inference_profile.as_deref() else {
             return false;
         };
+        if crate::m1_inference_profile::live_binding(&self.run_profile, &self.execution_mode, name)
+        {
+            return true;
+        }
         let valid = [
             self.run_profile == crate::m1_inference_profile::RUN_PROFILE,
             self.execution_mode == "controlled_fixture",

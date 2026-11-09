@@ -5,7 +5,9 @@ impl InferencePermission {
     pub(super) fn check_limits(&self) -> Res<()> {
         if matches!(
             self.version.as_str(),
-            "m1_inference_permission_v4" | "m1_inference_permission_v5"
+            "m1_inference_permission_v4"
+                | "m1_inference_permission_v5"
+                | "m1_inference_permission_v6"
         ) {
             return self.check_successor_limits();
         }
@@ -68,5 +70,87 @@ impl InferencePermission {
             return Err(Fail::Input("inference_unsupported_operation_profile"));
         }
         Ok(())
+    }
+}
+
+impl InferencePermission {
+    pub(super) fn check_autonomous(&self) -> Res<()> {
+        let binding = (
+            self.run_profile.as_deref(),
+            self.execution_mode.as_deref(),
+            self.profile.as_str(),
+            self.recipient.as_str(),
+        );
+        let supported = matches!(
+            binding,
+            (
+                Some("autonomous-dns-fixture-v1"),
+                Some("controlled_fixture"),
+                "deterministic-autonomous-v1",
+                "urn:duskweave:fixture:inference:v1"
+            ) | (
+                Some("autonomous-dns-provider-fixture-v1"),
+                Some("controlled_fixture"),
+                "deepseek-responses-autonomous-v1",
+                "https://api.deepseek.com/responses"
+            ) | (
+                Some("autonomous-dns-v1"),
+                Some("live"),
+                "deepseek-responses-autonomous-v1",
+                "https://api.deepseek.com/responses"
+            )
+        );
+        let valid = [
+            supported,
+            self.provider_terms_approved,
+            !self.permission_id.is_nil(),
+            !self.provider_terms_ref.is_nil(),
+            self.field_classes
+                .contains(&SafeFieldClass::AdmittedCampaignDecisionFeedback),
+        ];
+        if !valid.into_iter().all(|v| v) {
+            return Err(Fail::Input("inference_unsupported_profile"));
+        }
+        self.check_field_classes()?;
+        self.validate_native_profile()
+    }
+    /// Bounded configured disclosure only; the caller must still obtain current authority.
+    pub fn autonomous_binding(&self) -> Option<(&str, &str)> {
+        self.run_profile
+            .as_deref()
+            .zip(self.execution_mode.as_deref())
+    }
+}
+
+impl InferencePermission {
+    pub(super) fn check_initial_profile(&self) -> Res<()> {
+        self.check_legacy_profile()?;
+        if self.permission_id.is_nil() || self.provider_terms_ref.is_nil() {
+            return Err(Fail::Input("nil_reference"));
+        }
+        self.check_field_classes()?;
+        self.validate_native_profile()
+    }
+    fn check_legacy_profile(&self) -> Res<()> {
+        let supported = matches!(
+            (self.version.as_str(), self.profile.as_str()),
+            ("m1_inference_permission_v1", "deepseek-responses-v1")
+                | (
+                    "m1_inference_permission_v2",
+                    "deepseek-responses-envelope32-v1"
+                )
+        );
+        if !supported
+            || self.recipient != "https://api.deepseek.com/responses"
+            || !self.provider_terms_approved
+        {
+            return Err(Fail::Input("inference_unsupported_profile"));
+        }
+        let valid = [self.execution_mode.is_none(), self.run_profile.is_none()];
+        valid
+            .into_iter()
+            .all(|v| v)
+            .then_some(())
+            .ok_or(Fail::Input("inference_unsupported_profile"))
     }
 }

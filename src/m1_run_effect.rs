@@ -1,4 +1,5 @@
-//! Broker fixture effect, independent Terrain acceptance, and required Trajectory delivery.
+//! Broker effect acquisition, independent Terrain acceptance, and required Trajectory delivery.
+mod live;
 use duskweave::m1_run::{NextStep, RunRecord};
 use duskweave::postgres_m1_run::PgRunStore;
 use duskweave::postgres_m1_terrain::PgTerrainStore;
@@ -8,6 +9,12 @@ use duskweave::trajectory::HistoryStatus;
 use duskweave::{Fail, Res};
 
 pub(super) fn acquire(run: &RunRecord) -> Res<()> {
+    if run.request.live() {
+        return live::acquire(run);
+    }
+    acquire_fixture(run)
+}
+fn acquire_fixture(run: &RunRecord) -> Res<()> {
     let mut broker = PgRunStore::new(super::m1_reasoning_cli::broker_connection()?);
     let proposal = broker.first_proposal(run)?;
     let NextStep::Dns { seed_index } =
@@ -21,16 +28,28 @@ pub(super) fn acquire(run: &RunRecord) -> Res<()> {
     deliver(run)
 }
 
-fn accept_issued(run: &RunRecord) -> Res<duskweave::m1_terrain::TerrainAcceptedEvent> {
+fn issued_reference(run: &RunRecord) -> Res<duskweave::m1_terrain_issued::IssuedDnsReference> {
     let q = &run.request.context.mission;
+    if run.request.live() {
+        duskweave::m1_terrain_issued::IssuedDnsReference::live(
+            q.engagement_id,
+            q.campaign_id,
+            run.result,
+            &run.request.run_profile,
+        )
+    } else {
+        duskweave::m1_terrain_issued::IssuedDnsReference::controlled_fixture(
+            q.engagement_id,
+            q.campaign_id,
+            run.result,
+            &run.request.run_profile,
+        )
+    }
+}
+fn accept_issued(run: &RunRecord) -> Res<duskweave::m1_terrain::TerrainAcceptedEvent> {
     let mut terrain = PgTerrainStore::new(super::m1_terrain_cli::terrain_connection()?);
     let mut mission = PgMissionStore::new(super::connect()?);
-    let reference = duskweave::m1_terrain_issued::IssuedDnsReference::controlled_fixture(
-        q.engagement_id,
-        q.campaign_id,
-        run.result,
-        &run.request.run_profile,
-    )?;
+    let reference = issued_reference(run)?;
     let (event, _, _, _) = terrain
         .record_issued(&mut mission, &reference)?
         .map_err(Fail::State)?;
