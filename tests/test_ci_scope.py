@@ -296,22 +296,58 @@ class WorkflowWiring(unittest.TestCase):
         self.assertNotIn("cargo llvm-cov show-env", self.jobs["rust-tests"])
         self.assertNotIn("cargo test --no-run", self.jobs["rust-tests"])
 
-    def test_worker_evidence_download_modes_are_exclusive(self):
+    def test_worker_evidence_downloads_use_selected_artifact_ids(self):
         rust = self.jobs["rust"]
-        # Serial mode: a single artifact lands without its named child dir on
-        # the pinned action, so it is addressed by exact name into its root.
-        serial = re.search(
-            r"- name: Download single-worker evidence \(serial mode\)\n"
+        # Job-local read-only permissions: listing needs actions:read and
+        # nothing in this job may write.
+        self.assertIn("contents: read", rust)
+        self.assertIn("actions: read", rust)
+        self.assertNotIn("actions: write", rust)
+        self.assertNotIn("contents: write", rust)
+        # Inventory listing is the only token consumer; it precedes selection.
+        listing = re.search(
+            r"- name: List this run's artifact inventory\n"
             r"(.*?)- name:", rust, re.S).group(1)
-        self.assertIn("rust_workers == '1'", serial)
-        self.assertIn("name: dw-rust-worker-0-", serial)
-        self.assertIn("/dw-evidence/dw-rust-worker-0-", serial)
-        sharded = re.search(
-            r"- name: Download worker evidence and raw profiles "
-            r"\(sharded mode\)\n(.*?)- name:", rust, re.S).group(1)
-        self.assertIn("rust_workers == '2'", sharded)
-        self.assertIn("pattern: dw-rust-worker-*-", sharded)
-        self.assertIn("merge-multiple: false", sharded)
+        for text in ("gh api", "per_page=100", "--paginate --slurp",
+                     "actions/runs/", "GH_TOKEN"):
+            self.assertIn(text, listing)
+        self.assertLess(rust.index("List this run's artifact inventory"),
+                        rust.index("Select worker evidence artifact IDs"))
+        select = re.search(
+            r"- name: Select worker evidence artifact IDs\n"
+            r"(.*?)- name:", rust, re.S).group(1)
+        self.assertIn("id: select", select)
+        for text in ("scripts/ci_worker_artifacts.py select",
+                     "--inventory", "--sha", "--run-id", "--attempt",
+                     "--workers", "GITHUB_OUTPUT"):
+            self.assertIn(text, select)
+        self.assertLess(rust.index("Select worker evidence artifact IDs"),
+                        rust.index("Download worker 0"))
+        pin = "9000827ccba6bdab643e8b6fd33ac0654aef8333"
+        worker0 = re.search(
+            r"- name: Download worker 0 evidence and raw profiles\n"
+            r"(.*?)- name:", rust, re.S).group(1)
+        self.assertIn(pin, worker0)
+        self.assertIn("artifact-ids: ${{ steps.select.outputs.worker_0_id }}",
+                      worker0)
+        self.assertIn("/dw-evidence/dw-rust-worker-0", worker0)
+        self.assertNotIn("if:", worker0)
+        worker1 = re.search(
+            r"- name: Download worker 1 evidence and raw profiles\n"
+            r"(.*?)- name:", rust, re.S).group(1)
+        self.assertIn(pin, worker1)
+        self.assertIn("rust_workers == '2'", worker1)
+        self.assertIn("artifact-ids: ${{ steps.select.outputs.worker_1_id }}",
+                      worker1)
+        self.assertIn("/dw-evidence/dw-rust-worker-1", worker1)
+        # The current-attempt name/pattern consumer filter is gone; worker
+        # upload names keep their attempt suffix for immutable provenance
+        # while the selector gets the attempt only as an input bound.
+        region = rust[rust.index("Extract the object set"):
+                      rust.index("Verify candidate, tools")]
+        self.assertNotIn("merge-multiple", region)
+        self.assertNotIn("-${{ github.run_attempt }}", region)
+        self.assertNotIn("pattern: dw-rust-worker-", region)
         # Staging binds the dir count to the requested worker count and
         # requires nonempty per-worker profiles before invoking aggregate.
         staging = step_body(rust, "Validate complete worker evidence "
