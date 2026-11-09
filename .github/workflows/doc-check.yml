@@ -523,6 +523,9 @@ jobs:
   rust:
     needs: [changes, rust-build, rust-tests]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.scope != 'docs') }}
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -565,23 +568,40 @@ jobs:
       - name: Extract the object set at its original absolute paths
         run: tar --zstd -xf "$RUNNER_TEMP/dw-rust-build/dw-rust-build.tar.zst" -C "$GITHUB_WORKSPACE"
 
-      # The pinned download-artifact action extracts a single match directly
-      # into the destination (no child dir), so the serial mode must address
-      # the one worker artifact by exact name into its own named root.
-      - name: Download single-worker evidence (serial mode)
-        if: needs.changes.outputs.rust_workers == '1'
+      - name: List this run's artifact inventory
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts?per_page=100" \
+            --paginate --slurp > "$RUNNER_TEMP/dw-artifacts.json"
+
+      - name: Select worker evidence artifact IDs
+        id: select
+        run: |
+          set -e
+          python3 scripts/ci_worker_artifacts.py select \
+            --inventory "$RUNNER_TEMP/dw-artifacts.json" \
+            --sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --attempt "${{ github.run_attempt }}" \
+            --workers "${{ needs.changes.outputs.rust_workers }}" \
+            --output "$GITHUB_OUTPUT"
+
+      # Each selected artifact downloads by ID into its own explicit worker
+      # root; the pinned action flattens a single artifact into that root.
+      - name: Download worker 0 evidence and raw profiles
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: dw-rust-worker-0-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-0-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ steps.select.outputs.worker_0_id }}
+          path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-0
 
-      - name: Download worker evidence and raw profiles (sharded mode)
+      - name: Download worker 1 evidence and raw profiles
         if: needs.changes.outputs.rust_workers == '2'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: dw-rust-worker-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/dw-evidence
-          merge-multiple: false
+          artifact-ids: ${{ steps.select.outputs.worker_1_id }}
+          path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-1
 
       - name: Verify candidate, tools and object set
         run: |
