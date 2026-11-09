@@ -364,6 +364,41 @@ class RecoveryTest(unittest.TestCase):
                 "--out", str(ev / "receipt.json"))
             self.assertEqual(r.returncode, 0, r.stderr)
         self.ev = Path(self.tmp.name) / "dw-evidence"
+        self.checkout = "a" * 40  # the synthetic manifest's checkout
+
+    def _select(self, inventory, attempt=3, workers=2):
+        """Run the real selector CLI; return parsed worker_N_id outputs."""
+        inv = Path(self.tmp.name) / "inv.json"
+        inv.write_text(json.dumps(inventory), encoding="utf-8")
+        out = Path(self.tmp.name) / "sel-out"
+        out.write_text("")
+        r = subprocess.run(
+            [sys.executable, str(SCRIPT), "select",
+             "--inventory", str(inv), "--sha", self.checkout,
+             "--run-id", str(RUN), "--attempt", str(attempt),
+             "--workers", str(workers), "--output", str(out)],
+            capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return dict(l.split("=", 1) for l in out.read_text().splitlines()
+                    if "=" in l)
+
+    def _content(self, name, worker, bad_receipt=False):
+        """Synthetic artifact content: valid evidence copy + nonempty profraw."""
+        dst = Path(self.tmp.name) / name
+        shutil.copytree(self.ws.root / f"evidence-w{worker}", dst)
+        if bad_receipt:
+            rc = shards.read_json(dst / "receipt.json")
+            rc["manifest_sha256"] = "0" * 64
+            (dst / "receipt.json").write_text(json.dumps(rc))
+        (dst / "profraw").mkdir()
+        (dst / "profraw" / f"w{worker}-1-2.profraw").write_bytes(b"p")
+        return dst
+
+    def _materialize(self, content, selected):
+        """Extract only the selected IDs into canonical worker roots."""
+        for worker, key in ((0, "worker_0_id"), (1, "worker_1_id")):
+            shutil.copytree(content[int(selected[key])],
+                            self.ev / f"dw-rust-worker-{worker}")
 
     def _place(self, worker, src=None, profraw=True):
         dst = self.ev / f"dw-rust-worker-{worker}"
@@ -427,21 +462,38 @@ class RecoveryTest(unittest.TestCase):
         self.assertNotEqual(self._stage(2).returncode, 0)
 
     def test_newer_selected_bad_evidence_rejected_without_fallback(self):
-        self._place(0)
-        self._place(1)
-        # A newer attempt's worker-0 artifact whose receipt does not bind
-        # this manifest: the selector still picks the newest identity, and
-        # the real consumer must reject it rather than reuse older evidence.
-        bad = Path(self.tmp.name) / "bad-w0"
-        shutil.copytree(self.ws.root / "evidence-w0", bad)
-        receipt = shards.read_json(bad / "receipt.json")
-        receipt["manifest_sha256"] = "0" * 64
-        (bad / "receipt.json").write_text(json.dumps(receipt))
-        bad_dir = self.ev / "dw-rust-worker-0"
-        shutil.rmtree(bad_dir)
-        shutil.copytree(bad, bad_dir)
+        # Inventory with older-good and newer-bad worker-0 artifacts: the
+        # selector picks the newest identity, and the real consumer must
+        # reject that content at receipt binding without using the older one.
+        content = {7001: self._content("w0-old", 0),
+                   7003: self._content("w0-new", 0, bad_receipt=True),
+                   7002: self._content("w1", 1)}
+        sha = self.checkout
+        inv = [page(artifact(worker_name(0, 2, sha=sha), 7001),
+                    artifact(worker_name(0, 3, sha=sha), 7003),
+                    artifact(worker_name(1, 2, sha=sha), 7002))]
+        sel = self._select(inv)
+        self.assertEqual(sel["worker_0_id"], "7003")
+        self.assertEqual(sel["worker_1_id"], "7002")
+        self._materialize(content, sel)
         r = self._stage(2)
         self.assertNotEqual(r.returncode, 0)
+        self.assertIn("worker 0 receipt does not bind this candidate",
+                      r.stderr + r.stdout)
+
+    def test_older_valid_evidence_passes_when_it_is_the_newest(self):
+        # Positive control with a restricted inventory: the older valid
+        # artifact is the newest available, is selected and stages cleanly.
+        content = {7001: self._content("w0-old", 0),
+                   7002: self._content("w1", 1)}
+        inv = [page(artifact(worker_name(0, 2, sha=self.checkout), 7001),
+                    artifact(worker_name(1, 2, sha=self.checkout), 7002))]
+        sel = self._select(inv)
+        self.assertEqual(sel["worker_0_id"], "7001")
+        self.assertEqual(sel["worker_1_id"], "7002")
+        self._materialize(content, sel)
+        r = self._stage(2)
+        self.assertEqual(r.returncode, 0, r.stderr)
 
 
 if __name__ == "__main__":
