@@ -10,10 +10,13 @@ CONTAINER=dw-live-dns-20261030-pg
 VOLUME=dw-live-dns-20261030-pg17
 IMAGE=postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d
 SECRETS=/etc/duskweave/m1/service
+RELEASE_IMAGE=dw-live-dns-20261030:candidate
 refuse() { printf '%s\n' "$1" >&2; exit 1; }
-[[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
-[[ -f $ROOT/.live-dns-20261030-owner ]] || refuse deployment_owner_refused
-[[ $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
+require_deployment_host() {
+    [[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
+    [[ -f $ROOT/.live-dns-20261030-owner ]] || refuse deployment_owner_refused
+    [[ $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
+}
 
 # Fixed output/cache/temp components consumed by compiler, Go and Docker steps.
 STORAGE_COMPONENTS="normal normal/release normal/release/build normal/release/deps normal/release/examples normal/release/incremental normal/release/.fingerprint go-cache tmp tmp/go tmp/build go-release boundary-release coverage"
@@ -122,6 +125,7 @@ PY
 }
 
 build_release() {
+    local image_ref=$1
     check_build_storage
     export PATH=$ROOT/toolchains/rust-1.94.1/bin:$ROOT/toolchains/go1.27.3/bin:$PATH
     export CARGO_HOME=$ROOT/build/cargo-home CARGO_TARGET_DIR=$BUILD/normal
@@ -144,7 +148,7 @@ build_release() {
     install -m 0555 "$output/dw-dns-capture-arm64" "$context/dw-dns-capture"
     install -m 0555 "$output/dw-dns-exporter-arm64" "$context/dw-dns-exporter"
     install -m 0444 Dockerfile "$context/Dockerfile"
-    docker build --network none --tag dw-live-dns-20261030:candidate "$context"
+    docker build --network none --tag "$image_ref" "$context"
 }
 
 install_release() {
@@ -286,11 +290,32 @@ print('lab_release_bound purpose=LAB qualification='+manifest['qualification_ref
 PY
 }
 
-case "$1" in
-    service) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_service ;;
-    release) [[ $# == 1 ]] || refuse qualification_arguments_refused; build_release; install_release ;;
-    lab-database) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_lab_database ;;
-    lab-bind) [[ $# == 1 ]] || refuse qualification_arguments_refused; bind_lab_release ;;
-    build-storage) [[ $# == 1 ]] || refuse qualification_arguments_refused; check_build_storage ;;
-    *) refuse qualification_arguments_refused ;;
-esac
+build_only() {
+    # One explicit unqualified name:tag; never a registry/path or digest form.
+    local image_ref=$1 source_root
+    [[ $image_ref =~ ^[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || refuse qualification_arguments_refused
+    source_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+    check_build_storage
+    if docker image inspect "$image_ref" >/dev/null 2>&1; then
+        refuse build_image_collision
+    fi
+    SOURCE=$source_root GOPROXY=off build_release "$image_ref"
+}
+
+main() {
+    require_deployment_host
+    case "${1:-}" in
+        service) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_service ;;
+        release) [[ $# == 1 ]] || refuse qualification_arguments_refused; build_release "$RELEASE_IMAGE"; install_release ;;
+        lab-database) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_lab_database ;;
+        lab-bind) [[ $# == 1 ]] || refuse qualification_arguments_refused; bind_lab_release ;;
+        build-storage) [[ $# == 1 ]] || refuse qualification_arguments_refused; check_build_storage ;;
+        build-only) [[ $# == 2 ]] || refuse qualification_arguments_refused; build_only "$2" ;;
+        *) refuse qualification_arguments_refused ;;
+    esac
+}
+# Sourcing exposes definitions to focused tests without executing the CLI;
+# direct invocation still enforces every real host/ownership/storage guard.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    main "$@"
+fi

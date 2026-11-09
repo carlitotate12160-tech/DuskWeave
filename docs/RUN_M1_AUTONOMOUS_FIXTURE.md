@@ -357,7 +357,8 @@ consent — no existing run, episode or approval carries over.
 ## Linux LAB build storage (owned Oracle ARM64)
 
 The LAB deployment on `pica-arm-01` uses `boundary/qualify/qualify.sh`
-(`service`, `release`, `lab-database`, `lab-bind`, `build-storage`).
+(`service`, `release`, `lab-database`, `lab-bind`, `build-storage`,
+`build-only`).
 For the local exporter-attach candidate, Docker starts the exporter as PID1 with
 its fixed UID and network disabled. The launcher connects to both containers
 before READY, sends the exporter its independent REQUEST and START, and stages
@@ -374,6 +375,22 @@ Preserve the prior installed binaries, manifest bytes and metadata, and image
 digest before `release`; restore and verify them after the packet-owned tests
 and workers finish. Do not run `prepare-host.sh` for this refactor. This
 procedure does not make a candidate the permanent installed release.
+
+For release preparation without deployment side effects, run
+`bash boundary/qualify/qualify.sh build-only <name>:<tag>` from the verified
+exported source tree. It reuses the same locked/offline build pipeline and
+fixed worker Dockerfile as `release`, but derives its source from the
+script's own export (`boundary/qualify/../..` resolved to a physical path)
+rather than the retained attach export, and requires an explicit unqualified
+`name:tag` image reference that must not already exist. It stops after the
+image build: `install_release` and the service/lab-database/lab-bind steps
+are never reached, so installed binaries, `deployment.json`, sudoers and
+database state stay unchanged, and Go module resolution stays offline. The
+image identity is bound to the exported candidate — for example
+`dw-final-release-prep-20261109:<full candidate SHA>`. A build-only image is
+a source-bound artifact for review, not an installed or qualified release;
+binding, service/database provisioning and final qualification remain
+separate later operations under their own fresh identities.
 
 Build output, caches and temporary writes must land on a separately
 mounted ext4 block volume at `/srv/duskweave-build`; source, reports,
