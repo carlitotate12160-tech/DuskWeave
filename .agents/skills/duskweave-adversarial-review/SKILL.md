@@ -18,6 +18,9 @@ Review the actual artifact against DuskWeave authority. Seek credible failure
 cases and unsupported claims; do not merely endorse the author or replay their
 self-review. A separate skill is a distinct review workflow, not proof that a
 different human or independently isolated agent reviewed the work.
+Independence requires a reader actually distinct from the implementation
+author — an external reviewer is not the author, and renaming the author's
+role or loading another guide does not make self-review independent.
 
 Verify repository identity in `AGENTS.md` and `docs/ENGINEERING_STATE.md`.
 Read `docs/BUILD_ORDER.md`, invariant packet 00, the active stage packet, the
@@ -118,6 +121,10 @@ and report the policy-publication mismatch; the portable skill does not override
    against the previously reviewed head, then verify final-base/head CI. Reopen
    the full review only for changed authority/boundaries or an unresolved risk
    that invalidates earlier evidence; do not demand unrelated tests.
+   Delegate proportionally: a mechanical correction under an already-reviewed
+   mechanism reuses the same reviewer and verified context rather than
+   automatically spawning another challenger; additional delegation requires a
+   concrete unresolved question or an explicit assignment.
 
 Review packet feasibility as well as implementation: exact edit map versus
 read-only dependencies, real fixtures, supported platforms, and metrics.

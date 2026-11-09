@@ -170,7 +170,8 @@ Do not send the IDE an open architectural question, an option comparison, or
 an instruction to plan the implementation; if authority is unresolved,
 stop and resolve it in the proper product or architecture step first.
 Specify mode, verified base, dependencies, exact allowed files, non-goals,
-acceptance criteria, tests or document checks, review gates, and STOP conditions.
+acceptance criteria, tests or document checks, review gates, the one delivery
+review owner, and STOP conditions.
 Apply AGENTS.md's documentation ownership/lifecycle rules. Put ordinary packets
 and correction evidence in the existing PR, not an automatic permanent workflow
 file. Name a reader/reuse need for new repository prose; link canonical decisions.
@@ -256,6 +257,23 @@ Out-of-scope does not make a valid finding false; report its blocking effect.
 Run one adversarial review. In review-only tasks, report findings and proposed
 fixes without editing. When edits are authorized, fix valid in-scope findings
 and check the final changed result. Expand testing only to resolve a concrete risk or required gate.
+
+Assign one implementation author and one delivery review owner per packet. A
+ChatGPT-side reviewer examining IDE-authored work is distinct from the IDE
+author; changing the author's role label or loading another guide does not
+make a self-review independent. Obtain an authorized independent
+reader/subagent challenge before executable handoff for material decisions
+affecting authority, custody, SQL/state transitions, execution,
+cross-component contracts, concurrency/recovery, or unresolved evidence risk;
+judge materiality by behavior and boundaries, not file count alone. A
+mechanical correction under an already-reviewed mechanism needs the
+architect's direct source/packet check, not another automatic subagent
+challenge; delegate again only for a concrete unresolved question or an
+explicit assignment. A useful challenge reads actual sources/consumers, forms
+credible counterexamples and gives source, consequence and smallest remedy.
+One complete pass applies to the artifact/review scope; corrected deltas
+reuse the same reviewer and verified context unless changed authority,
+boundaries or unresolved risk invalidates that review.
 
 Check semantic consistency, ownership, dependency direction, authority vs code,
 temporal staleness, evidence strength, sensitive-data boundaries, and scope.

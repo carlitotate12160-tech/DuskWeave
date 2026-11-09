@@ -271,8 +271,19 @@ and report the policy-publication mismatch; the portable skill does not override
 Inspect the diff for authority compliance, domain ownership, coupling, evidence,
 freshness, failure semantics, INV-005 custody/isolation, audit integrity, and
 the mode-specific Defender Knowledge Boundary.
-Perform author self-review and the assigned distinct adversarial review step;
-switching skills alone is not independent review. Fix substantiated findings.
+Perform a brief author self-review of the actual diff, allowed scope,
+affected consumer/wiring and failure assertions where applicable, and the
+checks actually executed; for document-only work check wording, authority,
+links and consistency without inventing runtime tests. Self-review is the
+author's responsibility — not an acceptance state, a substitute for
+independent delivery review, or a reason for a separate long report, repeated
+full Q1-Q8 table or blanket PASS labels. Independent delivery review belongs
+to the packet's assigned owner: when the packet assigns an external
+ChatGPT-side reviewer, deliver the delta to that reviewer without
+automatically spawning another IDE reviewer, and the external reviewer does
+not create a further review tier. When the packet assigns the distinct
+adversarial review instead, run exactly that pass; switching skills or role
+labels alone is not independent review. Fix substantiated findings.
 Recheck the final changed result and any tests affected by those fixes.
 Follow repository PR/merge rules where applicable. Never create or report a live
 PR, remote check, protected branch, or merge when no such evidence exists.
