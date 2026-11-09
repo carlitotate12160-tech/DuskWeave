@@ -22,7 +22,7 @@ curl = "=0.4.51"
 process-wrap = { version = "=10.0.1", optional = true, default-features = false, features = ["std", "job-object", "process-group"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { version = "=1.1.5", features = ["fs", "process", "net"] }
+rustix = { version = "=1.1.6", features = ["fs", "process", "net"] }
 
 [[bin]]
 name = "duskweave"
