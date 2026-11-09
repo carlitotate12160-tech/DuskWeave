@@ -247,3 +247,95 @@ fn uncharged_boundary_stop_returns_true() {
     let mut boundary = LiveBoundary::new(Uuid::new_v4());
     assert!(boundary.stop().unwrap());
 }
+
+#[path = "effect_socket_peer.rs"]
+pub(super) mod peer;
+
+#[test]
+fn qualification_and_stop_validate_replies_from_an_owned_process() {
+    use super::authority::StopTarget;
+    let request = sample_request();
+    let binding = LiveBinding {
+        qualification_ref: request.qualification_ref,
+        release_sha256: request.release_sha256.clone(),
+        resolver_ipv4: request.resolver_ipv4.clone(),
+    };
+    {
+        let _peer = peer::Scope::new("good");
+        qualify(&binding, &request.run_profile).unwrap();
+        let target = StopTarget::Run {
+            run_id: Uuid::new_v4(),
+        };
+        let result = stop(target).unwrap();
+        assert!(result.stop_latched && result.disposal_confirmed);
+        let result = stop(StopTarget::Campaign {
+            engagement_id: request.engagement_id,
+            campaign_id: request.campaign_id,
+        })
+        .unwrap();
+        assert!(result.stop_latched && !result.disposal_confirmed);
+    }
+    for mode in ["refuse", "wrong_identity"] {
+        let _peer = peer::Scope::new(mode);
+        assert!(qualify(&binding, &request.run_profile).is_err());
+        assert!(
+            stop(StopTarget::Run {
+                run_id: Uuid::new_v4()
+            })
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn ordinary_boundary_ready_result_ack_and_stop_use_the_real_process_protocol() {
+    use std::os::unix::fs::DirBuilderExt;
+    let root = std::env::temp_dir().join(format!("dw-peer-{}", Uuid::new_v4()));
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&root)
+        .unwrap();
+    super::session::set_test_control_root(Some(root.clone()));
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            super::super::session::set_test_control_root(None);
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(root);
+    let request = sample_request();
+    {
+        let _peer = peer::Scope::new("good");
+        let mut boundary = LiveBoundary::new(Uuid::new_v4());
+        boundary.ready(&request).unwrap();
+        boundary.start(&request, 2000).unwrap();
+        let end = Instant::now() + Duration::from_secs(2);
+        let result = loop {
+            if let Some(result) = boundary.result().unwrap() {
+                break result;
+            }
+            assert!(Instant::now() < end);
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        result.validate(&request, 2000).unwrap();
+        assert!(boundary.acknowledge(&request).unwrap());
+        assert!(boundary.closed);
+    }
+    {
+        let _peer = peer::Scope::new("good");
+        let mut boundary = LiveBoundary::new(Uuid::new_v4());
+        boundary.ready(&request).unwrap();
+        assert!(boundary.stop().unwrap());
+        assert!(boundary.closed && boundary.peer.is_none());
+    }
+    {
+        let _peer = peer::Scope::new("wrong_identity");
+        let mut boundary = LiveBoundary::new(Uuid::new_v4());
+        assert!(boundary.ready(&request).is_err());
+        assert!(
+            boundary.peer.is_none(),
+            "failed preparation must reap the owned child"
+        );
+    }
+}

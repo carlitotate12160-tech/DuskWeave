@@ -280,3 +280,29 @@ fn acquire_at_refuses_an_absent_private_socket() {
         .is_err()
     );
 }
+
+#[test]
+fn root_peer_authentication_is_exercised_in_an_isolated_child() {
+    let executable = std::env::current_exe().unwrap();
+    for name in [
+        "docker::connection::tests::available_listener_authenticates_root_and_restores_blocking_mode",
+        "docker::connection::tests::expiry_after_authentication_closes_without_attach_bytes",
+    ] {
+        let mut command = Command::new("/usr/bin/sudo");
+        command.args(["-n", "--", "/usr/bin/env"]);
+        if let Some(profile) = std::env::var_os("LLVM_PROFILE_FILE") {
+            let mut assignment = std::ffi::OsString::from("LLVM_PROFILE_FILE=");
+            assignment.push(profile);
+            command.arg(assignment);
+        }
+        command
+            .arg(&executable)
+            .args(["--exact", name, "--test-threads=1"])
+            .env_clear()
+            .stdin(Stdio::null());
+        assert!(
+            command.status().unwrap().success(),
+            "root peer witness: {name}"
+        );
+    }
+}

@@ -53,3 +53,61 @@ fn watchdog_current_monitors_child_process_status() {
         Fail::State("live_watchdog_unavailable")
     );
 }
+
+thread_local! {
+    static TEST_CHILD: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+pub(crate) struct ChildScope(Option<bool>);
+impl Drop for ChildScope {
+    fn drop(&mut self) {
+        TEST_CHILD.with(|slot| slot.set(self.0));
+    }
+}
+pub(crate) fn child_scope(bad: bool) -> ChildScope {
+    ChildScope(TEST_CHILD.with(|slot| slot.replace(Some(bad))))
+}
+pub(super) fn child_command() -> Option<Command> {
+    TEST_CHILD.with(|slot| {
+        slot.get().map(|bad| {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            let test = if bad {
+                "control::watchdog::tests::wrong_ready_probe"
+            } else {
+                "control::watchdog::tests::ready_probe"
+            };
+            command.args(["--exact", test, "--ignored", "--test-threads=1"]);
+            command
+        })
+    })
+}
+fn probe(bad: bool) {
+    let socket = UnixStream::from(rustix::io::dup(std::io::stdin()).unwrap());
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let mut channel = HostChannel::new(socket.try_clone().unwrap());
+    let HostCommand::Ack {
+        attempt,
+        generation,
+    } = channel.command().unwrap()
+    else {
+        panic!("watchdog handshake must bind an attempt");
+    };
+    channel
+        .send_reply(&HostReply::Ready {
+            attempt,
+            generation: generation + u64::from(bad),
+        })
+        .unwrap();
+    let _ = (&socket).read(&mut [0]);
+}
+#[test]
+#[ignore = "owned protocol child, reached only through the scoped command factory"]
+fn ready_probe() {
+    probe(false);
+}
+#[test]
+#[ignore = "owned protocol child returning the wrong generation"]
+fn wrong_ready_probe() {
+    probe(true);
+}

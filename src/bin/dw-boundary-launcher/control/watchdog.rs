@@ -7,6 +7,19 @@ use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
+fn child_command() -> Command {
+    #[cfg(test)]
+    if let Some(mut command) = tests::child_command() {
+        command.env_clear();
+        if let Some(profile) = std::env::var_os("LLVM_PROFILE_FILE") {
+            command.env("LLVM_PROFILE_FILE", profile);
+        }
+        return command;
+    }
+    let mut command = Command::new(LAUNCHER);
+    command.env_clear();
+    command
+}
 pub(super) struct Watchdog {
     process: Child,
     channel: UnixStream,
@@ -19,8 +32,7 @@ impl Watchdog {
             .set_read_timeout(Some(Duration::from_millis(1000)))
             .and_then(|_| parent.set_write_timeout(Some(Duration::from_millis(100))))
             .map_err(|_| Fail::Config("live_host_unqualified"))?;
-        let process = Command::new(LAUNCHER)
-            .env_clear()
+        let process = child_command()
             .stdin(Stdio::from(OwnedFd::from(child)))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -134,4 +146,4 @@ fn watchdog_stop(socket: &mut UnixStream, attempt: uuid::Uuid, generation: u64) 
 
 #[cfg(test)]
 #[path = "../../../../tests/m1_live_dns/units/launcher_watchdog.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -3,12 +3,13 @@ use duskweave::{Fail, Res};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
-use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 const IP: &str = "/usr/sbin/ip";
 const NFT: &str = "/usr/sbin/nft";
 mod namespace;
+mod process;
+use process::*;
 const ROOT: &str = "/run/duskweave/launcher";
 
 struct Names {
@@ -29,7 +30,11 @@ fn names(attempt: Uuid) -> Names {
     }
 }
 fn slot(n: &Names) -> String {
-    format!("{ROOT}/network-{}", n.base)
+    #[cfg(not(test))]
+    let root = ROOT.to_string();
+    #[cfg(test)]
+    let root = tests::slot_root();
+    format!("{root}/network-{}", n.base)
 }
 fn addresses(n: &Names) -> (String, String, String) {
     (
@@ -39,194 +44,6 @@ fn addresses(n: &Names) -> (String, String, String) {
     )
 }
 
-fn finish(mut child: std::process::Child, end: Instant) -> Res<()> {
-    #[cfg(test)]
-    let started = Instant::now();
-    let left = end.saturating_duration_since(Instant::now());
-    let execution_end = end - (left / 2).min(Duration::from_millis(50));
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|_| Fail::Config("live_host_unqualified"))?
-        {
-            #[cfg(test)]
-            eprintln!(
-                "network_helper elapsed_ms={} succeeded={}",
-                started.elapsed().as_millis(),
-                status.success()
-            );
-            return status
-                .success()
-                .then_some(())
-                .ok_or(Fail::Config("live_host_unqualified"));
-        }
-        if Instant::now() >= execution_end {
-            let _ = reap_nft(&mut child, end);
-            return Err(Fail::Unresolved("live_host_control_unavailable"));
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
-}
-fn reap_nft(child: &mut std::process::Child, end: Instant) -> bool {
-    let _ = child.kill();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return Instant::now() < end,
-            Err(_) => return false,
-            Ok(None) => {}
-        }
-        let left = end.saturating_duration_since(Instant::now());
-        if left.is_zero() {
-            return false;
-        }
-        std::thread::sleep(left.min(Duration::from_millis(2)));
-    }
-}
-
-fn finish_output(mut child: std::process::Child, end: Instant) -> Res<String> {
-    let result = collect_nft_output(&mut child, end);
-    if result.is_err() && !reap_nft(&mut child, end) {
-        return Err(Fail::Unresolved("live_host_control_unavailable"));
-    }
-    result
-}
-
-fn nft_stdout(child: &mut std::process::Child) -> Res<std::process::ChildStdout> {
-    use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or(Fail::Config("live_host_unqualified"))?;
-    let flags = fcntl_getfl(&stdout).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    fcntl_setfl(&stdout, flags | OFlags::NONBLOCK)
-        .map_err(|_| Fail::Config("live_host_unqualified"))?;
-    Ok(stdout)
-}
-
-fn admit_nft_output(bytes: &mut Vec<u8>, chunk: &[u8]) -> Res<()> {
-    if bytes.len() + chunk.len() > 65536 {
-        return Err(Fail::Config("live_host_unqualified"));
-    }
-    bytes.extend_from_slice(chunk);
-    Ok(())
-}
-
-fn read_nft_chunk(source: &mut std::process::ChildStdout, chunk: &mut [u8]) -> Res<Option<usize>> {
-    use std::io::Read;
-    match source.read(chunk) {
-        Ok(count) => Ok(Some(count)),
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-        Err(_) => Err(Fail::Config("live_host_unqualified")),
-    }
-}
-
-fn drain_nft_output(stdout: &mut std::process::ChildStdout, bytes: &mut Vec<u8>) -> Res<bool> {
-    let mut chunk = [0u8; 4096];
-    while let Some(count) = read_nft_chunk(stdout, &mut chunk)? {
-        if count == 0 {
-            return Ok(true);
-        }
-        admit_nft_output(bytes, &chunk[..count])?;
-    }
-    Ok(false)
-}
-
-fn nft_completed(child: &mut std::process::Child, eof: bool) -> Res<bool> {
-    match child.try_wait() {
-        Ok(Some(status)) if !status.success() => Err(Fail::Config("live_host_unqualified")),
-        Ok(Some(_)) => Ok(eof),
-        Ok(None) => Ok(false),
-        Err(_) => Err(Fail::Config("live_host_unqualified")),
-    }
-}
-
-fn collect_nft_output(child: &mut std::process::Child, end: Instant) -> Res<String> {
-    let mut stdout = nft_stdout(child)?;
-    let left = end.saturating_duration_since(Instant::now());
-    let execution_end = end - (left / 2).min(Duration::from_millis(50));
-    let mut bytes = Vec::with_capacity(65536);
-    loop {
-        if Instant::now() >= execution_end {
-            return Err(Fail::Unresolved("live_host_control_unavailable"));
-        }
-        let eof = drain_nft_output(&mut stdout, &mut bytes)?;
-        if nft_completed(child, eof)? {
-            return String::from_utf8(bytes).map_err(|_| Fail::Config("live_host_unqualified"));
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
-}
-fn run(binary: &str, args: &[&str], end: Instant) -> Res<()> {
-    if Instant::now() >= end {
-        return Err(Fail::Unresolved("live_host_control_unavailable"));
-    }
-    finish(
-        Command::new(binary)
-            .args(args)
-            .env_clear()
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| Fail::Config("live_host_unqualified"))?,
-        end,
-    )
-}
-fn nft_command(netns: Option<&str>) -> Command {
-    match netns {
-        Some(ns) => {
-            let mut c = Command::new(IP);
-            c.args(["netns", "exec", ns, NFT, "-f", "-"]);
-            c
-        }
-        None => {
-            let mut c = Command::new(NFT);
-            c.args(["-f", "-"]);
-            c
-        }
-    }
-}
-fn write_nft_rules(child: &mut std::process::Child, rules: &str, end: Instant) -> Res<()> {
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or(Fail::Config("live_host_unqualified"))?;
-    if stdin.write_all(rules.as_bytes()).is_err() {
-        let _ = reap_nft(child, end);
-        return Err(Fail::Config("live_host_unqualified"));
-    }
-    Ok(())
-}
-fn spawn_nft(
-    netns: Option<&str>,
-    rules: &str,
-    stdout_pipe: bool,
-    end: Instant,
-) -> Res<std::process::Child> {
-    if Instant::now() >= end {
-        return Err(Fail::Unresolved("live_host_control_unavailable"));
-    }
-    let out = if stdout_pipe {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    };
-    let mut child = nft_command(netns)
-        .env_clear()
-        .stdin(Stdio::piped())
-        .stdout(out)
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| Fail::Config("live_host_unqualified"))?;
-    write_nft_rules(&mut child, rules, end)?;
-    Ok(child)
-}
-fn nft(netns: Option<&str>, rules: &str, end: Instant) -> Res<()> {
-    finish(spawn_nft(netns, rules, false, end)?, end)
-}
-fn nft_output(netns: Option<&str>, rules: &str, end: Instant) -> Res<String> {
-    finish_output(spawn_nft(netns, rules, true, end)?, end)
-}
 fn acquire_slot(n: &Names, attempt: Uuid) -> Res<()> {
     let mut file = OpenOptions::new()
         .write(true)
@@ -240,12 +57,19 @@ fn acquire_slot(n: &Names, attempt: Uuid) -> Res<()> {
     }
     Ok(())
 }
+fn forwarding_path() -> String {
+    #[cfg(test)]
+    if let Some(path) = tests::forwarding_path() {
+        return path;
+    }
+    "/proc/sys/net/ipv4/ip_forward".into()
+}
 fn qualify_capture(pid: u32, resolver: &str) -> Res<()> {
     resolver
         .parse::<std::net::Ipv4Addr>()
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
     if pid == 0
-        || std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward")
+        || std::fs::read_to_string(forwarding_path())
             .map_err(|_| Fail::Config("live_host_unqualified"))?
             .trim()
             != "1"
@@ -323,4 +147,4 @@ pub(super) fn destroy(attempt: Uuid, end: Instant) -> bool {
 
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/launcher_network.rs"]
-mod tests;
+pub(crate) mod tests;

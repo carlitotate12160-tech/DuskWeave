@@ -41,3 +41,49 @@ fn serve_connection_routes_by_peer_uid() {
     let err = serve_connection(a, non_root_cred).unwrap_err();
     assert_eq!(err, Fail::Config("live_host_unqualified"));
 }
+
+#[test]
+fn authenticated_channel_uses_real_peer_credentials_and_bounded_io() {
+    let (socket, _peer) = UnixStream::pair().unwrap();
+    let (socket, credential) = authenticate_channel(socket).unwrap();
+    assert_eq!(credential.pid, rustix::process::getpid());
+    assert_eq!(credential.uid, rustix::process::getuid());
+    assert_eq!(
+        socket.read_timeout().unwrap(),
+        Some(Duration::from_millis(1000))
+    );
+    assert_eq!(
+        socket.write_timeout().unwrap(),
+        Some(Duration::from_millis(1000))
+    );
+}
+
+#[test]
+fn process_hardening_is_verified_in_a_disposable_child() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "admission::tests::process_hardening_probe",
+            "--ignored",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+#[ignore = "invoked only by the disposable-child hardening witness"]
+fn process_hardening_probe() {
+    restrict_process().unwrap();
+    let limit = rustix::process::getrlimit(rustix::process::Resource::Core);
+    assert_eq!(limit.current, Some(0));
+    assert_eq!(limit.maximum, Some(0));
+    assert_eq!(
+        rustix::process::dumpable_behavior().unwrap(),
+        rustix::process::DumpableBehavior::NotDumpable
+    );
+}

@@ -101,3 +101,20 @@ fn qualify_image_and_child_reaping() {
         Instant::now() + Duration::from_millis(50)
     ));
 }
+
+pub(crate) fn simulate_absent_attempt(attempt: Uuid) {
+    let permitted = names(attempt);
+    command::inject(move |args, _| {
+        assert_eq!(
+            args.first(),
+            Some(&"ps"),
+            "fixture may only observe its absent containers"
+        );
+        assert!(
+            permitted
+                .iter()
+                .any(|name| args.iter().any(|arg| arg.contains(name)))
+        );
+        Ok(String::new())
+    });
+}

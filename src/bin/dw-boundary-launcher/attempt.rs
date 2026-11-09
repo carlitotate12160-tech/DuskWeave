@@ -369,4 +369,4 @@ pub(super) fn dispose_until(attempt: Uuid, end: Instant) -> bool {
 
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/launcher_attempt.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -15,6 +15,8 @@ struct Store {
     fault: Option<&'static str>,
 }
 struct Boundary {
+    stop_confirmed: bool,
+    ack_confirmed: bool,
     available_after: Option<std::time::Instant>,
     result: DnsResult,
     log: Log,
@@ -90,11 +92,11 @@ impl DnsBoundary for Boundary {
     }
     fn acknowledge(&mut self, _: &DnsRequest) -> Res<bool> {
         gate(&self.log, self.fault, "ack")?;
-        Ok(true)
+        Ok(self.ack_confirmed)
     }
     fn stop(&mut self) -> Res<bool> {
         gate(&self.log, self.fault, "host_stop")?;
-        Ok(true)
+        Ok(self.stop_confirmed)
     }
 }
 
@@ -129,6 +131,8 @@ fn fixture(fault: Option<&'static str>) -> (Store, Boundary, Log) {
             fault,
         },
         Boundary {
+            stop_confirmed: true,
+            ack_confirmed: true,
             available_after: None,
             result,
             log: log.clone(),
@@ -315,4 +319,64 @@ fn terminal_timeout_can_arrive_in_the_original_post_attempt_handling_window() {
     assert!(store.session.result.is_some() && store.session.disposal_confirmed);
     assert_eq!(log.borrow().iter().filter(|v| **v == "renew").count(), 3);
     assert_eq!(log.borrow().iter().filter(|v| **v == "start").count(), 1);
+}
+
+#[test]
+fn unconfirmed_stop_preserves_pending_bookkeeping_and_the_original_error() {
+    for bookkeeping_fails in [false, true] {
+        let (mut store, mut boundary, log) = fixture(None);
+        boundary.fault = Some("ready");
+        boundary.stop_confirmed = false;
+        store.fault = bookkeeping_fails.then_some("sql_stop");
+        let run = store.session.run_id;
+        let result = acquire(&mut store, &mut boundary, run);
+        assert_eq!(
+            result,
+            Err(Fail::Unresolved(if bookkeeping_fails {
+                "live_effect_stop_pending"
+            } else {
+                "injected_port_failure"
+            }))
+        );
+        assert_eq!(
+            &*log.borrow(),
+            &["reserve", "ready", "host_stop", "sql_stop"]
+        );
+        assert!(!store.session.disposal_confirmed);
+        assert!(store.session.result.is_none());
+    }
+}
+
+#[test]
+fn unconfirmed_ack_cannot_close_without_a_separate_stop_confirmation() {
+    let (mut store, mut boundary, log) = fixture(None);
+    boundary.ack_confirmed = false;
+    boundary.stop_confirmed = false;
+    let run = store.session.run_id;
+    assert_eq!(
+        acquire(&mut store, &mut boundary, run),
+        Err(Fail::Unresolved("live_disposal_unconfirmed"))
+    );
+    assert_eq!(store.session.phase, EffectPhase::Stopped);
+    assert!(store.session.result.is_some());
+    assert!(!store.session.disposal_confirmed);
+    let events = log.borrow();
+    assert_eq!(
+        &events[events.len() - 3..],
+        &["ack", "host_stop", "sql_stop"]
+    );
+}
+
+#[test]
+fn missing_terminal_result_exhausts_handling_without_restarting_the_attempt() {
+    let (mut store, mut boundary, log) = fixture(None);
+    boundary.available_after = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+    let run = store.session.run_id;
+    assert_eq!(
+        acquire(&mut store, &mut boundary, run),
+        Err(Fail::State("live_effect_deadline"))
+    );
+    assert!(store.session.result.is_none());
+    assert_eq!(log.borrow().iter().filter(|x| **x == "start").count(), 1);
+    assert!(!log.borrow().contains(&"ack"));
 }

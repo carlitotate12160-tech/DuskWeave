@@ -5,8 +5,24 @@ use std::time::Instant;
 /// Docker's generated system mounts are made read-only inside this container.
 /// No new bind mount or writable volume is created. Unknown writable mounts refuse.
 pub(super) fn seal_mounts(pid: u32, deadline: Instant) -> Res<()> {
-    let source = std::fs::read_to_string(format!("/proc/{pid}/mountinfo"))
-        .map_err(|_| Fail::Config("live_host_unqualified"))?;
+    seal_with(
+        pid,
+        deadline,
+        || {
+            std::fs::read_to_string(format!("/proc/{pid}/mountinfo"))
+                .map_err(|_| Fail::Config("live_host_unqualified"))
+        },
+        super::command::output,
+    )
+}
+
+fn seal_with(
+    pid: u32,
+    deadline: Instant,
+    mut read: impl FnMut() -> Res<String>,
+    mut execute: impl FnMut(Command, Instant) -> Res<String>,
+) -> Res<()> {
+    let source = read()?;
     let paths = source.lines().map(writable_path).collect::<Res<Vec<_>>>()?;
     for path in paths.into_iter().flatten() {
         let mut command = Command::new("/usr/bin/nsenter");
@@ -23,10 +39,9 @@ pub(super) fn seal_mounts(pid: u32, deadline: Instant) -> Res<()> {
             "remount,bind,ro",
             &format!("/proc/{pid}/root{path}"),
         ]);
-        super::command::output(command, deadline)?;
+        execute(command, deadline)?;
     }
-    let after = std::fs::read_to_string(format!("/proc/{pid}/mountinfo"))
-        .map_err(|_| Fail::Config("live_host_unqualified"))?;
+    let after = read()?;
     if after.lines().any(|line| {
         line.split_whitespace()
             .nth(5)

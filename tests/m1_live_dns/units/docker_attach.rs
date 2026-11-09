@@ -211,3 +211,40 @@ fn timed_socket_writes_never_extend_the_absolute_end() {
     b.read_exact(&mut tail).unwrap();
     assert_eq!(&tail, b"fin");
 }
+
+#[test]
+fn upgrade_binds_request_and_requires_a_complete_switching_response() {
+    for response in [
+        b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: tcp\r\n\r\n".to_vec(),
+        b"HTTP/1.1 200 OK\r\n\r\n".to_vec(),
+        b"HTTP/1.1 101 Switching Protocols\r\n".to_vec(),
+        vec![b'x'; 4096],
+    ] {
+        let accepted = response.starts_with(b"HTTP/1.1 101 ") && response.ends_with(b"\r\n\r\n");
+        let (client, mut peer) = UnixStream::pair().unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let worker = std::thread::spawn(move || {
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                peer.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+                assert!(request.len() < 1024);
+            }
+            assert_eq!(
+                String::from_utf8(request).unwrap(),
+                "POST /containers/owned/attach?stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: tcp\r\nContent-Length: 0\r\n\r\n"
+            );
+            peer.write_all(&response).unwrap();
+        });
+        let result = Attach::connect_on(client, "owned", Instant::now() + Duration::from_secs(2));
+        assert_eq!(result.is_ok(), accepted);
+        worker.join().unwrap();
+    }
+    let (client, peer) = UnixStream::pair().unwrap();
+    drop(peer);
+    assert!(matches!(
+        Attach::connect_on(client, "owned", Instant::now()),
+        Err(Fail::State("dns_ipc_failure"))
+    ));
+}

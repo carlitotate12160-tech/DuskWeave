@@ -225,3 +225,49 @@ fn backlog_probe() {
     std::fs::write(marker, b"entered").unwrap();
     assert!(connect(Path::new(&path)).is_err());
 }
+
+#[test]
+fn bound_stop_ingress_client_uses_real_peer_and_exact_target() {
+    let directory = Directory::new();
+    let previous = TEST_CONTROL_ROOT.with(|r| r.borrow().clone());
+    struct Restore(Option<PathBuf>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            set_test_control_root(self.0.take());
+        }
+    }
+    let _restore = Restore(previous);
+    set_test_control_root(Some(directory.path().to_path_buf()));
+    let b = Binding {
+        run: Uuid::new_v4(),
+        engagement: Uuid::new_v4(),
+        campaign: Uuid::new_v4(),
+        generation: 3,
+    };
+    let target = StopTarget::Run { run_id: b.run };
+    let listener = UnixListener::bind(b.path("sock")).unwrap();
+    let expected = b.clone();
+    let peer = std::thread::spawn(move || {
+        let (socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut channel = HostChannel::new(socket);
+        let request: StopRequest = channel.receive().unwrap();
+        assert!(request.binding == expected);
+        assert!(expected.admits(request.target));
+        channel
+            .send(&StopDisposition {
+                stop_latched: true,
+                disposal_confirmed: false,
+            })
+            .unwrap();
+    });
+    let result = send(b, target).unwrap();
+    assert!(result.stop_latched);
+    assert!(
+        !result.disposal_confirmed,
+        "transport cannot invent disposal confirmation"
+    );
+    peer.join().unwrap();
+}

@@ -13,6 +13,10 @@ fn ready_control(source: &mut impl Read, q: &DnsRequest) -> Res<()> {
 }
 
 fn prepare_resources(image: &str, q: &DnsRequest, end: Instant) -> Res<(Attach, Attach)> {
+    #[cfg(test)]
+    if let Some(resources) = unit_tests::resources(image, q, end) {
+        return resources;
+    }
     let capture = super::docker::create(image, q.attempt, false, end)?;
     let exporter = super::docker::create(image, q.attempt, true, end)?;
     super::network::create(q.attempt, capture.pid, &q.resolver_ipv4, end)?;
@@ -142,3 +146,7 @@ fn forward_raw(source: &mut impl Read, sink: &mut impl Write) -> Res<()> {
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/stop.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/m1_live_dns/units/launcher_relay.rs"]
+pub(crate) mod unit_tests;

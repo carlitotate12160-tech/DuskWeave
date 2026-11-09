@@ -19,10 +19,14 @@ fn serve_connection(socket: UnixStream, peer: rustix::net::UCred) -> Res<()> {
 }
 
 fn harden() -> Res<()> {
-    use rustix::process::{DumpableBehavior, Resource, Rlimit};
     if std::env::args_os().len() != 1 || rustix::process::geteuid().as_raw() != 0 {
         return Err(Fail::Config("live_host_unqualified"));
     }
+    restrict_process()
+}
+
+fn restrict_process() -> Res<()> {
+    use rustix::process::{DumpableBehavior, Resource, Rlimit};
     rustix::process::setrlimit(
         Resource::Core,
         Rlimit {
@@ -39,7 +43,10 @@ fn harden() -> Res<()> {
 fn parent_channel() -> Res<(UnixStream, rustix::net::UCred)> {
     let fd =
         rustix::io::dup(std::io::stdin()).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    let socket = UnixStream::from(fd);
+    authenticate_channel(UnixStream::from(fd))
+}
+
+fn authenticate_channel(socket: UnixStream) -> Res<(UnixStream, rustix::net::UCred)> {
     socket
         .set_read_timeout(Some(Duration::from_millis(1000)))
         .map_err(|_| Fail::Config("live_host_unqualified"))?;

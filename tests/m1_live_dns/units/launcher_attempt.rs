@@ -5,12 +5,12 @@ use std::cell::Cell;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-struct TestRootGuard {
+pub(crate) struct TestRootGuard {
     path: PathBuf,
     previous: Option<PathBuf>,
 }
 impl TestRootGuard {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let id = std::fs::read_to_string("/proc/sys/kernel/random/uuid").unwrap();
         let path = std::env::temp_dir().join(format!("dw-attempt-{}", id.trim()));
         std::fs::DirBuilder::new()
@@ -21,7 +21,7 @@ impl TestRootGuard {
         set_test_root(Some(path.clone()));
         Self { path, previous }
     }
-    fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 }
@@ -45,7 +45,7 @@ fn write_qualified_journal(path: &Path, bytes: &[u8]) {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
 
-fn sample_request(attempt: Uuid, now: i64) -> DnsRequest {
+pub(crate) fn sample_request(attempt: Uuid, now: i64) -> DnsRequest {
     DnsRequest {
         schema: SCHEMA.to_string(),
         kind: "REQUEST".to_string(),

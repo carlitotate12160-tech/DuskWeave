@@ -39,6 +39,10 @@ pub(crate) struct Attach {
 impl Attach {
     pub fn connect(id: &str, deadline: Instant) -> Res<Self> {
         let io = connection::acquire(deadline)?;
+        Self::connect_on(io, id, deadline)
+    }
+
+    pub(crate) fn connect_on(io: UnixStream, id: &str, deadline: Instant) -> Res<Self> {
         let mut socket = TimedSocket { io, end: deadline };
         let request = format!(
             "POST /containers/{id}/attach?stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: tcp\r\nContent-Length: 0\r\n\r\n"
