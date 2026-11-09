@@ -53,6 +53,7 @@ Execute the assigned packet directly. Do not return another architecture plan.
 
 ## Relevant Checks & Validation
 - DESIGN: document conventions, authority references, links, invariants; runtime wiring is N/A.
+- Name the one delivery review owner (for example an external ChatGPT reviewer) and require only the IDE author's brief check of the actual diff, allowed scope and executed checks; note any material pre-handoff challenge or explicitly assigned additional reviewer here. Reuse the same owner for correction deltas.
 - IMPLEMENT/FIX: unit, integration, and scenario tests; conflict markers, hygiene, formatting, and Clippy.
 - Exercise an artifact from the real producer through the real consumer where executable, including language/process boundaries; do not substitute mutually consistent mocks. Record evidence in the existing packet/review, not a new gate or report family.
 - McCabe and first-party file-LOC ratchets are enforced in the required `metrics` job (exit 1 on regression); runtime diff remains an advisory report.
