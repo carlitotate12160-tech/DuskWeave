@@ -385,11 +385,34 @@ never describe the bundle as a build of the driver. After the prior installed
 binaries, exact manifest bytes/metadata and image digest are preserved in a
 protected root:root/0700 backup:
 
-- `install-bundle <bundle-dir>` verifies fixed membership, root-owned regular
-  files with nlink=1 and no group/other write, and the four pinned digests —
-  all before replacing any installed file — then installs.
-- `lab-database <source-dir> <database> <role-prefix> <config-dir>` provisions
-  a fresh `dw_native_` schema-0030 fixture on the owned service and publishes
+The `lab-database` SOURCE_DIR is an operator-verified Git export. Before root
+imports the export's bootstrap helper or executes its migrations, the operator
+pins the intended committed driver revision by full SHA — the later
+deployment-driver commit, a different identity from frozen release source
+`8c6f752e27c8d47671d3e71a86bf55c9aae6f2db` — exports it with
+`git -c core.autocrlf=false -c core.eol=lf archive --format=tar --output=<owned-path> <revision>`
+(per-invocation options; never a machine or global Git configuration change),
+transfers the archive as bytes (for example `scp`, never text redirection),
+and compares the complete extracted tree against `git ls-tree -r <revision>`:
+exact membership plus every file's raw blob OID via `git hash-object
+--no-filters` or the equivalent Git blob SHA-1 over raw bytes — including
+`tests/support/m1_native_bootstrap.py` and every migration input. Missing,
+extra, type/mode or byte mismatches refuse the source; the pinned revision and
+comparison result stay in the existing execution evidence. `tar -d` proves
+only extracted-file/archive equality — useful for transfer, never Git
+identity. This operator comparison is the Git-byte verification `lab-database`
+requires; the command itself enforces only the separate custody checks below
+(protected ancestry, root-owned regular files, link and write rules) and never
+inspects Git content.
+
+- `install-bundle <bundle-dir>` verifies the exact seven-file membership
+  (four binaries plus the three `third_party/genai` notices), protected bundle
+  directories/ancestry, root-owned regular members with nlink=1 and no
+  group/other write, and all seven pinned digests before installation.
+- `lab-database <source-dir> <database> <role-prefix> <config-dir>` requires
+  Git-byte-verified source with protected root-owned directories/ancestry,
+  bootstrap helper and migration inputs, all without group/other write. It
+  provisions a fresh `dw_native_` schema-0030 fixture on the owned service and publishes
   protected configuration: root-owned/group-`duskweave-core` 0750 directory,
   six runtime DSNs and `environment.json` 0400 owned by core, and a
   root:root/0400 administrative `test-environment.json` core cannot read.

@@ -187,13 +187,18 @@ fn withdrawal_during_first_decision_stays_durable_and_stops_the_run() {
     );
     let output = withdrawal.output();
     let receipt = Host::receipt(&output);
+    std::fs::write(
+        host.report.join("mid-d1-withdrawal.json"),
+        serde_json::to_vec_pretty(&receipt).unwrap(),
+    )
+    .unwrap();
     assert!(
         output.status.success(),
         "mid-D1 withdrawal: {}",
         String::from_utf8_lossy(&output.stdout)
     );
     assert_eq!(receipt["result"], "durable");
-    assert_eq!(receipt["operation"], json!(operation));
+    assert_eq!(receipt["contract"]["operation_id"], json!(operation));
     assert_eq!(receipt["scope"], json!([e, c]));
     assert_eq!(receipt["local_stop"]["stop_latched"], true);
     assert_eq!(host.count("dns_udp"), 0, "zero DNS questions");
