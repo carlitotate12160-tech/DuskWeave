@@ -48,12 +48,12 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** complete the mid-D1 correction's external delta
-review and required current-candidate CI, then rerun the single corrected
-withdrawal case on the verified b deployment of the unchanged frozen
-bundle/image. Preserve the 16 first-fixture passing cases, failed run,
-original deadlines and historical UNKNOWN resources; do not restart completed
-image restoration, custody/SQL proofs, coverage or runtime artifact builds.
+**Next product action:** the corrected case has rerun and passed on the
+verified b deployment of the unchanged frozen bundle/image; remaining action
+is the owner merge disposition on the corrected-corpus PR. Preserve the 16
+first-fixture passing cases, failed run, original deadlines and historical
+UNKNOWN resources; do not restart completed image restoration, custody/SQL
+proofs, coverage or runtime artifact builds.
 The [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures. Real-provider/live-target consent remains separate.
 
@@ -95,9 +95,10 @@ prefix `dw_frq10b`), protected config
 `4629211c-4fdc-48bc-b8fe-c4c1124a2a9d` (manifest SHA-256
 `80667eac1ba0b63f40d0e33e78d361cd93891aea7c3285a81648a2debc8c8835`) under the
 original finite interval ending 2026-11-11 13:01:10.035 WIB — never extended.
-Installed hashes equal the frozen bundle and the b database holds zero
-autonomous runs; the original 17-case matrix ran only on the first fixture.
-This binding is administrative deployment evidence, not an accepted
+Installed hashes equal the frozen bundle; the b database held zero
+autonomous runs until the Phase B rerun, which added exactly one for the
+corrected case, while the original 17-case matrix ran only on the first
+fixture. This binding is administrative deployment evidence, not an accepted
 qualification.
 
 **Mid-D1 correction (DW-FINAL-RELEASE-QUAL-R1-FIX2) — corrected case passed on
