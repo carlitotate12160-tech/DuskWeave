@@ -44,10 +44,11 @@ double_boundary() {
     check_build_storage() { note check_build_storage; }
     docker() { note "docker $*"; return 1; }
     build_release() { note "build_release image=${1-} source=$SOURCE goproxy=${GOPROXY-unset}"; }
-    install_release() { note install_release; }
+    install_release() { note "install_release${1:+ $1}"; }
+    install_bundle() { note "install_bundle${1:+ $1}"; }
     prepare_service() { note prepare_service; }
-    prepare_lab_database() { note prepare_lab_database; }
-    bind_lab_release() { note bind_lab_release; }
+    prepare_lab_database() { note "prepare_lab_database${1:+ $*}"; }
+    bind_lab_release() { note "bind_lab_release${1:+ $*}"; }
 }
 
 expect_refused() {
@@ -80,8 +81,8 @@ case_build_only_never_reaches_install_family() {
     double_boundary
     invoke_main build-only 'dw-isolation:t1'
     [[ $RC == 0 ]] || fail "rc=$RC err=$ERRTXT"
-    for forbidden in install_release prepare_service prepare_lab_database bind_lab_release; do
-        ! grep -qxF "$forbidden" "$LOG" || fail "reached_$forbidden"
+    for forbidden in install_release install_bundle prepare_service prepare_lab_database bind_lab_release; do
+        ! grep -q "^$forbidden" "$LOG" || fail "reached_$forbidden"
     done
 }
 
@@ -190,6 +191,114 @@ case_other_commands_dispatch() {
     expect_refused qualification_arguments_refused
 }
 
+case_install_bundle_dispatch_and_shape_refusal() {
+    double_boundary
+    dir=$(mktemp -d)
+    invoke_main install-bundle "$dir"
+    [[ $RC == 0 ]] || fail "rc=$RC err=$ERRTXT"
+    [[ $(cat "$LOG") == "install_bundle $dir" ]] || fail "log:$(cat "$LOG")"
+    : >"$LOG"
+    invoke_main install-bundle
+    expect_refused qualification_arguments_refused
+    invoke_main install-bundle "$dir" extra
+    expect_refused qualification_arguments_refused
+    invoke_main install-bundle relative/dir
+    expect_refused qualification_arguments_refused
+    invoke_main install-bundle /nonexistent/dw-bundle-$$
+    expect_refused qualification_arguments_refused
+    invoke_main install-bundle "$dir/file"
+    expect_refused qualification_arguments_refused
+    expect_quiet
+}
+
+case_invalid_bundle_refused_before_install() {
+    # The real install_bundle validation must refuse before any installer runs.
+    require_deployment_host() { return 0; }
+    install_release() { note "install_release${1:+ $1}"; }
+    dir=$(mktemp -d)
+    for n in duskweave dw-boundary-launcher dw-dns-capture dw-dns-exporter stray; do
+        : > "$dir/$n"
+    done
+    invoke_main install-bundle "$dir"
+    [[ $RC != 0 ]] || fail unexpected_success
+    [[ $ERRTXT == bundle_* ]] || fail "stderr=$ERRTXT"
+    rm -- "$dir/stray" "$dir/dw-dns-exporter"
+    invoke_main install-bundle "$dir"
+    [[ $RC != 0 ]] || fail unexpected_success
+    [[ $ERRTXT == bundle_* ]] || fail "stderr=$ERRTXT"
+    : > "$dir/dw-dns-exporter"
+    invoke_main install-bundle "$dir"
+    [[ $RC != 0 ]] || fail unexpected_success
+    [[ $ERRTXT == bundle_* ]] || fail "stderr=$ERRTXT"
+    expect_quiet
+}
+
+case_lab_database_fresh_dispatch() {
+    double_boundary
+    src=$(mktemp -d)
+    mkdir -p "$src/tests/support"
+    : > "$src/tests/support/m1_native_bootstrap.py"
+    cfg=/tmp/dw-fresh-config-$$
+    invoke_main lab-database "$src" dw_native_final_release_qual_20261110 dw_frq10 "$cfg"
+    [[ $RC == 0 ]] || fail "rc=$RC err=$ERRTXT"
+    [[ $(cat "$LOG") == "prepare_lab_database $src dw_native_final_release_qual_20261110 dw_frq10 $cfg" ]] \
+        || fail "log:$(cat "$LOG")"
+}
+
+case_lab_database_fresh_refused() {
+    double_boundary
+    src=$(mktemp -d)
+    mkdir -p "$src/tests/support"
+    : > "$src/tests/support/m1_native_bootstrap.py"
+    plain=$(mktemp -d)
+    taken=$(mktemp -d)/taken
+    mkdir "$taken"
+    invoke_main lab-database "$plain" dw_native_db_1 dw_pre /tmp/dw-cfg-$$
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database relative/src dw_native_db_1 dw_pre /tmp/dw-cfg-$$
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database "$src" not_native dw_pre /tmp/dw-cfg-$$
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database "$src" dw_native_db_1 badprefix /tmp/dw-cfg-$$
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database "$src" dw_native_db_1 dw_pre "$taken"
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database "$src" dw_native_db_1 dw_pre relative/cfg
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database "$src" dw_native_db_1 dw_pre /nonexistent-parent-$$/cfg
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database "$src" dw_native_db_1
+    expect_refused qualification_arguments_refused
+    invoke_main lab-database "$src" dw_native_db_1 dw_pre /tmp/dw-cfg-$$ extra
+    expect_refused qualification_arguments_refused
+    expect_quiet
+}
+
+case_lab_bind_fresh_dispatch() {
+    double_boundary
+    rpt=/tmp/dw-fresh-report-$$
+    invoke_main lab-bind dw-img:t1 dw_native_db_2 "$rpt"
+    [[ $RC == 0 ]] || fail "rc=$RC err=$ERRTXT"
+    [[ $(cat "$LOG") == "bind_lab_release dw-img:t1 dw_native_db_2 $rpt" ]] || fail "log:$(cat "$LOG")"
+}
+
+case_lab_bind_fresh_refused() {
+    double_boundary
+    kept=$(mktemp -d)
+    chmod 0755 "$kept"
+    invoke_main lab-bind 'reg/name:t' dw_native_db_2 /tmp/rpt-$$
+    expect_refused qualification_arguments_refused
+    invoke_main lab-bind 'dw-img:t1' legacy_db /tmp/rpt-$$
+    expect_refused qualification_arguments_refused
+    invoke_main lab-bind 'dw-img:t1' dw_native_db_2 relative/rpt
+    expect_refused qualification_arguments_refused
+    invoke_main lab-bind 'dw-img:t1' dw_native_db_2 "$kept"
+    expect_refused qualification_arguments_refused
+    invoke_main lab-bind 'dw-img:t1' dw_native_db_2 /tmp/rpt-$$ extra
+    expect_refused qualification_arguments_refused
+    expect_quiet
+}
+
 "case_$CASE"
 """.replace("LEGACYIMAGE", LEGACY_IMAGE).replace("LEGACYSOURCE", LEGACY_SOURCE)
 
@@ -253,6 +362,24 @@ class BuildOnlyContractTest(unittest.TestCase):
 
     def test_other_commands_dispatch(self):
         self.run_case("other_commands_dispatch")
+
+    def test_install_bundle_dispatch_and_shape_refusal(self):
+        self.run_case("install_bundle_dispatch_and_shape_refusal")
+
+    def test_invalid_bundle_refused_before_install(self):
+        self.run_case("invalid_bundle_refused_before_install")
+
+    def test_lab_database_fresh_dispatch(self):
+        self.run_case("lab_database_fresh_dispatch")
+
+    def test_lab_database_fresh_refused(self):
+        self.run_case("lab_database_fresh_refused")
+
+    def test_lab_bind_fresh_dispatch(self):
+        self.run_case("lab_bind_fresh_dispatch")
+
+    def test_lab_bind_fresh_refused(self):
+        self.run_case("lab_bind_fresh_refused")
 
     def test_direct_invocation_refuses_off_host_or_unknown(self):
         # A directly executed script must run its real guard + dispatch chain:

@@ -357,8 +357,8 @@ consent — no existing run, episode or approval carries over.
 ## Linux LAB build storage (owned Oracle ARM64)
 
 The LAB deployment on `pica-arm-01` uses `boundary/qualify/qualify.sh`
-(`service`, `release`, `lab-database`, `lab-bind`, `build-storage`,
-`build-only`).
+(`service`, `release`, `install-bundle`, `lab-database`, `lab-bind`,
+`build-storage`, `build-only`).
 For the local exporter-attach candidate, Docker starts the exporter as PID1 with
 its fixed UID and network disabled. The launcher connects to both containers
 before READY, sends the exporter its independent REQUEST and START, and stages
@@ -375,6 +375,34 @@ Preserve the prior installed binaries, manifest bytes and metadata, and image
 digest before `release`; restore and verify them after the packet-owned tests
 and workers finish. Do not run `prepare-host.sh` for this refactor. This
 procedure does not make a candidate the permanent installed release.
+
+The frozen final-release bundle instead uses explicit fresh destinations; its
+no-argument legacy forms above stay reserved for the retained attach fixture.
+The bundle and the SHA-tagged image name the frozen release source
+(`8c6f752e27c8d47671d3e71a86bf55c9aae6f2db`); the checked-out driver carrying
+`qualify.sh`, this guide and the test harness is a separate later commit —
+never describe the bundle as a build of the driver. After the prior installed
+binaries, exact manifest bytes/metadata and image digest are preserved in a
+protected root:root/0700 backup:
+
+- `install-bundle <bundle-dir>` verifies fixed membership, root-owned regular
+  files with nlink=1 and no group/other write, and the four pinned digests —
+  all before replacing any installed file — then installs.
+- `lab-database <source-dir> <database> <role-prefix> <config-dir>` provisions
+  a fresh `dw_native_` schema-0030 fixture on the owned service and publishes
+  protected configuration: root-owned/group-`duskweave-core` 0750 directory,
+  six runtime DSNs and `environment.json` 0400 owned by core, and a
+  root:root/0400 administrative `test-environment.json` core cannot read.
+- `lab-bind <image-ref> <database> <report-dir>` binds only when the installed
+  hashes equal the frozen bundle, reuses the image-worker byte check and
+  writes one LAB qualification row plus the same manifest schema and finite
+  86400000-ms validity.
+
+The physical harness then requires absolute `DW_M1_LAB_CONFIG_ROOT` and
+`DW_M1_LAB_REPORT_ROOT` in its own environment; absent or partial values
+refuse before credentials are read or a connection is made. Run selected
+physical cases one at a time with `--ignored --exact --test-threads=1
+--nocapture`, requiring exactly one executed test per case.
 
 For release preparation without deployment side effects, run
 `bash boundary/qualify/qualify.sh build-only <name>:<tag>` from the verified
