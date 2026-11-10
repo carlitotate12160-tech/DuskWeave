@@ -48,14 +48,41 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** the corrected case has rerun and passed on the
-verified b deployment of the unchanged frozen bundle/image; remaining action
-is the owner merge disposition on the corrected-corpus PR. Preserve the 16
-first-fixture passing cases, failed run, original deadlines and historical
-UNKNOWN resources; do not restart completed image restoration, custody/SQL
-proofs, coverage or runtime artifact builds.
+**Next product action:** distinct review of the schema-0030 successor pack
+compatibility fix below, then the owner merge disposition on the
+corrected-corpus PR. Preserve the 16 first-fixture passing cases, failed run,
+original deadlines and historical UNKNOWN resources; do not restart completed
+image restoration, custody/SQL proofs, coverage or runtime artifact builds.
 The [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures. Real-provider/live-target consent remains separate.
+
+**Schema-0030 successor pack compatibility (DW-FIX-SCHEMA0030-SUCCESSOR-PACK-R1)
+— offline fix verified, review pending:** the installed
+`execution.assert_successor_pack` unconditionally required
+`live_binding`/`qualification_purpose` while rejecting both on non-v4 requests,
+so no retained v2/v3 pack could pass the restricted marker consumer. The
+correction admits the two live-only keys only for
+`m1_autonomous_run_request_v4` before strict key validation; all identity,
+scope, owner, premise, freshness and authority checks are unchanged, as is the
+real Rust producer. Two new dedicated-worker cases prove the retained/v2/v3/v4
+matrix with per-field refusal controls and a real-CLI SDK v3 loopback run
+(controlled feedback, Terrain/history, key-free inspect/recover with
+before/after immutable-identity comparison and explicit D2
+predecessor/Terrain linkage) on the retained 0030 function; shared lifecycle
+support lives in the target-private `run_support` module consumed by the
+receipt, pack and episode cases. Oracle ARM64 offline evidence on the
+consolidated harness executable SHA-256
+`37f7fc9cd0b19aa1601b9c4309bb19331bcf22617df36f30b64e7085fadc97b9`: RED on the
+byte-verified unpatched source (`dw_native_fix0030_red2_20261110r1`, 8 pass/2
+fail — exactly the two new cases, zero provider sends) and GREEN on the
+corrected candidate (`dw_native_fix0030_green3_20261110r1`, 10/10 pass);
+earlier pre-consolidation runs (`dw_native_fix0030_red_20261110r1`,
+`dw_native_fix0030_green_20261110r1`/`dw_native_fix0030_green2_20261110r1`)
+showed the same signature and remain preserved; reports at
+`/srv/duskweave/reports/fix-schema0030-successor-20261110r1`. Committed-head CI
+and distinct review are pending; the single authorized bounded DeepSeek
+episode follows CI green; LIVE binding and niagamas.com discovery remain
+unproven prerequisites, not delivered by this fix.
 
 **Final-release LAB qualification (R1) — FAIL / NOT READY:** owner-authorized
 backup, fresh schema-0030 database/config provisioning, frozen-bundle installation

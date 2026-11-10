@@ -178,7 +178,8 @@ LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$
 DECLARE ref jsonb; candidate jsonb; original jsonb; expected jsonb; ordinal integer;
  keys text[]:=ARRAY['version','engagement_id','campaign_id','decision_id','permission_id','mission_revision','goal_ref',
  'exercise_mode','scope','question','evaluated_at','owner_views','references','candidates','omissions','pending_unknown',
- 'manifests','remaining_capacity','execution_mode','run_profile','inference_profile','predecessor','live_binding','qualification_purpose'];
+ 'manifests','remaining_capacity','execution_mode','run_profile','inference_profile','predecessor']
+ ||CASE WHEN request->>'version'='m1_autonomous_run_request_v4' THEN ARRAY['live_binding','qualification_purpose'] ELSE '{}'::text[] END;
 BEGIN
  IF request->>'version' IS DISTINCT FROM 'm1_autonomous_run_request_v4' AND (p ?& ARRAY['live_binding','qualification_purpose'])
  THEN RAISE EXCEPTION 'run_pack_source_refused'; END IF;

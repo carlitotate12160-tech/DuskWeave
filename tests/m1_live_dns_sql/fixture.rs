@@ -54,6 +54,21 @@ pub fn broker() -> Client {
 }
 
 pub fn register_live(slot: u128, live: bool) -> (Uuid, Uuid, Uuid) {
+    register_shaped(slot, |raw| {
+        let p = &mut raw["m1_inference_permission"];
+        if live {
+            p["version"] = json!("m1_inference_permission_v6");
+            p["execution_mode"] = json!("live");
+            p["run_profile"] = json!(LAB);
+            p["live_binding"] = json!({"qualification_ref":Uuid::new_v4(),
+                "release_sha256":RELEASE,"resolver_ipv4":"192.0.2.53"});
+        }
+    })
+}
+
+/// Narrow version/profile/binding shaping hook for successor cases; the
+/// accepted registration path and timing fields remain unchanged.
+pub fn register_shaped(slot: u128, shape: impl FnOnce(&mut Value)) -> (Uuid, Uuid, Uuid) {
     let (e, c) = db_support::scope(slot);
     let now: i64 = admin()
         .query_one(
@@ -75,16 +90,10 @@ pub fn register_live(slot: u128, live: bool) -> (Uuid, Uuid, Uuid) {
         "campaign_limits":{"episodes":1,"provider_calls":1,"dns_questions":1,"dns_followups":1,
             "tcp_connections":1,"head_requests":1},"concurrency":1});
     let p = &mut raw["m1_inference_permission"];
-    if live {
-        p["version"] = json!("m1_inference_permission_v6");
-        p["execution_mode"] = json!("live");
-        p["run_profile"] = json!(LAB);
-        p["live_binding"] = json!({"qualification_ref":Uuid::new_v4(),
-            "release_sha256":RELEASE,"resolver_ipv4":"192.0.2.53"});
-    }
     p["starts_at"] = json!(now);
     p["ends_at"] = json!(now + 3599);
     p["permission_id"] = json!(Uuid::new_v4());
+    shape(&mut raw);
     let input =
         duskweave::input::parse_register(&serde_json::to_vec(&raw).unwrap()).expect("registration");
     let (mut alloc, mut store, mut traj) = db_support::ports();
@@ -276,13 +285,24 @@ pub fn live_publication(e: Uuid, c: Uuid, run: Uuid) -> Value {
         .get(0)
 }
 
-/// The sole authority setup insert: one SQL-fixture qualification row bound
-/// exactly to the accepted live_binding. Digests/boot bytes are synthetic
-/// fixture values, never host evidence.
+/// One accepted-binding qualification seeder for LAB and LIVE cases: inserts
+/// a single synthetic fixture-bound row whose run_profile/purpose/resolver
+/// derive from the accepted permission through the canonical profile mapping.
+/// Digests/boot bytes are synthetic fixture values, never host evidence.
 pub fn seed_live_qualification(publication: &Value) -> Uuid {
-    let binding = &publication["fields"]["m1_inference_permission"]["live_binding"];
+    let permission = &publication["fields"]["m1_inference_permission"];
+    let binding = &permission["live_binding"];
+    let run_profile = permission["run_profile"].as_str().unwrap();
+    let purpose = duskweave::m1_inference_profile::sdk_versions(run_profile)
+        .expect("canonical run profile")
+        .qualification_purpose
+        .expect("live-bound run profile carries a qualification purpose");
+    let resolver = binding["resolver_ipv4"].as_str().unwrap();
+    assert!(duskweave::m1_inference_profile::resolver_binding(
+        run_profile,
+        resolver
+    ));
     assert_eq!(binding["release_sha256"], RELEASE);
-    assert_eq!(binding["resolver_ipv4"], "192.0.2.53");
     let qualification: Uuid = binding["qualification_ref"]
         .as_str()
         .unwrap()
@@ -294,8 +314,8 @@ pub fn seed_live_qualification(publication: &Value) -> Uuid {
             "INSERT INTO execution.live_qualifications(qualification_ref,run_profile,purpose,release_sha256,launcher_sha256,capture_sha256,exporter_sha256,image_digest,manifest_sha256,boot_id,resolver_ipv4,valid_from_ms,valid_until_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
             &[
                 &qualification,
-                &LAB,
-                &"LAB",
+                &run_profile,
+                &purpose,
                 &RELEASE,
                 &hex('c'),
                 &hex('d'),
@@ -303,36 +323,13 @@ pub fn seed_live_qualification(publication: &Value) -> Uuid {
                 &format!("sha256:{}", hex('f')),
                 &hex('0'),
                 &Uuid::new_v4(),
-                &"192.0.2.53".parse::<std::net::IpAddr>().unwrap(),
+                &resolver.parse::<std::net::IpAddr>().unwrap(),
                 &(now_ms() - 60000),
                 &(now_ms() + 3600000),
             ],
         )
         .unwrap();
     qualification
-}
-
-/// Typed v4 live run request constructed from the accepted publication.
-pub fn live_run_request(publication: &Value, run: Uuid) -> duskweave::m1_run::RunRequest {
-    let fields = &publication["fields"];
-    let permission = &fields["m1_inference_permission"];
-    let asset = fields["included_assets"][0].as_str().unwrap();
-    let raw = json!({
-        "version":"m1_autonomous_run_request_v4","run_id":run,"run_profile":LAB,
-        "execution_mode":"live","deadline_at_ms":now_ms()+300000,
-        "inference_profile":permission["profile"],
-        "live_binding":permission["live_binding"],
-        "context":{"version":"m1_context_prepare_request_v1","mission":{
-            "version":"m1_inference_reservation_request_v1",
-            "engagement_id":publication["engagement_id"],
-            "campaign_id":publication["campaign_id"],
-            "operator_ref":fields["operator_ref"],"expected_mission_revision":1,
-            "permission_id":permission["permission_id"],"goal_ref":fields["goal_ref"],
-            "exercise_mode":fields["exercise_mode"]},
-            "candidates":[{"asset_ref":asset,"priority":"high"}]},
-        "seed_names":[{"asset_ref":asset,"name":"seed.duskweave.test"}]});
-    duskweave::m1_run::RunRequest::parse(&serde_json::to_vec(&raw).unwrap())
-        .expect("typed live run request")
 }
 
 pub struct PreparedDecision {
@@ -474,5 +471,16 @@ pub fn run_fixture_wrapper() {
         .and_then(|rest| rest.split(" passed").next())
         .and_then(|n| n.parse::<u32>().ok())
         .unwrap_or(0);
-    assert!(passed >= 5, "SQL assertion group must execute: {stdout}");
+    for name in [
+        "successor_pack::sql_live_successor_pack_v2_v3_v4_contract_matrix",
+        "successor_episode::sql_live_sdk_v3_cli_feedback_and_key_free_recovery_on_schema0030",
+    ] {
+        let line = format!("test {name} ... ok");
+        assert_eq!(stdout.matches(&line).count(), 1, "{name} missing: {stdout}");
+    }
+    assert!(passed >= 10, "SQL assertion group must execute: {stdout}");
+    eprintln!(
+        "schema0030_sql_group passed={passed} new=2 report={}",
+        report.display()
+    );
 }
