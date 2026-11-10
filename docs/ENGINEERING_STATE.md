@@ -48,27 +48,69 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** continue the interrupted r5 final release qualification
-on the separated build storage delivered 2026-10-31 — bind/verify the final
-release identity, remaining failure/recovery coverage, committed-head
-CI/coverage and draft-PR review. Keep the original runtime deadlines and
-preserve uncertain attempts, the two historical FIX batches and r4 evidence. The
-[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#sdk-loopback-qualification-and-fresh-consent)
-owns supported procedures.
+**Next product action:** complete the mid-D1 correction's external delta
+review and required current-candidate CI, then rerun the single corrected
+withdrawal case on the verified b deployment of the unchanged frozen
+bundle/image. Preserve the 16 first-fixture passing cases, failed run,
+original deadlines and historical UNKNOWN resources; do not restart completed
+image restoration, custody/SQL proofs, coverage or runtime artifact builds.
+The [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
+owns deployment procedures. Real-provider/live-target consent remains separate.
 
-**Final-release LAB qualification (R1) — PENDING:** the ARM64 bundle built from
-frozen release source `8c6f752` (image
-`dw-final-release-prep-20261109:8c6f752e27c8d47671d3e71a86bf55c9aae6f2db`,
-`sha256:9587adb7…`) is not yet installed or bound. The deployment driver is a
-six-file tooling/test delta on `fix/final-release-preparation-r1`: `install-bundle`
-plus explicit fresh-destination `lab-database`/`lab-bind` forms, required
-`DW_M1_LAB_CONFIG_ROOT`/`DW_M1_LAB_REPORT_ROOT` harness roots, and a witnessed
-held-D1 withdrawal synchronization; no runtime/SQL input changed. Fresh fixture
-`dw_native_final_release_qual_20261110`, the 17-case physical matrix, the draft
-PR and required current-candidate CI/coverage are all pending — nothing in this
-lane is proved, merged or sealed. Earlier cited CI/coverage (for example #139
-`517e92c`, run `41370937004`, coverage FAIL/BLOCKED `41377109367`) belongs to
-other candidates and does not qualify this driver.
+**Final-release LAB qualification (R1) — FAIL / NOT READY:** owner-authorized
+backup, fresh schema-0030 database/config provisioning, frozen-bundle installation
+and finite LAB binding completed on 2026-11-10. Release source remains
+`8c6f752`; driver `d78d204` has the same Git tree as the integrated driver
+([#144](https://github.com/carlitotate12160-tech/DuskWeave/pull/144)). No runtime,
+SQL, bundle or image input was rebuilt or changed. Driver run
+[42751002099](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/42751002099)
+passed required checks and the 90/80 coverage gate (95.56%, 17039/17830).
+
+All 17 physical cases executed serially on the installed frozen release:
+16 PASS, 1 FAIL, no skipped/zero-test successes. The mid-D1 case failed at
+`tests/m1_live_dns/withdrawal/pre_acquisition.rs:196`: it expects top-level
+`operation`, while the existing durable producer owns
+`contract.operation_id`. Independent read-only review classified this as a
+VALID test defect, not a demonstrated runtime defect. Earlier held-D1/parent
+STOP assertions executed; subsequent scope/receipt-STOP/zero-result assertions
+did not. Supplemental database/resolver witnesses show durable withdrawal and
+zero DNS/results but do not turn the failed case into PASS.
+
+Evidence is retained at `/srv/duskweave/reports/final-release-qual-20261110`
+(`qualification-summary.json`, per-case logs/results and verified rollback).
+Fresh database `dw_native_final_release_qual_20261110` (OID 39077), restricted
+roles, protected config and LAB row `af0a0d66-9f11-4713-857d-4dc8e3d2c863`
+remain preserved. Resource/schema checks passed after every case, with the
+normal case's supplemental metadata-checker correction retained. After all
+owned resources were reconciled, the failure rollback restored exact prior
+binary/manifest bytes and ownership/modes. That prior qualification is expired:
+the host is **UNQUALIFIED**. The frozen bundle/image and historical resources
+remain intact. No real-provider/public-target qualification or M1 seal is claimed.
+
+A later deployment installed the same unchanged frozen release against the
+fresh b fixture `dw_native_final_release_qual_20261110b` (OID 40150, role
+prefix `dw_frq10b`), protected config
+`/etc/duskweave/m1/lab-final-release-20261110b`, report root
+`/srv/duskweave/reports/final-release-qual-20261110b` and LAB row
+`4629211c-4fdc-48bc-b8fe-c4c1124a2a9d` (manifest SHA-256
+`80667eac1ba0b63f40d0e33e78d361cd93891aea7c3285a81648a2debc8c8835`) under the
+original finite interval ending 2026-11-11 13:01:10.035 WIB — never extended.
+Installed hashes equal the frozen bundle and the b database holds zero
+autonomous runs; the original 17-case matrix ran only on the first fixture.
+This binding is administrative deployment evidence, not an accepted
+qualification.
+
+**Mid-D1 correction (DW-FINAL-RELEASE-QUAL-R1-FIX2) — delivered for external
+review:** the case now consumes the existing durable contract
+(`contract.operation_id`) and persists the parsed withdrawal receipt as
+`mid-d1-withdrawal.json` in its case report directory immediately after
+parsing, preserving evidence on any subsequent assertion failure. Every other
+scenario assertion, deadline, witness and counter is unchanged. The delta
+awaits its external READY disposition and required current-candidate CI;
+afterwards exactly one corrected-case rerun executes on the verified b
+binding. Sixteen retained first-fixture PASS plus one corrected PASS on b is
+a corrected evidence corpus for external review — not a fresh 17/17 run on b
+and not an acceptance.
 
 **Delivered SDK runtime:** the accepted
 [ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)

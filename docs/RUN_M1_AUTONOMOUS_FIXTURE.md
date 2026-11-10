@@ -385,11 +385,14 @@ never describe the bundle as a build of the driver. After the prior installed
 binaries, exact manifest bytes/metadata and image digest are preserved in a
 protected root:root/0700 backup:
 
-- `install-bundle <bundle-dir>` verifies fixed membership, root-owned regular
-  files with nlink=1 and no group/other write, and the four pinned digests —
-  all before replacing any installed file — then installs.
-- `lab-database <source-dir> <database> <role-prefix> <config-dir>` provisions
-  a fresh `dw_native_` schema-0030 fixture on the owned service and publishes
+- `install-bundle <bundle-dir>` verifies the exact seven-file membership
+  (four binaries plus the three `third_party/genai` notices), protected bundle
+  directories/ancestry, root-owned regular members with nlink=1 and no
+  group/other write, and all seven pinned digests before installation.
+- `lab-database <source-dir> <database> <role-prefix> <config-dir>` requires
+  Git-byte-verified source with protected root-owned directories/ancestry,
+  bootstrap helper and migration inputs, all without group/other write. It
+  provisions a fresh `dw_native_` schema-0030 fixture on the owned service and publishes
   protected configuration: root-owned/group-`duskweave-core` 0750 directory,
   six runtime DSNs and `environment.json` 0400 owned by core, and a
   root:root/0400 administrative `test-environment.json` core cannot read.
