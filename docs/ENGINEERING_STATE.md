@@ -79,10 +79,35 @@ corrected candidate (`dw_native_fix0030_green3_20261110r1`, 10/10 pass);
 earlier pre-consolidation runs (`dw_native_fix0030_red_20261110r1`,
 `dw_native_fix0030_green_20261110r1`/`dw_native_fix0030_green2_20261110r1`)
 showed the same signature and remain preserved; reports at
-`/srv/duskweave/reports/fix-schema0030-successor-20261110r1`. Committed-head CI
-and distinct review are pending; the single authorized bounded DeepSeek
-episode follows CI green; LIVE binding and niagamas.com discovery remain
-unproven prerequisites, not delivered by this fix.
+`/srv/duskweave/reports/fix-schema0030-successor-20261110r1`. Draft PR
+[#146](https://github.com/carlitotate12160-tech/DuskWeave/pull/146) head
+`9bf1f70` passed all committed-head required checks (one stuck
+`structure (ubuntu-latest)` posting was recovered by rerun; the job itself
+had succeeded). The single authorized bounded DeepSeek episode then ran
+once on the frozen release CLI (`e4aad5ca…`, image-verified) against fresh
+provider fixture `dw_native_fix0030_provider_20261110r1` with all-new
+identities and one 300-second window: `register` accepted
+(history=completed); `m1-run` started, claimed decision_one, reserved and
+bound the generation call, and the v3 successor pack was admitted past
+`inference_may_send` on the corrected schema — the surface this fix owns.
+Release-current verification then refused the send with the mapped
+`current_authority_unavailable`; the call is durable as
+`failed_never_released`, the decision recorded disposition
+`current_authority_unavailable`, and the run closed `unknown` with a
+committed diagnostic. Zero provider sends occurred (the ≤4-call bound was
+never consumed), zero effects were recorded, and key-free
+`m1-run-inspect`/`m1-run-recover` afterwards left decision/call/run/effect/
+terrain identities byte-identical. The episode's retained evidence cannot
+discriminate which release-current sub-check fired (postgres error text is
+not captured on that host); that observability gap is reported as provider
+feedback, not attributed to this fix. **LIVE readiness: NOT READY** —
+`boundary/qualify/qualify.sh lab-bind` is the only
+`execution.live_qualifications` writer and is purpose-locked to
+`LAB`/`autonomous-dns-genai-lab-v1`; no supported admin procedure can mint
+the `purpose=LIVE`/`autonomous-dns-genai-live-v1` binding a v6 live run
+requires, and no row was fabricated. Distinct review of the fix, the
+provider outcome and the LIVE-readiness gap is pending; niagamas.com
+discovery remains an unproven prerequisite, not delivered by this fix.
 
 **Final-release LAB qualification (R1) — FAIL / NOT READY:** owner-authorized
 backup, fresh schema-0030 database/config provisioning, frozen-bundle installation
