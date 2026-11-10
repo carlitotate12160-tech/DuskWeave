@@ -100,17 +100,27 @@ autonomous runs; the original 17-case matrix ran only on the first fixture.
 This binding is administrative deployment evidence, not an accepted
 qualification.
 
-**Mid-D1 correction (DW-FINAL-RELEASE-QUAL-R1-FIX2) — delivered for external
-review:** the case now consumes the existing durable contract
+**Mid-D1 correction (DW-FINAL-RELEASE-QUAL-R1-FIX2) — corrected case passed on
+b, awaiting external review:** the case consumes the existing durable contract
 (`contract.operation_id`) and persists the parsed withdrawal receipt as
 `mid-d1-withdrawal.json` in its case report directory immediately after
-parsing, preserving evidence on any subsequent assertion failure. Every other
-scenario assertion, deadline, witness and counter is unchanged. The delta
-awaits its external READY disposition and required current-candidate CI;
-afterwards exactly one corrected-case rerun executes on the verified b
-binding. Sixteen retained first-fixture PASS plus one corrected PASS on b is
-a corrected evidence corpus for external review — not a fresh 17/17 run on b
-and not an acceptance.
+parsing. Every other scenario assertion, deadline, witness and counter is
+unchanged. On 2026-11-10 the single corrected case executed once on the
+verified b binding via harness executable SHA-256
+`c4742cf3f85b71560a9f1d2e7675f44e9a735e2dc15f4b955f61aaf8d87b8174` (built from
+the byte-verified `757b0c36` export): exit 0, exactly one test passed in 1.03s,
+no retry. The durable receipt carries `contract.operation_id`,
+`mission_authority_withdrawn`, `stop_latched` plus `disposal_confirmed`, scope
+limited to the run's engagement/campaign, and zero DNS counters while the
+fixture reply stayed held; `execution.autonomous_runs`, `mission.withdrawals`
+and `trajectory.withdrawal_history` each gained exactly one row and the
+live/fixture DNS tables stayed empty. Post-run reconciliation left the
+manifest, installed binaries, schema, functions, grants and qualification row
+unchanged, with no owned namespace/route/rule/listener residue; evidence is
+retained at `/srv/duskweave/reports/final-release-qual-20261110b/fix2-phase-b`
+and `cases-mid-d1-fix2`. Sixteen retained first-fixture PASS plus this
+corrected PASS on b form the corpus for external delta review — not a fresh
+17/17 run on b and not an acceptance.
 
 **Delivered SDK runtime:** the accepted
 [ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
