@@ -105,10 +105,11 @@ fn withdrawal_during_first_decision_stays_durable_and_stops_the_run() {
     host.start_resolver();
     let hold = Arc::new(AtomicBool::new(false));
     let _release = HeldReply(hold.clone());
+    let gate = hold.clone();
     let server = Server::lab(move |incoming| {
         let body: serde_json::Value = serde_json::from_slice(&incoming.body).unwrap();
         lab::pack_in(&body).expect("witnessed D1 request pack");
-        Reply::Hold(hold.clone())
+        Reply::Hold(gate.clone())
     });
     let request = lab::registered(&mut host, "seed.duskweave.test");
     let file = host.write(&request);
