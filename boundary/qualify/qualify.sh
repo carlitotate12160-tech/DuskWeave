@@ -10,21 +10,13 @@ VOLUME=dw-live-dns-20261030-pg17
 IMAGE=postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d
 SECRETS=/etc/duskweave/m1/service
 RELEASE_IMAGE=dw-live-dns-20261030:candidate
-# Frozen final-release bundle identity; it is consumed, never rebuilt or relabeled.
-BUNDLE_SUMS='e4aad5ca68c08bde2dd283b204014d55a5fd735fd7058ab55adbb8e054e91012  duskweave
-159b40330a72d0d4f8ec77e0c057e82dbd6155f5ace7df8023dcb7f791ba959b  dw-boundary-launcher
-f15c975c544265f356bc3fb052225003f9f6ba18ad9965c948ed15b6477ed06a  dw-dns-capture
-61d4a07998164143f17e2b446e2da4bf8bb17d0093dfe528afac3b6d28ae0fde  dw-dns-exporter'
+# Deployment custody and the pinned frozen-bundle map live beside this script;
+# a missing or moved module fails closed rather than falling back elsewhere.
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/deployment_custody.sh"
 refuse() { printf '%s\n' "$1" >&2; exit 1; }
 valid_image_ref() {
     # One explicit unqualified name:tag; never a registry/path or digest form.
     [[ $1 =~ ^[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]
-}
-valid_lab_destination() {
-    # An absent absolute destination below a real root-owned directory.
-    [[ $1 == /* && ! -e $1 && ! -L $1 ]] || return 1
-    local parent=${1%/*}
-    [[ -d $parent && ! -L $parent && $(stat -c %u "$parent") == 0 ]]
 }
 require_deployment_host() {
     [[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
@@ -196,18 +188,13 @@ install_release() {
 }
 
 install_bundle() {
-    # Frozen-bundle identity and membership checks complete before any install.
-    local bundle=$1 name path entry
-    [[ $(stat -c %u:%g "$bundle") == 0:0 ]] || refuse bundle_refused
-    for entry in "$bundle"/* "$bundle"/.[!.]* "$bundle"/..?*; do
-        [[ -e $entry || -L $entry ]] || continue
-        case ${entry##*/} in duskweave|dw-boundary-launcher|dw-dns-capture|dw-dns-exporter) ;; *) refuse bundle_membership_refused ;; esac
-    done
-    for name in duskweave dw-boundary-launcher dw-dns-capture dw-dns-exporter; do
-        path=$bundle/$name
-        [[ -f $path && ! -L $path && $(stat -c %u "$path") == 0 && $(stat -c %h "$path") == 1 && $(( (8#$(stat -c %a "$path") & 022) == 0 )) == 1 ]] || refuse bundle_member_refused
-    done
-    (cd -- "$bundle" && sha256sum --check --strict - >/dev/null 2>&1 <<<"$BUNDLE_SUMS") || refuse bundle_digest_mismatch
+    # Frozen-bundle custody, membership, member and digest validation complete
+    # before any install; a failed predicate refuses without touching files.
+    local bundle=$1
+    validate_bundle_custody "$bundle" || refuse bundle_refused
+    validate_bundle_membership "$bundle" || refuse bundle_membership_refused
+    validate_bundle_members "$bundle" || refuse bundle_member_refused
+    validate_bundle_digests "$bundle" || refuse bundle_digest_mismatch
     install_release "$bundle"
     printf '%s\n' 'bundle_installed qualification_pending=true'
 }
@@ -267,7 +254,7 @@ PY
 }
 
 bind_lab_release() {
-    BUNDLE_SUMS=$BUNDLE_SUMS python3 - "$@" <<'PY'
+    BUNDLE_SUMS=$DEPLOYMENT_BUNDLE_SUMS python3 - "$@" <<'PY'
 import hashlib,json,os,pathlib,pwd,shutil,subprocess,sys,time,uuid
 if len(sys.argv)==1:
     image_ref,database='dw-live-dns-20261030:candidate','dw_native_dns_attach_20261103a'
@@ -375,16 +362,14 @@ main() {
         release) [[ $# == 1 ]] || refuse qualification_arguments_refused; build_release "$RELEASE_IMAGE"; install_release ;;
         lab-database)
             if [[ $# == 1 ]]; then prepare_lab_database
-            elif [[ $# == 5 && $2 == /* && -d $2 && ! -L $2 && -f $2/tests/support/m1_native_bootstrap.py \
-                    && $3 =~ ^dw_native_[a-z0-9_]{1,53}$ && $4 =~ ^dw_[a-z0-9_]{0,33}$ ]] \
-                    && valid_lab_destination "$5"; then
+            elif [[ $# == 5 && $2 == /* && $3 =~ ^dw_native_[a-z0-9_]{1,53}$ && $4 =~ ^dw_[a-z0-9_]{0,33}$ ]] \
+                    && protected_source_tree "$2" && protected_fresh_destination "$5"; then
                 prepare_lab_database "$2" "$3" "$4" "$5"
             else refuse qualification_arguments_refused; fi ;;
         lab-bind)
             if [[ $# == 1 ]]; then bind_lab_release
             elif [[ $# == 4 && $3 =~ ^dw_native_[a-z0-9_]{1,53}$ ]] && valid_image_ref "$2" \
-                    && { valid_lab_destination "$4" \
-                        || [[ $4 == /* && -d $4 && ! -L $4 && $(stat -c %u "$4") == 0 && $(stat -c %g "$4") == 0 && $(stat -c %a "$4") == 700 ]]; }; then
+                    && protected_report_destination "$4"; then
                 bind_lab_release "$2" "$3" "$4"
             else refuse qualification_arguments_refused; fi ;;
         install-bundle) [[ $# == 2 && $2 == /* && -d $2 && ! -L $2 ]] || refuse qualification_arguments_refused; install_bundle "$2" ;;

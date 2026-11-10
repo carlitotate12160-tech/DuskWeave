@@ -97,8 +97,10 @@ fn withdrawal_before_any_run_commits_durably_and_recovers_key_free() {
 #[test]
 #[ignore = "requires the owned installed release, resolver and restricted SQL owners"]
 fn withdrawal_during_first_decision_stays_durable_and_stops_the_run() {
-    // The first fixture request is the witnessed D1 boundary: its reply is held
-    // so withdrawal lands mid-decision, before any provider answer or effect.
+    // D1 is witnessed by a held first fixture reply. The proven order is D1 →
+    // withdrawal invocation → latched STOP/parent termination while held →
+    // fixture release → durable receipt; no shared clock is extended.
+    use serde_json::json;
     let mut host = Host::new();
     host.start_resolver();
     let hold = Arc::new(AtomicBool::new(false));
@@ -110,6 +112,20 @@ fn withdrawal_during_first_decision_stays_durable_and_stops_the_run() {
     });
     let request = lab::registered(&mut host, "seed.duskweave.test");
     let file = host.write(&request);
+    let mission = &request["context"]["mission"];
+    let e: Uuid = serde_json::from_value(mission["engagement_id"].clone()).unwrap();
+    let c: Uuid = serde_json::from_value(mission["campaign_id"].clone()).unwrap();
+    let operator: Uuid = serde_json::from_value(mission["operator_ref"].clone()).unwrap();
+    let run: Uuid = serde_json::from_value(request["run_id"].clone()).unwrap();
+    // All withdrawal inputs complete before m1-run spawns: Host::id and
+    // Host::write are PostgreSQL/filesystem calls that must not consume the
+    // held-reply interval.
+    let operation = host.id();
+    let q = json!({"engagement_id":e,"campaign_id":c,"operator_ref":operator,
+        "expected_mission_revision":1,"reason":"operator_requested"});
+    let withdraw_file = host.write(&q);
+    let operation_arg = operation.to_string();
+    let withdraw_path = withdraw_file.to_str().unwrap().to_owned();
     let mut parent = host.spawn(&[
         "m1-run",
         "--input",
@@ -127,35 +143,58 @@ fn withdrawal_during_first_decision_stays_durable_and_stops_the_run() {
         assert_eq!(wire.write_complete, 0, "held D1 reply was never written");
         assert_eq!(wire.write_failed, 0, "held D1 reply did not fail");
     }
-    let mission = &request["context"]["mission"];
-    let e: Uuid = serde_json::from_value(mission["engagement_id"].clone()).unwrap();
-    let c: Uuid = serde_json::from_value(mission["campaign_id"].clone()).unwrap();
-    let operator: Uuid = serde_json::from_value(mission["operator_ref"].clone()).unwrap();
-    let run: Uuid = serde_json::from_value(request["run_id"].clone()).unwrap();
-    let operation = host.id();
-    let (output, view) = withdraw_cli(&mut host, e, c, operator, operation, false);
+    let launch = Instant::now();
+    let mut withdrawal = host.spawn(&[
+        "withdraw",
+        "--operation",
+        &operation_arg,
+        "--input",
+        &withdraw_path,
+        "--recover",
+        "false",
+    ]);
     assert!(
-        output.status.success(),
-        "mid-D1 withdrawal: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
-    assert_eq!(view["receipt"]["result"], "durable");
-    assert!(
-        parent
-            .wait_until(Instant::now() + Duration::from_secs(5))
-            .is_some(),
+        parent.wait_until(launch + Duration::from_secs(5)).is_some(),
         "owned run terminates on withdrawal"
     );
     let _terminal = parent.output();
     {
         let wire = server.wire.lock().unwrap();
-        assert_eq!(
-            wire.write_complete, 0,
-            "held D1 reply still unwritten after parent termination"
-        );
+        assert_eq!(wire.write_complete, 0, "held D1 reply stayed unwritten");
         assert_eq!(wire.write_failed, 0);
     }
     assert_eq!(server.count(), 1, "exactly one fixture generation request");
+    assert!(
+        !hold.load(Ordering::SeqCst),
+        "fixture hold still held at the stop boundary"
+    );
+    assert!(
+        std::path::Path::new(&format!(
+            "/run/duskweave/launcher/campaign-stop-{}-{}",
+            e.simple(),
+            c.simple()
+        ))
+        .exists(),
+        "fresh campaign STOP latch precedes the durable receipt"
+    );
+    hold.store(true, Ordering::SeqCst);
+    assert!(
+        withdrawal
+            .wait_until(launch + Duration::from_secs(65))
+            .is_some(),
+        "withdrawal receipt within its original deadline"
+    );
+    let output = withdrawal.output();
+    let receipt = Host::receipt(&output);
+    assert!(
+        output.status.success(),
+        "mid-D1 withdrawal: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(receipt["result"], "durable");
+    assert_eq!(receipt["operation"], json!(operation));
+    assert_eq!(receipt["scope"], json!([e, c]));
+    assert_eq!(receipt["local_stop"]["stop_latched"], true);
     assert_eq!(host.count("dns_udp"), 0, "zero DNS questions");
     assert_eq!(
         host.admin

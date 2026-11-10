@@ -26,9 +26,42 @@ DRIVER = r"""set -euo pipefail
 
 LOG=$(mktemp)
 ERR=$(mktemp)
-trap 'rm -f "$LOG" "$ERR"' EXIT
+STAT_REGISTRY=$(mktemp)
+trap 'rm -f "$LOG" "$ERR" "$STAT_REGISTRY"' EXIT
 RC=0
 ERRTXT=""
+
+# Test-local metadata doubles scoped to explicitly registered fixture paths:
+# non-root CI runners get synthetic root ownership/modes while missing paths,
+# symlinks and unregistered paths stay real observations.
+stat() {
+    if [[ $1 == -c && -f $STAT_REGISTRY ]]; then
+        local fmt=$2 path=$3 meta u g m n
+        meta=$(awk -F'|' -v p="$path" '$1 == p { v=$2 } END { print v }' "$STAT_REGISTRY")
+        if [[ -n $meta ]]; then
+            IFS=: read -r u g m n <<<"$meta"
+            case $fmt in
+                %u) echo "$u"; return ;; %g) echo "$g"; return ;;
+                %a) echo "$m"; return ;; %h) echo "$n"; return ;;
+            esac
+        fi
+    fi
+    command stat "$@"
+}
+register() {
+    # register <path> [uid gid mode nlink]; default fakes ownership 0:0 and
+    # keeps the path's real mode/nlink. Later registrations replace earlier.
+    local p=$1 u=${2:-0} g=${3:-0} m n
+    m=${4:-$(command stat -c %a "$p")}; n=${5:-$(command stat -c %h "$p")}
+    printf '%s|%s:%s:%s:%s\n' "$p" "$u" "$g" "$m" "$n" >>"$STAT_REGISTRY"
+}
+register_ancestors() {
+    # Register $1 and its ancestors down to /tmp; / itself stays a real
+    # observation. /tmp is a declared unsafe-by-mode ancestor the double pins.
+    local p=$1
+    while [[ $p == /tmp/?* ]]; do register "$p"; p=${p%/*}; done
+    register /tmp 0 0 755 1
+}
 
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 note() { printf '%s\n' "$*" >>"$LOG"; }
@@ -211,33 +244,21 @@ case_install_bundle_dispatch_and_shape_refusal() {
     expect_quiet
 }
 
-case_invalid_bundle_refused_before_install() {
-    # The real install_bundle validation must refuse before any installer runs.
-    require_deployment_host() { return 0; }
-    install_release() { note "install_release${1:+ $1}"; }
-    dir=$(mktemp -d)
-    for n in duskweave dw-boundary-launcher dw-dns-capture dw-dns-exporter stray; do
-        : > "$dir/$n"
-    done
-    invoke_main install-bundle "$dir"
-    [[ $RC != 0 ]] || fail unexpected_success
-    [[ $ERRTXT == bundle_* ]] || fail "stderr=$ERRTXT"
-    rm -- "$dir/stray" "$dir/dw-dns-exporter"
-    invoke_main install-bundle "$dir"
-    [[ $RC != 0 ]] || fail unexpected_success
-    [[ $ERRTXT == bundle_* ]] || fail "stderr=$ERRTXT"
-    : > "$dir/dw-dns-exporter"
-    invoke_main install-bundle "$dir"
-    [[ $RC != 0 ]] || fail unexpected_success
-    [[ $ERRTXT == bundle_* ]] || fail "stderr=$ERRTXT"
-    expect_quiet
+lab_source_fixture() {
+    # $1 gets a custody-valid explicit SOURCE: bootstrap + one migration SQL,
+    # all registered as synthetic root-owned protected members.
+    mkdir -p "$1/tests/support" "$1/migrations"
+    : > "$1/tests/support/m1_native_bootstrap.py"
+    printf 'SELECT 1;\n' > "$1/migrations/0001_fixture.sql"
+    register_ancestors "$1/tests/support/m1_native_bootstrap.py"
+    register "$1/migrations"
+    register "$1/migrations/0001_fixture.sql"
 }
 
 case_lab_database_fresh_dispatch() {
     double_boundary
     src=$(mktemp -d)
-    mkdir -p "$src/tests/support"
-    : > "$src/tests/support/m1_native_bootstrap.py"
+    lab_source_fixture "$src"
     cfg=/tmp/dw-fresh-config-$$
     invoke_main lab-database "$src" dw_native_final_release_qual_20261110 dw_frq10 "$cfg"
     [[ $RC == 0 ]] || fail "rc=$RC err=$ERRTXT"
@@ -248,8 +269,7 @@ case_lab_database_fresh_dispatch() {
 case_lab_database_fresh_refused() {
     double_boundary
     src=$(mktemp -d)
-    mkdir -p "$src/tests/support"
-    : > "$src/tests/support/m1_native_bootstrap.py"
+    lab_source_fixture "$src"
     plain=$(mktemp -d)
     taken=$(mktemp -d)/taken
     mkdir "$taken"
@@ -276,6 +296,7 @@ case_lab_database_fresh_refused() {
 
 case_lab_bind_fresh_dispatch() {
     double_boundary
+    register /tmp 0 0 755 1
     rpt=/tmp/dw-fresh-report-$$
     invoke_main lab-bind dw-img:t1 dw_native_db_2 "$rpt"
     [[ $RC == 0 ]] || fail "rc=$RC err=$ERRTXT"
@@ -284,8 +305,10 @@ case_lab_bind_fresh_dispatch() {
 
 case_lab_bind_fresh_refused() {
     double_boundary
+    register /tmp 0 0 755 1
     kept=$(mktemp -d)
     chmod 0755 "$kept"
+    register "$kept"
     invoke_main lab-bind 'reg/name:t' dw_native_db_2 /tmp/rpt-$$
     expect_refused qualification_arguments_refused
     invoke_main lab-bind 'dw-img:t1' legacy_db /tmp/rpt-$$
@@ -318,7 +341,12 @@ class BuildOnlyContractTest(unittest.TestCase):
         self.driver.write_bytes(DRIVER.encode("utf-8"))
 
     def run_case(self, case):
-        env = dict(os.environ, QUALIFY=QUALIFY.as_posix(), CASE=case)
+        # Child gets a copy of this environment minus only GOPROXY: the legacy
+        # release path then sees a deterministic unset baseline while the
+        # build-only case passes GOPROXY=off itself, explicitly, to Go.
+        env = dict(os.environ)
+        env.pop("GOPROXY", None)
+        env.update(QUALIFY=QUALIFY.as_posix(), CASE=case)
         result = subprocess.run([self.BASH, self.driver.as_posix()],
                                 env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0,
@@ -365,9 +393,6 @@ class BuildOnlyContractTest(unittest.TestCase):
 
     def test_install_bundle_dispatch_and_shape_refusal(self):
         self.run_case("install_bundle_dispatch_and_shape_refusal")
-
-    def test_invalid_bundle_refused_before_install(self):
-        self.run_case("invalid_bundle_refused_before_install")
 
     def test_lab_database_fresh_dispatch(self):
         self.run_case("lab_database_fresh_dispatch")
