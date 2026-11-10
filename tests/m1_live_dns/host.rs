@@ -7,9 +7,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
-const REPORT: &str =
-    "/srv/duskweave/reports/live-dns-20261030/completion-20261031a/dns-attach-20261103a";
-const CONFIG: &str = "/etc/duskweave/m1/lab-dns-attach-20261103a";
 pub const CORE: &str = "/usr/local/libexec/duskweave/duskweave";
 
 pub fn command(binary: &str, args: &[&str]) -> std::process::Output {
@@ -66,13 +63,23 @@ pub struct Host {
 impl Host {
     pub fn new() -> Self {
         root();
+        let (config, reports) = match (
+            std::env::var_os("DW_M1_LAB_CONFIG_ROOT"),
+            std::env::var_os("DW_M1_LAB_REPORT_ROOT"),
+        ) {
+            (Some(config), Some(reports)) => (PathBuf::from(config), PathBuf::from(reports)),
+            _ => panic!("DW_M1_LAB_CONFIG_ROOT and DW_M1_LAB_REPORT_ROOT are required"),
+        };
+        assert!(
+            config.is_absolute() && reports.is_absolute(),
+            "DW_M1_LAB_CONFIG_ROOT and DW_M1_LAB_REPORT_ROOT must be absolute paths"
+        );
         let environment: BTreeMap<String, String> =
-            serde_json::from_slice(&std::fs::read(format!("{CONFIG}/environment.json")).unwrap())
+            serde_json::from_slice(&std::fs::read(config.join("environment.json")).unwrap())
                 .unwrap();
-        let test: BTreeMap<String, String> = serde_json::from_slice(
-            &std::fs::read(format!("{CONFIG}/test-environment.json")).unwrap(),
-        )
-        .unwrap();
+        let test: BTreeMap<String, String> =
+            serde_json::from_slice(&std::fs::read(config.join("test-environment.json")).unwrap())
+                .unwrap();
         let mut admin = Client::connect(&test["DW_TEST_ADMIN_DATABASE_URL"], NoTls)
             .expect("fresh owned database fixture");
         let id: Uuid = admin
@@ -80,7 +87,7 @@ impl Host {
             .unwrap()
             .get(0);
         let tag = &id.simple().to_string()[..12];
-        let report = Path::new(REPORT).join(id.simple().to_string());
+        let report = reports.join(id.simple().to_string());
         std::fs::create_dir_all(&report).unwrap();
         let manifest =
             serde_json::from_slice(&std::fs::read("/etc/duskweave/m1/deployment.json").unwrap())

@@ -5,15 +5,24 @@ umask 077
 ROOT=/srv/duskweave
 BUILD=/srv/duskweave-build
 SOURCE=$ROOT/src/dns-exporter-attach-20261103
-REPORT=$ROOT/reports/live-dns-20261030/completion-20261031a/dns-attach-20261103a
 CONTAINER=dw-live-dns-20261030-pg
 VOLUME=dw-live-dns-20261030-pg17
 IMAGE=postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d
 SECRETS=/etc/duskweave/m1/service
+RELEASE_IMAGE=dw-live-dns-20261030:candidate
+# Deployment custody and the pinned frozen-bundle map live beside this script;
+# a missing or moved module fails closed rather than falling back elsewhere.
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/deployment_custody.sh"
 refuse() { printf '%s\n' "$1" >&2; exit 1; }
-[[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
-[[ -f $ROOT/.live-dns-20261030-owner ]] || refuse deployment_owner_refused
-[[ $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
+valid_image_ref() {
+    # One explicit unqualified name:tag; never a registry/path or digest form.
+    [[ $1 =~ ^[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]
+}
+require_deployment_host() {
+    [[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
+    [[ -f $ROOT/.live-dns-20261030-owner ]] || refuse deployment_owner_refused
+    [[ $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
+}
 
 # Fixed output/cache/temp components consumed by compiler, Go and Docker steps.
 STORAGE_COMPONENTS="normal normal/release normal/release/build normal/release/deps normal/release/examples normal/release/incremental normal/release/.fingerprint go-cache tmp tmp/go tmp/build go-release boundary-release coverage"
@@ -122,6 +131,7 @@ PY
 }
 
 build_release() {
+    local image_ref=$1
     check_build_storage
     export PATH=$ROOT/toolchains/rust-1.94.1/bin:$ROOT/toolchains/go1.27.3/bin:$PATH
     export CARGO_HOME=$ROOT/build/cargo-home CARGO_TARGET_DIR=$BUILD/normal
@@ -144,15 +154,21 @@ build_release() {
     install -m 0555 "$output/dw-dns-capture-arm64" "$context/dw-dns-capture"
     install -m 0555 "$output/dw-dns-exporter-arm64" "$context/dw-dns-exporter"
     install -m 0444 Dockerfile "$context/Dockerfile"
-    docker build --network none --tag dw-live-dns-20261030:candidate "$context"
+    docker build --network none --tag "$image_ref" "$context"
 }
 
 install_release() {
     check_build_storage
-    local bin=/usr/local/libexec/duskweave marker=/etc/duskweave/m1/.live-dns-owner
+    local bundle=${1:-} bin=/usr/local/libexec/duskweave marker=/etc/duskweave/m1/.live-dns-owner
     [[ ! -L $marker && $(cat "$marker") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
     [[ $(id -u duskweave-core) == $(cat "$ROOT/.core-account-uid") ]] || refuse core_identity_refused
     if id -nG duskweave-core | tr ' ' '\n' | grep -Eq '^(root|sudo|docker|adm|lxd)$'; then refuse core_privilege_refused; fi
+    local names=(duskweave dw-boundary-launcher dw-dns-capture dw-dns-exporter) sources index
+    if [[ -n $bundle ]]; then
+        sources=("$bundle/duskweave" "$bundle/dw-boundary-launcher" "$bundle/dw-dns-capture" "$bundle/dw-dns-exporter")
+    else
+        sources=("$BUILD/normal/release/duskweave" "$BUILD/normal/release/dw-boundary-launcher" "$BUILD/go-release/dw-dns-capture-arm64" "$BUILD/go-release/dw-dns-exporter-arm64")
+    fi
     local policy temporary
     policy='duskweave-core ALL=(root) NOPASSWD: /usr/local/libexec/duskweave/dw-boundary-launcher ""'
     temporary=$(mktemp)
@@ -161,13 +177,9 @@ install_release() {
     if [[ -e /etc/sudoers.d/duskweave-m1-launcher ]] && ! cmp -s "$temporary" /etc/sudoers.d/duskweave-m1-launcher; then
         rm -- "$temporary"; refuse launcher_policy_collision
     fi
-    for name in duskweave dw-boundary-launcher; do
-        [[ ! -L $bin/$name ]] || refuse release_path_collision
-        install -m 0555 "$BUILD/normal/release/$name" "$bin/$name"
-    done
-    for name in dw-dns-capture dw-dns-exporter; do
-        [[ ! -L $bin/$name ]] || refuse release_path_collision
-        install -m 0555 "$BUILD/go-release/$name-arm64" "$bin/$name"
+    for index in "${!names[@]}"; do
+        [[ ! -L $bin/${names[$index]} ]] || refuse release_path_collision
+        install -m 0555 "${sources[$index]}" "$bin/${names[$index]}"
     done
     install -m 0440 "$temporary" /etc/sudoers.d/duskweave-m1-launcher
     rm -- "$temporary"
@@ -175,54 +187,101 @@ install_release() {
     printf '%s\n' 'release_installed qualification_pending=true'
 }
 
+install_bundle() {
+    # Frozen-bundle custody, membership, member and digest validation complete
+    # before any install; a failed predicate refuses without touching files.
+    local bundle=$1
+    validate_bundle_custody "$bundle" || refuse bundle_refused
+    validate_bundle_membership "$bundle" || refuse bundle_membership_refused
+    validate_bundle_members "$bundle" || refuse bundle_member_refused
+    validate_bundle_digests "$bundle" || refuse bundle_digest_mismatch
+    install_release "$bundle"
+    printf '%s\n' 'bundle_installed qualification_pending=true'
+}
+
 prepare_lab_database() {
-    cd "$SOURCE"
-    python3 - <<'PY'
-import importlib.util,json,os,pathlib,pwd
-source=pathlib.Path('/srv/duskweave/src/dns-exporter-attach-20261103')
+    python3 - "$@" <<'PY'
+import importlib.util,json,os,pathlib,pwd,subprocess,sys
+def secret(path,data,owner):
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o400)
+    with os.fdopen(fd,'w') as stream: stream.write(data)
+    if owner is not None: os.chown(path,owner,owner)
+if len(sys.argv)==1:
+    source,database,role_prefix=(pathlib.Path('/srv/duskweave/src/dns-exporter-attach-20261103'),
+                                 'dw_native_dns_attach_20261103a','dw_da1103a')
+    config=pathlib.Path('/etc/duskweave/m1/lab-dns-attach-20261103a');fresh=False
+elif len(sys.argv)==5:
+    source,database,role_prefix,config=(pathlib.Path(sys.argv[1]),sys.argv[2],sys.argv[3],pathlib.Path(sys.argv[4]))
+    fresh=True
+    try: safe=config.parent.is_dir() and config.parent.lstat().st_uid==0
+    except OSError: safe=False
+    if not safe or not config.is_absolute() or config.exists() or config.is_symlink():
+        raise SystemExit('lab_config_collision')
+else: raise SystemExit('qualification_arguments_refused')
 spec=importlib.util.spec_from_file_location('native_bootstrap',source/'tests/support/m1_native_bootstrap.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-fixture=module.Fixture('dw-live-dns-20261030-pg','fixture',database='dw_native_dns_attach_20261103a',
-                       schema_revision='0030',role_prefix='dw_da1103a')
-uid=pwd.getpwnam('duskweave-core').pw_uid
-config=pathlib.Path('/etc/duskweave/m1/lab-dns-attach-20261103a')
+inherited=dict(os.environ)
+fixture=module.Fixture('dw-live-dns-20261030-pg','fixture',database=database,
+                       schema_revision='0030',role_prefix=role_prefix)
+core=pwd.getpwnam('duskweave-core')
 config.mkdir(mode=0o700)
-os.chown(config,uid,uid)
+if fresh:
+    os.chown(config,0,core.pw_gid);os.chmod(config,0o750)
+    meta=os.stat(config)
+    if meta.st_mode&0o777!=0o750 or meta.st_uid!=0 or meta.st_gid!=core.pw_gid:
+        raise SystemExit('lab_config_mode_refused')
+else: os.chown(config,core.pw_uid,core.pw_uid)
+owners=[('core','DW_DATABASE_URL'),('broker','DW_INFERENCE_BROKER_DATABASE_URL'),
+        ('cognition','DW_COGNITION_DATABASE_URL'),('history','DW_TRAJECTORY_DATABASE_URL'),
+        ('terrain','DW_TERRAIN_DATABASE_URL'),('stop','DW_STOP_WRITER_DATABASE_URL')]
 variables={}
-for owner,var in [('core','DW_DATABASE_URL'),('broker','DW_INFERENCE_BROKER_DATABASE_URL'),
-                  ('cognition','DW_COGNITION_DATABASE_URL'),('history','DW_TRAJECTORY_DATABASE_URL'),
-                  ('terrain','DW_TERRAIN_DATABASE_URL'),('stop','DW_STOP_WRITER_DATABASE_URL')]:
- value=fixture.env['DW_TEST_DATABASE_URL' if owner=='core' else var]
- path=config/(owner+'.dsn')
- fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o400)
- with os.fdopen(fd,'w') as stream: stream.write(value)
- os.chown(path,uid,uid)
- variables[var+'_FILE']=str(path)
+for owner,var in owners:
+    path=config/(owner+'.dsn');secret(path,fixture.env['DW_TEST_DATABASE_URL' if owner=='core' else var],core.pw_uid)
+    variables[var+'_FILE']=str(path)
 variables.update(DW_DATABASE_CONFIG_MODE='file',DW_M1_RUN_CONTROL_ROOT='/run/duskweave/m1')
-test=config/'test-environment.json'
-fd=os.open(test,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o400)
-test_env={k:v for k,v in fixture.env.items() if k.startswith('DW_') and
-          (k.endswith('_DATABASE_URL') or k in ('DW_DATABASE_URL','DW_DATABASE_CONFIG_MODE','DW_NATIVE_FIXTURE_DATABASE'))}
-with os.fdopen(fd,'w') as stream: json.dump(test_env,stream)
-runtime=config/'environment.json'
-fd=os.open(runtime,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o400)
-with os.fdopen(fd,'w') as stream: json.dump(variables,stream)
-os.chown(runtime,uid,uid)
+created={k:v for k,v in fixture.env.items() if k.startswith('DW_') and
+         (k.endswith('_DATABASE_URL') or k in ('DW_DATABASE_URL','DW_DATABASE_CONFIG_MODE','DW_NATIVE_FIXTURE_DATABASE'))}
+if fresh: created={k:v for k,v in created.items() if inherited.get(k)!=v}
+test=config/'test-environment.json';secret(test,json.dumps(created),None)
+runtime=config/'environment.json';secret(runtime,json.dumps(variables),core.pw_uid)
+if fresh:
+    def core_can(op,p): return subprocess.run(['/usr/sbin/runuser','-u','duskweave-core','--','/usr/bin/test',op,str(p)],capture_output=True).returncode==0
+    if any(not core_can('-r',p) for p in [config/(o+'.dsn') for o,_ in owners]+[runtime]) \
+            or core_can('-r',test) or core_can('-w',config):
+        raise SystemExit('lab_runtime_access_refused')
 print('lab_database_provisioned credentials_printed=false')
 PY
 }
 
 bind_lab_release() {
-    python3 - <<'PY'
-import hashlib,json,os,pathlib,pwd,shutil,subprocess,time,uuid
+    BUNDLE_SUMS=$DEPLOYMENT_BUNDLE_SUMS python3 - "$@" <<'PY'
+import hashlib,json,os,pathlib,pwd,shutil,subprocess,sys,time,uuid
+if len(sys.argv)==1:
+    image_ref,database='dw-live-dns-20261030:candidate','dw_native_dns_attach_20261103a'
+    report=pathlib.Path('/srv/duskweave/reports/live-dns-20261030/completion-20261031a/dns-attach-20261103a')
+    frozen=None
+elif len(sys.argv)==4:
+    image_ref,database,report=sys.argv[1],sys.argv[2],pathlib.Path(sys.argv[3])
+    dig={n:h for h,n in (l.split() for l in os.environ['BUNDLE_SUMS'].splitlines())}
+    frozen={'release_sha256':dig['duskweave'],'launcher_sha256':dig['dw-boundary-launcher'],
+            'capture_sha256':dig['dw-dns-capture'],'exporter_sha256':dig['dw-dns-exporter']}
+    if not report.is_absolute() or report.is_symlink(): raise SystemExit('lab_report_collision')
+    if report.exists():
+        m=report.lstat()
+        if m.st_uid!=0 or m.st_gid!=0 or m.st_mode&0o777!=0o700 or not report.is_dir():
+            raise SystemExit('lab_report_collision')
+    elif not report.parent.is_dir() or report.parent.lstat().st_uid!=0:
+        raise SystemExit('lab_report_collision')
+else: raise SystemExit('qualification_arguments_refused')
 root=pathlib.Path('/usr/local/libexec/duskweave')
 base=pathlib.Path('/etc/duskweave/m1')
 assert (base/'.live-dns-owner').read_text().strip()=='DW-IMPLEMENT-M1-LIVE-DNS-GENAI'
 manifest={name+'_sha256':hashlib.sha256((root/binary).read_bytes()).hexdigest()
           for name,binary in [('release','duskweave'),('launcher','dw-boundary-launcher'),
                               ('capture','dw-dns-capture'),('exporter','dw-dns-exporter')]}
-image=subprocess.check_output(['docker','image','inspect','--format','{{.Id}}',
-                               'dw-live-dns-20261030:candidate'],text=True).strip()
+if frozen is not None and any(manifest[k]!=v for k,v in frozen.items()):
+    raise SystemExit('lab_installed_release_mismatch')
+image=subprocess.check_output(['docker','image','inspect','--format','{{.Id}}',image_ref],text=True).strip()
 assert image.startswith('sha256:') and len(image)==71
 # Bind the actual worker bytes inside this exact image: a never-started,
 # network-none, owned inspection container yields only the two fixed paths.
@@ -266,7 +325,7 @@ values=[str(record[k]) for k in columns]
 assert all("'" not in v for v in values)
 sql="INSERT INTO execution.live_qualifications ("+','.join(columns)+") VALUES ("+','.join("'"+v+"'" for v in values)+");"
 r=subprocess.run(['docker','exec','-i','dw-live-dns-20261030-pg','psql','-X','-U','postgres',
-                  '-d','dw_native_dns_attach_20261103a','-v','ON_ERROR_STOP=1','-At'],
+                  '-d',database,'-v','ON_ERROR_STOP=1','-At'],
                  input=sql,capture_output=True,text=True)
 if r.returncode: raise SystemExit('lab_qualification_write_failed')
 path=base/'deployment.json'
@@ -277,7 +336,6 @@ temporary=base/'deployment.next'
 fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o444)
 with os.fdopen(fd,'wb') as stream:stream.write(encoded)
 os.replace(temporary,path)
-report=pathlib.Path('/srv/duskweave/reports/live-dns-20261030/completion-20261031a/dns-attach-20261103a')
 report.mkdir(mode=0o700,parents=True,exist_ok=True)
 m=report.lstat()
 assert m.st_uid==0 and m.st_mode&0o777==0o700 and not report.is_symlink()
@@ -286,11 +344,42 @@ print('lab_release_bound purpose=LAB qualification='+manifest['qualification_ref
 PY
 }
 
-case "$1" in
-    service) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_service ;;
-    release) [[ $# == 1 ]] || refuse qualification_arguments_refused; build_release; install_release ;;
-    lab-database) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_lab_database ;;
-    lab-bind) [[ $# == 1 ]] || refuse qualification_arguments_refused; bind_lab_release ;;
-    build-storage) [[ $# == 1 ]] || refuse qualification_arguments_refused; check_build_storage ;;
-    *) refuse qualification_arguments_refused ;;
-esac
+build_only() {
+    local image_ref=$1 source_root
+    valid_image_ref "$image_ref" || refuse qualification_arguments_refused
+    source_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+    check_build_storage
+    if docker image inspect "$image_ref" >/dev/null 2>&1; then
+        refuse build_image_collision
+    fi
+    SOURCE=$source_root GOPROXY=off build_release "$image_ref"
+}
+
+main() {
+    require_deployment_host
+    case "${1:-}" in
+        service) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_service ;;
+        release) [[ $# == 1 ]] || refuse qualification_arguments_refused; build_release "$RELEASE_IMAGE"; install_release ;;
+        lab-database)
+            if [[ $# == 1 ]]; then prepare_lab_database
+            elif [[ $# == 5 && $2 == /* && $3 =~ ^dw_native_[a-z0-9_]{1,53}$ && $4 =~ ^dw_[a-z0-9_]{0,33}$ ]] \
+                    && protected_source_tree "$2" && protected_fresh_destination "$5"; then
+                prepare_lab_database "$2" "$3" "$4" "$5"
+            else refuse qualification_arguments_refused; fi ;;
+        lab-bind)
+            if [[ $# == 1 ]]; then bind_lab_release
+            elif [[ $# == 4 && $3 =~ ^dw_native_[a-z0-9_]{1,53}$ ]] && valid_image_ref "$2" \
+                    && protected_report_destination "$4"; then
+                bind_lab_release "$2" "$3" "$4"
+            else refuse qualification_arguments_refused; fi ;;
+        install-bundle) [[ $# == 2 && $2 == /* && -d $2 && ! -L $2 ]] || refuse qualification_arguments_refused; install_bundle "$2" ;;
+        build-storage) [[ $# == 1 ]] || refuse qualification_arguments_refused; check_build_storage ;;
+        build-only) [[ $# == 2 ]] || refuse qualification_arguments_refused; build_only "$2" ;;
+        *) refuse qualification_arguments_refused ;;
+    esac
+}
+# Sourcing exposes definitions to focused tests without executing the CLI;
+# direct invocation still enforces every real host/ownership/storage guard.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    main "$@"
+fi

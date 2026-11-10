@@ -56,6 +56,20 @@ preserve uncertain attempts, the two historical FIX batches and r4 evidence. The
 [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#sdk-loopback-qualification-and-fresh-consent)
 owns supported procedures.
 
+**Final-release LAB qualification (R1) — PENDING:** the ARM64 bundle built from
+frozen release source `8c6f752` (image
+`dw-final-release-prep-20261109:8c6f752e27c8d47671d3e71a86bf55c9aae6f2db`,
+`sha256:9587adb7…`) is not yet installed or bound. The deployment driver is a
+six-file tooling/test delta on `fix/final-release-preparation-r1`: `install-bundle`
+plus explicit fresh-destination `lab-database`/`lab-bind` forms, required
+`DW_M1_LAB_CONFIG_ROOT`/`DW_M1_LAB_REPORT_ROOT` harness roots, and a witnessed
+held-D1 withdrawal synchronization; no runtime/SQL input changed. Fresh fixture
+`dw_native_final_release_qual_20261110`, the 17-case physical matrix, the draft
+PR and required current-candidate CI/coverage are all pending — nothing in this
+lane is proved, merged or sealed. Earlier cited CI/coverage (for example #139
+`517e92c`, run `41370937004`, coverage FAIL/BLOCKED `41377109367`) belongs to
+other candidates and does not qualify this driver.
+
 **Delivered SDK runtime:** the accepted
 [ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
 and [enabling contract section 8](contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28)
