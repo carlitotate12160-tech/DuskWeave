@@ -448,7 +448,7 @@ pub fn run_fixture_wrapper() {
             "--database-name",
             database,
             "--schema-revision",
-            "0030",
+            "0031",
             "--role-prefix",
             &format!("dw_lsq{}", &unique[..unique.len().min(10)]),
             "--report",
@@ -462,7 +462,7 @@ pub fn run_fixture_wrapper() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "dedicated schema-0030 fixture failed; report {}: {stdout}\n{stderr}",
+        "dedicated schema-0031 fixture failed; report {}: {stdout}\n{stderr}",
         report.display()
     );
     let passed = stdout
@@ -473,14 +473,15 @@ pub fn run_fixture_wrapper() {
         .unwrap_or(0);
     for name in [
         "successor_pack::sql_live_successor_pack_v2_v3_v4_contract_matrix",
+        "diagnostic_episode::sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery",
         "successor_episode::sql_live_sdk_v3_cli_feedback_and_key_free_recovery_on_schema0030",
     ] {
         let line = format!("test {name} ... ok");
         assert_eq!(stdout.matches(&line).count(), 1, "{name} missing: {stdout}");
     }
-    assert!(passed >= 10, "SQL assertion group must execute: {stdout}");
+    assert!(passed >= 11, "SQL assertion group must execute: {stdout}");
     eprintln!(
-        "schema0030_sql_group passed={passed} new=2 report={}",
+        "schema0030_sql_group passed={passed} new=3 report={}",
         report.display()
     );
 }

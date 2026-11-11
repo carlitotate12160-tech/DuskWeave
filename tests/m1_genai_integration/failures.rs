@@ -77,6 +77,8 @@ pub(super) fn sdk_cli_defer_repair_exhaustion_incomplete_protocol_and_unknown_ne
             _ => "provider_transport_unknown",
         };
         assert_eq!(disposition, expected, "{mode}");
+        let durable = (mode == "repair" || mode == "exhaust")
+            .then(|| closed_generation_diagnostic(&receipt, &server));
         for op in ["m1-run-inspect", "m1-run-recover", "m1-run-recover"] {
             let (_, r) = run_support::cli(op, "--run", q["run_id"].as_str().unwrap());
             assert_eq!(
@@ -88,9 +90,75 @@ pub(super) fn sdk_cli_defer_repair_exhaustion_incomplete_protocol_and_unknown_ne
                 "{mode} recovery identity"
             );
             assert_eq!(server.count(), calls, "{mode} recovery must never send");
+            if let Some((decision, before)) = &durable {
+                assert_eq!(
+                    call_evidence(*decision),
+                    *before,
+                    "{mode} {op} changed call evidence"
+                );
+            }
         }
         std::fs::remove_file(path).unwrap();
     }
+}
+
+fn closed_generation_diagnostic(
+    receipt: &serde_json::Value,
+    server: &fixture::Server,
+) -> (uuid::Uuid, Vec<serde_json::Value>) {
+    let sends = server.count();
+    let decision = uuid::Uuid::parse_str(receipt["decision_one"].as_str().unwrap()).unwrap();
+    let before = call_evidence(decision);
+    let generation = before
+        .iter()
+        .find(|row| row["call_role"] == "generation")
+        .expect("D1 generation call");
+    assert_eq!(generation["state"], "completed");
+    assert_eq!(
+        generation["usage"]["proposal_diagnostic"],
+        serde_json::json!({
+            "version":"proposal_admission_diagnostic_v1",
+            "reason":"proposal_shape",
+            "shape":{"kind":"missing_field","field":"version"}
+        })
+    );
+    let mut illegal = generation["usage"].clone();
+    illegal["proposal_diagnostic"]["synthetic_member"] =
+        serde_json::json!("synthetic-illegal-member");
+    let call = uuid::Uuid::parse_str(generation["call"].as_str().unwrap()).unwrap();
+    let error = native::client("DW_INFERENCE_BROKER_DATABASE_URL")
+        .query_one(
+            "SELECT execution.complete_inference_proposal($1,$2)",
+            &[&call, &illegal],
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.as_db_error().map(|item| item.message().to_string()),
+        Some("inference_usage_refused".to_string())
+    );
+    assert_eq!(
+        call_evidence(decision),
+        before,
+        "rejected diagnostic changed evidence"
+    );
+    assert_eq!(
+        server.count(),
+        sends,
+        "rejected diagnostic opened a provider call"
+    );
+    (decision, before)
+}
+
+fn call_evidence(decision: uuid::Uuid) -> Vec<serde_json::Value> {
+    native::client("DW_INFERENCE_BROKER_DATABASE_URL")
+        .query(
+            "SELECT jsonb_build_object('call',call,'call_role',configuration::jsonb->>'call_role','state',state,'usage',usage) FROM execution.inference_calls WHERE d=$1 ORDER BY call",
+            &[&decision],
+        )
+        .unwrap()
+        .iter()
+        .map(|row| row.get(0))
+        .collect()
 }
 
 pub(super) fn sdk_stale_record_preserves_observe_intent_and_blocks_restricted_effect_release() {

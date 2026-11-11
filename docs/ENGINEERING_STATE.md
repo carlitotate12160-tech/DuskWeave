@@ -48,16 +48,64 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** distinct review of the schema-0030 successor pack
-compatibility fix below, then the owner merge disposition on the
-corrected-corpus PR. Preserve the 16 first-fixture passing cases, failed run,
-original deadlines and historical UNKNOWN resources; do not restart completed
-image restoration, custody/SQL proofs, coverage or runtime artifact builds.
+**Next product action:** distinct delivery review of the offline-verified
+proposal-admission diagnostics and per-call terminal-reason retention candidate.
+The real-provider R2 episode completed generation and one repair, but no proposal
+was admitted (`schema_repair_exhausted`); acquisition, Terrain and D2 remain
+unproved. Preserve historical evidence, the frozen deployment and finite binding;
+do not restart image restoration, prior qualification/coverage, or paid/target runs.
 The [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures. Real-provider/live-target consent remains separate.
 
+**Proposal-admission diagnostics — fixture correction measured, awaiting CI and distinct review:**
+structural failures retain only closed reason/kind/known-field metadata; arbitrary
+member names, values, response bodies and private reasoning remain excluded.
+Generation and repair keep the original repair material and one-repair bound.
+Optional `proposal_diagnostic` metadata is settled on each original call and flows
+through existing provenance/receipt/inspect/recover. Migration 0031 supplies the
+validated diagnostic-completion entrypoint; old rows are not amended. Native setup
+restores that migration after its 0012/0013 replay. Diagnostic completion accepts
+requested model `deepseek-flash` or `protocol-fixture-v1`; JSON null, non-strings,
+unknown strings and `probe-fixture` still refuse before a terminal rewrite.
+`probe-fixture` remains reported-model metadata. The provider-response branch is
+unchanged. Historical Oracle evidence stays at
+`/srv/duskweave/reports/proposal-diagnostics-r1/`. On fresh base-0021 fixture
+`dw_native_pr147fix2_20261111r1`, lifecycle T6, Terrain repair and SDK
+repair/exhaust each ran once and passed. T6's generation call completed with
+`protocol-fixture-v1` and closed `proposal_admission_diagnostic_v1` metadata, then
+opened its one eligible repair. The schema-0031 SQL group passed, including the
+new requested-model refusals. Python helper compatibility, formatting, locked
+all-target Clippy, links, diff hygiene, LOC and McCabe passed against base
+`6066a771`. That head's Rust shards passed. Its coverage gate failed only on the
+declarations-only file named below.
+
+**Coverage classifier — public named fields measured locally, awaiting new-head CI:**
+run 43005834065 reported 95.59% (17221/18016) and failed because
+`src/m1_reasoning/inference/provider_evidence.rs` has no llvm-cov record. That
+source is data declarations, attributes and public named fields. The gate already
+exempts declarations-only files; its private field/variant recognizer missed
+visibility-prefixed fields. A separate recognizer accepts `pub`, `pub(crate)`,
+`pub(self)` and `pub(super)` named fields. Executable and unknown constructs,
+including `pub(in ...)`, stay fail-closed. Floors stay 90% total and 80% per
+file. The new positive case failed on the previous recognizer (22/23); the
+selftest then passed 23/23. The unchanged source classifies as declarations-only.
+The unmodified JSON from that run, read locally after an in-memory Linux
+workspace-prefix adjustment required on Windows, reports the file as not
+applicable and the same total with no gate problems. That reading is old-head
+provenance. New-head CI, including the coverage gate and ci-ok, and distinct
+review remain open. The change is not deployed, accepted or sealed.
+
+**Separate model spike (not release acceptance):** retained local report
+`D:/DuskWeave-build/spike-v4pro-report-complete/` records two completed
+`deepseek-v4-pro` calls, validated D1/D2, committed fixture acquisition/Terrain
+and exit 0. The unsuffixed report now records a different incomplete Flash
+episode; the spike worktree has since changed. These artifacts support a Pro
+profile candidate, not a controlled host-matched causal conclusion or changed
+production pin. A separate contract/profile amendment and qualification remain
+necessary; no provider or real-target execution is added by this diagnostic fix.
+
 **Schema-0030 successor pack compatibility (DW-FIX-SCHEMA0030-SUCCESSOR-PACK-R1)
-— offline fix verified, review pending:** the installed
+— merged in [PR #146](https://github.com/carlitotate12160-tech/DuskWeave/pull/146):** the installed
 `execution.assert_successor_pack` unconditionally required
 `live_binding`/`qualification_purpose` while rejecting both on non-v4 requests,
 so no retained v2/v3 pack could pass the restricted marker consumer. The

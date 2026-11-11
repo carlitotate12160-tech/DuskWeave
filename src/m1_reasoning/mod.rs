@@ -8,6 +8,7 @@ pub mod inference_intent;
 pub mod postgres;
 pub mod postgres_terrain;
 pub mod proposal;
+pub mod proposal_diagnostic;
 pub mod provider_diagnostic;
 pub mod request;
 pub mod response;

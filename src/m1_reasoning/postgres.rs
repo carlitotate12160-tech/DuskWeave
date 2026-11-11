@@ -13,6 +13,7 @@ use serde_json::Value;
 use std::time::Instant;
 use uuid::Uuid;
 type Res<T> = Result<T, &'static str>;
+mod accounting;
 pub struct PgBroker {
     pub client: Client,
     pub mission: PgMissionStore,
@@ -21,17 +22,6 @@ pub struct PgBroker {
     pub deadline: Instant,
 }
 impl PgBroker {
-    fn state(&mut self, id: Uuid, state: &str, usage: Option<&Usage>) -> Res<()> {
-        let u = serde_json::to_value(usage).map_err(|_| "inference_usage_encode")?;
-        self.client
-            .query_one(
-                "SELECT execution.inference_call_state($1,$2,$3)",
-                &[&id, &state, &u],
-            )
-            .map_err(|_| "inference_accounting_unknown")?;
-        Ok(())
-    }
-
     fn verify_release_current(&mut self, s: &Scope, basis: &mut dyn ProposalBasis) -> Res<()> {
         self.client
             .query_one(
@@ -146,6 +136,15 @@ impl Broker for PgBroker {
     fn completed(&mut self, _: &Scope, id: Uuid, u: &Usage) -> Res<()> {
         self.state(id, "completed", Some(u))
     }
+    fn completed_with_diagnostic(
+        &mut self,
+        _: &Scope,
+        id: Uuid,
+        usage: &Usage,
+        diagnostic: Option<&super::proposal_diagnostic::ProposalDiagnostic>,
+    ) -> Res<()> {
+        self.complete_diagnostic(id, usage, diagnostic)
+    }
     fn uncertain(&mut self, _: &Scope, id: Uuid, _: &'static str) -> Res<()> {
         self.state(id, "usage_unknown", None)
     }
@@ -156,14 +155,7 @@ impl Broker for PgBroker {
         _: &'static str,
         report: Option<&super::inference::ProviderReport>,
     ) -> Res<()> {
-        let u = serde_json::to_value(report).map_err(|_| "inference_usage_encode")?;
-        self.client
-            .query_one(
-                "SELECT execution.inference_call_state($1,$2,$3)",
-                &[&id, &"usage_unknown", &u],
-            )
-            .map_err(|_| "inference_accounting_unknown")?;
-        Ok(())
+        self.uncertain_report(id, report)
     }
     fn close_unused_repair(&mut self, _: &Scope, _: &Reservation) -> Res<()> {
         Ok(())
@@ -433,7 +425,7 @@ const QUALIFY_OWNER_SQL: &str = "SELECT pg_has_role(session_user,$1,'MEMBER')
    OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE has_function_privilege(actor.oid,p.oid,'EXECUTE') AND
     ((n.nspname='cognition' AND p.proname='publish_reasoning' AND $1<>'dw_m1_cognition') OR
-     (n.nspname='execution' AND p.proname IN ('bind_inference_input','inference_reservation','inference_may_send','inference_call_state','close_inference') AND $1<>'dw_m1_broker') OR
+     (n.nspname='execution' AND p.proname IN ('bind_inference_input','inference_reservation','inference_may_send','inference_call_state','complete_inference_proposal','close_inference') AND $1<>'dw_m1_broker') OR
      (n.nspname='terrain' AND p.proname='current_dns_context_view' AND $1<>'dw_m1_broker') OR
      (n.nspname='terrain' AND p.proname IN ('accept_dns_observation','record_dns_integrity_conflict') AND $1<>'dw_m1_terrain')))
    OR EXISTS(SELECT 1 FROM pg_namespace n

@@ -1,3 +1,4 @@
+use super::proposal_diagnostic::{ProposalDiagnostic, ShapeDiagnostic};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -57,7 +58,27 @@ pub enum ViewOwner {
 pub enum Admission {
     Accepted(Box<Proposal>),
     Repairable(Vec<&'static str>),
+    Structural(ShapeDiagnostic),
     Rejected(&'static str),
+}
+
+impl Admission {
+    /// Provider repair material remains the existing closed code set.
+    pub fn repair_codes(&self) -> Option<&[&'static str]> {
+        match self {
+            Self::Repairable(codes) => Some(codes),
+            Self::Structural(_) => Some(&["proposal_shape"]),
+            _ => None,
+        }
+    }
+
+    pub fn diagnostic(&self) -> Option<ProposalDiagnostic> {
+        match self {
+            Self::Structural(shape) => Some(ProposalDiagnostic::structural(*shape)),
+            Self::Repairable(codes) => ProposalDiagnostic::from_code(codes.first()?),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,21 +114,22 @@ pub trait ProposalBasis: Send {
     }
 }
 
-fn structural(value: Value) -> Result<Proposal, &'static str> {
+fn structural(value: Value) -> Result<Proposal, Admission> {
     if value["next_intent"]["category"] != "observe_more"
         && value["next_intent"].get("view_request").is_some()
     {
-        return Err("unexpected_view_request");
+        return Err(Admission::Repairable(vec!["unexpected_view_request"]));
     }
-    let p: Proposal = serde_json::from_value(value).map_err(|_| "proposal_shape")?;
+    let p: Proposal = serde_json::from_value(value)
+        .map_err(|error| Admission::Structural(ShapeDiagnostic::from_serde(&error)))?;
     if p.version != "m1_inference_proposal_v1" {
-        return Err("proposal_version");
+        return Err(Admission::Repairable(vec!["proposal_version"]));
     }
     if texts(&p)
         .iter()
         .any(|s| s.trim().is_empty() || s.len() > 1024)
     {
-        return Err("proposal_text");
+        return Err(Admission::Repairable(vec!["proposal_text"]));
     }
     Ok(p)
 }
@@ -172,9 +194,12 @@ fn cited_references(p: &Proposal) -> Vec<String> {
 }
 
 pub fn admit(raw: &[u8], basis: &mut dyn ProposalBasis) -> Admission {
-    let p = match crate::m1_reasoning::bounded_json::parse(raw, 8192, 1024).and_then(structural) {
+    let p = match crate::m1_reasoning::bounded_json::parse(raw, 8192, 1024)
+        .map_err(|code| Admission::Repairable(vec![code]))
+        .and_then(structural)
+    {
         Ok(p) => p,
-        Err(code) => return Admission::Repairable(vec![code]),
+        Err(admission) => return admission,
     };
     if !texts(&p).into_iter().all(|s| basis.safe_explanation(s)) {
         return Admission::Rejected("unsafe_explanation");

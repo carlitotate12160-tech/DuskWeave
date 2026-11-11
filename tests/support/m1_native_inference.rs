@@ -124,6 +124,12 @@ pub fn setup() {
                 .replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION "),
         )
         .expect("native function refresh");
+        // 0012/0013 replay replaces accounting. Restore canonical 0031 on that base.
+        a.batch_execute(
+            &include_str!("../../migrations/0031_proposal_admission_diagnostics.sql")
+                .replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION "),
+        )
+        .expect("native diagnostic accounting refresh");
     });
 }
 

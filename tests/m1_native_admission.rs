@@ -191,7 +191,7 @@ impl Provider for FakeProvider {
         self.calls += 1;
         Ok(Received {
             admission: if self.repair && self.calls == 1 {
-                Admission::Repairable(vec!["json_structure"])
+                duskweave::m1_reasoning::proposal::admit(b"{}", &mut Basis)
             } else {
                 Admission::Rejected("reference_ineligible")
             },
@@ -326,7 +326,10 @@ fn exercise(
 fn generation_repair_preserves_exact_call_and_binding_membership() {
     let (provider, decision) = exercise(None, false, true);
     assert_eq!(provider.calls, 2);
-    assert_eq!(decision.call_ids.len(), 2);
+    assert_eq!(
+        decision.call_ids,
+        vec![Uuid::from_u128(10), Uuid::from_u128(11)]
+    );
     assert_eq!(decision.bindings.len(), 2);
     assert_ne!(decision.bindings[0], decision.bindings[1]);
     assert_eq!(decision.disposition, "reference_ineligible");
@@ -349,6 +352,10 @@ fn uncertain_accounting_blocks_repair_without_losing_recorded_binding() {
     assert_eq!(provider.calls, 1);
     assert_eq!(decision.bindings.len(), 1);
     assert_eq!(decision.disposition, "accounting_unknown");
+    assert_eq!(
+        decision.call_ids,
+        vec![Uuid::from_u128(10), Uuid::from_u128(11)]
+    );
 }
 
 #[test]

@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Whitelisted CLI environment: the worker's *_FILE variants stay absent so
 /// env-local mode admits exactly the injected owner DSNs.
-fn command() -> std::process::Command {
+pub(super) fn command() -> std::process::Command {
     let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_duskweave"));
     c.env_clear();
     c.env("DW_DATABASE_CONFIG_MODE", "env-local").env(
@@ -31,7 +31,7 @@ fn command() -> std::process::Command {
     c
 }
 
-fn cli(op: &str, run: Uuid) -> (bool, Value) {
+pub(super) fn cli(op: &str, run: Uuid) -> (bool, Value) {
     let output = command()
         .args([op, "--run", &run.to_string()])
         .output()
@@ -47,7 +47,7 @@ fn cli(op: &str, run: Uuid) -> (bool, Value) {
 
 /// Private write-once control markers only; same host qualification as the
 /// existing provider lanes.
-fn control_root() -> std::path::PathBuf {
+pub(super) fn control_root() -> std::path::PathBuf {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
