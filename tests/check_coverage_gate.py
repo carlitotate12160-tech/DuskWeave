@@ -36,6 +36,9 @@ PUNCT_ONLY = re.compile(r"^\s*[,;}{()\[\]]+\s*$")
 FIELD_OR_VARIANT = re.compile(
     r"^\s*[A-Za-z_]\w*(\s*<[^>]*>)?\s*(\([^)]*\)|\{[^}]*\}|\s*:[^,]*)?\s*,?\s*$"
 )
+PUBLIC_NAMED_FIELD = re.compile(
+    r"^\s*pub(?:\((?:crate|self|super)\))?\s+[A-Za-z_]\w*\s*:\s*[^,]+,?\s*$"
+)
 EXEC_TOKENS = re.compile(
     r"\b(fn|impl|const|let|unsafe|async|move|for|while|loop|match|if"
     r"|else|return|break|continue|macro_rules)\b"
@@ -94,7 +97,7 @@ def declarations_only(path):
             return False
         if DECL_HEADER.match(t) or PUNCT_ONLY.match(t):
             continue
-        if FIELD_OR_VARIANT.match(t):
+        if FIELD_OR_VARIANT.match(t) or PUBLIC_NAMED_FIELD.match(t):
             continue
         return False
     return True
@@ -317,6 +320,73 @@ def selftest():
             "missing file hiding executable code on attribute line",
             [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
             [("src/sneaky_attr.rs", "#[inline] fn sneaky() { let x = 1; }\n")],
+            False,
+        ))
+        cases.append((
+            "public named fields absent from report",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/public_fields.rs",
+              "use serde::Serialize;\n"
+              "#[derive(Clone, Debug, Serialize)]\n"
+              "pub struct Usage {\n"
+              "    input_tokens: Option<u64>,\n"
+              "    pub output_tokens: Option<u64>,\n"
+              "    pub(crate) reasoning_tokens: Option<u64>,\n"
+              "    pub(self) response_bytes: usize,\n"
+              "    pub(super) wall_time_ms: u64,\n"
+              "    pub requested_model: &'static str,\n"
+              "}\n"
+              "#[serde(rename_all = \"snake_case\")]\n"
+              "pub enum ResponseStatus { Completed, Missing, }\n")],
+            True,
+        ))
+        cases.append((
+            "public fields with a function body",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/pub_fn.rs",
+              "pub struct Usage { pub requested_model: &'static str, }\n"
+              "pub fn witness() -> i32 { 1 }\n")],
+            False,
+        ))
+        cases.append((
+            "public fields with an impl block",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/pub_impl.rs",
+              "pub struct Usage { pub requested_model: &'static str, }\n"
+              "impl Usage { fn ready(&self) -> bool { true } }\n")],
+            False,
+        ))
+        cases.append((
+            "public fields with a non-literal const",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/pub_const.rs",
+              "pub struct Usage { pub requested_model: &'static str, }\n"
+              "pub const X: i32 = calc();\n")],
+            False,
+        ))
+        cases.append((
+            "public fields with a static",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/pub_static.rs",
+              "pub struct Usage { pub requested_model: &'static str, }\n"
+              "pub static LABEL: &str = \"fixture\";\n")],
+            False,
+        ))
+        cases.append((
+            "public fields with an attribute-adjacent macro",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/pub_macro.rs",
+              "pub struct Usage { pub requested_model: &'static str, }\n"
+              "#[serde(flatten)] include_str!(\"x\");\n")],
+            False,
+        ))
+        cases.append((
+            "unsupported pub(in) visibility",
+            [("src/a.rs", 10, 10), ("src/b.rs", 10, 9)],
+            [("src/pub_in.rs",
+              "pub struct Usage {\n"
+              "    pub(in crate) requested_model: &'static str,\n"
+              "}\n")],
             False,
         ))
 

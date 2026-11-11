@@ -76,8 +76,24 @@ repair/exhaust each ran once and passed. T6's generation call completed with
 opened its one eligible repair. The schema-0031 SQL group passed, including the
 new requested-model refusals. Python helper compatibility, formatting, locked
 all-target Clippy, links, diff hygiene, LOC and McCabe passed against base
-`6066a771`. Committed-head CI, coverage floors and distinct review remain open.
-The change is not deployed, accepted or sealed.
+`6066a771`. That head's Rust shards passed. Its coverage gate failed only on the
+declarations-only file named below.
+
+**Coverage classifier — public named fields measured locally, awaiting new-head CI:**
+run 43005834065 reported 95.59% (17221/18016) and failed because
+`src/m1_reasoning/inference/provider_evidence.rs` has no llvm-cov record. That
+source is data declarations, attributes and public named fields. The gate already
+exempts declarations-only files; its private field/variant recognizer missed
+visibility-prefixed fields. A separate recognizer accepts `pub`, `pub(crate)`,
+`pub(self)` and `pub(super)` named fields. Executable and unknown constructs,
+including `pub(in ...)`, stay fail-closed. Floors stay 90% total and 80% per
+file. The new positive case failed on the previous recognizer (22/23); the
+selftest then passed 23/23. The unchanged source classifies as declarations-only.
+The unmodified JSON from that run, read locally after an in-memory Linux
+workspace-prefix adjustment required on Windows, reports the file as not
+applicable and the same total with no gate problems. That reading is old-head
+provenance. New-head CI, including the coverage gate and ci-ok, and distinct
+review remain open. The change is not deployed, accepted or sealed.
 
 **Separate model spike (not release acceptance):** retained local report
 `D:/DuskWeave-build/spike-v4pro-report-complete/` records two completed
