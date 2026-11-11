@@ -2,7 +2,7 @@
 //!
 //! The normal CI wrapper bootstraps a dedicated fixture database through
 //! m1_native_bootstrap.py (container `dw-live-dns-20261030-pg`, schema
-//! revision 0030), then re-invokes this same binary's worker assertions
+//! revision 0031; retained 0030 contracts plus admission diagnostics), then re-invokes this same binary's worker assertions
 //! under the fixture environment. Worker tests carry `#[ignore]` so they
 //! are not discovered independently; the wrapper executes every case on
 //! every CI run. Non-zero case counts and every exit/profile are propagated.
@@ -19,6 +19,8 @@ mod terrain_support;
 
 #[path = "m1_live_dns_sql/admission.rs"]
 mod admission;
+#[path = "m1_live_dns_sql/diagnostic_episode.rs"]
+mod diagnostic_episode;
 #[path = "m1_live_dns_sql/fixture.rs"]
 mod fixture;
 #[path = "m1_live_dns_sql/receipt.rs"]

@@ -16,7 +16,7 @@ from urllib.parse import quote
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 NAMESPACE = "dw_native_"
 KINDS = ("fixture", "live")
-SCHEMA_REVISIONS = ("0020", "0021", "0022", "0030")
+SCHEMA_REVISIONS = ("0020", "0021", "0022", "0030", "0031")
 LIVE_CONTAINER = "dw-live-dns-20261030-pg"
 LIVE_IMAGE = "postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d"
 ROOT = Path(__file__).resolve().parents[2]
@@ -87,7 +87,7 @@ def supervisor_request(arguments, environment):
 
 def service_qualified(container, ci=False, version_prefix=None, version_exact=None, schema_revision="0021"):
     """Delegate the fixed Docker/PostgreSQL service qualification to the helper."""
-    if container == LIVE_CONTAINER and schema_revision == "0030" and not ci:
+    if container == LIVE_CONTAINER and schema_revision in ("0030", "0031") and not ci:
         return live_service_qualified(container)
     arguments = ["service-check", "--container", container]
     if ci:
@@ -210,7 +210,7 @@ class Fixture:
         if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
             raise RuntimeError("native_schema_revision_refused")
         self.schema_revision = schema_revision
-        if container not in ("dwpg-r3", "dwpg") and not (schema_revision == "0030" and container == LIVE_CONTAINER):
+        if container not in ("dwpg-r3", "dwpg") and not (schema_revision in ("0030", "0031") and container == LIVE_CONTAINER):
             raise RuntimeError("native_service_unqualified")
         if ci and container != "dwpg":
             raise RuntimeError("native_service_unqualified")
@@ -232,7 +232,7 @@ class Fixture:
         self.role_suffix = secrets.token_hex(6)
         suffix = self.role_suffix
         owners = ["admin", "core", "broker", "cognition", "history", "terrain"]
-        if schema_revision == "0030":
+        if schema_revision in ("0030", "0031"):
             owners.append("stop")
         if kind == "fixture":
             owners.append("otherbroker")
@@ -251,7 +251,7 @@ class Fixture:
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
         self.sql(f"CREATE DATABASE {self.database} OWNER {self.roles['admin']}", database="postgres")
         groups = ["dw_runtime", "dw_m1_broker", "dw_m1_cognition", "dw_m1_trajectory", "dw_m1_terrain"]
-        if schema_revision == "0030":
+        if schema_revision in ("0030", "0031"):
             groups.append("dw_m1_stop_writer")
         for group in groups:
             self.sql(f"DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='{group}') "
@@ -318,8 +318,8 @@ class Fixture:
 
     def migrate(self, initial=False):
         numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
-        if self.schema_revision == "0030":
-            numbers += tuple(range(23, 31))
+        if self.schema_revision in ("0030", "0031"):
+            numbers += tuple(range(23, int(self.schema_revision) + 1))
         for number in numbers:
             if number > int(self.schema_revision):
                 continue

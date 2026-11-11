@@ -193,8 +193,8 @@ fn disposition(proposal: &Value, eligible: &[String]) -> String {
     let mut b = Basis(eligible);
     match proposal::admit(&raw, &mut b) {
         Admission::Accepted(_) => "accepted".to_owned(),
-        Admission::Repairable(codes) => format!("repairable:{}", codes.join(",")),
         Admission::Rejected(code) => format!("rejected:{code}"),
+        other => format!("repairable:{}", other.repair_codes().unwrap().join(",")),
     }
 }
 

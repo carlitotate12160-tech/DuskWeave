@@ -315,11 +315,11 @@ fn scope() -> Scope {
 fn summarize(outcome: &Res<(Admission, Vec<Uuid>, Vec<String>)>) -> String {
     match outcome {
         Ok((Admission::Accepted(_), _, _)) => "accepted".to_owned(),
-        Ok((Admission::Repairable(codes), _, _)) => {
-            format!("repairable:{}", codes.join(","))
-        }
         Ok((Admission::Rejected(code), _, _)) | Err(code) => {
             format!("rejected:{code}")
+        }
+        Ok((admission, _, _)) => {
+            format!("repairable:{}", admission.repair_codes().unwrap().join(","))
         }
     }
 }

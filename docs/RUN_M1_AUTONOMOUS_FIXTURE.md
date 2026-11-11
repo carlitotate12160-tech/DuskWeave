@@ -211,6 +211,21 @@ a lease renewal after the host-observed expiry. Such a host is UNQUALIFIED for
 final serial qualification; environment clock recovery is an owner-managed
 operations task, not a test or product change.
 
+### Proposal-admission diagnostics
+
+Builds containing proposal diagnostics require migration 0031 for detailed failure
+retention. The frozen release does not emit this metadata. A diagnostic settlement
+against an older schema fails conservatively; it never silently drops the detail
+and reports confirmed accounting. Pair the supported schema with the candidate
+before a provider episode; do not upgrade a retained evidence database in place.
+
+The optional `inference[*].reported.proposal_diagnostic` object contains a version,
+closed reason, and optional structural kind/known field. `unclassified` means the
+member cannot be identified safely; it is not a raw member path or value. The
+terminal `schema_repair_exhausted` disposition and execution refusal are unchanged.
+Inspect/recover retain original call identities and metadata without new sends or
+backfilling old rows. Absence on a historical row is unavailable evidence.
+
 ### Start configuration and terminal diagnostics
 
 After input validation, start parses the selected configuration for core, Broker,

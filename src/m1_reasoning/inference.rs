@@ -23,53 +23,10 @@ pub struct Reservation {
     pub shared_deadline: Instant,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct Usage {
-    pub input_tokens: Option<u64>,
-    pub output_tokens: Option<u64>,
-    pub reasoning_tokens: Option<u64>,
-    pub response_bytes: usize,
-    pub wall_time_ms: u64,
-    pub requested_model: &'static str,
-    pub reported_model: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResponseStatus {
-    Completed,
-    Incomplete,
-    Failed,
-    InProgress,
-    Unrecognized,
-    Missing,
-}
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum IncompleteReason {
-    MaxOutputTokens,
-    ContentFilter,
-    Unknown,
-}
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UsageAvailability {
-    Reported,
-    Partial,
-    Unavailable,
-}
-#[derive(Clone, Debug, Serialize)]
-pub struct ResponseMetadata {
-    pub status: ResponseStatus,
-    pub incomplete_reason: Option<IncompleteReason>,
-    pub usage_availability: UsageAvailability,
-}
-#[derive(Clone, Debug, Serialize)]
-pub struct ProviderReport {
-    #[serde(flatten)]
-    pub usage: Usage,
-    pub provider_response: ResponseMetadata,
-}
+mod provider_evidence;
+pub use provider_evidence::{
+    IncompleteReason, ProviderReport, ResponseMetadata, ResponseStatus, Usage, UsageAvailability,
+};
 
 pub struct Received {
     pub admission: Admission,
@@ -114,6 +71,15 @@ pub trait Broker {
     ) -> Result<Received, ReleaseFailure>;
     fn never_released(&mut self, scope: &Scope, call_id: Uuid, category: &'static str) -> Res<()>;
     fn completed(&mut self, scope: &Scope, call_id: Uuid, usage: &Usage) -> Res<()>;
+    fn completed_with_diagnostic(
+        &mut self,
+        scope: &Scope,
+        call_id: Uuid,
+        usage: &Usage,
+        _diagnostic: Option<&super::proposal_diagnostic::ProposalDiagnostic>,
+    ) -> Res<()> {
+        self.completed(scope, call_id, usage)
+    }
     fn uncertain(&mut self, scope: &Scope, call_id: Uuid, category: &'static str) -> Res<()>;
     fn uncertain_with_report(
         &mut self,
@@ -327,7 +293,7 @@ fn inspect_broker(
 fn admitted_proposal(admission: Admission) -> (Option<Proposal>, &'static str) {
     match admission {
         Admission::Accepted(p) => (Some(*p), "validated_proposal"),
-        Admission::Repairable(_) => (None, "schema_repair_exhausted"),
+        Admission::Repairable(_) | Admission::Structural(_) => (None, "schema_repair_exhausted"),
         Admission::Rejected(code) => (None, code),
     }
 }

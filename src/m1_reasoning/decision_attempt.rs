@@ -47,8 +47,10 @@ fn account(
 ) -> Result<Received, (bool, &'static str)> {
     match result {
         Ok(mut received) => {
-            received.accounting_confirmed =
-                broker.completed(scope, call_id, &received.usage).is_ok();
+            let diagnostic = received.admission.diagnostic();
+            received.accounting_confirmed = broker
+                .completed_with_diagnostic(scope, call_id, &received.usage, diagnostic.as_ref())
+                .is_ok();
             if !received.accounting_confirmed {
                 let _accounting_disposition =
                     broker.uncertain(scope, call_id, "usage_commit_unknown");
@@ -133,32 +135,29 @@ fn generate(
         &first,
     );
     let received = record(result, first.digest, bindings)?;
-    match generation_admission(received) {
-        Admission::Repairable(codes) => {
-            let repair = bind_call(
-                scope,
-                reservation,
-                reservation.repair_call,
-                &first.pack,
-                Some(&codes),
-            )?;
-            let result = call(
-                broker,
-                provider,
-                basis,
-                scope,
-                reservation,
-                reservation.repair_call,
-                &repair,
-            );
-            Ok(record(result, repair.digest, bindings)?.admission)
-        }
-        admission => {
-            // The unused slot remains conservatively charged.
-            let _unused_slot_disposition = broker.close_unused_repair(scope, reservation);
-            Ok(admission)
-        }
-    }
+    let admission = generation_admission(received);
+    let Some(codes) = admission.repair_codes() else {
+        // The unused slot remains conservatively charged.
+        let _unused_slot_disposition = broker.close_unused_repair(scope, reservation);
+        return Ok(admission);
+    };
+    let repair = bind_call(
+        scope,
+        reservation,
+        reservation.repair_call,
+        &first.pack,
+        Some(codes),
+    )?;
+    let result = call(
+        broker,
+        provider,
+        basis,
+        scope,
+        reservation,
+        reservation.repair_call,
+        &repair,
+    );
+    Ok(record(result, repair.digest, bindings)?.admission)
 }
 
 fn generation_admission(received: Received) -> Admission {
