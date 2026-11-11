@@ -57,26 +57,27 @@ do not restart image restoration, prior qualification/coverage, or paid/target r
 The [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures. Real-provider/live-target consent remains separate.
 
-**Proposal-admission diagnostics — delivered for distinct review:**
+**Proposal-admission diagnostics — fixture correction measured, awaiting CI and distinct review:**
 structural failures retain only closed reason/kind/known-field metadata; arbitrary
 member names, values, response bodies and private reasoning remain excluded.
 Generation and repair keep the original repair material and one-repair bound.
 Optional `proposal_diagnostic` metadata is settled on each original call and flows
 through existing provenance/receipt/inspect/recover. Migration 0031 supplies the
-validated diagnostic-completion entrypoint; old rows are not amended. Current
-source changes are not deployed, accepted or sealed. Baseline RED2 fails on missing
-durable diagnostic metadata; the candidate passes the focused real-CLI case and
-all 11 restricted-role SQL cases on schema 0031. Those Oracle reports at
-`/srv/duskweave/reports/proposal-diagnostics-r1/` also record privacy units
-4/4, admission 10/10, schema contract 3/3, formatting, Clippy, LOC and McCabe.
-A preceding SQL suite run retained 9 PASS/2 FAIL during concurrent compilation;
-the serial rerun used unchanged source, assertions and deadlines. The unchanged
-diagnostic diff received no new SQL rerun. Windows rechecked this delivery
-worktree against base `6066a771`: `cargo fmt -- --check`, locked all-target
-Clippy, links, diff hygiene, structure hygiene, LOC and McCabe passed, as did
-the offline privacy 4/4, admission 10/10 and schema-contract 3/3 tests.
-Coverage and committed-head CI are not claimed. The change is not deployed,
-accepted or sealed.
+validated diagnostic-completion entrypoint; old rows are not amended. Native setup
+restores that migration after its 0012/0013 replay. Diagnostic completion accepts
+requested model `deepseek-flash` or `protocol-fixture-v1`; JSON null, non-strings,
+unknown strings and `probe-fixture` still refuse before a terminal rewrite.
+`probe-fixture` remains reported-model metadata. The provider-response branch is
+unchanged. Historical Oracle evidence stays at
+`/srv/duskweave/reports/proposal-diagnostics-r1/`. On fresh base-0021 fixture
+`dw_native_pr147fix2_20261111r1`, lifecycle T6, Terrain repair and SDK
+repair/exhaust each ran once and passed. T6's generation call completed with
+`protocol-fixture-v1` and closed `proposal_admission_diagnostic_v1` metadata, then
+opened its one eligible repair. The schema-0031 SQL group passed, including the
+new requested-model refusals. Python helper compatibility, formatting, locked
+all-target Clippy, links, diff hygiene, LOC and McCabe passed against base
+`6066a771`. Committed-head CI, coverage floors and distinct review remain open.
+The change is not deployed, accepted or sealed.
 
 **Separate model spike (not release acceptance):** retained local report
 `D:/DuskWeave-build/spike-v4pro-report-complete/` records two completed

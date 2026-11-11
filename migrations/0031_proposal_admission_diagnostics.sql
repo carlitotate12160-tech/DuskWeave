@@ -45,7 +45,7 @@ BEGIN
    IF jsonb_typeof(u->field) IS DISTINCT FROM 'number' OR (u->>field) !~ '^[0-9]+$' THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
    IF (u->>field)::numeric>9223372036854775807 OR (field='response_bytes' AND (u->>field)::numeric>65536) THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
   END LOOP;
-  IF u->>'requested_model' IS DISTINCT FROM 'deepseek-flash' OR NOT coalesce(u->'reported_model'='null'::jsonb OR u->>'reported_model' IN ('deepseek-flash','probe-fixture','protocol-fixture-v1'),false)
+  IF NOT coalesce(u->>'requested_model' IN ('deepseek-flash','protocol-fixture-v1'),false) OR NOT coalesce(u->'reported_model'='null'::jsonb OR u->>'reported_model' IN ('deepseek-flash','probe-fixture','protocol-fixture-v1'),false)
   THEN RAISE EXCEPTION 'inference_usage_refused'; END IF;
  END IF;
  IF u IS NOT NULL AND u <> 'null'::jsonb AND

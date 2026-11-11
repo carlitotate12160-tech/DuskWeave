@@ -183,6 +183,16 @@ fn reject_unsafe_metadata(e: Uuid, c: Uuid) {
     let mut q = usage.clone();
     q["input_tokens"] = json!("private-value");
     mutations.push(("completed", q));
+    for value in [
+        serde_json::Value::Null,
+        json!(9),
+        json!("synthetic-unknown-model"),
+        json!("probe-fixture"),
+    ] {
+        let mut q = usage.clone();
+        q["requested_model"] = value;
+        mutations.push(("completed", q));
+    }
     let before = snapshot(e, c);
     for (state, q) in mutations {
         let error = broker()
