@@ -1,5 +1,6 @@
 //! Schema-0030 receipt SQL regressions: qualification field bindings.
 use super::fixture::*;
+use super::run_support::*;
 use duskweave::m1_reasoning::{
     inference::{self, Provider},
     postgres_terrain::TerrainBasis,
@@ -7,8 +8,6 @@ use duskweave::m1_reasoning::{
     request, response,
 };
 use serde_json::Value;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -71,52 +70,6 @@ impl Provider for LiveProvider {
     }
 }
 
-/// RAII lease renewal custodian for this run only: a separate Broker
-/// connection renews at the existing 400 ms test cadence until retired.
-struct Renewals {
-    stop: Arc<AtomicBool>,
-    failure: Arc<Mutex<Option<String>>>,
-    worker: Option<std::thread::JoinHandle<()>>,
-}
-impl Renewals {
-    fn start(run: Uuid) -> Self {
-        let stop = Arc::new(AtomicBool::new(false));
-        let failure = Arc::new(Mutex::new(None));
-        let (stopping, failures) = (stop.clone(), failure.clone());
-        let worker = std::thread::spawn(move || {
-            let mut runs = duskweave::postgres_m1_run::PgRunStore::new(broker());
-            while !stopping.load(Ordering::SeqCst) {
-                if let Err(error) = runs.renew(run) {
-                    *failures.lock().unwrap() = Some(format!("{error:?}"));
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(400));
-            }
-        });
-        Self {
-            stop,
-            failure,
-            worker: Some(worker),
-        }
-    }
-    fn retire(mut self) {
-        self.stop.store(true, Ordering::SeqCst);
-        if let Some(worker) = self.worker.take() {
-            worker.join().expect("lease custodian join");
-        }
-        let failure = self.failure.lock().unwrap().take();
-        assert!(failure.is_none(), "lease renewal failed: {failure:?}");
-    }
-}
-impl Drop for Renewals {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::SeqCst);
-        if let Some(worker) = self.worker.take() {
-            assert!(worker.join().is_ok() || std::thread::panicking());
-        }
-    }
-}
-
 #[test]
 #[ignore = "runs only inside the dedicated schema-0030 fixture worker"]
 fn sql_live_pg_effect_store_admitted_lifecycle() {
@@ -124,7 +77,7 @@ fn sql_live_pg_effect_store_admitted_lifecycle() {
     use duskweave::Fail;
     use duskweave::m1_dns::{DnsAnswer, DnsResult, DnsStatus};
     use duskweave::m1_effect_session::{EffectPhase, EffectStore};
-    use duskweave::m1_reasoning::postgres::{Basis, PgBroker, PgDecisionStore};
+    use duskweave::m1_reasoning::postgres::{Basis, PgDecisionStore};
     use duskweave::m1_run::RunPhase;
     use duskweave::postgres_m1_effect::PgEffectStore;
     use duskweave::postgres_m1_run::PgRunStore;
@@ -136,7 +89,10 @@ fn sql_live_pg_effect_store_admitted_lifecycle() {
     let qualification = seed_live_qualification(&publication);
     let mut runs = PgRunStore::new(broker());
     assert!(matches!(
-        runs.start(&live_run_request(&publication, run), RELEASE),
+        runs.start(
+            &successor_request(&publication, run, "m1_autonomous_run_request_v4"),
+            RELEASE
+        ),
         Ok(true)
     ));
     let record = runs.inspect(run).unwrap();
@@ -147,15 +103,7 @@ fn sql_live_pg_effect_store_admitted_lifecycle() {
     let deadline = Instant::now() + Duration::from_millis(prepared.window_ms as u64);
     let pack = prepared.pack.utf8().as_bytes();
     let mut provider = LiveProvider::default();
-    let mut port = PgBroker {
-        client: broker(),
-        mission: duskweave::postgres_mission::PgMissionStore::new(client("DW_TEST_DATABASE_URL")),
-        reservations: duskweave::postgres_inference_budget::PgInferenceReservationStore::new(
-            broker(),
-        ),
-        request: record.request.context.mission.clone(),
-        deadline,
-    };
+    let mut port = broker_port(&record, deadline);
     let mut basis = LabBasis(TerrainBasis {
         mission: Basis {
             client: broker(),

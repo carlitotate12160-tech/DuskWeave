@@ -23,6 +23,12 @@ mod admission;
 mod fixture;
 #[path = "m1_live_dns_sql/receipt.rs"]
 mod receipt;
+#[path = "m1_live_dns_sql/run_support.rs"]
+mod run_support;
+#[path = "m1_live_dns_sql/successor_episode.rs"]
+mod successor_episode;
+#[path = "m1_live_dns_sql/successor_pack.rs"]
+mod successor_pack;
 #[path = "m1_live_dns_sql/terrain.rs"]
 mod terrain;
 #[path = "m1_live_dns_sql/withdrawal.rs"]
