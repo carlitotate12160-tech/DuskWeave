@@ -26,11 +26,11 @@ pub(super) fn qualify(client: &mut Client, publish: bool) -> Res<()> {
          AND has_table_privilege(current_user,'trajectory.registration_history','SELECT') \
          AND (NOT $1 OR has_table_privilege(current_user,'trajectory.planning_history','INSERT')) \
          AND NOT has_schema_privilege(current_user,'trajectory','CREATE') \
-         AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace \
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace \
          WHERE n.nspname='trajectory' AND c.relkind='r' AND \
          (pg_has_role(current_user,c.relowner,'USAGE') OR \
          has_table_privilege(current_user,c.oid,'UPDATE,DELETE,TRUNCATE'))) \
-         FROM pg_roles WHERE rolname=current_user",
+         FROM pg_catalog.pg_roles WHERE rolname=current_user",
             &[&publish],
         )
         .map_err(|e| store_err(&e))?;
