@@ -448,7 +448,7 @@ pub fn run_fixture_wrapper() {
             "--database-name",
             database,
             "--schema-revision",
-            "0031",
+            "0032",
             "--role-prefix",
             &format!("dw_lsq{}", &unique[..unique.len().min(10)]),
             "--report",
@@ -462,7 +462,7 @@ pub fn run_fixture_wrapper() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "dedicated schema-0031 fixture failed; report {}: {stdout}\n{stderr}",
+        "dedicated schema-0032 fixture failed; report {}: {stdout}\n{stderr}",
         report.display()
     );
     let passed = stdout
@@ -475,13 +475,16 @@ pub fn run_fixture_wrapper() {
         "successor_pack::sql_live_successor_pack_v2_v3_v4_contract_matrix",
         "diagnostic_episode::sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery",
         "successor_episode::sql_live_sdk_v3_cli_feedback_and_key_free_recovery_on_schema0030",
+        "audit007::sql_live_aud007_original_writer_isolation_survives_temp_pg_roles",
+        "audit007::sql_live_aud007_inference_and_live_stop_refuse_foreign_writer",
+        "audit007::sql_live_aud007_catalog_paths_and_qualification_use_real_catalogs",
     ] {
         let line = format!("test {name} ... ok");
         assert_eq!(stdout.matches(&line).count(), 1, "{name} missing: {stdout}");
     }
-    assert!(passed >= 11, "SQL assertion group must execute: {stdout}");
+    assert!(passed >= 14, "SQL assertion group must execute: {stdout}");
     eprintln!(
-        "schema0030_sql_group passed={passed} new=3 report={}",
+        "schema0032_sql_group passed={passed} new=3 report={}",
         report.display()
     );
 }

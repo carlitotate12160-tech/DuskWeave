@@ -48,14 +48,38 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** distinct delivery review of the offline-verified
-proposal-admission diagnostics and per-call terminal-reason retention candidate.
-The real-provider R2 episode completed generation and one repair, but no proposal
-was admitted (`schema_repair_exhausted`); acquisition, Terrain and D2 remain
-unproved. Preserve historical evidence, the frozen deployment and finite binding;
-do not restart image restoration, prior qualification/coverage, or paid/target runs.
-The [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
+**Next product action:** distinct delivery review of the locally verified
+DW-AUD-007 catalog-resolution correction on `fix/aud007-catalog-resolution-r1`.
+The held profile packet's dependency disposition stays with the audit
+workstream; this record neither merges the candidate nor releases that hold.
+Acquisition, Terrain and D2 remain unproved. Preserve historical evidence, the
+frozen deployment and finite binding; do not restart image restoration, prior
+qualification/coverage, or paid/target runs. The
+[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures. Real-provider/live-target consent remains separate.
+
+**DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — locally
+reproduced and corrected, awaiting committed-head CI and distinct review:**
+the audit's catalog-shadow hypothesis was verified dynamically, not assumed.
+Twenty-four SECURITY DEFINER functions plus the invoker
+`terrain.admit_dns_request` resolved unqualified catalog relations through
+`pg_temp` first under `search_path=pg_catalog`; a TEMP-eligible restricted
+caller could shadow `pg_roles` and cross the original-writer and
+role-qualification checks. On a fresh schema-0031 fixture the three new
+worker cases reproduced the defect (foreign run-current/record read, foreign
+inference settlement and live stop, denied-principal qualification) while
+every control and warmed session refused. Migration `0032_catalog_resolution`
+sets `search_path = pg_catalog, pg_temp` on exactly those 25 functions in one
+transaction; adapter-local qualification SQL gained `pg_catalog.` on catalog
+relations only. On a fresh schema-0032 fixture the full 14-case group passed,
+and a populated schema-0031 fixture refreshed through the maintained
+`migrate()` path to 0032 with unchanged function OIDs, bodies, ACLs and
+evidence digests; that refresh replay for migration 0024's dynamic trigger is
+now idempotent. Driver, verdicts and attempt archives live at
+`D:/DuskWeave-build/rust-1.94.1/reports/aud007-catalog-resolution-r1`.
+Limitations: existing deployed databases stay unverified until they receive
+0032; the correction is not merged, deployed or sealed; slot 0032 consumed by
+this fix moves the planned profile migration to 0033.
 
 **Proposal-admission diagnostics — fixture correction measured, awaiting CI and distinct review:**
 structural failures retain only closed reason/kind/known-field metadata; arbitrary

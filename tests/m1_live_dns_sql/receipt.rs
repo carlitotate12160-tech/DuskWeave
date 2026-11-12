@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 /// The declared LAB manifest only; every authority, dependency and recording
 /// check still delegates to the real TerrainBasis owner.
-struct LabBasis(TerrainBasis);
+pub(super) struct LabBasis(pub(super) TerrainBasis);
 impl ProposalBasis for LabBasis {
     fn reference_eligible(&self, r: &str) -> bool {
         self.0.reference_eligible(r)
@@ -42,7 +42,7 @@ impl ProposalBasis for LabBasis {
 /// synthetic D1 proposal from the bound pack and screens its own serialized
 /// envelope through the real response admission.
 #[derive(Default)]
-struct LiveProvider {
+pub(super) struct LiveProvider {
     calls: usize,
     releases: usize,
 }

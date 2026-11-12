@@ -122,7 +122,7 @@ fn scope(q: &ContextRequest, decision: Uuid) -> Res<Scope> {
 fn known_identity(c: &mut Client, s: &Scope, input_hash: &str) -> Res<bool> {
     let known: bool = c.query_one("SELECT EXISTS(SELECT 1 FROM execution.native_input_bindings WHERE e=$1 AND c=$2 AND d=$3) OR EXISTS(SELECT 1 FROM execution.inference_reservations WHERE engagement_id=$1 AND campaign_id=$2 AND operation_id=$3) OR EXISTS(SELECT 1 FROM cognition.reasoning_decisions WHERE e=$1 AND c=$2 AND d=$3)", &[&s.engagement,&s.campaign,&s.decision]).map_err(|_|Fail::Store("inference_inspect_unavailable"))?.get(0);
     if known {
-        let same: bool = c.query_one("SELECT EXISTS(SELECT 1 FROM execution.native_input_bindings i WHERE (i.e,i.c,i.d)=($1,$2,$3) AND i.input_hash=$4 AND i.writer_oid=(SELECT oid FROM pg_roles WHERE rolname=session_user)) AND NOT EXISTS(SELECT 1 FROM cognition.reasoning_decisions z WHERE (z.e,z.c,z.d)=($1,$2,$3) AND z.input_hash IS DISTINCT FROM $4)", &[&s.engagement,&s.campaign,&s.decision,&input_hash]).map_err(|_|Fail::Store("inference_identity_unavailable"))?.get(0);
+        let same: bool = c.query_one("SELECT EXISTS(SELECT 1 FROM execution.native_input_bindings i WHERE (i.e,i.c,i.d)=($1,$2,$3) AND i.input_hash=$4 AND i.writer_oid=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=session_user)) AND NOT EXISTS(SELECT 1 FROM cognition.reasoning_decisions z WHERE (z.e,z.c,z.d)=($1,$2,$3) AND z.input_hash IS DISTINCT FROM $4)", &[&s.engagement,&s.campaign,&s.decision,&input_hash]).map_err(|_|Fail::Store("inference_identity_unavailable"))?.get(0);
         if !same {
             return Err(Fail::Conflict("inference_identity_conflict"));
         }
