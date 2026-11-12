@@ -19,6 +19,10 @@ mod terrain_support;
 
 #[path = "m1_live_dns_sql/admission.rs"]
 mod admission;
+#[path = "m1_live_dns_sql/audit007.rs"]
+mod audit007;
+#[path = "m1_live_dns_sql/audit007_support.rs"]
+mod audit007_support;
 #[path = "m1_live_dns_sql/diagnostic_episode.rs"]
 mod diagnostic_episode;
 #[path = "m1_live_dns_sql/fixture.rs"]

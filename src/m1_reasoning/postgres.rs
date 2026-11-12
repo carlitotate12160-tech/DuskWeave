@@ -419,24 +419,24 @@ const QUALIFY_OWNER_SQL: &str = "SELECT pg_has_role(session_user,$1,'MEMBER')
   WHERE sibling<>$1 AND pg_has_role(session_user,sibling,'SET'))
  AND current_setting('fsync')='on' AND current_setting('full_page_writes')='on'
  AND current_setting('synchronous_commit')='on'
- AND NOT EXISTS(SELECT 1 FROM pg_roles actor
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles actor
   WHERE pg_has_role(session_user,actor.oid,'SET') AND (
    actor.rolsuper OR actor.rolbypassrls OR actor.rolcreaterole OR actor.rolcreatedb
-   OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
     WHERE has_function_privilege(actor.oid,p.oid,'EXECUTE') AND
     ((n.nspname='cognition' AND p.proname='publish_reasoning' AND $1<>'dw_m1_cognition') OR
      (n.nspname='execution' AND p.proname IN ('bind_inference_input','inference_reservation','inference_may_send','inference_call_state','complete_inference_proposal','close_inference') AND $1<>'dw_m1_broker') OR
      (n.nspname='terrain' AND p.proname='current_dns_context_view' AND $1<>'dw_m1_broker') OR
      (n.nspname='terrain' AND p.proname IN ('accept_dns_observation','record_dns_integrity_conflict') AND $1<>'dw_m1_terrain')))
-   OR EXISTS(SELECT 1 FROM pg_namespace n
+   OR EXISTS(SELECT 1 FROM pg_catalog.pg_namespace n
     WHERE n.nspname IN ('mission','trajectory','execution','cognition','terrain')
     AND (has_schema_privilege(actor.oid,n.oid,'CREATE')
      OR pg_has_role(actor.oid,n.nspowner,'MEMBER')))
-   OR EXISTS(SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
+   OR EXISTS(SELECT 1 FROM pg_catalog.pg_class t JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
     WHERE n.nspname='terrain' AND t.relkind IN ('r','v')
     AND has_any_column_privilege(actor.oid,t.oid,'SELECT')
     AND $1 NOT IN ('dw_m1_terrain','dw_m1_trajectory'))
-   OR EXISTS(SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
+   OR EXISTS(SELECT 1 FROM pg_catalog.pg_class t JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
     WHERE n.nspname IN ('mission','trajectory','execution','cognition','terrain') AND t.relkind='r'
     AND (pg_has_role(actor.oid,t.relowner,'MEMBER')
      OR has_table_privilege(actor.oid,t.oid,'UPDATE,DELETE,TRUNCATE,TRIGGER')
