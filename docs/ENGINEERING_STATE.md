@@ -48,18 +48,41 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** distinct delivery review of the locally verified
-DW-AUD-007 catalog-resolution correction on `fix/aud007-catalog-resolution-r1`.
-The held profile packet's dependency disposition stays with the audit
-workstream; this record neither merges the candidate nor releases that hold.
+**Next product action:** resolve the Windows control-root qualification blocker
+before completing the bounded offline Pro candidate and its distinct delivery
+review. PR147 and the DW-AUD-007 source correction PR150 are merged; deployed
+databases remain unverified until their forward migrations are applied through
+separate authorized promotion. Preserve the failed fresh fixture and reports;
+no provider, target or deployment action is authorized by this candidate.
+
+**Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4) — NOT READY:**
+the new profile failed all three intended RED assertions at registration on
+BASE/schema 0032. The first complete path passed all 15 SDK tests (Flash,
+fixture and Pro production construction/serialization/admission), 45 Python
+helper tests and the LOC ratchet. With an 8192-byte pack, measured Pro generation
+and repair entities were 12710/12989 bytes, within the unchanged 16384-byte cap.
+The fresh schema-0033 worker executed 17 cases: 14 passed, including Pro
+intent/repair and profile-bound accounting; the diagnostic CLI, missing-key CLI
+and retained feedback CLI failed before inference. The retained feedback case
+reported `run_control_unqualified`, with zero sends. Read-only ACL probes on
+retained test roots returned success in 2094/1343/1579 ms; two exceed the existing
+1500 ms bound in `src/m1_run_control.rs`. This host is not qualified for the
+required complete CLI proof. The guard is outside the packet file map and stays
+unchanged. Fresh/upgrade/refresh, final-head CI/coverage/security and distinct
+delivery review remain incomplete. Reports and the task driver are retained at
+`D:/DuskWeave-build/rust-1.94.1/reports/deepseek-pro-profile-r4`.
+Offline CPU/memory/disk/startup comparisons from the separate audit workstream
+were unavailable here and remain unmeasured. No provider or LIVE qualification,
+installation, acceptance or seal is implied.
+
 Acquisition, Terrain and D2 remain unproved. Preserve historical evidence, the
 frozen deployment and finite binding; do not restart image restoration, prior
 qualification/coverage, or paid/target runs. The
 [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures. Real-provider/live-target consent remains separate.
 
-**DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — locally
-reproduced and corrected, awaiting committed-head CI and distinct review:**
+**DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — source
+reviewed and merged in PR150:**
 the audit's catalog-shadow hypothesis was verified dynamically, not assumed.
 Twenty-four SECURITY DEFINER functions plus the invoker
 `terrain.admit_dns_request` resolved unqualified catalog relations through
@@ -73,15 +96,17 @@ sets `search_path = pg_catalog, pg_temp` on exactly those 25 functions in one
 transaction; adapter-local qualification SQL gained `pg_catalog.` on catalog
 relations only. On a fresh schema-0032 fixture the full 14-case group passed,
 and a populated schema-0031 fixture refreshed through the maintained
-`migrate()` path to 0032 with unchanged function OIDs, bodies, ACLs and
-evidence digests; that refresh replay for migration 0024's dynamic trigger is
+`migrate()` path to 0032 with unchanged bodies, ACLs and evidence digests;
+the historical report did not dynamically compare numeric `pg_proc.oid`.
+OIDs are preserved by the ALTER FUNCTION mechanism, rather than established
+by that reported comparison; that refresh replay for migration 0024's dynamic trigger is
 now idempotent. Driver, verdicts and attempt archives live at
 `D:/DuskWeave-build/rust-1.94.1/reports/aud007-catalog-resolution-r1`.
 Limitations: existing deployed databases stay unverified until they receive
-0032; the correction is not merged, deployed or sealed; slot 0032 consumed by
+0032; source merge does not qualify a deployment or seal; slot 0032 consumed by
 this fix moves the planned profile migration to 0033.
 
-**Proposal-admission diagnostics — fixture correction measured, awaiting CI and distinct review:**
+**Proposal-admission diagnostics — source reviewed and merged in PR147:**
 structural failures retain only closed reason/kind/known-field metadata; arbitrary
 member names, values, response bodies and private reasoning remain excluded.
 Generation and repair keep the original repair material and one-repair bound.
@@ -103,7 +128,7 @@ all-target Clippy, links, diff hygiene, LOC and McCabe passed against base
 `6066a771`. That head's Rust shards passed. Its coverage gate failed only on the
 declarations-only file named below.
 
-**Coverage classifier — public named fields measured locally, awaiting new-head CI:**
+**Coverage classifier — reviewed and merged with PR147:**
 run 43005834065 reported 95.59% (17221/18016) and failed because
 `src/m1_reasoning/inference/provider_evidence.rs` has no llvm-cov record. That
 source is data declarations, attributes and public named fields. The gate already
@@ -116,8 +141,9 @@ selftest then passed 23/23. The unchanged source classifies as declarations-only
 The unmodified JSON from that run, read locally after an in-memory Linux
 workspace-prefix adjustment required on Windows, reports the file as not
 applicable and the same total with no gate problems. That reading is old-head
-provenance. New-head CI, including the coverage gate and ci-ok, and distinct
-review remain open. The change is not deployed, accepted or sealed.
+provenance. New-head CI run 43029799330 passed the Rust shards, coverage
+gate (95.59%) and ci-ok before the reviewed PR147 source merge. This does
+not qualify a deployed database, installation or seal.
 
 **Separate model spike (not release acceptance):** retained local report
 `D:/DuskWeave-build/spike-v4pro-report-complete/` records two completed

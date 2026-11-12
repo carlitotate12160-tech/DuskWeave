@@ -129,69 +129,195 @@ pub(super) fn maximum_pack_and_eight_repair_codes_use_observed_sdk_entity_bytes(
         repair_call: Uuid::from_u128(6),
         shared_deadline: end,
     };
-    let p = json!({"version":"m1_context_pack_autonomous_v3","run_profile":"autonomous-dns-fixture-v2","execution_mode":"controlled_fixture",
-        "inference_profile":"fixture-genai-responses-v1","engagement_id":scope.engagement,"campaign_id":scope.campaign,"decision_id":scope.decision,
-        "permission_id":scope.permission,"mission_revision":1,"references":[{"id":"asset_0"},{"id":"mission"}],"manifests":[{"reference":"dns_udp"}],
-        "question":"\u{754c} \"synthetic\" request"});
-    let mut pack = serde_json::to_vec(&p).unwrap();
-    pack.resize(8192, b' ');
-    let upper = inference_intent::preflight(&pack, 8192, 16384).unwrap();
-    let server = Server::start("127.0.0.1:0", |_| Reply::Length(200, success_body()));
-    for (call, codes) in [
-        (r.generation_call, None),
-        (r.repair_call, Some(&["unexpected_view_request"; 8][..])),
+    for name in [
+        "deepseek-genai-responses-low-v1",
+        "fixture-genai-responses-v1",
+        "deepseek-genai-v4-pro-low-v1",
     ] {
-        let bound = inference_intent::bind(&scope, &r, call, &pack, codes).unwrap();
-        assert!(bound.configuration.len() <= upper);
-        let intent = inference_intent::verify(&bound).unwrap();
-        let mut prepared = prepare_call(&bound, &intent, Duration::from_secs(3)).unwrap();
-        // Endpoint injection is private to this test module, never production API.
-        prepared.target.endpoint = Endpoint::from_owned(format!("http://{}/", server.address));
-        let observed = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(prepared.client.exec_chat_observed(
-                ModelSpec::Target(prepared.target),
-                prepared.request,
-                Some(&prepared.options),
-            ));
-        assert!(observed.result.is_ok());
-        let bytes = observed.evidence.request_entity_bytes.unwrap();
-        assert!(bytes <= 16384);
-        assert_eq!(
-            server.requests.lock().unwrap().last().unwrap().body.len(),
-            bytes
-        );
-        let role = if codes.is_some() {
-            "repair"
-        } else {
-            "generation"
-        };
-        let observation = format!(
-            "safe_sdk_boundary role={} pack={} intent={} upper={} repair_codes={} request_entity={} response_entity={:?}",
-            role,
-            pack.len(),
-            bound.configuration.len(),
-            upper,
-            codes.map_or(0, |c| c.len()),
-            bytes,
-            observed.evidence.response_entity_bytes
-        );
-        assert!(observation.starts_with(&format!("safe_sdk_boundary role={role} pack=")));
-        for id in [
-            scope.engagement,
-            scope.campaign,
-            scope.decision,
-            scope.permission,
-            r.generation_call,
-            r.repair_call,
-        ] {
-            assert!(
-                !observation.contains(&id.to_string()),
-                "closed boundary observation excludes identities"
+        let profile = profiles::lookup(name).unwrap();
+        let p = json!({"version":"m1_context_pack_autonomous_v3","run_profile":"autonomous-dns-fixture-v2","execution_mode":"controlled_fixture",
+            "inference_profile":name,"engagement_id":scope.engagement,"campaign_id":scope.campaign,"decision_id":scope.decision,
+            "permission_id":scope.permission,"mission_revision":1,"references":[{"id":"asset_0"},{"id":"mission"}],"manifests":[{"reference":"dns_udp"}],
+            "question":"界 \"synthetic\" request"});
+        for size in [0, 8192] {
+            let mut pack = serde_json::to_vec(&p).unwrap();
+            if size != 0 {
+                pack.resize(size, b' ');
+            }
+            let upper = inference_intent::preflight(&pack, 8192, 16384).unwrap();
+            let mut illegal = pack.clone();
+            illegal.resize(8193, b' ');
+            assert_eq!(
+                inference_intent::preflight(&illegal, 8192, 16384),
+                Err("request_size")
             );
+            let server = Server::start("127.0.0.1:0", move |r| {
+                let wire: Value = serde_json::from_slice(&r.body).unwrap();
+                let pack = fixture::pack_in(&wire).unwrap();
+                let mut envelope = fixture::envelope(&fixture::proposal(&pack));
+                envelope["model"] = json!(profile.settings.model);
+                Reply::Length(200, serde_json::to_vec(&envelope).unwrap())
+            });
+            for (call, codes) in [
+                (r.generation_call, None),
+                (r.repair_call, Some(&["unexpected_view_request"; 8][..])),
+            ] {
+                let bound = inference_intent::bind(&scope, &r, call, &pack, codes).unwrap();
+                assert!(bound.configuration.len() <= upper);
+                let intent = inference_intent::verify(&bound).unwrap();
+                let key = "synthetic-private-profile-key";
+                let mut prepared =
+                    prepare_with_key(&bound, &intent, Duration::from_secs(3), profile, key.into())
+                        .unwrap();
+                assert_eq!(prepared.target.model.adapter_kind, AdapterKind::OpenAIResp);
+                assert_eq!(&*prepared.target.model.model_name, profile.settings.model);
+                assert_eq!(
+                    format!("{}responses", prepared.target.endpoint.base_url()),
+                    profile.connection.recipient
+                );
+                assert_eq!(prepared.requested_model, profile.settings.model);
+                // No production endpoint/auth override exists; injection stays on this private object.
+                prepared.target.endpoint =
+                    Endpoint::from_owned(format!("http://{}/", server.address));
+                prepared.target.auth = AuthData::from_single(key.to_owned());
+                let start = Instant::now();
+                let permit = Permit::new(start + Duration::from_secs(3));
+                assert!(permit.publish(start, start + Duration::from_secs(3)));
+                let observed = exchange(prepared, permit, start + Duration::from_secs(3)).unwrap();
+                let bytes = observed.0.evidence.request_entity_bytes.unwrap();
+                assert!(bytes <= 16384);
+                let requests = server.requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                assert!(request.headers.starts_with("POST /responses "));
+                assert_eq!(request.body.len(), bytes);
+                let wire: Value = serde_json::from_slice(&request.body).unwrap();
+                assert_eq!(wire["model"], intent["model"]);
+                assert_eq!(
+                    wire["reasoning"]["effort"],
+                    intent["settings"]["reasoning_effort"]
+                );
+                assert_eq!(
+                    wire["max_output_tokens"],
+                    intent["settings"]["max_output_tokens"]
+                );
+                assert_eq!(wire["store"], false);
+                assert_eq!(wire["stream"], false);
+                for field in ["temperature", "top_p", "tools", "tool_choice"] {
+                    assert!(wire.get(field).is_none());
+                }
+                assert!(wire.to_string().contains("m1_inference_proposal_v1"));
+                if codes.is_some() {
+                    assert!(wire.to_string().contains("unexpected_view_request"));
+                }
+                drop(requests);
+                eprintln!(
+                    "safe_sdk_boundary profile={name} role={} pack={} intent={} upper={upper} request_entity={bytes} elapsed_ms={}",
+                    intent["call_role"],
+                    pack.len(),
+                    bound.configuration.len(),
+                    start.elapsed().as_millis()
+                );
+                let mut adapter = provider();
+                let received = adapter
+                    .admit(
+                        observed.0,
+                        &observed.1,
+                        observed.2,
+                        start.elapsed(),
+                        &mut Basis,
+                    )
+                    .unwrap();
+                assert!(matches!(
+                    received.admission,
+                    crate::m1_reasoning::proposal::Admission::Accepted(_)
+                ));
+                assert_eq!(received.usage.requested_model, profile.settings.model);
+                assert_eq!(
+                    received.usage.reported_model.as_deref(),
+                    Some(profile.settings.model)
+                );
+                for field in ["model", "protocol", "recipient", "settings"] {
+                    let mut changed = intent.clone();
+                    changed[field] = json!("tampered");
+                    changed.sort_all_objects();
+                    let configuration = serde_json::to_vec(&changed).unwrap();
+                    let digest = inference_intent::digest(&pack, &configuration);
+                    let changed = BoundCall {
+                        pack: pack.clone(),
+                        configuration,
+                        digest,
+                        body: Vec::new(),
+                    };
+                    let mut adapter = provider();
+                    assert_eq!(
+                        adapter.prepare(&changed, Instant::now() + Duration::from_secs(3)),
+                        Err("inference_decision_integrity")
+                    );
+                }
+            }
+            assert_eq!(server.count(), 2);
+        }
+        for case in [
+            "invalid_proposal",
+            "incomplete",
+            "unknown_model",
+            "decode_failure",
+        ] {
+            let mut envelope = fixture::envelope(&fixture::proposal(&p));
+            envelope["model"] = json!(profile.settings.model);
+            match case {
+                "invalid_proposal" => envelope["output"][0]["content"][0]["text"] = json!("{}"),
+                "incomplete" => {
+                    envelope["status"] = json!("incomplete");
+                    envelope["incomplete_details"] = json!({"reason":"max_output_tokens"});
+                }
+                "unknown_model" => envelope["model"] = json!("private-unrecognized-provider-model"),
+                _ => envelope["output"][0]["content"] = json!(false),
+            }
+            let body = serde_json::to_vec(&envelope).unwrap();
+            let server = Server::start("127.0.0.1:0", move |_| Reply::Length(200, body.clone()));
+            let pack = serde_json::to_vec(&p).unwrap();
+            let bound = inference_intent::bind(&scope, &r, r.generation_call, &pack, None).unwrap();
+            let intent = inference_intent::verify(&bound).unwrap();
+            let mut prepared = prepare_with_key(
+                &bound,
+                &intent,
+                Duration::from_secs(3),
+                profile,
+                "synthetic-bound-model-key".into(),
+            )
+            .unwrap();
+            prepared.target.endpoint = Endpoint::from_owned(format!("http://{}/", server.address));
+            let start = Instant::now();
+            let end = start + Duration::from_secs(3);
+            let permit = Permit::new(end);
+            assert!(permit.publish(start, end));
+            let (observed, key, requested) = exchange(prepared, permit, end).unwrap();
+            let mut adapter = provider();
+            let result = adapter.admit(observed, &key, requested, start.elapsed(), &mut Basis);
+            let report = adapter
+                .diagnostic
+                .report
+                .as_ref()
+                .expect("completed HTTP evidence retained");
+            assert_eq!(report.usage.requested_model, profile.settings.model);
+            if case == "unknown_model" {
+                assert!(report.usage.reported_model.is_none());
+            }
+            if case == "incomplete" {
+                assert!(matches!(result, Err("provider_incomplete")));
+                assert!(matches!(
+                    report.provider_response.incomplete_reason,
+                    Some(crate::m1_reasoning::inference::IncompleteReason::MaxOutputTokens)
+                ));
+            }
+            if case == "decode_failure" {
+                assert!(matches!(result, Err("provider_protocol")));
+            }
+            if case == "invalid_proposal" {
+                assert!(result.unwrap().admission.diagnostic().is_some());
+            }
+            assert_eq!(server.count(), 1);
         }
     }
-    assert_eq!(server.count(), 2);
 }

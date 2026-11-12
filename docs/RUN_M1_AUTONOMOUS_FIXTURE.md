@@ -29,6 +29,17 @@ still obey their separately admitted caps.
 | --- | --- | --- |
 | `fixture-genai-responses-v1` | `http://127.0.0.1:18083/responses` | Fixed synthetic fixture auth; no provider key |
 | `deepseek-genai-responses-low-v1` | `https://api.deepseek.com/responses` | `DEEPSEEK_API_KEY`; separate fresh authorization required to call |
+| `deepseek-genai-v4-pro-low-v1` | `https://api.deepseek.com/responses` | `DEEPSEEK_API_KEY`; fresh consent must explicitly name Pro |
+
+The closed Pro profile uses `deepseek-v4-pro`, low effort, 4096
+reasoning-inclusive output tokens, non-streaming, `store=false` and no tools.
+It is recommended for new episodes after separate qualification and fresh
+consent; Flash permission never upgrades to Pro. Pro requires forward migration
+0033, with 0032 applied first where absent. Its v5 controlled-fixture and v6 LIVE
+semantic admission grants no execution authority; LAB keeps the fixture profile.
+Offline SQL, loopback and missing-key assertions do not qualify the provider or
+a LIVE installation. Qualify the actual integrated installation separately before
+an authorized real-provider episode.
 
 Only the fixture profile permits loopback HTTP. Port 18083 has no override;
 if occupied, refuse and preserve its owner. The owning `m1_genai_integration`

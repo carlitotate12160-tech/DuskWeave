@@ -151,6 +151,7 @@ fn admission_preserves_incomplete_unknown_and_zero_and_rejects_decoded_reflectio
             .admit(
                 observation,
                 "synthetic-key-private-571",
+                "deepseek-flash",
                 Duration::ZERO,
                 &mut Basis,
             )
@@ -177,6 +178,7 @@ fn admission_preserves_incomplete_unknown_and_zero_and_rejects_decoded_reflectio
         let result = provider().admit(
             observed(&server, "context", false),
             key,
+            "deepseek-flash",
             Duration::ZERO,
             &mut Basis,
         );
@@ -190,6 +192,7 @@ fn admission_preserves_incomplete_unknown_and_zero_and_rejects_decoded_reflectio
     let result = p.admit(
         observed(&server, "context", false),
         "synthetic-key-private-571",
+        "deepseek-flash",
         Duration::ZERO,
         &mut Basis,
     );
@@ -211,6 +214,7 @@ fn cancellation_drops_inflight_sdk_future_without_retry_and_preserves_no_send_be
         options: ChatOptions::default(),
         key: "synthetic".into(),
         digest: String::new(),
+        requested_model: "deepseek-flash",
     };
     assert_eq!(server.count(), 0, "preparation must not poll network");
     std::thread::scope(|scope| {
@@ -242,6 +246,7 @@ fn stopped_permit_prevents_sdk_polling_and_send() {
         options: ChatOptions::default(),
         key: "synthetic".into(),
         digest: String::new(),
+        requested_model: "deepseek-flash",
     };
     assert!(matches!(
         exchange(prepared, permit, end),

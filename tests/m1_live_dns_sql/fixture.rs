@@ -448,7 +448,7 @@ pub fn run_fixture_wrapper() {
             "--database-name",
             database,
             "--schema-revision",
-            "0032",
+            "0033",
             "--role-prefix",
             &format!("dw_lsq{}", &unique[..unique.len().min(10)]),
             "--report",
@@ -462,16 +462,21 @@ pub fn run_fixture_wrapper() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "dedicated schema-0032 fixture failed; report {}: {stdout}\n{stderr}",
+        "dedicated schema-0033 fixture failed; report {}: {stdout}\n{stderr}",
         report.display()
     );
-    let passed = stdout
+    let log = std::fs::read_to_string(report.join("qualification.log"))
+        .expect("complete sanitized worker log");
+    let passed = log
         .split("test result: ok. ")
         .nth(1)
         .and_then(|rest| rest.split(" passed").next())
         .and_then(|n| n.parse::<u32>().ok())
         .unwrap_or(0);
     for name in [
+        "pro_profile::sql_live_pro_intent_generation_and_repair_are_profile_bound",
+        "pro_profile::sql_live_pro_accounting_and_terminal_diagnostics_preserve_model_identity",
+        "pro_profile::sql_live_pro_missing_key_refuses_and_key_free_recovery_preserves_identity",
         "successor_pack::sql_live_successor_pack_v2_v3_v4_contract_matrix",
         "diagnostic_episode::sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery",
         "successor_episode::sql_live_sdk_v3_cli_feedback_and_key_free_recovery_on_schema0030",
@@ -480,11 +485,11 @@ pub fn run_fixture_wrapper() {
         "audit007::sql_live_aud007_catalog_paths_and_qualification_use_real_catalogs",
     ] {
         let line = format!("test {name} ... ok");
-        assert_eq!(stdout.matches(&line).count(), 1, "{name} missing: {stdout}");
+        assert_eq!(log.matches(&line).count(), 1, "{name} missing: {log}");
     }
-    assert!(passed >= 14, "SQL assertion group must execute: {stdout}");
+    assert!(passed >= 17, "SQL assertion group must execute: {log}");
     eprintln!(
-        "schema0032_sql_group passed={passed} new=3 report={}",
+        "schema0033_sql_group passed={passed} new=3 report={}",
         report.display()
     );
 }

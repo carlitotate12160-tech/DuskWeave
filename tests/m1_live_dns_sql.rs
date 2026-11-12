@@ -27,6 +27,8 @@ mod audit007_support;
 mod diagnostic_episode;
 #[path = "m1_live_dns_sql/fixture.rs"]
 mod fixture;
+#[path = "m1_live_dns_sql/pro_profile.rs"]
+mod pro_profile;
 #[path = "m1_live_dns_sql/receipt.rs"]
 mod receipt;
 #[path = "m1_live_dns_sql/run_support.rs"]
