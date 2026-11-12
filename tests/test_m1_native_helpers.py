@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO / "tests" / "support"))
 
 import m1_native_bootstrap as bootstrap  # noqa: E402
 import m1_native_live as live  # noqa: E402
+from m1_native_schema_cases import SchemaRevisionCases  # noqa: E402,F401
 
 
 class DatabaseNameSelection(unittest.TestCase):
