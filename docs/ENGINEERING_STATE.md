@@ -48,38 +48,60 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** resolve the Windows control-root qualification blocker
-before completing the bounded offline Pro candidate and its distinct delivery
-review. PR147 and the DW-AUD-007 source correction PR150 are merged; deployed
-databases remain unverified until their forward migrations are applied through
-separate authorized promotion. Preserve the failed fresh fixture and reports;
-no provider, target or deployment action is authorized by this candidate.
+**Next product action:** diagnose the retained D2 release/current-authority
+refusal that blocked the Linux pre-upgrade worker, then complete the populated
+forward-refresh proof under a separately scoped correction. Keep the candidate
+local for ChatGPT Work delta review; hosted CI/coverage/security remain PENDING.
+PR147 and the DW-AUD-007 source correction PR150 are merged; deployed databases
+remain unverified until separately authorized forward migration/promotion.
 
-**Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4) — NOT READY:**
-the new profile failed all three intended RED assertions at registration on
-BASE/schema 0032. The first complete path passed all 15 SDK tests (Flash,
-fixture and Pro production construction/serialization/admission), 45 Python
-helper tests and the LOC ratchet. With an 8192-byte pack, measured Pro generation
-and repair entities were 12710/12989 bytes, within the unchanged 16384-byte cap.
-The fresh schema-0033 worker executed 17 cases: 14 passed, including Pro
-intent/repair and profile-bound accounting; the diagnostic CLI, missing-key CLI
-and retained feedback CLI failed before inference. The retained feedback case
-reported `run_control_unqualified`, with zero sends. Read-only ACL probes on
-retained test roots returned success in 2094/1343/1579 ms; two exceed the existing
-1500 ms bound in `src/m1_run_control.rs`. This host is not qualified for the
-required complete CLI proof. The guard is outside the packet file map and stays
-unchanged. Fresh/upgrade/refresh, final-head CI/coverage/security and distinct
-delivery review remain incomplete. Reports and the task driver are retained at
-`D:/DuskWeave-build/rust-1.94.1/reports/deepseek-pro-profile-r4`.
-Offline CPU/memory/disk/startup comparisons from the separate audit workstream
-were unavailable here and remain unmeasured. No provider or LIVE qualification,
-installation, acceptance or seal is implied.
+**Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — NOT READY:**
+Linux WSL qualification reused the unchanged committed runtime/SQL/tests with
+native ELF CLI, supervisor and test executables, Rust 1.94.1, private ext4
+temporary roots and the maintained non-CI `dwpg-r3` PostgreSQL 17.11 owner.
+All 15 SDK tests, three pure admission tests, 45 Python helper tests, formatting
+and all-target Clippy passed. The native Git helper initially could not resolve
+the Windows-style worktree link; process-local `GIT_DIR`/`GIT_WORK_TREE` pointed
+to the real existing metadata, without configuration/source changes, and the
+helper suite then passed. Original RED/baseline evidence was preserved.
 
-Acquisition, Terrain and D2 remain unproved. Preserve historical evidence, the
-frozen deployment and finite binding; do not restart image restoration, prior
-qualification/coverage, or paid/target runs. The
-[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
-owns deployment procedures. Real-provider/live-target consent remains separate.
+The named fresh schema-0033 database passed **17/17**, with all nine required
+witnesses and zero failed/ignored worker cases. Retained feedback reached
+D1 -> fixture acquisition -> owner-qualified Terrain -> D2; diagnostic repair
+and Pro missing-key/key-free recovery reached their intended assertions.
+Container-side readback and a native CLI inspect resolved the same completed
+run with two decisions, one fixture effect and one Terrain history entry.
+Its evidence inventory has 39 tables (33 populated), 17 inference-call rows,
+14 reservation rows and four diagnostic-bearing calls. All three observed
+Linux product-control roots were private `0700` directories.
+
+The separate schema-0032 pre-upgrade worker executed 14 cases: **13 PASS,
+1 FAIL**. `successor_episode::sql_live_sdk_v3_cli_feedback_and_key_free_recovery_on_schema0030`
+reached D1/acquisition/Terrain, then D2 recorded `current_authority_unavailable`;
+its original call is `failed_never_released`, with no usage and only one loopback
+send overall. The run stayed UNKNOWN. This is a release/current-authority
+refusal, distinct from the Windows ACL signature; the specific rejecting branch
+or lock holder is not established. `PgBroker::release_into` and
+`verify_release_current` own the relevant admission boundary. No retry or
+migration followed: the populated upgrade database remains at 0032. Numeric
+catalog metadata/readback is retained, but forward-refresh preservation and the
+post-refresh three-Pro group are UNVERIFIED, not PASS.
+
+Windows remains OPEN: its retained fresh worker passed 14/17; diagnostic,
+missing-key and feedback CLI outcomes failed before their required results.
+Successful ACL probes took 2094/1343/1579 ms against the unchanged 1500 ms bound.
+These observations support a platform-cause hypothesis, not proof of the sole
+cause; Linux results do not qualify Windows. No ACL code or deadline changed.
+Original Windows evidence stays at
+`D:/DuskWeave-build/rust-1.94.1/reports/deepseek-pro-profile-r4`; FIX1 logs,
+binary identities and database evidence are under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-fix1`.
+The unchanged-source serialized-byte/LOC/McCabe evidence is retained; separate
+audit CPU/memory/disk/startup comparisons remain unmeasured. No real-provider
+confirmation, real-target acquisition, deployment, LIVE qualification,
+acceptance or seal follows from fixture success. Preserve frozen resources and
+all failed fixtures; the [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
+owns deployment procedures.
 
 **DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — source
 reviewed and merged in PR150:**

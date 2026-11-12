@@ -222,6 +222,31 @@ a lease renewal after the host-observed expiry. Such a host is UNQUALIFIED for
 final serial qualification; environment clock recovery is an owner-managed
 operations task, not a test or product change.
 
+### Linux-local development qualification
+
+Use native Linux Rust 1.94.1 CLI, test and fixture-supervisor ELF binaries, with
+Linux-only Cargo artifacts and process-local `TMPDIR` on a private ext4 location;
+product-control roots must be owned/private `0700` directories. The WSL source
+worktree may remain on DrvFS. If its Git-for-Windows worktree link cannot be
+resolved by native Git, point process-local `GIT_DIR`/`GIT_WORK_TREE` at the real
+existing metadata/source; do not rewrite `.git` or global configuration.
+
+The task-local driver uses the maintained `Fixture(..., ci=False)` owner against
+the explicitly qualified `dwpg-r3` service and runs the registered SQL worker
+through its native supervisor. A report-owned fixed executable bridge may forward
+Docker argv/stdin literally to the existing Windows docker.exe; this is development
+provisioning I/O, not Unix custody proof for Windows descendants. Keep provider
+keys absent, fixture databases fresh, actions serial and full sanitized logs/counts.
+
+The normal Linux SQL wrapper intentionally selects its hosted-CI `dwpg --ci`
+service; leave that wrapper unchanged. Local direct-worker evidence and hosted
+CI/coverage/security are separate. A fresh-worker PASS does not establish
+populated forward-refresh preservation. Current results and remaining checks
+belong in [engineering state](ENGINEERING_STATE.md#6-current-slices-and-next-action).
+Native Windows control-root qualification remains unresolved; Linux success
+neither repairs its ACL implementation nor qualifies a provider, deployment or
+LIVE target episode. Preserve all product deadlines and explicit fresh consent.
+
 ### Proposal-admission diagnostics
 
 Builds containing proposal diagnostics require migration 0031 for detailed failure
