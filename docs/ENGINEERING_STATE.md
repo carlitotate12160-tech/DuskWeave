@@ -48,11 +48,11 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Current work:** reconcile AUD004's stale runtime-diff hard-cap wording in the existing M1 product contract with [QUALITY_BAR](../QUALITY_BAR.md).
+**Current work:** bounded Linux Phase5/startup-C measurement on accepted source — one existing synthetic autonomous episode through the real SDK/CLI path with pre-READY startup-stage attribution and bounded CPU/memory/I/O/process-lifetime evidence, plus a small terminal-diagnosis test correction.
 
-**Next product action:** complete review of this narrow documentation correction. Once it is reviewed and merged, prepare bounded Linux Phase5/startup-C measurement on accepted source, then apply only demonstrated blocking corrections before separately authorized provider and target pilots. Windows control-root/ACL qualification remains a separate OPEN lane.
+**Next product action:** review this packet's published evidence and its bounded findings. If it demonstrates no blocker in the tested environment, the separately authorized real-provider + fixture-DNS episode proceeds next; a concrete measured blocker receives a bounded correction first. Windows control-root/ACL qualification remains a separate OPEN lane.
 
-[PR #151](https://github.com/carlitotate12160-tech/DuskWeave/pull/151) owns its delivery/candidate/CI state. The Linux qualification evidence, historical limitations and seals below remain unchanged.
+This packet's PR owns its delivery/candidate/CI state on GitHub. The Linux qualification evidence, historical limitations and seals below remain unchanged.
 
 **Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
 The heartbeat fence contention mechanism confirmed under the diagnostic witness

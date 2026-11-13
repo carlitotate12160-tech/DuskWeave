@@ -50,10 +50,6 @@ fn sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery() {
         ])
         .output()
         .unwrap();
-    assert!(
-        !output.status.success(),
-        "invalid repair must not become success"
-    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let receipt: Value = serde_json::from_str(
         stdout
@@ -62,11 +58,29 @@ fn sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery() {
             .expect("terminal receipt JSON"),
     )
     .unwrap();
-    assert_eq!(
-        receipt["recorded_decisions"][0]["disposition"],
-        "schema_repair_exhausted"
+    assert!(
+        !output.status.success(),
+        "invalid repair must not become success; {}",
+        closed_diagnosis(&receipt)
     );
-    assert!(receipt["recorded_decisions"][0]["proposal"].is_null());
+    let decisions = receipt["recorded_decisions"].as_array();
+    assert!(
+        decisions.is_some_and(|items| items.len() == 1),
+        "exactly one recorded decision expected; {}",
+        closed_diagnosis(&receipt)
+    );
+    let decision = &decisions.unwrap()[0];
+    assert_eq!(
+        decision["disposition"],
+        "schema_repair_exhausted",
+        "unexpected terminal outcome; {}",
+        closed_diagnosis(&receipt)
+    );
+    assert!(
+        decision["proposal"].is_null(),
+        "exhausted repair keeps the proposal null; {}",
+        closed_diagnosis(&receipt)
+    );
     assert_eq!(receipt["effect_count"], 0);
     assert_eq!(server.count(), 2, "generation and one eligible repair only");
     let rows = admin().query(
@@ -133,6 +147,118 @@ fn sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery() {
         assert_eq!(server.count(), 2);
     }
     std::fs::remove_file(input).unwrap();
+}
+
+/// Bounded failure diagnosis for the terminal assertions: closed status/count
+/// plus validated `PhaseDiagnostic` fields only. Proposal/body fields, raw
+/// output and unvalidated records never render; unknown content degrades to
+/// closed categories.
+pub(super) fn closed_diagnosis(receipt: &Value) -> String {
+    let count = receipt["recorded_decisions"]
+        .as_array()
+        .map(|items| items.len().to_string())
+        .unwrap_or_else(|| "unavailable".to_string());
+    format!(
+        "status={} recorded_decisions={} diagnostics={} pending_diagnostics={}",
+        closed_token(&receipt["status"]),
+        count,
+        diagnostic_list(receipt.get("diagnostics")),
+        diagnostic_list(receipt.get("pending_diagnostics")),
+    )
+}
+
+fn closed_token(value: &Value) -> String {
+    match value.as_str() {
+        Some(text)
+            if !text.is_empty()
+                && text.len() <= 64
+                && text
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') =>
+        {
+            text.to_string()
+        }
+        _ => "unavailable".to_string(),
+    }
+}
+
+fn diagnostic_list(raw: Option<&Value>) -> String {
+    match raw {
+        None => "absent".to_string(),
+        Some(Value::Array(items)) => {
+            if items.is_empty() {
+                return "[]".to_string();
+            }
+            let rendered: Vec<String> = items.iter().map(diagnostic_entry).collect();
+            format!("[{rendered}]", rendered = rendered.join(";"))
+        }
+        Some(_) => "malformed".to_string(),
+    }
+}
+
+fn diagnostic_entry(raw: &Value) -> String {
+    let parsed = serde_json::from_value::<duskweave::m1_run::PhaseDiagnostic>(raw.clone());
+    match parsed.ok().filter(|d| d.validate().is_ok()) {
+        Some(d) => format!(
+            "{}:{}:{}:ready={}:elapsed={}:err={}",
+            name_of(&d.phase),
+            name_of(&d.cause),
+            name_of(&d.cause_source),
+            d.readiness_observed,
+            d.elapsed_ms
+                .map(|ms| ms.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            d.child_error.as_deref().unwrap_or("-"),
+        ),
+        None => "unvalidated".to_string(),
+    }
+}
+
+fn name_of(value: &impl serde::Serialize) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| "unavailable".to_string())
+}
+
+#[test]
+fn closed_diagnosis_reports_validated_fields_and_degrades_unknown_content() {
+    let run = Uuid::new_v4();
+    let diagnostic = json!({
+        "version":"m1_run_phase_diagnostic_v2","run_id":run,"phase":"decision_one",
+        "cause":"readiness_deadline","cause_source":"parent_observed",
+        "child_error":null,"exit_code":null,"readiness_observed":false,"elapsed_ms":5022});
+    let receipt = json!({"status":"unknown","recorded_decisions":[],
+        "diagnostics":[diagnostic,{"version":"m1_run_phase_diagnostic_v2","run_id":run,
+            "phase":"decision_one","cause":"child_error","cause_source":"child_report",
+            "child_error":"synthetic-private-value","exit_code":null,
+            "readiness_observed":false,"elapsed_ms":1}],
+        "pending_diagnostics":{"nested":true}});
+    let text = closed_diagnosis(&receipt);
+    assert!(text.contains("status=unknown"));
+    assert!(text.contains("recorded_decisions=0"));
+    assert!(text.contains(
+        "decision_one:readiness_deadline:parent_observed:ready=false:elapsed=5022:err=-"
+    ));
+    assert!(text.contains("unvalidated"));
+    assert!(text.contains("pending_diagnostics=malformed"));
+    assert!(!text.contains("synthetic-private-value"));
+}
+
+#[test]
+fn closed_diagnosis_tolerates_missing_and_malformed_sections() {
+    let receipt = json!({"status":"has unsafe extra text","recorded_decisions":{},
+        "diagnostics":[{"unexpected":"shape"}]});
+    let text = closed_diagnosis(&receipt);
+    assert!(text.contains("status=unavailable"));
+    assert!(text.contains("recorded_decisions=unavailable"));
+    assert!(text.contains("diagnostics=[unvalidated]"));
+    assert!(text.contains("pending_diagnostics=absent"));
+    assert!(!text.contains("unsafe extra text"));
+    let receipt = json!({"diagnostics":"not-an-array","pending_diagnostics":[]});
+    let text = closed_diagnosis(&receipt);
+    assert!(text.contains("diagnostics=malformed"));
+    assert!(text.contains("pending_diagnostics=[]"));
 }
 
 fn reject_unsafe_metadata(e: Uuid, c: Uuid) {
