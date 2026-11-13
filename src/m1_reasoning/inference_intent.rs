@@ -1,7 +1,7 @@
 //! Immutable semantic call binding; provider wire encoding is not authority.
 use super::inference::{Reservation, Scope};
 use super::request::BoundCall;
-use crate::m1_inference_profile::{self as profiles, Backend};
+use crate::m1_inference_profile::{self as profiles, Backend, Protocol};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -119,7 +119,7 @@ pub fn digest(pack: &[u8], intent: &[u8]) -> String {
 }
 fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
     let p = parsed_pack(pack)?;
-    let (profile, versions) = sdk_binding(&p)?;
+    let (profile, versions, protocol) = sdk_binding(&p)?;
     if codes.is_some_and(<[_]>::is_empty) {
         return Err("repair_code_ineligible");
     }
@@ -131,17 +131,17 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
             "per_call_wall_time_ms":t.hard_ms,"shared_wall_time_ms":t.shared_ms,
             "decision_wall_time_ms":t.decision_ms,"phase_wall_time_ms":t.phase_ms,
             "cancel_grace_ms":t.stop_ms,"accounting_window_ms":t.accounting_ms,
-            "output_tokens_per_call":4096,"calls_per_decision":2,"concurrency":1});
+            "output_tokens_per_call":profile.settings.output_tokens,"calls_per_decision":2,"concurrency":1});
     let mut intent = json!({"version":VERSION,"permission_version":versions.permission,
         "run_version":versions.run,"engagement_id":p["engagement_id"],
         "campaign_id":p["campaign_id"],"decision_id":p["decision_id"],
         "permission_id":p["permission_id"],"mission_revision":p["mission_revision"],
         "run_profile":p["run_profile"],"execution_mode":p["execution_mode"],
-        "protocol":"openai-resp-v1","profile":profile.name,"recipient":profile.connection.recipient,
+        "protocol":protocol,"profile":profile.name,"recipient":profile.connection.recipient,
         "model":profile.settings.model,"adapter_release":"genai-a9504f1-dw1",
         "template_version":"m1-autonomous-inference-v3","schema_version":"m1_inference_proposal_v1",
         "instructions":instructions,"schema":schema,"timing_profile":profiles::TIMING_PROFILE,
-        "settings":{"reasoning_effort":"low","max_output_tokens":4096,"stream":false,"store":false,"tools":[]},
+        "settings":{"reasoning_effort":profile.settings.reasoning_effort,"max_output_tokens":profile.settings.output_tokens,"stream":profile.settings.stream,"store":false,"tools":[]},
         "repair_error_codes":codes.unwrap_or_default(),"limits":limits});
     if p["version"] == "m1_context_pack_autonomous_v4" {
         intent["live_binding"] = p["live_binding"].clone();
@@ -149,15 +149,16 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
     }
     Ok(intent)
 }
-fn sdk_binding(p: &Value) -> Res<(profiles::Profile, profiles::SdkVersions)> {
+fn sdk_binding(p: &Value) -> Res<(profiles::Profile, profiles::SdkVersions, &'static str)> {
     let profile = profiles::lookup(p["inference_profile"].as_str().ok_or("request_encode")?)
         .map_err(|_| "request_encode")?;
-    if profile.backend != Backend::Genai {
-        return Err("request_encode");
-    }
+    let protocol = match (profile.backend, profile.protocol) {
+        (Backend::Genai, Protocol::Responses) => "openai-resp-v1",
+        _ => return Err("request_encode"),
+    };
     let versions = profiles::sdk_versions(p["run_profile"].as_str().ok_or("request_encode")?)
         .map_err(|_| "request_encode")?;
-    Ok((profile, versions))
+    Ok((profile, versions, protocol))
 }
 // UUID JSON values always occupy 36 text bytes plus two quotes. Generation is
 // bounded by Rust u64's 20 digits (SQL reservations are narrower positive i64).

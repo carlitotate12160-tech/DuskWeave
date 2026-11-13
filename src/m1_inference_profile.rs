@@ -62,8 +62,10 @@ pub fn live_binding(run: &str, mode: &str, inference: &str) -> bool {
     mode == "live"
         && matches!(
             (run, inference),
-            (LIVE_RUN_PROFILE, "deepseek-genai-responses-low-v1")
-                | (LAB_RUN_PROFILE, "fixture-genai-responses-v1")
+            (
+                LIVE_RUN_PROFILE,
+                "deepseek-genai-responses-low-v1" | "deepseek-genai-v4-pro-low-v1"
+            ) | (LAB_RUN_PROFILE, "fixture-genai-responses-v1")
         )
 }
 
@@ -219,6 +221,17 @@ pub fn lookup(name: &str) -> Res<Profile> {
                 Some("DEEPSEEK_API_KEY"),
                 Protocol::Responses,
                 "deepseek-flash",
+                Some("low"),
+            ),
+        ),
+        "deepseek-genai-v4-pro-low-v1" => (
+            Backend::Genai,
+            (
+                "deepseek-genai-v4-pro-low-v1",
+                "https://api.deepseek.com/responses",
+                Some("DEEPSEEK_API_KEY"),
+                Protocol::Responses,
+                "deepseek-v4-pro",
                 Some("low"),
             ),
         ),

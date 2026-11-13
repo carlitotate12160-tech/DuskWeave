@@ -48,18 +48,196 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** distinct delivery review of the locally verified
-DW-AUD-007 catalog-resolution correction on `fix/aud007-catalog-resolution-r1`.
-The held profile packet's dependency disposition stays with the audit
-workstream; this record neither merges the candidate nor releases that hold.
-Acquisition, Terrain and D2 remain unproved. Preserve historical evidence, the
-frozen deployment and finite binding; do not restart image restoration, prior
-qualification/coverage, or paid/target runs. The
-[operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
-owns deployment procedures. Real-provider/live-target consent remains separate.
+**Next product action:** complete review and merge PR #151
+(`DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1` / FIX2 bounded race cleanup) to master.
+Heartbeat lease renewal coordination is implemented under migration 0034 and
+ADR-016 §4a amendment; Linux qualification closed **QUALIFIED (21/21 PASS)**
+across fresh 0034, 0033->0034 upgrade, and 0032->0034 upgrade with causal RED
+observed pre-upgrade on both schemas. Hosted CI run 43401120747 passed (ci-ok,
+GitGuardian, CodeQL, production coverage 95.59% with 90/80 floors PASS). Windows
+control-root qualification remains unresolved and explicitly OPEN.
 
-**DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — locally
-reproduced and corrected, awaiting committed-head CI and distinct review:**
+**Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
+The heartbeat fence contention mechanism confirmed under the diagnostic witness
+was resolved by migration 0034 replacing `execution.private_live_mutation_guard()`
+and `execution.run_renew(uuid)`. Liveness-only lease renewals validate caller
+(`writer_oid`), state (`running`), and monotonic positive renewal (`now <= lease <= now + 2000ms`)
+on `execution.autonomous_control` without acquiring `pg_advisory_xact_lock(engagement:campaign)`.
+Migration 0034 is wrapped in an atomic `BEGIN`/`COMMIT` transaction.
+Four dedicated regression witnesses across `lease_coordination.rs` and
+`lease_coordination_races.rs` verify:
+1. Active lease renewal with a full LAB lifecycle (D1/publication/history,
+   acquisition, `PgEffectStore::reserve`) does not own the release fence
+   (`sql_live_lease_renewal_does_not_own_release_fence`).
+2. Scoped `test_mutate_lease` with explicit `allowed_runs` and role grants
+   rejects regressing, oversized, foreign-caller, unqualified-caller
+   (`terrain_column`), stopped (actual `run_stop`) and expired renewal
+   mutations at the trigger level (`sql_live_lease_coordination_rejects_invalid_renewals`).
+3. Actual `execution.run_stop` transaction (not manual `pg_advisory_xact_lock`)
+   produces the authority fence; committed stopped state verified
+   (`sql_live_authority_mutations_still_fence_release`).
+4. Concurrent row-lock waiting observed via `pg_blocking_pids` (not
+   `sleep(100ms)`): monotonic concurrency, STOP-after-precheck,
+   expiry-after-precheck, and orderly unwind cleanup under scoped thread ownership
+   (`sql_live_lease_renewal_preserves_stop_and_expiry`). Scoped ownership via
+   `std::thread::scope` guarantees prompt rollback of A's row lock on panic/unwind
+   and channel hangup before joining B, verified by controlled subcases.
+
+All 21 Linux SQL cases passed on fresh schema 0034 (**21/21 PASS**).
+Forward upgrade from schema 0033 observed pre-upgrade causal RED on case 1,
+rollback witness verified (injected syntax error), executed migration 0034
+with identical data snapshot, exact function delta (`CHANGED_0034`), original
+pre-upgrade records preserved, and passed all 21 cases (**21/21 PASS**).
+Forward upgrade from schema 0032 observed pre-upgrade causal RED on case 1,
+executed migrations 0033 and 0034 with identical data snapshot, exact function
+delta (`CHANGED_0033 | CHANGED_0034`), original pre-upgrade records preserved,
+and passed all 21 cases (**21/21 PASS**).
+All 13 required witnesses passed across all three runs.
+Windows control-root / ACL qualification remains OPEN (not addressed by this Linux SQL fix).
+
+**Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — historical, NOT READY:**
+Linux WSL qualification reused the unchanged committed runtime/SQL/tests with
+native ELF CLI, supervisor and test executables, Rust 1.94.1, private ext4
+temporary roots and the maintained non-CI `dwpg-r3` PostgreSQL 17.11 owner.
+All 15 SDK tests, three pure admission tests, 45 Python helper tests, formatting
+and all-target Clippy passed. The native Git helper initially could not resolve
+the Windows-style worktree link; process-local `GIT_DIR`/`GIT_WORK_TREE` pointed
+to the real existing metadata, without configuration/source changes, and the
+helper suite then passed. Original RED/baseline evidence was preserved.
+
+The named fresh schema-0033 database passed **17/17**, with all nine required
+witnesses and zero failed/ignored worker cases. Retained feedback reached
+D1 -> fixture acquisition -> owner-qualified Terrain -> D2; diagnostic repair
+and Pro missing-key/key-free recovery reached their intended assertions.
+Container-side readback and a native CLI inspect resolved the same completed
+run with two decisions, one fixture effect and one Terrain history entry.
+Its evidence inventory has 39 tables (33 populated), 17 inference-call rows,
+14 reservation rows and four diagnostic-bearing calls. All three observed
+Linux product-control roots were private `0700` directories.
+
+The separate schema-0032 pre-upgrade worker executed 14 cases: **13 PASS,
+1 FAIL**. `successor_episode::sql_live_sdk_v3_cli_feedback_and_key_free_recovery_on_schema0030`
+reached D1/acquisition/Terrain, then D2 recorded `current_authority_unavailable`;
+its original call is `failed_never_released`, with no usage and only one loopback
+send overall. The run stayed UNKNOWN. This is a release/current-authority
+refusal, distinct from the Windows ACL signature; the specific rejecting branch
+or lock holder is not established. `PgBroker::release_into` and
+`verify_release_current` own the relevant admission boundary. No retry or
+migration followed: the populated upgrade database remains at 0032. Numeric
+catalog metadata/readback is retained, but forward-refresh preservation and the
+post-refresh three-Pro group are UNVERIFIED, not PASS.
+
+Windows remains OPEN: its retained fresh worker passed 14/17; diagnostic,
+missing-key and feedback CLI outcomes failed before their required results.
+Successful ACL probes took 2094/1343/1579 ms against the unchanged 1500 ms bound.
+These observations support a platform-cause hypothesis, not proof of the sole
+cause; Linux results do not qualify Windows. No ACL code or deadline changed.
+Original Windows evidence stays at
+`D:/DuskWeave-build/rust-1.94.1/reports/deepseek-pro-profile-r4`; FIX1 logs,
+binary identities and database evidence are under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-fix1`.
+The unchanged-source serialized-byte/LOC/McCabe evidence is retained; separate
+audit CPU/memory/disk/startup comparisons remain unmeasured. No real-provider
+confirmation, real-target acquisition, deployment, LIVE qualification,
+acceptance or seal follows from fixture success. Preserve frozen resources and
+all failed fixtures; the [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
+owns deployment procedures.
+
+**D2 release-boundary diagnosis (DW-B-R4-D2-RELEASE-FIX-R1) — historical, UNATTRIBUTED,
+no production change:** a byte-verified instrumented export of the unchanged
+candidate, per-edge release probes and a task-owned pg_locks/pg_stat_activity
+observer ran under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-d2-r1`.
+Probe capture was validated on all four native-release control witnesses (4/4),
+which recorded the exact held-fence `current_authority_unavailable`,
+stop-before-launch, deadline-release and owned-launch-uncertainty categories.
+Three predeclared attempts were run: two reached the release boundary — the
+fresh schema-0032 observation and the schema-0033 comparator both cleared
+release (the comparator returned a complete instrumented D2 trace, 44 records,
+all verify edges, `released/completed`) — while the second schema-0032 attempt
+never reached `release_into`: its D1 child claimed 4.46 s after phase start and
+hit the 5 s readiness deadline with zero advisory locks observed. That
+readiness latency is recorded as observed; environmental causation remains
+unverified.
+
+For the preserved failing run, the retained PostgreSQL log artifact contains
+no record inside the recorded run interval 2026-11-12 14:12:03.619–14:12:17.232
+UTC (the broader 14:11:59–14:12:19.2 UTC range carries ERROR records at its
+edges). This limited observation eliminates only server-authored refusals
+(`run_not_current`, `run_phase_refused`, `inference_*`) and server-visible
+SQLSTATE classes on logged backends; it does not eliminate
+`mission_matches_scope`, which returns `current_authority_unavailable` from a
+pure Rust field comparison with no SQL, client-side driver/connection failures
+on the independent Mission/Terrain/run-control connections, or other
+uninstrumented local edges. Deadline branches are eliminated by the ~123 s
+window and ~286 s run margins; the fence-query error branch by the immediately
+succeeding `never_released` write on the same connection; the STOP-marker
+branch by the empty write-once control roots, and no withdrawal rows exist for
+the engagement. The surviving branches stay unresolved — including fence busy
+(`pg_try_advisory_lock` returning false; a designed same-key holder was
+identified later — see the heartbeat witness below), the mission-scope
+predicate, and local binding or client-side failures — with no exhaustive
+surviving-branch claim. The result
+is UNATTRIBUTED: no speculative patch was applied and B does not close. The
+first remaining evidence gap is recorded in `classification.json` and corrected
+in `classification-corrected.json` under the report root.
+
+**Populated upgrade attempt (DW-B-R4-REPORT-CORRECTION-AND-UPGRADE-R1) — historical,
+INCOMPLETE, second occurrence of the silent refusal:** all 566
+runtime/test/SQL/vendor/Cargo input hashes and the three normal action-binary
+identities are byte-identical to the FIX1 manifests, so the fresh Linux 17/17
+result is retained as unchanged-input evidence (not rerun). A fresh populated
+schema-0032 fixture `dw_native_pro_profile_upgrade_review_20261113` ran the
+retained worker under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-upgrade-review-r1`:
+13/14 original cases passed, including
+`successor_episode` clearing the D2 boundary (`sends=2`). The first failure is
+`diagnostic_episode::sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery`
+(recorded decision `d641b0a7` at 2026-11-13 02:51:24 UTC): expected
+`schema_repair_exhausted`, observed `current_authority_unavailable` — the
+`generation` call completed with its malformed-proposal diagnostic while the
+`repair` call recorded `failed_never_released` at the release boundary, again
+with no server-side record in the run window. This is the second recorded instance of the silent
+`current_authority_unavailable` code family at an inference release boundary.
+Per the packet the dependent sequence stopped: migration and the post-refresh
+three-Pro group did not run, forward-refresh preservation stays UNVERIFIED, the
+populated fixture is retained at 0032, and upgrade readiness is not claimed.
+The original anomaly remains OPEN/UNATTRIBUTED; Windows qualification remains
+OPEN; provider, deployment and target readiness remain unverified.
+
+**Heartbeat fence witness (DW-B-R4-HEARTBEAT-FENCE-WITNESS-R1) —
+HEARTBEAT_FENCE_MECHANISM_CONFIRMED, no production change:** review identified
+a designed lock holder the earlier lock map missed. `PgRunStore::renew` →
+`execution.run_renew` → UPDATE `execution.autonomous_control` fires the
+`live_authority_fence` trigger (`private_live_mutation_guard`, migrations
+0024/0032), which takes `pg_advisory_xact_lock` on the `engagement:campaign`
+key unconditionally at entry — before its absent-LIVE-session early return.
+The parent heartbeat renewal therefore owns the same key
+`PgBroker::release_into` probes with its session try-lock; ordinary
+transaction overlap suffices as a mechanism, no leaked transaction required.
+A deterministic export-only witness under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/heartbeat-release-fence-r1`
+(tracked-source export of the verified input head, the recorded release-probe
+diff retargeted to its own output path, fresh fixture
+`dw_native_heartbeat_release_20261113` at schema 0032) executed
+`sql_live_heartbeat_transaction_fences_inference_release` once: an explicit
+still-open `run_renew` transaction on the restricted run-owner login was
+observed owning the matching advisory key in `pg_locks`, `release_into`
+refused promptly as `NeverReleased`/`current_authority_unavailable` with zero
+provider calls and the retained probe recorded `fence/busy`; after the
+controlled COMMIT released the fence, `never_released` settled to
+`failed_never_released_reserved`. A separate fresh identity's ordinary
+autocommit renewal retained no fence and release reached the provider exactly
+once, settling conservatively to `uncertain_charged`. The explicit transaction
+intentionally prolongs the overlap — the witness proves the real heartbeat SQL
+path's locking behavior, not normal renewal duration, production frequency or
+historical attribution; both recorded failures remain OPEN/UNATTRIBUTED.
+Whether strictly-validated lease-only renewal should join the coordinated
+writer set is a narrow architecture question now held for ADR/contract
+disposition. B upgrade evidence remains incomplete.
+
+**DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — source
+reviewed and merged in PR150:**
 the audit's catalog-shadow hypothesis was verified dynamically, not assumed.
 Twenty-four SECURITY DEFINER functions plus the invoker
 `terrain.admit_dns_request` resolved unqualified catalog relations through
@@ -73,15 +251,17 @@ sets `search_path = pg_catalog, pg_temp` on exactly those 25 functions in one
 transaction; adapter-local qualification SQL gained `pg_catalog.` on catalog
 relations only. On a fresh schema-0032 fixture the full 14-case group passed,
 and a populated schema-0031 fixture refreshed through the maintained
-`migrate()` path to 0032 with unchanged function OIDs, bodies, ACLs and
-evidence digests; that refresh replay for migration 0024's dynamic trigger is
+`migrate()` path to 0032 with unchanged bodies, ACLs and evidence digests;
+the historical report did not dynamically compare numeric `pg_proc.oid`.
+OIDs are preserved by the ALTER FUNCTION mechanism, rather than established
+by that reported comparison; that refresh replay for migration 0024's dynamic trigger is
 now idempotent. Driver, verdicts and attempt archives live at
 `D:/DuskWeave-build/rust-1.94.1/reports/aud007-catalog-resolution-r1`.
 Limitations: existing deployed databases stay unverified until they receive
-0032; the correction is not merged, deployed or sealed; slot 0032 consumed by
+0032; source merge does not qualify a deployment or seal; slot 0032 consumed by
 this fix moves the planned profile migration to 0033.
 
-**Proposal-admission diagnostics — fixture correction measured, awaiting CI and distinct review:**
+**Proposal-admission diagnostics — source reviewed and merged in PR147:**
 structural failures retain only closed reason/kind/known-field metadata; arbitrary
 member names, values, response bodies and private reasoning remain excluded.
 Generation and repair keep the original repair material and one-repair bound.
@@ -103,7 +283,7 @@ all-target Clippy, links, diff hygiene, LOC and McCabe passed against base
 `6066a771`. That head's Rust shards passed. Its coverage gate failed only on the
 declarations-only file named below.
 
-**Coverage classifier — public named fields measured locally, awaiting new-head CI:**
+**Coverage classifier — reviewed and merged with PR147:**
 run 43005834065 reported 95.59% (17221/18016) and failed because
 `src/m1_reasoning/inference/provider_evidence.rs` has no llvm-cov record. That
 source is data declarations, attributes and public named fields. The gate already
@@ -116,8 +296,9 @@ selftest then passed 23/23. The unchanged source classifies as declarations-only
 The unmodified JSON from that run, read locally after an in-memory Linux
 workspace-prefix adjustment required on Windows, reports the file as not
 applicable and the same total with no gate problems. That reading is old-head
-provenance. New-head CI, including the coverage gate and ci-ok, and distinct
-review remain open. The change is not deployed, accepted or sealed.
+provenance. New-head CI run 43029799330 passed the Rust shards, coverage
+gate (95.59%) and ci-ok before the reviewed PR147 source merge. This does
+not qualify a deployed database, installation or seal.
 
 **Separate model spike (not release acceptance):** retained local report
 `D:/DuskWeave-build/spike-v4pro-report-complete/` records two completed

@@ -278,3 +278,48 @@ fn sdk_observed_send_stop_lease_loss_and_parent_loss_terminate_without_replay() 
 fn sdk_post_send_assertion_cleanup_settles_owned_processes_response_and_files() {
     termination::sdk_post_send_assertion_cleanup_settles_owned_processes_response_and_files();
 }
+
+#[test]
+fn pro_profile_requires_explicit_versioned_consent_and_live_binding() {
+    use duskweave::m1_inference_profile::{self as profiles, Backend, Protocol};
+    use serde_json::json;
+    let name = "deepseek-genai-v4-pro-low-v1";
+    let profile = profiles::lookup(name).unwrap();
+    assert_eq!(profile.backend, Backend::Genai);
+    assert_eq!(profile.protocol, Protocol::Responses);
+    assert_eq!(profile.settings.model, "deepseek-v4-pro");
+    assert_eq!(profile.settings.reasoning_effort, Some("low"));
+    assert_eq!(profile.settings.output_tokens, 4096);
+    assert!(!profile.settings.stream);
+    assert!(profiles::live_binding(
+        profiles::LIVE_RUN_PROFILE,
+        "live",
+        name
+    ));
+    assert!(!profiles::live_binding(
+        profiles::LAB_RUN_PROFILE,
+        "live",
+        name
+    ));
+    assert!(profiles::lookup("deepseek-pro").is_err());
+    let mut value = consent::registration(
+        duskweave::mission::EngagementId(uuid::Uuid::from_u128(0x31)),
+        duskweave::mission::CampaignId(uuid::Uuid::from_u128(0x32)),
+    );
+    fixture::configure_permission(&mut value);
+    value["m1_inference_permission"]["profile"] = json!(name);
+    value["m1_inference_permission"]["recipient"] = json!(profile.connection.recipient);
+    assert!(duskweave::input::parse_register(&serde_json::to_vec(&value).unwrap()).is_ok());
+    value["m1_inference_permission"]["recipient"] = json!("https://untrusted.invalid/responses");
+    assert!(duskweave::input::parse_register(&serde_json::to_vec(&value).unwrap()).is_err());
+    let mut run = fixture::run_request();
+    run["inference_profile"] = json!(name);
+    assert!(duskweave::m1_run::RunRequest::parse(&serde_json::to_vec(&run).unwrap()).is_ok());
+    for version in [
+        "m1_autonomous_run_request_v1",
+        "m1_autonomous_run_request_v2",
+    ] {
+        run["version"] = json!(version);
+        assert!(duskweave::m1_run::RunRequest::parse(&serde_json::to_vec(&run).unwrap()).is_err());
+    }
+}

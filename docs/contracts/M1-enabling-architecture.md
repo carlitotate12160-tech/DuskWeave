@@ -14,6 +14,7 @@
 | Autonomous-run amendment | [Section 7](#7-proposed-autonomous-run-amendment-2026-10-19) ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 | Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
+| Lease coordination amendment | [Section 7 lease coordination](#lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); positive renewal is not authority mutation; authority fence, timers and seals unchanged |
 
 ## 1. Outcome and decision boundary
 
@@ -1119,6 +1120,17 @@ failed inference; recovery remains database-only and never regenerates the
 proposal. Provider-billing reconciliation for `may_send_uncertain` stays
 operational debt, not an assumed available API.
 
+### Lease coordination amendment (2026-11-13)
+
+**Status: ACCEPTED — product owner, 2026-11-13 (Asia/Jakarta), by conversation approval.**
+
+Positive, liveness-only renewal of an already-running, unexpired autonomous run
+is not an authority mutation under
+[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#positive-run-lease-coordination-amendment-2026-11-13):
+it updates only that run's lease through the validated port without acquiring
+the campaign authority fence. Authority mutations and stopping retain strict
+fencing.
+
 The [design packet](../workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md)
 retains the accepted assertions. Their successor runtime implementation,
 T1-T9 execution evidence and source-bound qualification are indexed in the
@@ -1174,7 +1186,7 @@ protocol adaptation and data custody.
   `ServiceTarget` — `Endpoint::from_static("https://api.deepseek.com/")`
   resolving to the `/responses` suffix, `AuthData::from_single` containing
   the key read from the explicitly configured credential variable, and
-  `ModelIden::new(AdapterKind::OpenAIResp, "deepseek-flash")`. Name inference
+  `ModelIden::new(AdapterKind::OpenAIResp, profile.settings.model)`. Name inference
   would resolve `deepseek-*` to the chat-completions DeepSeek adapter, so
   routing is bound explicitly from the admitted permission's
   recipient/profile, never a caller or model-name choice.
@@ -1214,6 +1226,20 @@ protocol adaptation and data custody.
   adapter: `ChatResponse.reasoning_content`, `captured_raw_body`, error
   bodies and the SDK's `tracing::trace!` payloads never leave the boundary,
   and the inference child installs no tracing subscriber.
+
+### Closed Pro profile amendment (2026-11-12)
+
+The owner-selected `deepseek-genai-v4-pro-low-v1` profile binds Genai,
+OpenAIResp, `https://api.deepseek.com/responses`, `deepseek-v4-pro`, low
+reasoning effort, 4096 reasoning-inclusive output tokens, non-streaming,
+`store=false` and no tools. It is recommended for new episodes, with fresh
+consent naming Pro explicitly under the v5 controlled-fixture or v6 LIVE
+contract. LAB retains its explicit fixture binding. Existing Flash and legacy
+profiles retain their historical meanings and bytes. The closed Profile owns
+configured values; canonical intent commits them, restricted SQL independently
+admits them, and the trusted SDK translates them with invocation-bound requested
+identity. This amendment grants no provider/target contact, deployment,
+runtime qualification, milestone acceptance or seal.
 
 ### Immutable inference intent (successor lane only)
 

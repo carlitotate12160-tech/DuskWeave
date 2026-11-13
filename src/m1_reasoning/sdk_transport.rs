@@ -5,7 +5,7 @@ use super::proposal::ProposalBasis;
 use super::provider_diagnostic::ProviderDiagnostic;
 use super::request::BoundCall;
 use super::transport_control::{CallClock, Permit, ReportedGuard, TransportGuard};
-use crate::m1_inference_profile::{self as profiles, Backend};
+use crate::m1_inference_profile::{self as profiles, Backend, Protocol};
 use genai::adapter::AdapterKind;
 use genai::chat::{
     ChatMessage, ChatOptions, ChatRequest, ChatResponseFormat, JsonSpec, ReasoningEffort,
@@ -25,6 +25,7 @@ struct Prepared {
     options: ChatOptions,
     key: String,
     digest: String,
+    requested_model: &'static str,
 }
 pub struct SdkProvider {
     prepared: Option<Prepared>,
@@ -87,26 +88,30 @@ fn infrastructure_key(profile: profiles::Profile) -> Res<String> {
     }
     Ok(key)
 }
-fn service_target(intent: &Value) -> Res<(ServiceTarget, String)> {
-    let profile = profiles::lookup(intent["profile"].as_str().ok_or("request_encode")?)
-        .map_err(|_| "request_encode")?;
-    if profile.backend != Backend::Genai {
-        return Err("request_encode");
+fn service_target(profile: profiles::Profile, key: &str) -> Res<ServiceTarget> {
+    if profile.backend != Backend::Genai
+        || profile.protocol != Protocol::Responses
+        || profile.settings.stream
+    {
+        return Err("inference_unsupported_profile");
     }
-    let key = infrastructure_key(profile)?;
     let endpoint = profile
         .connection
         .recipient
-        .strip_suffix("responses")
+        .strip_suffix("/responses")
         .ok_or("inference_unsupported_profile")?;
-    let target = ServiceTarget {
-        endpoint: Endpoint::from_static(endpoint),
-        auth: AuthData::from_single(key.clone()),
-        model: ModelIden::new(AdapterKind::OpenAIResp, "deepseek-flash"),
-    };
-    Ok((target, key))
+    // Keep the slash: the SDK appends the terminal responses segment once.
+    Ok(ServiceTarget {
+        endpoint: Endpoint::from_owned(format!("{endpoint}/")),
+        auth: AuthData::from_single(key.to_owned()),
+        model: ModelIden::new(AdapterKind::OpenAIResp, profile.settings.model),
+    })
 }
-fn chat_input(bound: &BoundCall, intent: &Value) -> Res<(ChatRequest, ChatOptions)> {
+fn chat_input(
+    bound: &BoundCall,
+    intent: &Value,
+    profile: profiles::Profile,
+) -> Res<(ChatRequest, ChatOptions)> {
     let context = std::str::from_utf8(&bound.pack).map_err(|_| "pack_utf8")?;
     let mut request = ChatRequest::from_user(context)
         .with_system(intent["instructions"].as_str().ok_or("request_encode")?);
@@ -118,8 +123,11 @@ fn chat_input(bound: &BoundCall, intent: &Value) -> Res<(ChatRequest, ChatOption
         ));
     }
     let options = ChatOptions {
-        reasoning_effort: Some(ReasoningEffort::Low),
-        max_tokens: Some(4096),
+        reasoning_effort: Some(match profile.settings.reasoning_effort {
+            Some("low") => ReasoningEffort::Low,
+            _ => return Err("inference_unsupported_profile"),
+        }),
+        max_tokens: Some(profile.settings.output_tokens),
         response_format: Some(ChatResponseFormat::JsonSpec(JsonSpec::new(
             "m1_inference_proposal_v1",
             intent["schema"].clone(),
@@ -130,8 +138,20 @@ fn chat_input(bound: &BoundCall, intent: &Value) -> Res<(ChatRequest, ChatOption
     Ok((request, options))
 }
 fn prepare_call(bound: &BoundCall, intent: &Value, left: Duration) -> Res<Prepared> {
-    let (target, key) = service_target(intent)?;
-    let (request, options) = chat_input(bound, intent)?;
+    let profile = profiles::lookup(intent["profile"].as_str().ok_or("request_encode")?)
+        .map_err(|_| "request_encode")?;
+    let key = infrastructure_key(profile)?;
+    prepare_with_key(bound, intent, left, profile, key)
+}
+fn prepare_with_key(
+    bound: &BoundCall,
+    intent: &Value,
+    left: Duration,
+    profile: profiles::Profile,
+    key: String,
+) -> Res<Prepared> {
+    let target = service_target(profile, &key)?;
+    let (request, options) = chat_input(bound, intent, profile)?;
     Ok(Prepared {
         client: sdk_client(left)?,
         target,
@@ -139,6 +159,7 @@ fn prepare_call(bound: &BoundCall, intent: &Value, left: Duration) -> Res<Prepar
         options,
         key,
         digest: bound.digest.clone(),
+        requested_model: profile.settings.model,
     })
 }
 impl Provider for SdkProvider {
@@ -169,7 +190,8 @@ impl Provider for SdkProvider {
         self.diagnostic = ProviderDiagnostic::new(bound.digest.clone());
         self.request_entity_bytes = None;
         let (prepared, clock) = self.release_ready(bound, until)?;
-        let (observed, key) = self.exchange_owned(prepared, clock.soft, release)?;
+        let (observed, key, requested_model) =
+            self.exchange_owned(prepared, clock.soft, release)?;
         if !self.permit.current() || Instant::now() >= clock.soft {
             return Err("provider_cancelled_uncertain");
         }
@@ -180,7 +202,7 @@ impl Provider for SdkProvider {
         )?);
         let elapsed = clock.origin.elapsed();
         drop(clock);
-        self.admit(observed, &key, elapsed, basis)
+        self.admit(observed, &key, requested_model, elapsed, basis)
     }
 }
 impl SdkProvider {
@@ -207,7 +229,7 @@ impl SdkProvider {
         prepared: Prepared,
         end: Instant,
         release: &mut dyn FnMut() -> Res<()>,
-    ) -> Res<(ObservedChatResponse, String)> {
+    ) -> Res<(ObservedChatResponse, String, &'static str)> {
         std::thread::scope(|scope| {
             let permit = self.permit.clone();
             let worker = std::thread::Builder::new()
@@ -234,6 +256,7 @@ impl SdkProvider {
         &mut self,
         observed: ObservedChatResponse,
         key: &str,
+        requested_model: &'static str,
         elapsed: Duration,
         basis: &mut dyn ProposalBasis,
     ) -> Res<Received> {
@@ -268,7 +291,15 @@ impl SdkProvider {
             return Err("request_size");
         }
         super::response::screened(key, basis, &mut self.diagnostic, |screened, diagnostic| {
-            super::response::admit_sdk(raw, content, decoded, elapsed, screened, diagnostic)
+            super::response::admit_sdk(
+                raw,
+                content,
+                decoded,
+                requested_model,
+                elapsed,
+                screened,
+                diagnostic,
+            )
         })
     }
 }
@@ -301,7 +332,7 @@ fn exchange(
     prepared: Prepared,
     permit: Permit,
     end: Instant,
-) -> Res<(ObservedChatResponse, String)> {
+) -> Res<(ObservedChatResponse, String, &'static str)> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -313,7 +344,7 @@ fn exchange(
         }
     });
     result
-        .map(|result| (result, prepared.key))
+        .map(|result| (result, prepared.key, prepared.requested_model))
         .ok_or("provider_cancelled_uncertain")
 }
 

@@ -130,7 +130,7 @@ fn admit_json(
     d: &mut ProviderDiagnostic,
 ) -> Res<Received> {
     let v = parse_envelope(raw, d)?;
-    let report = report(&v, response_bytes, elapsed);
+    let report = report(&v, response_bytes, elapsed, "deepseek-flash", false);
     let usage = report.usage.clone();
     d.report = Some(report);
     let text = output_text(&v, d)?;
@@ -158,7 +158,13 @@ fn response_status(v: &serde_json::Value) -> ResponseStatus {
         _ => ResponseStatus::Unrecognized,
     }
 }
-fn report(v: &serde_json::Value, response_bytes: usize, elapsed: Duration) -> ProviderReport {
+fn report(
+    v: &serde_json::Value,
+    response_bytes: usize,
+    elapsed: Duration,
+    requested_model: &'static str,
+    sdk: bool,
+) -> ProviderReport {
     let input_tokens = counter(&v["usage"]["input_tokens"]);
     let output_tokens = counter(&v["usage"]["output_tokens"]);
     let reasoning_tokens = counter(&v["usage"]["output_tokens_details"]["reasoning_tokens"]);
@@ -184,14 +190,14 @@ fn report(v: &serde_json::Value, response_bytes: usize, elapsed: Duration) -> Pr
             reasoning_tokens,
             response_bytes,
             wall_time_ms: elapsed.as_millis().min(i64::MAX as u128) as u64,
-            requested_model: "deepseek-flash",
+            requested_model,
             reported_model: v["model"]
                 .as_str()
                 .filter(|m| {
                     matches!(
                         *m,
                         "deepseek-flash" | "probe-fixture" | "protocol-fixture-v1"
-                    )
+                    ) || (sdk && *m == "deepseek-v4-pro")
                 })
                 .map(str::to_owned),
         },
@@ -324,12 +330,13 @@ pub(super) fn admit_sdk(
     raw: &[u8],
     content: Option<&str>,
     decoded: bool,
+    requested_model: &'static str,
     elapsed: Duration,
     basis: &mut dyn ProposalBasis,
     d: &mut ProviderDiagnostic,
 ) -> Res<Received> {
     let v = parse_envelope(raw, d)?;
-    let report = report(&v, raw.len(), elapsed);
+    let report = report(&v, raw.len(), elapsed, requested_model, true);
     let usage = report.usage.clone();
     d.report = Some(report);
     if !decoded {

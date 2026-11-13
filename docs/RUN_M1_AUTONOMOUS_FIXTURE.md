@@ -29,6 +29,17 @@ still obey their separately admitted caps.
 | --- | --- | --- |
 | `fixture-genai-responses-v1` | `http://127.0.0.1:18083/responses` | Fixed synthetic fixture auth; no provider key |
 | `deepseek-genai-responses-low-v1` | `https://api.deepseek.com/responses` | `DEEPSEEK_API_KEY`; separate fresh authorization required to call |
+| `deepseek-genai-v4-pro-low-v1` | `https://api.deepseek.com/responses` | `DEEPSEEK_API_KEY`; fresh consent must explicitly name Pro |
+
+The closed Pro profile uses `deepseek-v4-pro`, low effort, 4096
+reasoning-inclusive output tokens, non-streaming, `store=false` and no tools.
+It is recommended for new episodes after separate qualification and fresh
+consent; Flash permission never upgrades to Pro. Pro requires forward migration
+0033, with 0032 applied first where absent. Its v5 controlled-fixture and v6 LIVE
+semantic admission grants no execution authority; LAB keeps the fixture profile.
+Offline SQL, loopback and missing-key assertions do not qualify the provider or
+a LIVE installation. Qualify the actual integrated installation separately before
+an authorized real-provider episode.
 
 Only the fixture profile permits loopback HTTP. Port 18083 has no override;
 if occupied, refuse and preserve its owner. The owning `m1_genai_integration`
@@ -210,6 +221,44 @@ been observed stepping backwards by hundreds of milliseconds, which can admit
 a lease renewal after the host-observed expiry. Such a host is UNQUALIFIED for
 final serial qualification; environment clock recovery is an owner-managed
 operations task, not a test or product change.
+
+### Linux-local development qualification
+
+Use native Linux Rust 1.94.1 CLI, test and fixture-supervisor ELF binaries, with
+Linux-only Cargo artifacts and process-local `TMPDIR` on a private ext4 location;
+product-control roots must be owned/private `0700` directories. The WSL source
+worktree may remain on DrvFS. If its Git-for-Windows worktree link cannot be
+resolved by native Git, point process-local `GIT_DIR`/`GIT_WORK_TREE` at the real
+existing metadata/source; do not rewrite `.git` or global configuration.
+
+The task-local driver uses the maintained `Fixture(..., ci=False)` owner against
+the explicitly qualified `dwpg-r3` service and runs the registered SQL worker
+through its native supervisor. A report-owned fixed executable bridge may forward
+Docker argv/stdin literally to the existing Windows docker.exe; this is development
+provisioning I/O, not Unix custody proof for Windows descendants. Keep provider
+keys absent, fixture databases fresh, actions serial and full sanitized logs/counts.
+
+The normal Linux SQL wrapper intentionally selects its hosted-CI `dwpg --ci`
+service; leave that wrapper unchanged. Local direct-worker evidence and hosted
+CI/coverage/security are separate. A fresh-worker PASS does not establish
+populated forward-refresh preservation. Current results and remaining checks
+belong in [engineering state](ENGINEERING_STATE.md#6-current-slices-and-next-action).
+Native Windows control-root qualification remains unresolved; Linux success
+neither repairs its ACL implementation nor qualifies a provider, deployment or
+LIVE target episode. Preserve all product deadlines and explicit fresh consent.
+
+### Run lease coordination and authority fencing
+
+Builds containing run lease coordination require migration 0034. It replaces
+`execution.private_live_mutation_guard()` and `execution.run_renew(uuid)` so that
+heartbeat lease renewals on `execution.autonomous_control` validate liveness
+monotonically before taking the campaign authority transaction lock. Pure
+liveness updates (`lease_until_ms` monotonically forward up to `clock_timestamp() + 2000ms`,
+`status` unchanged, matching caller `writer_oid`) update the row directly under
+row lock, preventing `current_authority_unavailable` release refusal during active
+supervisor heartbeats. Full authority mutations, non-monotonic candidates,
+unqualified callers or stopped runs continue to take or enforce the campaign fence
+and fail closed.
 
 ### Proposal-admission diagnostics
 
