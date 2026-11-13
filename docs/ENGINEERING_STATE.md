@@ -48,15 +48,19 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** a further scoped packet must re-attempt the populated
-forward-refresh proof and disposition the now-twice-observed silent
-`current_authority_unavailable` refusal (below). The D2 release/current-authority
-refusal is diagnosed UNATTRIBUTED with corrected limits, and the clean-candidate
-upgrade attempt returned a concrete first failure: the same silent refusal code
-recurred on the diagnostic repair path while the original successor case
-cleared. Migration and the post-refresh Pro group did not run; the upgrade
-remains INCOMPLETE. Keep the candidate local for ChatGPT Work delta review;
-hosted CI/coverage/security remain PENDING. PR147 and the DW-AUD-007 source
+**Next product action:** the architect must dispose the narrow
+lease-versus-authority coordination question confirmed by the heartbeat fence
+witness (below), and a further scoped packet must still re-attempt the
+populated forward-refresh proof. The D2 release/current-authority refusal is
+diagnosed UNATTRIBUTED with corrected limits, the clean-candidate upgrade
+attempt returned a concrete first failure (the same silent refusal code on the
+diagnostic repair path while the original successor case cleared), and the
+witness confirmed a designed mechanism — `run_renew`'s `autonomous_control`
+UPDATE holds the campaign fence for its transaction duration — that can refuse
+an otherwise prepared release without identifying either historical holder.
+Migration and the post-refresh Pro group did not run; the upgrade remains
+INCOMPLETE. Keep the candidate local for ChatGPT Work delta review; hosted
+CI/coverage/security remain PENDING. PR147 and the DW-AUD-007 source
 correction PR150 are merged; deployed databases remain unverified until
 separately authorized forward migration/promotion.
 
@@ -139,9 +143,10 @@ window and ~286 s run margins; the fence-query error branch by the immediately
 succeeding `never_released` write on the same connection; the STOP-marker
 branch by the empty write-once control roots, and no withdrawal rows exist for
 the engagement. The surviving branches stay unresolved — including fence busy
-(`pg_try_advisory_lock` returning false, needing a same-key holder absent from
-the designed topology), the mission-scope predicate, and local binding or
-client-side failures — with no exhaustive surviving-branch claim. The result
+(`pg_try_advisory_lock` returning false; a designed same-key holder was
+identified later — see the heartbeat witness below), the mission-scope
+predicate, and local binding or client-side failures — with no exhaustive
+surviving-branch claim. The result
 is UNATTRIBUTED: no speculative patch was applied and B does not close. The
 first remaining evidence gap is recorded in `classification.json` and corrected
 in `classification-corrected.json` under the report root.
@@ -168,6 +173,37 @@ three-Pro group did not run, forward-refresh preservation stays UNVERIFIED, the
 populated fixture is retained at 0032, and upgrade readiness is not claimed.
 The original anomaly remains OPEN/UNATTRIBUTED; Windows qualification remains
 OPEN; provider, deployment and target readiness remain unverified.
+
+**Heartbeat fence witness (DW-B-R4-HEARTBEAT-FENCE-WITNESS-R1) —
+HEARTBEAT_FENCE_MECHANISM_CONFIRMED, no production change:** review identified
+a designed lock holder the earlier lock map missed. `PgRunStore::renew` →
+`execution.run_renew` → UPDATE `execution.autonomous_control` fires the
+`live_authority_fence` trigger (`private_live_mutation_guard`, migrations
+0024/0032), which takes `pg_advisory_xact_lock` on the `engagement:campaign`
+key unconditionally at entry — before its absent-LIVE-session early return.
+The parent heartbeat renewal therefore owns the same key
+`PgBroker::release_into` probes with its session try-lock; ordinary
+transaction overlap suffices as a mechanism, no leaked transaction required.
+A deterministic export-only witness under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/heartbeat-release-fence-r1`
+(tracked-source export of the verified input head, the recorded release-probe
+diff retargeted to its own output path, fresh fixture
+`dw_native_heartbeat_release_20261113` at schema 0032) executed
+`sql_live_heartbeat_transaction_fences_inference_release` once: an explicit
+still-open `run_renew` transaction on the restricted run-owner login was
+observed owning the matching advisory key in `pg_locks`, `release_into`
+refused promptly as `NeverReleased`/`current_authority_unavailable` with zero
+provider calls and the retained probe recorded `fence/busy`; after the
+controlled COMMIT released the fence, `never_released` settled to
+`failed_never_released_reserved`. A separate fresh identity's ordinary
+autocommit renewal retained no fence and release reached the provider exactly
+once, settling conservatively to `uncertain_charged`. The explicit transaction
+intentionally prolongs the overlap — the witness proves the real heartbeat SQL
+path's locking behavior, not normal renewal duration, production frequency or
+historical attribution; both recorded failures remain OPEN/UNATTRIBUTED.
+Whether strictly-validated lease-only renewal should join the coordinated
+writer set is a narrow architecture question now held for ADR/contract
+disposition. B upgrade evidence remains incomplete.
 
 **DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — source
 reviewed and merged in PR150:**
