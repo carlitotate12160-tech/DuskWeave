@@ -48,14 +48,17 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** complete the populated forward-refresh proof under a
-separately scoped packet. The retained D2 release/current-authority refusal is
-diagnosed UNATTRIBUTED below — narrowed to two silent branches with no
-speculative patch — and remains OPEN with the forward-refresh proof. Keep the
-candidate local for ChatGPT Work delta review; hosted CI/coverage/security
-remain PENDING. PR147 and the DW-AUD-007 source correction PR150 are merged;
-deployed databases remain unverified until separately authorized forward
-migration/promotion.
+**Next product action:** a further scoped packet must re-attempt the populated
+forward-refresh proof and disposition the now-twice-observed silent
+`current_authority_unavailable` refusal (below). The D2 release/current-authority
+refusal is diagnosed UNATTRIBUTED with corrected limits, and the clean-candidate
+upgrade attempt returned a concrete first failure: the same silent refusal code
+recurred on the diagnostic repair path while the original successor case
+cleared. Migration and the post-refresh Pro group did not run; the upgrade
+remains INCOMPLETE. Keep the candidate local for ChatGPT Work delta review;
+hosted CI/coverage/security remain PENDING. PR147 and the DW-AUD-007 source
+correction PR150 are merged; deployed databases remain unverified until
+separately authorized forward migration/promotion.
 
 **Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — NOT READY:**
 Linux WSL qualification reused the unchanged committed runtime/SQL/tests with
@@ -113,34 +116,58 @@ observer ran under
 Probe capture was validated on all four native-release control witnesses (4/4),
 which recorded the exact held-fence `current_authority_unavailable`,
 stop-before-launch, deadline-release and owned-launch-uncertainty categories.
-Two predeclared fresh schema-0032 observations: the first cleared the release
-boundary outright; the second never reached it — the D1 child claimed 4.46 s
-after phase start and hit the 5 s readiness deadline with zero advisory locks
-observed, a different and environmental failure mode. The single fresh
-schema-0033 comparator also cleared, returning a complete instrumented D2
-release trace (44 records, all verify edges, `released/completed`). The
-refusal did not recur in three boundary observations.
+Three predeclared attempts were run: two reached the release boundary — the
+fresh schema-0032 observation and the schema-0033 comparator both cleared
+release (the comparator returned a complete instrumented D2 trace, 44 records,
+all verify edges, `released/completed`) — while the second schema-0032 attempt
+never reached `release_into`: its D1 child claimed 4.46 s after phase start and
+hit the 5 s readiness deadline with zero advisory locks observed. That
+readiness latency is recorded as observed; environmental causation remains
+unverified.
 
-For the preserved failing run, the PostgreSQL server log is completely silent
-across the whole run window (14:11:59–14:12:19 UTC, containing claim through
-`failed_never_released`): every authored refusal (`run_not_current`,
-`run_phase_refused`, `inference_*`) and every SQLSTATE class raises a logged
-ERROR, so all verify-release SQL branches are eliminated. Deadline branches
-are eliminated by the ~123 s window and ~286 s run margins; the fence-query
-error branch by the immediately succeeding `never_released` write on the same
-connection; the STOP-marker branch by the empty write-once control roots, and
-no withdrawal rows exist for the engagement. The refusing edge is narrowed to
-exactly two silent branches: `pg_try_advisory_lock` returning false (fence
-busy) — which needs a same-key holder absent from the designed topology, where
-every `engagement:campaign` locker is sequential, committed and on the same or
-an earlier session — or a transient local-binding filesystem error. Neither
-can be named for the historical instance without a reproduction under
-instrumentation. Consistent with a transient environmental precondition but
-not provable, the result is UNATTRIBUTED: no speculative patch was applied and
-B does not close. The populated schema-0032 upgrade fixture remains
-unmigrated; forward-refresh preservation and the post-refresh three-Pro group
-stay UNVERIFIED. The first remaining evidence gap is recorded in
-`classification.json` under the report root.
+For the preserved failing run, the retained PostgreSQL log artifact contains
+no record inside the recorded run interval 2026-11-12 14:12:03.619–14:12:17.232
+UTC (the broader 14:11:59–14:12:19.2 UTC range carries ERROR records at its
+edges). This limited observation eliminates only server-authored refusals
+(`run_not_current`, `run_phase_refused`, `inference_*`) and server-visible
+SQLSTATE classes on logged backends; it does not eliminate
+`mission_matches_scope`, which returns `current_authority_unavailable` from a
+pure Rust field comparison with no SQL, client-side driver/connection failures
+on the independent Mission/Terrain/run-control connections, or other
+uninstrumented local edges. Deadline branches are eliminated by the ~123 s
+window and ~286 s run margins; the fence-query error branch by the immediately
+succeeding `never_released` write on the same connection; the STOP-marker
+branch by the empty write-once control roots, and no withdrawal rows exist for
+the engagement. The surviving branches stay unresolved — including fence busy
+(`pg_try_advisory_lock` returning false, needing a same-key holder absent from
+the designed topology), the mission-scope predicate, and local binding or
+client-side failures — with no exhaustive surviving-branch claim. The result
+is UNATTRIBUTED: no speculative patch was applied and B does not close. The
+first remaining evidence gap is recorded in `classification.json` and corrected
+in `classification-corrected.json` under the report root.
+
+**Populated upgrade attempt (DW-B-R4-REPORT-CORRECTION-AND-UPGRADE-R1) —
+INCOMPLETE, second occurrence of the silent refusal:** all 566
+runtime/test/SQL/vendor/Cargo input hashes and the three normal action-binary
+identities are byte-identical to the FIX1 manifests, so the fresh Linux 17/17
+result is retained as unchanged-input evidence (not rerun). A fresh populated
+schema-0032 fixture `dw_native_pro_profile_upgrade_review_20261113` ran the
+retained worker under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-upgrade-review-r1`:
+13/14 original cases passed, including
+`successor_episode` clearing the D2 boundary (`sends=2`). The first failure is
+`diagnostic_episode::sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery`
+(recorded decision `d641b0a7` at 2026-11-13 02:51:24 UTC): expected
+`schema_repair_exhausted`, observed `current_authority_unavailable` — the
+`generation` call completed with its malformed-proposal diagnostic while the
+`repair` call recorded `failed_never_released` at the release boundary, again
+with no server-side record in the run window. This is the second recorded instance of the silent
+`current_authority_unavailable` code family at an inference release boundary.
+Per the packet the dependent sequence stopped: migration and the post-refresh
+three-Pro group did not run, forward-refresh preservation stays UNVERIFIED, the
+populated fixture is retained at 0032, and upgrade readiness is not claimed.
+The original anomaly remains OPEN/UNATTRIBUTED; Windows qualification remains
+OPEN; provider, deployment and target readiness remain unverified.
 
 **DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — source
 reviewed and merged in PR150:**
