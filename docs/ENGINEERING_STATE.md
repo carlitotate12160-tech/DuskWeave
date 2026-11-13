@@ -48,12 +48,14 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** diagnose the retained D2 release/current-authority
-refusal that blocked the Linux pre-upgrade worker, then complete the populated
-forward-refresh proof under a separately scoped correction. Keep the candidate
-local for ChatGPT Work delta review; hosted CI/coverage/security remain PENDING.
-PR147 and the DW-AUD-007 source correction PR150 are merged; deployed databases
-remain unverified until separately authorized forward migration/promotion.
+**Next product action:** complete the populated forward-refresh proof under a
+separately scoped packet. The retained D2 release/current-authority refusal is
+diagnosed UNATTRIBUTED below — narrowed to two silent branches with no
+speculative patch — and remains OPEN with the forward-refresh proof. Keep the
+candidate local for ChatGPT Work delta review; hosted CI/coverage/security
+remain PENDING. PR147 and the DW-AUD-007 source correction PR150 are merged;
+deployed databases remain unverified until separately authorized forward
+migration/promotion.
 
 **Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — NOT READY:**
 Linux WSL qualification reused the unchanged committed runtime/SQL/tests with
@@ -102,6 +104,43 @@ confirmation, real-target acquisition, deployment, LIVE qualification,
 acceptance or seal follows from fixture success. Preserve frozen resources and
 all failed fixtures; the [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures.
+
+**D2 release-boundary diagnosis (DW-B-R4-D2-RELEASE-FIX-R1) — UNATTRIBUTED,
+no production change:** a byte-verified instrumented export of the unchanged
+candidate, per-edge release probes and a task-owned pg_locks/pg_stat_activity
+observer ran under
+`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-d2-r1`.
+Probe capture was validated on all four native-release control witnesses (4/4),
+which recorded the exact held-fence `current_authority_unavailable`,
+stop-before-launch, deadline-release and owned-launch-uncertainty categories.
+Two predeclared fresh schema-0032 observations: the first cleared the release
+boundary outright; the second never reached it — the D1 child claimed 4.46 s
+after phase start and hit the 5 s readiness deadline with zero advisory locks
+observed, a different and environmental failure mode. The single fresh
+schema-0033 comparator also cleared, returning a complete instrumented D2
+release trace (44 records, all verify edges, `released/completed`). The
+refusal did not recur in three boundary observations.
+
+For the preserved failing run, the PostgreSQL server log is completely silent
+across the whole run window (14:11:59–14:12:19 UTC, containing claim through
+`failed_never_released`): every authored refusal (`run_not_current`,
+`run_phase_refused`, `inference_*`) and every SQLSTATE class raises a logged
+ERROR, so all verify-release SQL branches are eliminated. Deadline branches
+are eliminated by the ~123 s window and ~286 s run margins; the fence-query
+error branch by the immediately succeeding `never_released` write on the same
+connection; the STOP-marker branch by the empty write-once control roots, and
+no withdrawal rows exist for the engagement. The refusing edge is narrowed to
+exactly two silent branches: `pg_try_advisory_lock` returning false (fence
+busy) — which needs a same-key holder absent from the designed topology, where
+every `engagement:campaign` locker is sequential, committed and on the same or
+an earlier session — or a transient local-binding filesystem error. Neither
+can be named for the historical instance without a reproduction under
+instrumentation. Consistent with a transient environmental precondition but
+not provable, the result is UNATTRIBUTED: no speculative patch was applied and
+B does not close. The populated schema-0032 upgrade fixture remains
+unmigrated; forward-refresh preservation and the post-refresh three-Pro group
+stay UNVERIFIED. The first remaining evidence gap is recorded in
+`classification.json` under the report root.
 
 **DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — source
 reviewed and merged in PR150:**
