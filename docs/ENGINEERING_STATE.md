@@ -48,13 +48,14 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** submit PR for `DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1`
-to master and complete adversarial review. Heartbeat lease renewal coordination
-is implemented under migration 0034 and ADR-016 §4a amendment; Linux qualification
-closed **QUALIFIED (21/21 PASS)** across fresh 0034, 0033->0034 upgrade, and
-0032->0034 upgrade with causal RED observed pre-upgrade on both schemas. Windows
-control-root qualification remains unresolved and explicitly OPEN. Hosted CI,
-coverage and security checks remain PENDING on PR creation.
+**Next product action:** complete review and merge PR #151
+(`DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1` / FIX2 bounded race cleanup) to master.
+Heartbeat lease renewal coordination is implemented under migration 0034 and
+ADR-016 §4a amendment; Linux qualification closed **QUALIFIED (21/21 PASS)**
+across fresh 0034, 0033->0034 upgrade, and 0032->0034 upgrade with causal RED
+observed pre-upgrade on both schemas. Hosted CI run 43401120747 passed (ci-ok,
+GitGuardian, CodeQL, production coverage 95.59% with 90/80 floors PASS). Windows
+control-root qualification remains unresolved and explicitly OPEN.
 
 **Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
 The heartbeat fence contention mechanism confirmed under the diagnostic witness
@@ -76,8 +77,11 @@ Four dedicated regression witnesses across `lease_coordination.rs` and
    produces the authority fence; committed stopped state verified
    (`sql_live_authority_mutations_still_fence_release`).
 4. Concurrent row-lock waiting observed via `pg_blocking_pids` (not
-   `sleep(100ms)`): monotonic concurrency, STOP-after-precheck and
-   expiry-after-precheck scenarios (`sql_live_lease_renewal_preserves_stop_and_expiry`).
+   `sleep(100ms)`): monotonic concurrency, STOP-after-precheck,
+   expiry-after-precheck, and orderly unwind cleanup under scoped thread ownership
+   (`sql_live_lease_renewal_preserves_stop_and_expiry`). Scoped ownership via
+   `std::thread::scope` guarantees prompt rollback of A's row lock on panic/unwind
+   and channel hangup before joining B, verified by controlled subcases.
 
 All 21 Linux SQL cases passed on fresh schema 0034 (**21/21 PASS**).
 Forward upgrade from schema 0033 observed pre-upgrade causal RED on case 1,
