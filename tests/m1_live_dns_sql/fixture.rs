@@ -486,7 +486,7 @@ pub fn run_fixture_wrapper() {
         "lease_coordination::sql_live_lease_renewal_does_not_own_release_fence",
         "lease_coordination::sql_live_lease_coordination_rejects_invalid_renewals",
         "lease_coordination::sql_live_authority_mutations_still_fence_release",
-        "lease_coordination::sql_live_lease_renewal_preserves_stop_and_expiry",
+        "lease_coordination_races::sql_live_lease_renewal_preserves_stop_and_expiry",
     ] {
         let line = format!("test {name} ... ok");
         assert_eq!(log.matches(&line).count(), 1, "{name} missing: {log}");

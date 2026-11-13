@@ -62,25 +62,36 @@ was resolved by migration 0034 replacing `execution.private_live_mutation_guard(
 and `execution.run_renew(uuid)`. Liveness-only lease renewals validate caller
 (`writer_oid`), state (`running`), and monotonic positive renewal (`now <= lease <= now + 2000ms`)
 on `execution.autonomous_control` without acquiring `pg_advisory_xact_lock(engagement:campaign)`.
-Four dedicated regression witnesses in `tests/m1_live_dns_sql/lease_coordination.rs`
-verify:
-1. Active lease renewal during inference repair `may_send` does not own the release fence,
-   and an active LAB SQL session holds no campaign advisory lock (`sql_live_lease_renewal_does_not_own_release_fence`).
-2. Non-monotonic, regressing, oversized, foreign-writer, or stopped-run renewal mutations fail closed (`sql_live_lease_coordination_rejects_invalid_renewals`).
-3. Authority-level transactions still acquire the campaign advisory fence and correctly refuse `release_into` with `current_authority_unavailable` (`sql_live_authority_mutations_still_fence_release`).
-4. Lease renewals preserve row-level locks, serialized updates, and refuse stopped run resurrection (`sql_live_lease_renewal_preserves_stop_and_expiry`).
+Migration 0034 is wrapped in an atomic `BEGIN`/`COMMIT` transaction.
+Four dedicated regression witnesses across `lease_coordination.rs` and
+`lease_coordination_races.rs` verify:
+1. Active lease renewal with a full LAB lifecycle (D1/publication/history,
+   acquisition, `PgEffectStore::reserve`) does not own the release fence
+   (`sql_live_lease_renewal_does_not_own_release_fence`).
+2. Scoped `test_mutate_lease` with explicit `allowed_runs` and role grants
+   rejects regressing, oversized, foreign-caller, unqualified-caller
+   (`terrain_column`), stopped (actual `run_stop`) and expired renewal
+   mutations at the trigger level (`sql_live_lease_coordination_rejects_invalid_renewals`).
+3. Actual `execution.run_stop` transaction (not manual `pg_advisory_xact_lock`)
+   produces the authority fence; committed stopped state verified
+   (`sql_live_authority_mutations_still_fence_release`).
+4. Concurrent row-lock waiting observed via `pg_blocking_pids` (not
+   `sleep(100ms)`): monotonic concurrency, STOP-after-precheck and
+   expiry-after-precheck scenarios (`sql_live_lease_renewal_preserves_stop_and_expiry`).
 
 All 21 Linux SQL cases passed on fresh schema 0034 (**21/21 PASS**).
 Forward upgrade from schema 0033 observed pre-upgrade causal RED on case 1,
-executed migration 0034 with identical data snapshot and exact function delta
-(`CHANGED_0034`), and passed all 21 cases (**21/21 PASS**).
+rollback witness verified (injected syntax error), executed migration 0034
+with identical data snapshot, exact function delta (`CHANGED_0034`), original
+pre-upgrade records preserved, and passed all 21 cases (**21/21 PASS**).
 Forward upgrade from schema 0032 observed pre-upgrade causal RED on case 1,
-executed migrations 0033 and 0034 with identical data snapshot and exact function delta
-(`CHANGED_0033 | CHANGED_0034`), and passed all 21 cases (**21/21 PASS**).
+executed migrations 0033 and 0034 with identical data snapshot, exact function
+delta (`CHANGED_0033 | CHANGED_0034`), original pre-upgrade records preserved,
+and passed all 21 cases (**21/21 PASS**).
 All 13 required witnesses passed across all three runs.
 Windows control-root / ACL qualification remains OPEN (not addressed by this Linux SQL fix).
 
-**Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — NOT READY:**
+**Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — historical, NOT READY:**
 Linux WSL qualification reused the unchanged committed runtime/SQL/tests with
 native ELF CLI, supervisor and test executables, Rust 1.94.1, private ext4
 temporary roots and the maintained non-CI `dwpg-r3` PostgreSQL 17.11 owner.
@@ -128,7 +139,7 @@ acceptance or seal follows from fixture success. Preserve frozen resources and
 all failed fixtures; the [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
 owns deployment procedures.
 
-**D2 release-boundary diagnosis (DW-B-R4-D2-RELEASE-FIX-R1) — UNATTRIBUTED,
+**D2 release-boundary diagnosis (DW-B-R4-D2-RELEASE-FIX-R1) — historical, UNATTRIBUTED,
 no production change:** a byte-verified instrumented export of the unchanged
 candidate, per-edge release probes and a task-owned pg_locks/pg_stat_activity
 observer ran under
@@ -167,7 +178,7 @@ is UNATTRIBUTED: no speculative patch was applied and B does not close. The
 first remaining evidence gap is recorded in `classification.json` and corrected
 in `classification-corrected.json` under the report root.
 
-**Populated upgrade attempt (DW-B-R4-REPORT-CORRECTION-AND-UPGRADE-R1) —
+**Populated upgrade attempt (DW-B-R4-REPORT-CORRECTION-AND-UPGRADE-R1) — historical,
 INCOMPLETE, second occurrence of the silent refusal:** all 566
 runtime/test/SQL/vendor/Cargo input hashes and the three normal action-binary
 identities are byte-identical to the FIX1 manifests, so the fresh Linux 17/17

@@ -1,11 +1,16 @@
 //! Private support for M1 lease coordination and fence regression assertions.
-use super::fixture::{admin, client};
+use super::fixture::*;
+use super::receipt::LabBasis;
+use super::run_support::*;
 use duskweave::m1_reasoning::{
     inference::{Broker, Provider, Received, ReleaseFailure, Reservation, Scope},
+    postgres::Basis,
+    postgres_terrain::TerrainBasis,
     proposal::ProposalBasis,
     request::{self, BoundCall},
     response,
 };
+use duskweave::postgres_m1_run::PgRunStore;
 use postgres::Client;
 use serde_json::Value;
 use std::sync::Arc;
@@ -55,6 +60,25 @@ impl Provider for CountingRepairProvider {
         let raw = serde_json::to_vec(&super::genai::envelope(&proposal))
             .map_err(|_| "envelope_encode")?;
         response::admit_envelope(&raw, raw.len(), Duration::ZERO, basis)
+    }
+}
+
+pub struct ZeroProvider(pub Arc<AtomicUsize>);
+
+impl Provider for ZeroProvider {
+    fn prepare(&mut self, _: &BoundCall, _: Instant) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn call(
+        &mut self,
+        _: &BoundCall,
+        _: Instant,
+        _: &mut dyn ProposalBasis,
+        release: &mut dyn FnMut() -> Result<(), &'static str>,
+    ) -> Result<Received, &'static str> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        release()?;
+        Err("provider_error")
     }
 }
 
@@ -136,7 +160,11 @@ impl<B: Broker> Broker for HolderBroker<B> {
             .inner
             .release_into(scope, reservation, call_id, bound, provider, basis);
         if call_id == self.repair_call {
-            let _ = self.holder.take().map(|mut h| h.batch_execute("COMMIT"));
+            let Some(mut h) = self.holder.take() else {
+                return result;
+            };
+            h.batch_execute("COMMIT")
+                .expect("holder commit must succeed before outer settlement");
         }
         result
     }
@@ -244,18 +272,124 @@ pub fn other_broker() -> Client {
     client("DW_NATIVE_OTHER_BROKER_DATABASE_URL")
 }
 
-pub fn setup_test_mutator() {
+pub fn terrain_column() -> Client {
+    client("DW_NATIVE_TERRAINCOLUMN_DATABASE_URL")
+}
+
+pub fn wait_for_blocking_pid(
+    observer: &mut Client,
+    blocked_pid: i32,
+    blocking_pid: i32,
+    timeout: Duration,
+) -> Result<(), &'static str> {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        let is_blocked: bool = observer
+            .query_one(
+                "SELECT $1 = ANY(pg_blocking_pids($2))",
+                &[&blocking_pid, &blocked_pid],
+            )
+            .map_err(|_| "query_blocking_failed")?
+            .get(0);
+        if is_blocked {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    Err("timeout_waiting_for_row_lock")
+}
+
+pub fn setup_test_mutator(allowed_runs: &[Uuid], allowed_roles: &[&str]) {
     let mut a = admin();
-    a.batch_execute(
+    let run_literals = allowed_runs
+        .iter()
+        .map(|u| format!("'{u}'::uuid"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
         "CREATE OR REPLACE FUNCTION execution.test_mutate_lease(r uuid, new_lease bigint, new_status text) \
          RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog, pg_temp AS $$ \
          BEGIN \
+          IF r <> ALL(ARRAY[{run_literals}]) THEN \
+           RAISE EXCEPTION 'test_mutator_scope_refused'; \
+          END IF; \
           UPDATE execution.autonomous_control \
            SET lease_until_ms=new_lease, status=coalesce(new_status, status) \
            WHERE run_id=r; \
          END $$; \
          REVOKE ALL ON FUNCTION execution.test_mutate_lease(uuid,bigint,text) FROM PUBLIC; \
-         GRANT EXECUTE ON FUNCTION execution.test_mutate_lease(uuid,bigint,text) TO dw_m1_broker;",
+         REVOKE ALL ON FUNCTION execution.test_mutate_lease(uuid,bigint,text) FROM dw_m1_broker;"
+    );
+    a.batch_execute(&sql).unwrap();
+    for role in allowed_roles {
+        a.batch_execute(&format!(
+            "GRANT USAGE ON SCHEMA execution TO \"{role}\"; \
+             GRANT EXECUTE ON FUNCTION execution.test_mutate_lease(uuid,bigint,text) TO \"{role}\";"
+        ))
+        .unwrap();
+    }
+}
+
+pub fn assert_direct_lock_fences_release(slot: u128) {
+    let (ctrl_e, ctrl_c, _) = register_live(slot, false);
+    let ctrl_run = Uuid::new_v4();
+    let ctrl_pub = live_publication(ctrl_e, ctrl_c, ctrl_run);
+    let mut ctrl_runs = PgRunStore::new(broker());
+    ctrl_runs
+        .start(
+            &successor_request(&ctrl_pub, ctrl_run, "m1_autonomous_run_request_v3"),
+            RELEASE,
+        )
+        .unwrap();
+    let ctrl_rec = ctrl_runs.inspect(ctrl_run).unwrap();
+    let ctrl_prep = prepare_decision_one(&mut ctrl_runs, &ctrl_rec);
+    let ctrl_dead = Instant::now() + Duration::from_millis(ctrl_prep.window_ms as u64);
+    let ctrl_pack = ctrl_prep.pack.utf8().as_bytes();
+    let mut ctrl_port = broker_port(&ctrl_rec, ctrl_dead);
+    let ctrl_res = ctrl_port.reserve(&ctrl_prep.scope, ctrl_pack).unwrap();
+    let ctrl_bnd = duskweave::m1_reasoning::inference_intent::bind(
+        &ctrl_prep.scope,
+        &ctrl_res,
+        ctrl_res.generation_call,
+        ctrl_pack,
+        None,
     )
     .unwrap();
+    ctrl_port
+        .may_send(&ctrl_prep.scope, ctrl_res.generation_call, &ctrl_bnd)
+        .unwrap();
+
+    let ctrl_key = fence_key(ctrl_e, ctrl_c);
+    let mut direct_tx = admin();
+    direct_tx.batch_execute("BEGIN").unwrap();
+    direct_tx
+        .execute("SELECT pg_advisory_xact_lock($1)", &[&ctrl_key])
+        .unwrap();
+
+    let mut ctrl_basis = LabBasis(TerrainBasis {
+        mission: Basis {
+            client: broker(),
+            scope: ctrl_prep.scope.clone(),
+            references: request::reference_ids(ctrl_pack).unwrap(),
+            deadline: ctrl_dead,
+        },
+        dependencies: ctrl_prep.pack.terrain_dependencies().to_vec(),
+    });
+    let ctrl_calls = Arc::new(AtomicUsize::new(0));
+    let res = ctrl_port.release_into(
+        &ctrl_prep.scope,
+        &ctrl_res,
+        ctrl_res.generation_call,
+        &ctrl_bnd,
+        &mut ZeroProvider(ctrl_calls.clone()),
+        &mut ctrl_basis,
+    );
+    assert!(matches!(
+        res,
+        Err(ReleaseFailure::NeverReleased(
+            "current_authority_unavailable"
+        ))
+    ));
+    assert_eq!(ctrl_calls.load(Ordering::SeqCst), 0);
+    direct_tx.batch_execute("COMMIT").unwrap();
 }

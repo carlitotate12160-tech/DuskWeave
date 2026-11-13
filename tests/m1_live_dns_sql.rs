@@ -29,6 +29,8 @@ mod diagnostic_episode;
 mod fixture;
 #[path = "m1_live_dns_sql/lease_coordination.rs"]
 mod lease_coordination;
+#[path = "m1_live_dns_sql/lease_coordination_races.rs"]
+mod lease_coordination_races;
 #[path = "m1_live_dns_sql/lease_coordination_support.rs"]
 mod lease_coordination_support;
 #[path = "m1_live_dns_sql/pro_profile.rs"]

@@ -170,6 +170,8 @@ class SchemaRevisionCases(unittest.TestCase):
         for initial in (True, False):
             calls = migrate_calls("0034", initial)
             tail = calls[-1]
+            self.assertIn("BEGIN;", tail)
+            self.assertTrue(tail.strip().endswith("COMMIT;"))
             functions = re.findall(r"CREATE OR REPLACE FUNCTION execution\.(\w+)", tail)
             self.assertEqual(functions, ["private_live_mutation_guard", "run_renew"])
             self.assertEqual(tail.count("SET search_path=pg_catalog, pg_temp"), 2)

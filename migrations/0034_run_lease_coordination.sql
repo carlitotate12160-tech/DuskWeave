@@ -2,6 +2,8 @@
 -- unexpired autonomous run is not an authority mutation. Replace private_live_mutation_guard
 -- to validate run lease renewals before campaign advisory locking, and replace run_renew
 -- to update lease monotonically without holding the campaign fence.
+BEGIN;
+
 CREATE OR REPLACE FUNCTION execution.private_live_mutation_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
@@ -140,3 +142,4 @@ BEGIN
  GET DIAGNOSTICS updated_count = ROW_COUNT;
  IF updated_count = 0 THEN RAISE EXCEPTION 'run_not_current'; END IF;
 END $$;
+COMMIT;
