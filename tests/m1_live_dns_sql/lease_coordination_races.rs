@@ -10,10 +10,56 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InjectedFault {
+    WhileBWaits,
+    BeforeStart,
+}
+
+fn check_injected_fault<T>(
+    result: &std::thread::Result<T>,
+    expected: InjectedFault,
+) -> Result<(), &'static str> {
+    match result {
+        Ok(_) => Err("expected_panic_but_succeeded"),
+        Err(payload) => match payload.downcast_ref::<InjectedFault>() {
+            Some(f) if *f == expected => Ok(()),
+            Some(_) => Err("wrong_injected_fault_variant"),
+            None => Err("unexpected_unrelated_panic_payload"),
+        },
+    }
+}
+
 #[test]
 #[ignore = "runs only inside the dedicated restricted SQL fixture worker"]
 fn sql_live_lease_renewal_preserves_stop_and_expiry() {
     assert!(worker());
+
+    // -------------------------------------------------------------------------
+    // Predicate Discrimination Controls
+    // -------------------------------------------------------------------------
+    let (ctrl_ok, ctrl_wrong, ctrl_unrel, ctrl_match) = (
+        Ok(()),
+        std::panic::catch_unwind(|| std::panic::panic_any(InjectedFault::BeforeStart)),
+        std::panic::catch_unwind(|| panic!("unrelated_prereq_failure")),
+        std::panic::catch_unwind(|| std::panic::panic_any(InjectedFault::WhileBWaits)),
+    );
+    assert_eq!(
+        check_injected_fault(&ctrl_ok, InjectedFault::WhileBWaits),
+        Err("expected_panic_but_succeeded")
+    );
+    assert_eq!(
+        check_injected_fault(&ctrl_wrong, InjectedFault::WhileBWaits),
+        Err("wrong_injected_fault_variant")
+    );
+    assert_eq!(
+        check_injected_fault(&ctrl_unrel, InjectedFault::WhileBWaits),
+        Err("unexpected_unrelated_panic_payload")
+    );
+    assert_eq!(
+        check_injected_fault(&ctrl_match, InjectedFault::WhileBWaits),
+        Ok(())
+    );
 
     // -------------------------------------------------------------------------
     // Scenario 1: Monotonic Concurrency under Observed Row Waiting
@@ -314,6 +360,7 @@ fn sql_live_lease_renewal_preserves_stop_and_expiry() {
         )
         .unwrap();
 
+        let subcase4_start = Instant::now();
         let unwind_observed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             thread::scope(|s| {
                 let mut tx_a = broker();
@@ -354,24 +401,29 @@ fn sql_live_lease_renewal_preserves_stop_and_expiry() {
                     .expect("tx B must demonstrably block on row lock held by tx A");
 
                 // Inject simulated failure while B is waiting, before A commits.
-                panic!("simulated_assertion_or_observer_failure_while_b_waits");
+                std::panic::panic_any(InjectedFault::WhileBWaits);
             });
         }));
 
+        assert_eq!(
+            check_injected_fault(&unwind_observed, InjectedFault::WhileBWaits),
+            Ok(())
+        );
+        let sc4_elapsed = subcase4_start.elapsed();
+        eprintln!("subcase 4 elapsed: {sc4_elapsed:?}");
         assert!(
-            unwind_observed.is_err(),
-            "expected panic must unwind cleanly through thread::scope"
+            sc4_elapsed < Duration::from_secs(10),
+            "subcase 4 observation bound"
         );
 
         // Verify that B has joined and A's row lock is fully released:
         // observer can acquire an exclusive row lock immediately without blocking.
-        let mut obs = admin();
-        let check_lock = obs.query_opt(
+        let check_lock = admin().query_opt(
             "SELECT lease_until_ms FROM execution.autonomous_control WHERE run_id=$1 FOR UPDATE NOWAIT",
             &[&run],
         );
         assert!(
-            check_lock.is_ok() && check_lock.unwrap().is_some(),
+            matches!(check_lock, Ok(Some(_))),
             "observer must immediately acquire row lock without contention after unwind"
         );
     }
@@ -390,6 +442,7 @@ fn sql_live_lease_renewal_preserves_stop_and_expiry() {
         )
         .unwrap();
 
+        let subcase5_start = Instant::now();
         let pre_start_unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             thread::scope(|s| {
                 let (tx_ready, rx_ready) = mpsc::channel();
@@ -415,20 +468,25 @@ fn sql_live_lease_renewal_preserves_stop_and_expiry() {
 
                 // Inject failure before sending the start signal.
                 if true {
-                    panic!("simulated_failure_before_start_signal");
+                    std::panic::panic_any(InjectedFault::BeforeStart);
                 }
                 tx_start.send(()).unwrap();
             });
         }));
 
+        assert_eq!(
+            check_injected_fault(&pre_start_unwind, InjectedFault::BeforeStart),
+            Ok(())
+        );
+        let sc5_elapsed = subcase5_start.elapsed();
+        eprintln!("subcase 5 elapsed: {sc5_elapsed:?}");
         assert!(
-            pre_start_unwind.is_err(),
-            "expected pre-start panic must unwind cleanly"
+            sc5_elapsed < Duration::from_secs(10),
+            "subcase 5 observation bound"
         );
 
         // Verify observer can read the retained row without contention.
-        let mut obs = admin();
-        let status: String = obs
+        let status: String = admin()
             .query_one(
                 "SELECT status FROM execution.autonomous_control WHERE run_id=$1",
                 &[&run],
