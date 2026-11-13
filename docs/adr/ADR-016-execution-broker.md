@@ -13,6 +13,7 @@
 | Autonomous-run amendment | Section 4a ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 | Provider-neutral revision | [Section 4a revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, timers, consent and seals unchanged |
+| Lease coordination amendment | [Section 4a lease coordination](#positive-run-lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); liveness renewal is not authority mutation; authority fence, timers and seals unchanged |
 
 ## 1. Context and problem statement
 
@@ -520,6 +521,22 @@ remains unknown and never refunds that reservation. Local lease 2,000 ms,
 renewal cadence 400 ms and maximum check/scheduling gap 500 ms are unchanged.
 The parent and phase deadlines remain independently authoritative; a reported
 guard condition does not identify the winner of an exit race.
+
+### Positive run lease coordination amendment (2026-11-13)
+
+**Status: ACCEPTED — product owner, 2026-11-13 (Asia/Jakarta), by conversation approval.**
+
+A positive, liveness-only renewal of an already-running, unexpired autonomous
+run is not an authority mutation. It may update only that run's lease through
+the existing validated port without acquiring the campaign authority fence,
+after database validation of immutable run ownership, qualified Broker
+identity, unchanged non-lease state, current lease and original run deadline.
+Renewal is monotonic and bounded by the existing 2000ms horizon and original
+deadline; it cannot revive a run or alter phase/claim/status/scope/generation/permission/bindings.
+All other mutations, including zero-lease STOP/unknown/terminal/withdrawal and
+mixed writes, retain existing fencing and authorization. Admission remains
+independently current. No role receives new privileges; no deadline/budget
+extends; no database lock spans provider/target I/O.
 
 ## Supporting engineering references for section 4a
 

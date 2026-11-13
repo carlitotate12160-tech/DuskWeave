@@ -448,7 +448,7 @@ pub fn run_fixture_wrapper() {
             "--database-name",
             database,
             "--schema-revision",
-            "0033",
+            "0034",
             "--role-prefix",
             &format!("dw_lsq{}", &unique[..unique.len().min(10)]),
             "--report",
@@ -462,7 +462,7 @@ pub fn run_fixture_wrapper() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "dedicated schema-0033 fixture failed; report {}: {stdout}\n{stderr}",
+        "dedicated schema-0034 fixture failed; report {}: {stdout}\n{stderr}",
         report.display()
     );
     let log = std::fs::read_to_string(report.join("qualification.log"))
@@ -483,13 +483,17 @@ pub fn run_fixture_wrapper() {
         "audit007::sql_live_aud007_original_writer_isolation_survives_temp_pg_roles",
         "audit007::sql_live_aud007_inference_and_live_stop_refuse_foreign_writer",
         "audit007::sql_live_aud007_catalog_paths_and_qualification_use_real_catalogs",
+        "lease_coordination::sql_live_lease_renewal_does_not_own_release_fence",
+        "lease_coordination::sql_live_lease_coordination_rejects_invalid_renewals",
+        "lease_coordination::sql_live_authority_mutations_still_fence_release",
+        "lease_coordination::sql_live_lease_renewal_preserves_stop_and_expiry",
     ] {
         let line = format!("test {name} ... ok");
         assert_eq!(log.matches(&line).count(), 1, "{name} missing: {log}");
     }
-    assert!(passed >= 17, "SQL assertion group must execute: {log}");
+    assert!(passed >= 21, "SQL assertion group must execute: {log}");
     eprintln!(
-        "schema0033_sql_group passed={passed} new=3 report={}",
+        "schema0034_sql_group passed={passed} new=4 report={}",
         report.display()
     );
 }

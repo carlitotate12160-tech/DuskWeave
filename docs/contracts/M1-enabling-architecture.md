@@ -14,6 +14,7 @@
 | Autonomous-run amendment | [Section 7](#7-proposed-autonomous-run-amendment-2026-10-19) ACCEPTED by the product owner on 2026-10-19 at exact text `0615fb72c946fd6abf0823692be621096091377c`; no runtime qualification, target permission or seal |
 | Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
+| Lease coordination amendment | [Section 7 lease coordination](#lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); positive renewal is not authority mutation; authority fence, timers and seals unchanged |
 
 ## 1. Outcome and decision boundary
 
@@ -1118,6 +1119,17 @@ Already committed DNS/Terrain/history outcomes are preserved separately from
 failed inference; recovery remains database-only and never regenerates the
 proposal. Provider-billing reconciliation for `may_send_uncertain` stays
 operational debt, not an assumed available API.
+
+### Lease coordination amendment (2026-11-13)
+
+**Status: ACCEPTED — product owner, 2026-11-13 (Asia/Jakarta), by conversation approval.**
+
+Positive, liveness-only renewal of an already-running, unexpired autonomous run
+is not an authority mutation under
+[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#positive-run-lease-coordination-amendment-2026-11-13):
+it updates only that run's lease through the validated port without acquiring
+the campaign authority fence. Authority mutations and stopping retain strict
+fencing.
 
 The [design packet](../workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md)
 retains the accepted assertions. Their successor runtime implementation,

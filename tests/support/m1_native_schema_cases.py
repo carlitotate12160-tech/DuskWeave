@@ -44,13 +44,13 @@ def provisioning_probe(recorded):
 class SchemaRevisionCases(unittest.TestCase):
     def test_revision_0032_accepted_and_out_of_range_refused(self):
         self.assertIn("0032", bootstrap.SCHEMA_REVISIONS)
-        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0033")
+        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0034")
 
         def bomb(args, data=None):
             raise AssertionError("provisioning must not start for an invalid revision")
 
-        for revision, kind in (("0033", "live"), ("0034", "fixture"),
-                               ("0032", "live"), ("0031", "live"), ("32", "fixture")):
+        for revision, kind in (("0034", "live"), ("0035", "fixture"),
+                               ("0033", "live"), ("0032", "live"), ("0031", "live"), ("32", "fixture")):
             with mock.patch.object(bootstrap, "private_run", bomb):
                 with self.assertRaisesRegex(RuntimeError, "^native_schema_revision_refused$"):
                     bootstrap.Fixture("dwpg-r3", kind, schema_revision=revision)
@@ -58,7 +58,7 @@ class SchemaRevisionCases(unittest.TestCase):
     def test_live_container_0032_uses_the_live_service_lane(self):
         with mock.patch.object(bootstrap, "live_service_qualified") as live_check, \
              mock.patch.object(bootstrap, "supervisor_request") as helper:
-            for revision in ("0030", "0031", "0032", "0033"):
+            for revision in ("0030", "0031", "0032", "0033", "0034"):
                 bootstrap.service_qualified(bootstrap.LIVE_CONTAINER, schema_revision=revision)
                 live_check.assert_called_once_with(bootstrap.LIVE_CONTAINER)
                 live_check.reset_mock()
@@ -115,7 +115,7 @@ class SchemaRevisionCases(unittest.TestCase):
     def test_revision_tail_counts_stay_distinct(self):
         for revision, initial, refresh in (
             ("0020", 18, 9), ("0021", 19, 10), ("0022", 20, 11),
-            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22),
+            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22), ("0034", 32, 23),
         ):
             self.assertEqual(len(migrate_calls(revision, initial=True)), initial, revision)
             self.assertEqual(len(migrate_calls(revision, initial=False)), refresh, revision)
@@ -158,6 +158,23 @@ class SchemaRevisionCases(unittest.TestCase):
             self.assertEqual(tail.count("SECURITY DEFINER"), 1)
             self.assertIn("FROM pg_catalog.pg_roles", tail)
             self.assertEqual(calls[-2].count("ALTER FUNCTION"), 25)
+
+    def test_revision_0034_provisions_and_replaces_only_the_two_owners(self):
+        recorded = []
+        with mock.patch.object(bootstrap, "service_qualified"), \
+             mock.patch.object(bootstrap, "private_run", provisioning_probe(recorded)):
+            fixture = bootstrap.Fixture(bootstrap.LIVE_CONTAINER, "fixture",
+                                        database="dw_native_s34_probe", schema_revision="0034")
+        self.assertIn("stop", fixture.roles)
+        self.assertIn("DW_STOP_WRITER_DATABASE_URL", fixture.env)
+        for initial in (True, False):
+            calls = migrate_calls("0034", initial)
+            tail = calls[-1]
+            functions = re.findall(r"CREATE OR REPLACE FUNCTION execution\.(\w+)", tail)
+            self.assertEqual(functions, ["private_live_mutation_guard", "run_renew"])
+            self.assertEqual(tail.count("SET search_path=pg_catalog, pg_temp"), 2)
+            self.assertEqual(tail.count("LANGUAGE plpgsql SECURITY DEFINER"), 2)
+            self.assertIn("FROM pg_catalog.pg_roles", tail)
 
     def test_container_refusal_runs_before_any_provisioning(self):
         def bomb(args, data=None):

@@ -48,21 +48,37 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Next product action:** the architect must dispose the narrow
-lease-versus-authority coordination question confirmed by the heartbeat fence
-witness (below), and a further scoped packet must still re-attempt the
-populated forward-refresh proof. The D2 release/current-authority refusal is
-diagnosed UNATTRIBUTED with corrected limits, the clean-candidate upgrade
-attempt returned a concrete first failure (the same silent refusal code on the
-diagnostic repair path while the original successor case cleared), and the
-witness confirmed a designed mechanism — `run_renew`'s `autonomous_control`
-UPDATE holds the campaign fence for its transaction duration — that can refuse
-an otherwise prepared release without identifying either historical holder.
-Migration and the post-refresh Pro group did not run; the upgrade remains
-INCOMPLETE. Keep the candidate local for ChatGPT Work delta review; hosted
-CI/coverage/security remain PENDING. PR147 and the DW-AUD-007 source
-correction PR150 are merged; deployed databases remain unverified until
-separately authorized forward migration/promotion.
+**Next product action:** submit PR for `DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1`
+to master and complete adversarial review. Heartbeat lease renewal coordination
+is implemented under migration 0034 and ADR-016 §4a amendment; Linux qualification
+closed **QUALIFIED (21/21 PASS)** across fresh 0034, 0033->0034 upgrade, and
+0032->0034 upgrade with causal RED observed pre-upgrade on both schemas. Windows
+control-root qualification remains unresolved and explicitly OPEN. Hosted CI,
+coverage and security checks remain PENDING on PR creation.
+
+**Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
+The heartbeat fence contention mechanism confirmed under the diagnostic witness
+was resolved by migration 0034 replacing `execution.private_live_mutation_guard()`
+and `execution.run_renew(uuid)`. Liveness-only lease renewals validate caller
+(`writer_oid`), state (`running`), and monotonic positive renewal (`now <= lease <= now + 2000ms`)
+on `execution.autonomous_control` without acquiring `pg_advisory_xact_lock(engagement:campaign)`.
+Four dedicated regression witnesses in `tests/m1_live_dns_sql/lease_coordination.rs`
+verify:
+1. Active lease renewal during inference repair `may_send` does not own the release fence,
+   and an active LAB SQL session holds no campaign advisory lock (`sql_live_lease_renewal_does_not_own_release_fence`).
+2. Non-monotonic, regressing, oversized, foreign-writer, or stopped-run renewal mutations fail closed (`sql_live_lease_coordination_rejects_invalid_renewals`).
+3. Authority-level transactions still acquire the campaign advisory fence and correctly refuse `release_into` with `current_authority_unavailable` (`sql_live_authority_mutations_still_fence_release`).
+4. Lease renewals preserve row-level locks, serialized updates, and refuse stopped run resurrection (`sql_live_lease_renewal_preserves_stop_and_expiry`).
+
+All 21 Linux SQL cases passed on fresh schema 0034 (**21/21 PASS**).
+Forward upgrade from schema 0033 observed pre-upgrade causal RED on case 1,
+executed migration 0034 with identical data snapshot and exact function delta
+(`CHANGED_0034`), and passed all 21 cases (**21/21 PASS**).
+Forward upgrade from schema 0032 observed pre-upgrade causal RED on case 1,
+executed migrations 0033 and 0034 with identical data snapshot and exact function delta
+(`CHANGED_0033 | CHANGED_0034`), and passed all 21 cases (**21/21 PASS**).
+All 13 required witnesses passed across all three runs.
+Windows control-root / ACL qualification remains OPEN (not addressed by this Linux SQL fix).
 
 **Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — NOT READY:**
 Linux WSL qualification reused the unchanged committed runtime/SQL/tests with

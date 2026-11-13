@@ -247,6 +247,19 @@ Native Windows control-root qualification remains unresolved; Linux success
 neither repairs its ACL implementation nor qualifies a provider, deployment or
 LIVE target episode. Preserve all product deadlines and explicit fresh consent.
 
+### Run lease coordination and authority fencing
+
+Builds containing run lease coordination require migration 0034. It replaces
+`execution.private_live_mutation_guard()` and `execution.run_renew(uuid)` so that
+heartbeat lease renewals on `execution.autonomous_control` validate liveness
+monotonically before taking the campaign authority transaction lock. Pure
+liveness updates (`lease_until_ms` monotonically forward up to `clock_timestamp() + 2000ms`,
+`status` unchanged, matching caller `writer_oid`) update the row directly under
+row lock, preventing `current_authority_unavailable` release refusal during active
+supervisor heartbeats. Full authority mutations, non-monotonic candidates,
+unqualified callers or stopped runs continue to take or enforce the campaign fence
+and fail closed.
+
 ### Proposal-admission diagnostics
 
 Builds containing proposal diagnostics require migration 0031 for detailed failure
