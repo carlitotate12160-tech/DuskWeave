@@ -88,11 +88,13 @@ pub fn run_fixture_wrapper() {
         "pro_budget::accounting::sql_live_pro_v2_production_profile_intent_settlement_and_ledger",
         "pro_budget::accounting::sql_live_pro_v2_capacity_exhaustion_and_unknown_charge",
         "pro_budget::live_binding::sql_live_pro_v2_live_qualification_start_and_current",
+        "pro_budget::live_admission::sql_live_release_consent_matches_executing_release",
+        "pro_budget::live_admission::sql_live_inference_qualification_is_current_at_marker_and_release",
     ] {
         let line = format!("test {name} ... ok");
         assert_eq!(log.matches(&line).count(), 1, "{name} missing: {log}");
     }
-    assert!(passed >= 27, "SQL assertion group must execute: {log}");
+    assert!(passed >= 29, "SQL assertion group must execute: {log}");
     eprintln!(
         "schema0035_sql_group passed={passed} report={}",
         report.display()

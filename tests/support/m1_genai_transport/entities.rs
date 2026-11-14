@@ -433,11 +433,26 @@ pub(super) fn pro_v2_and_mirror_pack_intent_wire_and_clock_measurements() {
         "permission_id":scope.permission,"mission_revision":1,"references":[{"id":"asset_0"},{"id":"mission"}],"manifests":[{"reference":"dns_udp"}],
         "question":"clock"})).unwrap();
     let bound = inference_intent::bind(&scope, &r, r.generation_call, &pack, None).unwrap();
-    let mut sdk = provider();
-    assert!(
-        sdk.prepare(&bound, Instant::now() + Duration::from_millis(121999))
-            .is_err()
+    let sends = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let send_count = sends.clone();
+    let short_end = Instant::now() + Duration::from_millis(121999);
+    let mut sdk_short = SdkProvider::new(Permit::new(end), move || {
+        send_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    });
+    assert!(sdk_short.permit.publish(Instant::now(), end));
+    assert_eq!(
+        sdk_short.prepare(&bound, short_end),
+        Err("inference_deadline")
     );
+    assert!(sdk_short.prepared.is_none() && sdk_short.clock.is_none());
+    assert_eq!(
+        sdk_short
+            .call(&bound, short_end, &mut Basis, &mut || Ok(()))
+            .err(),
+        Some("inference_transport_unavailable")
+    );
+    assert_eq!(sends.load(std::sync::atomic::Ordering::SeqCst), 0);
     let mut sdk = SdkProvider::new(Permit::new(end), || Ok(()));
     assert!(sdk.permit.publish(Instant::now(), end));
     sdk.prepare(&bound, end).unwrap();

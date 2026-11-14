@@ -273,7 +273,7 @@ END $$;
 CREATE OR REPLACE FUNCTION execution.inference_window_ms(e uuid,c uuid,d uuid) RETURNS bigint
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
-DECLARE s jsonb;p jsonb;n bigint;l jsonb;run uuid;phase text;started bigint;phase_end bigint;decision_end bigint;w execution.inference_decision_windows;pro_v2 boolean;
+DECLARE s jsonb;p jsonb;n bigint;l jsonb;run uuid;phase text;started bigint;phase_end bigint;decision_end bigint;w execution.inference_decision_windows;ar execution.autonomous_runs;lq execution.live_qualifications;pro_v2 boolean;
 BEGIN
  s:=mission.current_inference_publication(e,c,d);p:=s->'fields'->'m1_inference_permission';l:=p->'operation_limits';
  IF EXISTS(SELECT 1 FROM execution.inference_closures z LEFT JOIN cognition.reasoning_decisions q
@@ -284,8 +284,9 @@ BEGIN
  AND (h.operation_id=z.d OR h.event_id=q.event) AND h.status='anomaly')))
  THEN RAISE EXCEPTION 'inference_prior_history_unqualified'; END IF;
  IF p->>'version' IN ('m1_inference_permission_v3','m1_inference_permission_v4','m1_inference_permission_v5','m1_inference_permission_v6') THEN
-  SELECT x.run_id, CASE WHEN x.decision_one=d THEN 'decision_one' ELSE 'decision_two' END INTO run,phase
-  FROM execution.autonomous_runs x WHERE (x.e,x.c)=(e,c) AND d IN(x.decision_one,x.decision_two);
+  SELECT * INTO ar FROM execution.autonomous_runs x WHERE (x.e,x.c)=(e,c) AND d IN(x.decision_one,x.decision_two);
+  run:=ar.run_id;
+  phase:=CASE WHEN ar.decision_one=d THEN 'decision_one' ELSE 'decision_two' END;
   PERFORM execution.run_current(run);
   IF NOT EXISTS(SELECT 1 FROM execution.autonomous_control y WHERE y.run_id=run AND y.phase=phase AND y.claimed)
   THEN RAISE EXCEPTION 'run_phase_refused';END IF;
@@ -299,21 +300,32 @@ BEGIN
  OR n<(s->'fields'->>'starts_at')::bigint*1000 OR n<(p->>'starts_at')::bigint*1000
  OR EXISTS(SELECT 1 FROM (VALUES ('json_depth',32),('collection_entries',64),('response_bytes',65536),('proposal_bytes',8192),('text_field_bytes',1024),('repair_bytes',2048),('repair_error_codes',8),('connect_time_ms',5000),('calls_per_decision',2),('output_tokens_per_call',CASE WHEN pro_v2 THEN 8192 ELSE 4096 END),('concurrency',1)) b(k,v) WHERE l->b.k IS DISTINCT FROM to_jsonb(b.v))
  THEN RAISE EXCEPTION 'inference_authority_unavailable'; END IF;
+ IF p->>'version'='m1_inference_permission_v6' THEN
+  SELECT * INTO lq FROM execution.live_qualifications z WHERE z.qualification_ref=ar.qualification_ref;
+  IF NOT FOUND OR n<lq.valid_from_ms OR n>=lq.valid_until_ms
+  OR ar.qualification_ref IS DISTINCT FROM (ar.request#>>'{live_binding,qualification_ref}')::uuid
+  OR ar.request#>>'{live_binding,release_sha256}' IS DISTINCT FROM ar.release_sha256
+  OR lq.run_profile IS DISTINCT FROM (ar.request->>'run_profile')
+  OR lq.purpose IS DISTINCT FROM (CASE ar.request->>'run_profile' WHEN 'autonomous-dns-genai-live-v1' THEN 'LIVE' ELSE 'LAB' END)
+  OR lq.release_sha256 IS DISTINCT FROM ar.release_sha256
+  OR host(lq.resolver_ipv4) IS DISTINCT FROM (ar.request#>>'{live_binding,resolver_ipv4}')
+  THEN RAISE EXCEPTION 'live_qualification_unavailable'; END IF;
+ END IF;
  IF p->>'version' IN ('m1_inference_permission_v4','m1_inference_permission_v5','m1_inference_permission_v6') THEN
   SELECT * INTO w FROM execution.inference_decision_windows a WHERE (a.e,a.c,a.d)=(e,c,d);
   IF NOT FOUND THEN
    SELECT recorded_at_ms INTO started FROM execution.autonomous_phases WHERE run_id=run AND autonomous_phases.phase=phase AND status='started';
    IF started IS NULL OR n>=started+5000 THEN RAISE EXCEPTION 'inference_preparation_expired'; END IF;
-   SELECT least(started+CASE WHEN pro_v2 THEN 254000 ELSE 134000 END,x.deadline_at_ms,(p->>'ends_at')::bigint*1000,(s#>>'{fields,ends_at}')::bigint*1000)
+   SELECT least(started+CASE WHEN pro_v2 THEN 254000 ELSE 134000 END,x.deadline_at_ms,(p->>'ends_at')::bigint*1000,(s#>>'{fields,ends_at}')::bigint*1000,lq.valid_until_ms)
     INTO phase_end FROM execution.autonomous_runs x WHERE x.run_id=run;
-   decision_end:=least(n+CASE WHEN pro_v2 THEN 249000 ELSE 129000 END,phase_end);
+   decision_end:=least(n+CASE WHEN pro_v2 THEN 249000 ELSE 129000 END,phase_end,lq.valid_until_ms);
    INSERT INTO execution.inference_decision_windows VALUES(e,c,d,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=session_user),
-    n,least(n+CASE WHEN pro_v2 THEN 244000 ELSE 124000 END,decision_end-5000),decision_end,phase_end) ON CONFLICT DO NOTHING;
+    n,least(n+CASE WHEN pro_v2 THEN 244000 ELSE 124000 END,decision_end-5000,lq.valid_until_ms),decision_end,phase_end) ON CONFLICT DO NOTHING;
    SELECT * INTO w FROM execution.inference_decision_windows a WHERE (a.e,a.c,a.d)=(e,c,d);
   END IF;
   IF w.writer_oid IS DISTINCT FROM (SELECT oid FROM pg_catalog.pg_roles WHERE rolname=session_user) OR n>=w.active_until_ms
   THEN RAISE EXCEPTION 'inference_deadline'; END IF;
-  RETURN least(w.active_until_ms-n,(s#>>'{fields,ends_at}')::bigint*1000-n,(p->>'ends_at')::bigint*1000-n);
+  RETURN least(w.active_until_ms-n,(s#>>'{fields,ends_at}')::bigint*1000-n,(p->>'ends_at')::bigint*1000-n,lq.valid_until_ms-n);
  END IF;
  RETURN least(CASE WHEN p->>'version' IN ('m1_inference_permission_v3','m1_inference_permission_v4','m1_inference_permission_v5','m1_inference_permission_v6') THEN CASE WHEN pro_v2 THEN 244000 WHEN p->>'version' IN ('m1_inference_permission_v4','m1_inference_permission_v5','m1_inference_permission_v6') THEN 124000 ELSE 40000 END ELSE 20000 END,(l->>'decision_wall_time_ms')::bigint,(s->'fields'->>'ends_at')::bigint*1000-n,(p->>'ends_at')::bigint*1000-n);
 END $$;
@@ -613,7 +625,8 @@ BEGIN
  OR (p->>'version',p->>'run_profile',p->>'execution_mode') IS DISTINCT FROM
     (CASE WHEN q->>'version'='m1_autonomous_run_request_v4' THEN 'm1_inference_permission_v6' WHEN q->>'version'='m1_autonomous_run_request_v3' THEN 'm1_inference_permission_v5' WHEN q->>'version'='m1_autonomous_run_request_v2' THEN 'm1_inference_permission_v4' ELSE 'm1_inference_permission_v3' END,q->>'run_profile',q->>'execution_mode')
  OR (q->>'version' IN ('m1_autonomous_run_request_v2','m1_autonomous_run_request_v3','m1_autonomous_run_request_v4') AND q->>'inference_profile' IS DISTINCT FROM p->>'profile')
- OR (q->>'version'='m1_autonomous_run_request_v4' AND (q->'live_binding' IS DISTINCT FROM p->'live_binding'
+  OR (q->>'version'='m1_autonomous_run_request_v4' AND (q->'live_binding' IS DISTINCT FROM p->'live_binding'
+  OR q#>>'{live_binding,release_sha256}' IS DISTINCT FROM release
   OR NOT EXISTS(SELECT 1 FROM execution.live_qualifications z WHERE z.qualification_ref=(q#>>'{live_binding,qualification_ref}')::uuid
    AND z.run_profile=q->>'run_profile' AND z.release_sha256=release AND host(z.resolver_ipv4)=q#>>'{live_binding,resolver_ipv4}'
    AND n>=z.valid_from_ms AND n<z.valid_until_ms AND z.purpose=CASE q->>'run_profile' WHEN 'autonomous-dns-genai-live-v1' THEN 'LIVE' ELSE 'LAB' END)))

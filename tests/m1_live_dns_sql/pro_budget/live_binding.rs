@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 #[derive(Default)]
-struct LiveProV2SyntheticProvider;
+pub(super) struct LiveProV2SyntheticProvider;
 
 impl Provider for LiveProV2SyntheticProvider {
     fn prepare(&mut self, call: &BoundCall, _: Instant) -> Result<(), &'static str> {
@@ -54,7 +54,7 @@ impl Provider for LiveProV2SyntheticProvider {
     }
 }
 
-fn register_live_pro_v2(
+pub(super) fn register_live_pro_v2(
     slot: u128,
     run_profile: &str,
     inf_profile: &str,
@@ -78,7 +78,7 @@ fn register_live_pro_v2(
     })
 }
 
-fn effect_and_run_counts(e: Uuid) -> (i64, i64, i64) {
+pub(super) fn effect_and_run_counts(e: Uuid) -> (i64, i64, i64) {
     let mut a = admin();
     let runs: i64 = a
         .query_one(
@@ -332,41 +332,74 @@ fn sql_live_pro_v2_live_qualification_start_and_current() {
         );
     }
 
-    // 5. LAB + Pro-v2 and Mirror + LIVE must be refused at both Rust and SQL boundaries.
-    for (run_profile, inf_profile, resolver) in [
-        (LAB, profiles::PRO_V2_PROFILE, "192.0.2.53"),
+    // 5. LAB + Pro-v2 and Mirror + LIVE must be refused at both Rust and SQL boundaries
+    //    starting from valid registered publication-derived campaigns with current qualification.
+    let (lab_ctrl_e, lab_ctrl_c, _) = register_live(0xac1f, true);
+    let lab_ctrl_run = Uuid::new_v4();
+    let lab_ctrl_pub = live_publication(lab_ctrl_e, lab_ctrl_c, lab_ctrl_run);
+    seed_live_qualification(&lab_ctrl_pub);
+    let lab_ctrl_req =
+        successor_request(&lab_ctrl_pub, lab_ctrl_run, "m1_autonomous_run_request_v4");
+    assert!(matches!(
+        PgRunStore::new(broker()).start(&lab_ctrl_req, RELEASE),
+        Ok(true)
+    ));
+    PgRunStore::new(broker()).stop(lab_ctrl_run).unwrap();
+
+    for (slot, run_profile, base_inf_profile, bad_inf_profile, resolver) in [
         (
+            0xac20_u128,
+            LAB,
+            "fixture-genai-responses-v1",
+            profiles::PRO_V2_PROFILE,
+            "192.0.2.53",
+        ),
+        (
+            0xac21,
             profiles::LIVE_RUN_PROFILE,
+            profiles::PRO_V2_PROFILE,
             profiles::FIXTURE_PRO_V2_PROFILE,
             "9.9.9.9",
         ),
-        (LAB, profiles::FIXTURE_PRO_V2_PROFILE, "192.0.2.53"),
+        (
+            0xac22,
+            LAB,
+            "fixture-genai-responses-v1",
+            profiles::FIXTURE_PRO_V2_PROFILE,
+            "192.0.2.53",
+        ),
     ] {
-        assert!(!profiles::live_binding(run_profile, "live", inf_profile));
-        let raw_req = json!({
-            "version": "m1_autonomous_run_request_v4",
-            "run_id": Uuid::new_v4(),
-            "run_profile": run_profile,
-            "execution_mode": "live",
-            "inference_profile": inf_profile,
-            "live_binding": {
-                "qualification_ref": Uuid::new_v4(),
-                "release_sha256": RELEASE,
-                "resolver_ipv4": resolver
-            },
-            "deadline_at_ms": now_ms() + 300000,
-            "context": {
-                "version": "m1_context_prepare_request_v1",
-                "mission": {
-                    "engagement_id": Uuid::new_v4(),
-                    "campaign_id": Uuid::new_v4(),
-                    "permission_id": Uuid::new_v4(),
-                    "mission_revision": 1
-                },
-                "candidates": [{"asset_ref": Uuid::new_v4(), "priority": "high"}]
-            },
-            "seed_names": [{"asset_ref": Uuid::new_v4(), "name": "seed.duskweave.test"}]
+        assert!(!profiles::live_binding(
+            run_profile,
+            "live",
+            bad_inf_profile
+        ));
+        let (e, c, _) = if run_profile == LAB {
+            register_live(slot, true)
+        } else {
+            register_live_pro_v2(slot, run_profile, base_inf_profile, PRO_ENDPOINT, resolver)
+        };
+        let run = Uuid::new_v4();
+        let pub_val = live_publication(e, c, run);
+        seed_live_qualification(&pub_val);
+
+        let mut bad_perm = pub_val["fields"]["m1_inference_permission"].clone();
+        bad_perm["profile"] = json!(bad_inf_profile);
+        bad_perm["recipient"] = json!(if bad_inf_profile == profiles::FIXTURE_PRO_V2_PROFILE {
+            super::MIRROR_ENDPOINT
+        } else {
+            PRO_ENDPOINT
         });
+        set_pro_v2_limits(&mut bad_perm);
+        assert!(!super::sql_matches(&bad_perm));
+
+        let mut raw_req = serde_json::to_value(successor_request(
+            &pub_val,
+            run,
+            "m1_autonomous_run_request_v4",
+        ))
+        .unwrap();
+        raw_req["inference_profile"] = json!(bad_inf_profile);
         assert!(
             duskweave::m1_run::RunRequest::parse(serde_json::to_vec(&raw_req).unwrap().as_slice())
                 .is_err()
@@ -377,7 +410,12 @@ fn sql_live_pro_v2_live_qualification_start_and_current() {
         assert!(
             db_message(&sql_err).contains("run_request_refused")
                 || db_message(&sql_err).contains("run_authority_unavailable"),
-            "unexpected SQL error for {run_profile} + {inf_profile}: {sql_err}"
+            "unexpected SQL error for {run_profile} + {bad_inf_profile}: {sql_err}"
+        );
+        assert_eq!(
+            effect_and_run_counts(e),
+            (0, 0, 0),
+            "{run_profile} + {bad_inf_profile}: zero mutations"
         );
     }
 }

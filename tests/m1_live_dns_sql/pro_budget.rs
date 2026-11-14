@@ -5,6 +5,8 @@ mod accounting;
 mod capacity;
 #[path = "pro_budget/diagnostic.rs"]
 mod diagnostic;
+#[path = "pro_budget/live_admission.rs"]
+mod live_admission;
 #[path = "pro_budget/live_binding.rs"]
 mod live_binding;
 use super::fixture::*;
@@ -20,8 +22,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
 const MIRROR_ENDPOINT: &str = "http://127.0.0.1:18083/responses";
-const PRO_ENDPOINT: &str = "https://api.deepseek.com/responses";
-const PRO_MODEL: &str = "deepseek-v4-pro";
+pub(super) const PRO_ENDPOINT: &str = "https://api.deepseek.com/responses";
+pub(super) const PRO_MODEL: &str = "deepseek-v4-pro";
 
 fn set_pro_v2_limits(p: &mut Value) {
     let op = p["operation_limits"].as_object_mut().unwrap();
@@ -51,7 +53,7 @@ fn set_pro_v2_limits(p: &mut Value) {
     }
 }
 
-fn register_pro_v2(slot: u128, profile: &str) -> (Uuid, Uuid, Uuid) {
+pub(super) fn register_pro_v2(slot: u128, profile: &str) -> (Uuid, Uuid, Uuid) {
     let endpoint = if profile == FIXTURE_PRO_V2_PROFILE {
         MIRROR_ENDPOINT
     } else {
@@ -90,7 +92,7 @@ fn sample_permission(version: &str, profile: &str, run_profile: &str, mode: &str
     p.clone()
 }
 
-fn sql_matches(p: &Value) -> bool {
+pub(super) fn sql_matches(p: &Value) -> bool {
     broker()
         .query_one("SELECT execution.inference_profile_matches($1)", &[p])
         .unwrap()

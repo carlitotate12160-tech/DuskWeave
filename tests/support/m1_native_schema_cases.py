@@ -208,6 +208,9 @@ class SchemaRevisionCases(unittest.TestCase):
             self.assertIn("FROM pg_catalog.pg_roles", tail)
             self.assertIn("elapsed_max:=CASE WHEN q->>'version'='m1_run_phase_diagnostic_v2'", tail)
             self.assertIn("THEN 650000 ELSE 150000 END;", tail)
+            self.assertIn("OR q#>>'{live_binding,release_sha256}' IS DISTINCT FROM release", tail)
+            self.assertIn("THEN RAISE EXCEPTION 'live_qualification_unavailable'; END IF;", tail)
+            self.assertIn("lq.valid_until_ms-n", tail)
 
     def test_container_refusal_runs_before_any_provisioning(self):
         def bomb(args, data=None):

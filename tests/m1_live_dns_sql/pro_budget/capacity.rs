@@ -200,13 +200,25 @@ fn verify_barrier_concurrency() {
             &[&e, &c, &record.decision_two, &prep.input_hash],
         )
         .unwrap();
+    let phase_err = broker()
+        .query_one(
+            "SELECT execution.inference_window_ms($1,$2,$3)",
+            &[&e, &c, &record.decision_two],
+        )
+        .unwrap_err();
+    assert!(
+        db_message(&phase_err).contains("run_phase_refused"),
+        "D2 is refused at the phase barrier while D1 is current: {phase_err}"
+    );
     let mut comp_scope = prep.scope.clone();
     comp_scope.decision = record.decision_two;
-    assert!(
+    assert_eq!(
         broker_port(&record, dl)
-            .reserve(&comp_scope, prep.pack.utf8().as_bytes())
-            .is_err(),
-        "competing op refused"
+            .reserve(&comp_scope, &[])
+            .err()
+            .unwrap(),
+        "inference_reservation_unknown",
+        "non-current D2 phase refused while D1 is active"
     );
     assert_counts(e, c, 1, 0);
     assert_eq!(capacity_snapshot(e, c)["charged"]["calls"], 2);
