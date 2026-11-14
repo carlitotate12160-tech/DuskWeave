@@ -78,9 +78,12 @@ fn sdk_client(left: Duration) -> Res<Client> {
 }
 fn infrastructure_key(profile: profiles::Profile) -> Res<String> {
     let Some(variable) = profile.connection.credential_environment else {
-        return (profile.name == "fixture-genai-responses-v1")
-            .then(|| FIXTURE_KEY.to_owned())
-            .ok_or("inference_unsupported_profile");
+        return matches!(
+            profile.name,
+            "fixture-genai-responses-v1" | profiles::FIXTURE_PRO_V2_PROFILE
+        )
+        .then(|| FIXTURE_KEY.to_owned())
+        .ok_or("inference_unsupported_profile");
     };
     let key = std::env::var(variable).map_err(|_| "live_key_missing")?;
     if key.is_empty() || key.chars().any(|c| c.is_control()) {
@@ -162,6 +165,13 @@ fn prepare_with_key(
         requested_model: profile.settings.model,
     })
 }
+fn verified_profile(intent: &Value) -> Res<profiles::Profile> {
+    let name = intent["profile"]
+        .as_str()
+        .ok_or("inference_unsupported_profile")?;
+    profiles::lookup(name).map_err(|_| "inference_unsupported_profile")
+}
+
 impl Provider for SdkProvider {
     fn terminal_report(&self, digest: &str) -> Option<&ProviderReport> {
         (self.diagnostic.binding_digest == digest)
@@ -173,7 +183,13 @@ impl Provider for SdkProvider {
             return Err("inference_transport_unavailable");
         }
         let intent = inference_intent::verify(bound)?;
-        let clock = CallClock::arm(self.permit.clone(), until, self.reporter.clone())?;
+        let profile = verified_profile(&intent)?;
+        let clock = CallClock::arm_for(
+            self.permit.clone(),
+            until,
+            profile.timing,
+            self.reporter.clone(),
+        )?;
         let left = clock.remaining(&self.permit, until)?;
         self.prepared = Some(prepare_call(bound, &intent, left)?);
         self.clock = Some(clock);

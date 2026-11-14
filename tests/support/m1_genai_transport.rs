@@ -346,3 +346,8 @@ fn exact_request_cap_and_first_illegal_byte_use_real_multibyte_serialization() {
 fn maximum_pack_and_eight_repair_codes_use_observed_sdk_entity_bytes() {
     entities::maximum_pack_and_eight_repair_codes_use_observed_sdk_entity_bytes();
 }
+
+#[test]
+fn pro_v2_and_mirror_pack_intent_wire_and_clock_measurements() {
+    entities::pro_v2_and_mirror_pack_intent_wire_and_clock_measurements();
+}

@@ -23,6 +23,8 @@ mod admission;
 mod audit007;
 #[path = "m1_live_dns_sql/audit007_support.rs"]
 mod audit007_support;
+#[path = "m1_live_dns_sql/bootstrap.rs"]
+mod bootstrap;
 #[path = "m1_live_dns_sql/diagnostic_episode.rs"]
 mod diagnostic_episode;
 #[path = "m1_live_dns_sql/fixture.rs"]
@@ -33,6 +35,8 @@ mod lease_coordination;
 mod lease_coordination_races;
 #[path = "m1_live_dns_sql/lease_coordination_support.rs"]
 mod lease_coordination_support;
+#[path = "m1_live_dns_sql/pro_budget.rs"]
+mod pro_budget;
 #[path = "m1_live_dns_sql/pro_profile.rs"]
 mod pro_profile;
 #[path = "m1_live_dns_sql/receipt.rs"]
@@ -50,5 +54,5 @@ mod withdrawal;
 
 #[test]
 fn dedicated_schema0030_fixture_executes_the_sql_assertion_group() {
-    fixture::run_fixture_wrapper();
+    bootstrap::run_fixture_wrapper();
 }

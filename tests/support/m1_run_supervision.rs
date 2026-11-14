@@ -3,18 +3,43 @@ use super::*;
 #[test]
 fn successor_phase_selection_keeps_acquisition_and_original_run_bounds() {
     let now = Instant::now();
-    let run = now + Duration::from_millis(400000);
-    let successor = selected_phase_deadline(run, RunPhase::DecisionOne, true);
+    let v1 = Some(&duskweave::m1_inference_profile::REASONING_BOUNDED);
+    let v2 = Some(&duskweave::m1_inference_profile::REASONING_BOUNDED_PRO_V2);
+    let run = now + Duration::from_millis(640000);
+    let successor = selected_phase_deadline(run, RunPhase::DecisionOne, v1);
     assert!(successor >= now + Duration::from_millis(134000));
     assert!(successor <= Instant::now() + Duration::from_millis(134000));
-    let acquisition = selected_phase_deadline(run, RunPhase::Acquisition, true);
+    let pro_v2 = selected_phase_deadline(run, RunPhase::DecisionOne, v2);
+    assert!(pro_v2 >= now + Duration::from_millis(254000));
+    assert!(pro_v2 <= Instant::now() + Duration::from_millis(254000));
+    let acquisition = selected_phase_deadline(run, RunPhase::Acquisition, v2);
     assert!(acquisition <= Instant::now() + Duration::from_millis(60000));
-    let legacy = selected_phase_deadline(run, RunPhase::DecisionTwo, false);
+    let legacy = selected_phase_deadline(run, RunPhase::DecisionTwo, None);
     assert!(legacy <= Instant::now() + Duration::from_millis(50000));
     let remainder = Instant::now() + Duration::from_millis(10);
     assert_eq!(
-        selected_phase_deadline(remainder, RunPhase::DecisionTwo, true),
+        selected_phase_deadline(remainder, RunPhase::DecisionTwo, v1),
         remainder
+    );
+    assert_eq!(
+        PhaseDiagnostic::checked_elapsed_ms(Duration::from_millis(200000), v2),
+        Some(200000)
+    );
+    assert_eq!(
+        PhaseDiagnostic::checked_elapsed_ms(Duration::from_millis(650000), v2),
+        Some(650000)
+    );
+    assert_eq!(
+        PhaseDiagnostic::checked_elapsed_ms(Duration::from_millis(650001), v2),
+        None
+    );
+    assert_eq!(
+        PhaseDiagnostic::checked_elapsed_ms(Duration::from_millis(150001), v1),
+        None
+    );
+    assert_eq!(
+        PhaseDiagnostic::checked_elapsed_ms(Duration::from_millis(150000), None),
+        Some(150000)
     );
 }
 fn parsed(bytes: &[u8]) -> Observation {

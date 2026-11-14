@@ -93,7 +93,7 @@ pub(super) fn control_root() -> std::path::PathBuf {
 /// Immutable before/after witness for inspect/recover: run identity fields,
 /// recorded decision entity/event pairs, durable call markers with binding
 /// digests, fixture result identity and the issued Terrain publication.
-fn run_identities(e: Uuid, c: Uuid, run: Uuid) -> Value {
+pub(super) fn run_identities(e: Uuid, c: Uuid, run: Uuid) -> Value {
     let mut a = admin();
     let run_row = a
         .query_one(

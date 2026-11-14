@@ -313,3 +313,99 @@ fn construction_and_event_decoding_reestablish_owner_bindings() {
         }
     }
 }
+
+#[test]
+fn pro_v2_and_mirror_permission_contracts_are_closed_and_dynamic() {
+    let (e, c) = scope();
+    let mut base = consent::registration(e, c);
+    let p = &mut base["m1_inference_permission"];
+    p["version"] = json!("m1_inference_permission_v5");
+    p["run_profile"] = json!("autonomous-dns-fixture-v2");
+    p["execution_mode"] = json!("controlled_fixture");
+    p["field_classes"] = json!([
+        "mission_question_constraints",
+        "scoped_opaque_references",
+        "owner_qualified_summaries",
+        "admitted_operator_premises",
+        "manifest_availability",
+        "omissions_unknown",
+        "capacity",
+        "admitted_repair_fields_codes",
+        "admitted_campaign_decision_feedback"
+    ]);
+    p["campaign_limits"]["output_token_capacity"] = json!(32768);
+    p["campaign_limits"]["wall_time_ms"] = json!(600000);
+    for (k, v) in [
+        ("json_depth", 32),
+        ("context_bytes", 8192),
+        ("output_tokens_per_call", 8192),
+        ("soft_completion_ms", 120000),
+        ("per_call_wall_time_ms", 122000),
+        ("shared_wall_time_ms", 244000),
+        ("decision_wall_time_ms", 249000),
+        ("phase_wall_time_ms", 254000),
+        ("cancel_grace_ms", 2000),
+        ("accounting_window_ms", 3000),
+    ] {
+        p["operation_limits"][k] = json!(v);
+    }
+
+    let mut mirror_v5 = base.clone();
+    mirror_v5["m1_inference_permission"]["profile"] = json!("fixture-genai-v4-pro-low-v2");
+    mirror_v5["m1_inference_permission"]["recipient"] = json!("http://127.0.0.1:18083/responses");
+    assert!(parsed(&mirror_v5).is_ok(), "v5 mirror pro-v2 must parse");
+
+    let mut pro_v5 = base.clone();
+    pro_v5["m1_inference_permission"]["profile"] = json!("deepseek-genai-v4-pro-low-v2");
+    pro_v5["m1_inference_permission"]["recipient"] = json!("https://api.deepseek.com/responses");
+    assert!(parsed(&pro_v5).is_ok(), "v5 pro-v2 must parse");
+
+    let mut pro_v6_live = pro_v5.clone();
+    pro_v6_live["m1_inference_permission"]["version"] = json!("m1_inference_permission_v6");
+    pro_v6_live["m1_inference_permission"]["run_profile"] = json!("autonomous-dns-genai-live-v1");
+    pro_v6_live["m1_inference_permission"]["execution_mode"] = json!("live");
+    pro_v6_live["m1_inference_permission"]["live_binding"] = json!({
+        "qualification_ref": Uuid::from_u128(0x99),
+        "release_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "resolver_ipv4": "1.1.1.1"
+    });
+    assert!(parsed(&pro_v6_live).is_ok(), "v6 live pro-v2 must parse");
+
+    let mut pro_v6_lab = pro_v6_live.clone();
+    pro_v6_lab["m1_inference_permission"]["run_profile"] = json!("autonomous-dns-genai-lab-v1");
+    pro_v6_lab["m1_inference_permission"]["live_binding"]["resolver_ipv4"] = json!("192.0.2.53");
+    assert!(parsed(&pro_v6_lab).is_err(), "v6 lab must refuse pro-v2");
+
+    let mut mirror_v6_live = pro_v6_live.clone();
+    mirror_v6_live["m1_inference_permission"]["profile"] = json!("fixture-genai-v4-pro-low-v2");
+    mirror_v6_live["m1_inference_permission"]["recipient"] =
+        json!("http://127.0.0.1:18083/responses");
+    assert!(
+        parsed(&mirror_v6_live).is_err(),
+        "v6 live must refuse mirror"
+    );
+
+    for old_profile in [
+        "deepseek-genai-responses-low-v1",
+        "fixture-genai-responses-v1",
+        "deepseek-genai-v4-pro-low-v1",
+    ] {
+        let mut crossed = pro_v5.clone();
+        crossed["m1_inference_permission"]["profile"] = json!(old_profile);
+        if old_profile.starts_with("fixture") {
+            crossed["m1_inference_permission"]["recipient"] =
+                json!("http://127.0.0.1:18083/responses");
+        }
+        assert!(
+            parsed(&crossed).is_err(),
+            "old profile {old_profile} must refuse pro-v2 limits"
+        );
+    }
+    let mut mixed_old_limits = pro_v5.clone();
+    mixed_old_limits["m1_inference_permission"]["operation_limits"]["output_tokens_per_call"] =
+        json!(4096);
+    assert!(
+        parsed(&mixed_old_limits).is_err(),
+        "pro-v2 must refuse 4096 output tokens"
+    );
+}

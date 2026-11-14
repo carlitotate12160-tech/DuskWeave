@@ -297,6 +297,8 @@ fn identity(q: &duskweave::m1_context_input::ContextRequest) -> Res<String> {
 #[path = "../tests/support/m1_native_cli.rs"]
 mod tests;
 
+mod timing;
+
 pub(super) fn autonomous_inference<B, P, G>(
     q: &ContextRequest,
     decision: Uuid,
@@ -309,7 +311,7 @@ where
     P: inference::Provider,
 {
     let s = scope(q, decision)?;
-    let mut o = autonomous_owners(q, &s, a.binding.inference_profile.is_some())?;
+    let mut o = timing::autonomous_owners(q, &s, a.binding.inference_profile.as_deref())?;
     let p = m1_context::prepare_autonomous(
         &mut PgContextReader::new(broker_connection()?),
         q,
@@ -353,30 +355,6 @@ fn infer_autonomous<B: reasoning::proposal::ProposalBasis, P: inference::Provide
         .then_some(())
         .ok_or(Fail::Unresolved("run_inference_pending"))
 }
-fn autonomous_deadline(c: &mut Client, s: &Scope, successor: bool) -> Res<Instant> {
-    let requested = Instant::now();
-    let ms: i64 = c
-        .query_one(
-            "SELECT execution.inference_window_ms($1,$2,$3)",
-            &[&s.engagement, &s.campaign, &s.decision],
-        )
-        .map_err(|_| Fail::State("inference_authority_unavailable"))?
-        .try_get(0)
-        .map_err(|_| Fail::Store("run_decode"))?;
-    let ms = u64::try_from(ms)
-        .ok()
-        .filter(|v| {
-            *v > 0
-                && *v
-                    <= if successor {
-                        duskweave::m1_inference_profile::REASONING_BOUNDED.shared_ms
-                    } else {
-                        40000
-                    }
-        })
-        .ok_or(Fail::State("inference_deadline"))?;
-    Ok(if successor { requested } else { Instant::now() } + Duration::from_millis(ms))
-}
 pub(super) fn autonomous_recover(q: &ContextRequest, decision: Uuid) -> Res<()> {
     let s = scope(q, decision)?;
     let (c, store) = open_stores(q)?;
@@ -392,17 +370,6 @@ pub(super) fn autonomous_recover(q: &ContextRequest, decision: Uuid) -> Res<()> 
     Ok(())
 }
 
-fn autonomous_owners(q: &ContextRequest, s: &Scope, successor: bool) -> Res<Owners> {
-    let (mut c, store) = open_stores(q)?;
-    if known_identity(&mut c, s, &store.input_hash)? {
-        return Err(Fail::State("run_decision_already_started"));
-    }
-    // This private phase reserves stdout for the readiness frame. The same
-    // durable identity binding remains mandatory; the public command announces it.
-    store_input_binding(&mut c, s, &store.input_hash)?;
-    let deadline = autonomous_deadline(&mut c, s, successor)?;
-    owners(c, q, deadline, store)
-}
 pub(super) fn prepared_basis(
     s: &Scope,
     p: &m1_context::PreparedContext,

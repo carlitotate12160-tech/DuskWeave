@@ -145,11 +145,10 @@ pub(super) struct CommandGuard;
 
 impl CommandGuard {
     pub(super) fn for_args(args: &[String]) -> Res<Self> {
-        if super::m1_run_cli::timing_hint(args)? {
-            let t = &duskweave::m1_inference_profile::REASONING_BOUNDED;
+        if let Some(t) = super::m1_run_cli::timing_hint(args)? {
             let ms = match args.get(1).map(String::as_str) {
                 Some("m1-run") => t.parent_watchdog_ms,
-                Some("m1-run-phase") => child_watchdog_ms(args),
+                Some("m1-run-phase") => phase_watchdog_ms(args, t),
                 _ => return Err(Fail::Input("invalid_args")),
             };
             return Self::with_budget(Duration::from_millis(ms));
@@ -176,14 +175,26 @@ impl CommandGuard {
         Ok(Self)
     }
 }
-fn child_watchdog_ms(args: &[String]) -> u64 {
+fn phase_watchdog_ms(args: &[String], t: &duskweave::m1_inference_profile::Timing) -> u64 {
     if args
         .windows(2)
         .any(|w| w[0] == "--phase" && w[1] == "acquisition")
     {
-        60000
+        t.acquisition_ms
     } else {
-        duskweave::m1_inference_profile::REASONING_BOUNDED.child_watchdog_ms
+        t.child_watchdog_ms
+    }
+}
+#[cfg(test)]
+fn child_watchdog_ms(args: &[String]) -> u64 {
+    let t = super::m1_run_cli::timing_hint(args)
+        .ok()
+        .flatten()
+        .unwrap_or(&duskweave::m1_inference_profile::REASONING_BOUNDED);
+    if args.get(1).map(String::as_str) == Some("m1-run") {
+        t.parent_watchdog_ms
+    } else {
+        phase_watchdog_ms(args, t)
     }
 }
 

@@ -15,6 +15,7 @@ impl InferencePermission {
         self.operation_limits.validate(
             self.envelope_depth(),
             if autonomous { 8192 } else { 4096 },
+            4096,
             if autonomous { 45000 } else { 20000 },
         )?;
         self.operation_limits.check_timers(autonomous)
@@ -44,9 +45,15 @@ impl InferencePermission {
     }
 
     fn check_successor_limits(&self) -> Res<()> {
+        let profile = crate::m1_inference_profile::lookup(&self.profile)?;
         let o = &self.operation_limits;
-        let t = &crate::m1_inference_profile::REASONING_BOUNDED;
-        o.validate(32, 8192, t.decision_ms as i64)?;
+        let t = profile.timing;
+        o.validate(
+            32,
+            8192,
+            i64::from(profile.settings.output_tokens),
+            t.decision_ms as i64,
+        )?;
         let actual = [
             o.soft_completion_ms,
             o.per_call_wall_time_ms,

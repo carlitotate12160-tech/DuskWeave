@@ -3,6 +3,9 @@ use crate::{Fail, Res};
 
 pub const RUN_PROFILE: &str = "autonomous-dns-fixture-v2";
 pub const TIMING_PROFILE: &str = "reasoning-bounded-v1";
+pub const PRO_V2_TIMING_PROFILE: &str = "reasoning-bounded-pro-v2";
+pub const PRO_V2_PROFILE: &str = "deepseek-genai-v4-pro-low-v2";
+pub const FIXTURE_PRO_V2_PROFILE: &str = "fixture-genai-v4-pro-low-v2";
 pub const LIVE_RUN_PROFILE: &str = "autonomous-dns-genai-live-v1";
 pub const LAB_RUN_PROFILE: &str = "autonomous-dns-genai-lab-v1";
 
@@ -64,7 +67,7 @@ pub fn live_binding(run: &str, mode: &str, inference: &str) -> bool {
             (run, inference),
             (
                 LIVE_RUN_PROFILE,
-                "deepseek-genai-responses-low-v1" | "deepseek-genai-v4-pro-low-v1"
+                "deepseek-genai-responses-low-v1" | "deepseek-genai-v4-pro-low-v1" | PRO_V2_PROFILE
             ) | (LAB_RUN_PROFILE, "fixture-genai-responses-v1")
         )
 }
@@ -115,6 +118,7 @@ pub struct Profile {
 
 /// Resource-policy ceilings; these are not calibrated provider latency.
 pub struct Timing {
+    pub name: &'static str,
     pub connect_ms: u64,
     pub soft_ms: u64,
     pub hard_ms: u64,
@@ -129,6 +133,7 @@ pub struct Timing {
     pub accounting_ms: u64,
 }
 pub const REASONING_BOUNDED: Timing = Timing {
+    name: TIMING_PROFILE,
     connect_ms: 5000,
     soft_ms: 60000,
     hard_ms: 62000,
@@ -142,8 +147,43 @@ pub const REASONING_BOUNDED: Timing = Timing {
     stop_ms: 2000,
     accounting_ms: 3000,
 };
+pub const REASONING_BOUNDED_PRO_V2: Timing = Timing {
+    name: PRO_V2_TIMING_PROFILE,
+    connect_ms: 5000,
+    soft_ms: 120000,
+    hard_ms: 122000,
+    shared_ms: 244000,
+    decision_ms: 249000,
+    phase_ms: 254000,
+    child_watchdog_ms: 259000,
+    acquisition_ms: 60000,
+    run_ms: 640000,
+    parent_watchdog_ms: 650000,
+    stop_ms: 2000,
+    accounting_ms: 3000,
+};
+
+pub fn timing_for_hint(hint: &str) -> Res<&'static Timing> {
+    let timing = match hint {
+        TIMING_PROFILE => &REASONING_BOUNDED,
+        PRO_V2_TIMING_PROFILE => &REASONING_BOUNDED_PRO_V2,
+        _ => return Err(Fail::Input("invalid_args")),
+    };
+    timing
+        .feasible()
+        .then_some(timing)
+        .ok_or(Fail::Config("inference_infeasible_profile"))
+}
 
 impl Timing {
+    pub fn diagnostic_elapsed_max_ms(&self) -> u64 {
+        if self.name == PRO_V2_TIMING_PROFILE {
+            self.parent_watchdog_ms
+        } else {
+            150000
+        }
+    }
+
     pub fn feasible(&self) -> bool {
         let valid = [
             self.connect_ms <= self.soft_ms,
@@ -211,45 +251,87 @@ fn legacy_metadata(name: &str) -> Res<Metadata> {
         _ => return Err(Fail::Input("inference_unsupported_profile")),
     })
 }
+const GENAI_PROFILES: &[(Metadata, u32, &Timing)] = &[
+    (
+        (
+            "deepseek-genai-responses-low-v1",
+            "https://api.deepseek.com/responses",
+            Some("DEEPSEEK_API_KEY"),
+            Protocol::Responses,
+            "deepseek-flash",
+            Some("low"),
+        ),
+        4096,
+        &REASONING_BOUNDED,
+    ),
+    (
+        (
+            "deepseek-genai-v4-pro-low-v1",
+            "https://api.deepseek.com/responses",
+            Some("DEEPSEEK_API_KEY"),
+            Protocol::Responses,
+            "deepseek-v4-pro",
+            Some("low"),
+        ),
+        4096,
+        &REASONING_BOUNDED,
+    ),
+    (
+        (
+            "fixture-genai-responses-v1",
+            "http://127.0.0.1:18083/responses",
+            None,
+            Protocol::Responses,
+            "deepseek-flash",
+            Some("low"),
+        ),
+        4096,
+        &REASONING_BOUNDED,
+    ),
+    (
+        (
+            PRO_V2_PROFILE,
+            "https://api.deepseek.com/responses",
+            Some("DEEPSEEK_API_KEY"),
+            Protocol::Responses,
+            "deepseek-v4-pro",
+            Some("low"),
+        ),
+        8192,
+        &REASONING_BOUNDED_PRO_V2,
+    ),
+    (
+        (
+            FIXTURE_PRO_V2_PROFILE,
+            "http://127.0.0.1:18083/responses",
+            None,
+            Protocol::Responses,
+            "deepseek-v4-pro",
+            Some("low"),
+        ),
+        8192,
+        &REASONING_BOUNDED_PRO_V2,
+    ),
+];
+
 pub fn lookup(name: &str) -> Res<Profile> {
-    let (backend, metadata) = match name {
-        "deepseek-genai-responses-low-v1" => (
-            Backend::Genai,
+    let (backend, metadata, output_tokens, timing) =
+        if let Some((metadata, output_tokens, timing)) = GENAI_PROFILES
+            .iter()
+            .find(|entry| entry.0.0 == name)
+            .copied()
+        {
+            (Backend::Genai, metadata, output_tokens, timing)
+        } else {
             (
-                "deepseek-genai-responses-low-v1",
-                "https://api.deepseek.com/responses",
-                Some("DEEPSEEK_API_KEY"),
-                Protocol::Responses,
-                "deepseek-flash",
-                Some("low"),
-            ),
-        ),
-        "deepseek-genai-v4-pro-low-v1" => (
-            Backend::Genai,
-            (
-                "deepseek-genai-v4-pro-low-v1",
-                "https://api.deepseek.com/responses",
-                Some("DEEPSEEK_API_KEY"),
-                Protocol::Responses,
-                "deepseek-v4-pro",
-                Some("low"),
-            ),
-        ),
-        "fixture-genai-responses-v1" => (
-            Backend::Genai,
-            (
-                "fixture-genai-responses-v1",
-                "http://127.0.0.1:18083/responses",
-                None,
-                Protocol::Responses,
-                "deepseek-flash",
-                Some("low"),
-            ),
-        ),
-        _ => (Backend::Legacy, legacy_metadata(name)?),
-    };
+                Backend::Legacy,
+                legacy_metadata(name)?,
+                4096,
+                &REASONING_BOUNDED,
+            )
+        };
     let (name, recipient, credential, protocol, model, effort) = metadata;
-    if !REASONING_BOUNDED.feasible() {
+    if !timing.feasible() {
         return Err(Fail::Config("inference_infeasible_profile"));
     }
     Ok(Profile {
@@ -263,7 +345,7 @@ pub fn lookup(name: &str) -> Res<Profile> {
         settings: ModelSettings {
             model,
             reasoning_effort: effort,
-            output_tokens: 4096,
+            output_tokens,
             stream: false,
         },
         routing: RoutingPolicy {
@@ -271,7 +353,7 @@ pub fn lookup(name: &str) -> Res<Profile> {
             retries: false,
             proxy: false,
         },
-        timing: &REASONING_BOUNDED,
+        timing,
     })
 }
 

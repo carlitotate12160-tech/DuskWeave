@@ -5,9 +5,17 @@ use duskweave::m1_run::{
 };
 use duskweave::{Fail, Res};
 use std::io::Read;
-use std::process::{Child, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdout};
+#[cfg(test)]
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
+
+mod launch;
+use launch::phase_command;
+pub(super) use launch::selected_phase_deadline;
+#[cfg(test)]
+use launch::{install_provider_environment, phase_deadline};
 
 pub(super) struct PhaseChild {
     child: Arc<Mutex<Child>>,
@@ -17,7 +25,7 @@ pub(super) struct PhaseChild {
     launched: Instant,
     deadline: Instant,
     readiness_required: bool,
-    successor: bool,
+    timing: Option<&'static duskweave::m1_inference_profile::Timing>,
 }
 #[derive(Default)]
 struct Observation {
@@ -72,7 +80,7 @@ impl PhaseChild {
         let pipe = readiness.as_ref().and_then(|_| spawned.stdout.take());
         let mut owned = Self::supervise(spawned, deadline)?;
         owned.launched = launched;
-        owned.successor = run.request.successor();
+        owned.timing = run.request.timing_profile()?;
         owned.arm_guards(control, readiness.zip(pipe), prepared_by, deadline)?;
         Ok(owned)
     }
@@ -136,7 +144,7 @@ impl PhaseChild {
             launched: Instant::now(),
             deadline,
             readiness_required: false,
-            successor: false,
+            timing: None,
         })
     }
     pub(super) fn finished(&self) -> Res<Option<std::process::ExitStatus>> {
@@ -164,7 +172,7 @@ impl PhaseChild {
             _ => CauseSource::ParentObserved,
         };
         PhaseDiagnostic {
-            version: PhaseDiagnostic::version_for(self.successor).into(),
+            version: PhaseDiagnostic::version_for(self.timing.is_some()).into(),
             run_id,
             phase,
             cause,
@@ -172,7 +180,7 @@ impl PhaseChild {
             child_error: error.map(str::to_owned),
             exit_code,
             readiness_observed: state.as_ref().is_some_and(|s| s.ready),
-            elapsed_ms: Some(self.launched.elapsed().as_millis().min(150000) as u32),
+            elapsed_ms: PhaseDiagnostic::checked_elapsed_ms(self.launched.elapsed(), self.timing),
             reported_guard: state.as_ref().and_then(|s| s.reported_guard),
         }
     }
@@ -207,68 +215,6 @@ impl PhaseChild {
         self.observation.lock().is_ok_and(|s| {
             s.cause.is_none() && s.error.is_none() && (!self.readiness_required || s.ready)
         })
-    }
-}
-fn phase_command(
-    run: &RunRecord,
-    phase: RunPhase,
-) -> Res<(
-    Command,
-    Option<super::m1_run_control::Binding>,
-    Option<String>,
-)> {
-    run.request.validate()?;
-    let provider = run.request.supervised_inference();
-    let control = if provider {
-        Some(super::m1_run_control::Binding::qualify(&run.request)?)
-    } else {
-        None
-    };
-    let mut command =
-        Command::new(std::env::current_exe().map_err(|_| Fail::Config("run_binary_unavailable"))?);
-    command
-        .env_clear()
-        .arg("m1-run-phase")
-        .arg("--run")
-        .arg(run.request.run_id.to_string())
-        .arg("--phase")
-        .arg(phase.name())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    install_launch_environment(&mut command, run);
-    let mut readiness = None;
-    if provider {
-        install_provider_environment(&mut command, phase, run);
-        if phase != RunPhase::Acquisition {
-            readiness = Some(super::m1_run_control::ready_frame(
-                run.request.run_id,
-                phase.name(),
-            ));
-        }
-    }
-    Ok((command, control, readiness))
-}
-fn install_provider_environment(c: &mut Command, phase: RunPhase, run: &RunRecord) {
-    if let Some(root) = std::env::var_os("DW_M1_RUN_CONTROL_ROOT") {
-        c.env("DW_M1_RUN_CONTROL_ROOT", root);
-    }
-    if phase != RunPhase::Acquisition {
-        c.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .env(super::m1_run_control::PROVIDER_HINT, "1");
-        if let Some(key) = std::env::var_os("DEEPSEEK_API_KEY") {
-            c.env("DEEPSEEK_API_KEY", key);
-        }
-    }
-    let network = run
-        .request
-        .inference_profile
-        .as_deref()
-        .and_then(|p| duskweave::m1_inference_profile::lookup(p).ok())
-        .is_some_and(|p| p.connection.credential_environment.is_some());
-    if run.request.inference_profile.is_some() && !network {
-        c.env_remove("DEEPSEEK_API_KEY");
     }
 }
 
@@ -483,54 +429,6 @@ impl Drop for PhaseChild {
         let _ = self.done.send(());
         reap(&self.child);
     }
-}
-fn install_launch_environment(c: &mut Command, run: &RunRecord) {
-    if run.request.successor() {
-        c.args([
-            "--timing-profile",
-            duskweave::m1_inference_profile::TIMING_PROFILE,
-        ]);
-    }
-    // Base owner allowlist; selected inference key/control are added separately, never PATH/proxies/flags.
-    for key in [
-        "DW_DATABASE_CONFIG_MODE",
-        "DW_DATABASE_URL",
-        "DW_DATABASE_URL_FILE",
-        "DW_INFERENCE_BROKER_DATABASE_URL",
-        "DW_INFERENCE_BROKER_DATABASE_URL_FILE",
-        "DW_COGNITION_DATABASE_URL",
-        "DW_COGNITION_DATABASE_URL_FILE",
-        "DW_TRAJECTORY_DATABASE_URL",
-        "DW_TRAJECTORY_DATABASE_URL_FILE",
-        "DW_TERRAIN_DATABASE_URL",
-        "DW_TERRAIN_DATABASE_URL_FILE",
-        "SystemRoot",
-        "LLVM_PROFILE_FILE",
-    ] {
-        if let Some(value) = std::env::var_os(key) {
-            c.env(key, value);
-        }
-    }
-}
-pub(super) fn phase_deadline(run: Instant, phase: RunPhase) -> Instant {
-    let ceiling = if phase == RunPhase::Acquisition {
-        60000
-    } else {
-        50000
-    };
-    run.min(Instant::now() + Duration::from_millis(ceiling))
-}
-
-pub(super) fn selected_phase_deadline(run: Instant, phase: RunPhase, successor: bool) -> Instant {
-    if successor && phase != RunPhase::Acquisition {
-        return run.min(
-            Instant::now()
-                + Duration::from_millis(
-                    duskweave::m1_inference_profile::REASONING_BOUNDED.phase_ms,
-                ),
-        );
-    }
-    phase_deadline(run, phase)
 }
 
 #[cfg(test)]

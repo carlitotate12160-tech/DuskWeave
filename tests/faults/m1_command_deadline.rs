@@ -93,3 +93,61 @@ fn successor_child_command_bound_keeps_acquisition_at_its_existing_limit() {
         410000
     );
 }
+
+#[test]
+fn pro_v2_command_bounds_use_selected_profile_watchdogs() {
+    let args = |cmd: &str, phase: Option<&str>, hint: &str| {
+        let mut out = vec!["duskweave".to_owned(), cmd.to_owned()];
+        if let Some(p) = phase {
+            out.extend([
+                "--run".into(),
+                "00000000-0000-0000-0000-000000000001".into(),
+                "--phase".into(),
+                p.into(),
+            ]);
+        } else {
+            out.extend(["--input".into(), "dummy.json".into()]);
+        }
+        out.extend(["--timing-profile".into(), hint.into()]);
+        out
+    };
+    assert_eq!(
+        child_watchdog_ms(&args(
+            "m1-run-phase",
+            Some("decision_one"),
+            "reasoning-bounded-pro-v2"
+        )),
+        259000
+    );
+    assert_eq!(
+        child_watchdog_ms(&args(
+            "m1-run-phase",
+            Some("decision_two"),
+            "reasoning-bounded-pro-v2"
+        )),
+        259000
+    );
+    assert_eq!(
+        child_watchdog_ms(&args(
+            "m1-run-phase",
+            Some("acquisition"),
+            "reasoning-bounded-pro-v2"
+        )),
+        60000
+    );
+    assert_eq!(
+        child_watchdog_ms(&args("m1-run", None, "reasoning-bounded-pro-v2")),
+        650000
+    );
+    assert_eq!(
+        child_watchdog_ms(&args(
+            "m1-run-phase",
+            Some("decision_one"),
+            "reasoning-bounded-v1"
+        )),
+        139000
+    );
+    assert!(
+        crate::m1_run_cli::timing_hint(&args("m1-run", None, "uninstalled-timing-v9")).is_err()
+    );
+}

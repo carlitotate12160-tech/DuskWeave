@@ -134,7 +134,7 @@ fn successor_configuration(parsed: &Value, ids: &[String]) -> Result<Value, &'st
     c["profile"] = json!(profile.name);
     c["recipient"] = json!(profile.connection.recipient);
     c["credential_reference"] = json!(profile.connection.credential_environment);
-    c["timing_profile"] = json!(profiles::TIMING_PROFILE);
+    c["timing_profile"] = json!(profile.timing.name);
     c["protocol"] = json!(match profile.protocol {
         Protocol::Responses => "responses-v1",
         Protocol::ChatCompletions => "chat-completions-v1",

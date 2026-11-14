@@ -171,8 +171,21 @@ impl CallClock {
         shared: Instant,
         sink: Option<SyncSender<ReportedGuard>>,
     ) -> Result<Self, &'static str> {
+        Self::arm_for(
+            permit,
+            shared,
+            &crate::m1_inference_profile::REASONING_BOUNDED,
+            sink,
+        )
+    }
+
+    pub fn arm_for(
+        permit: Permit,
+        shared: Instant,
+        timing: &crate::m1_inference_profile::Timing,
+        sink: Option<SyncSender<ReportedGuard>>,
+    ) -> Result<Self, &'static str> {
         let origin = Instant::now();
-        let timing = &crate::m1_inference_profile::REASONING_BOUNDED;
         let hard = origin + Duration::from_millis(timing.hard_ms);
         if hard > shared || !permit.current() {
             return Err("inference_deadline");
@@ -196,6 +209,30 @@ impl Drop for TransportGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pro_v2_call_clock_arms_120s_soft_122s_hard_and_v1_preserves_60s_62s() {
+        use crate::m1_inference_profile::{REASONING_BOUNDED, REASONING_BOUNDED_PRO_V2};
+        let shared = Instant::now() + Duration::from_millis(244000);
+        let permit = Permit::new(shared);
+        assert!(permit.publish(Instant::now(), shared));
+        assert!(
+            CallClock::arm_for(
+                permit.clone(),
+                Instant::now() + Duration::from_millis(121999),
+                &REASONING_BOUNDED_PRO_V2,
+                None,
+            )
+            .is_err()
+        );
+        let v2 =
+            CallClock::arm_for(permit.clone(), shared, &REASONING_BOUNDED_PRO_V2, None).unwrap();
+        assert_eq!(v2.soft - v2.origin, Duration::from_millis(120000));
+        assert_eq!(v2.hard - v2.origin, Duration::from_millis(122000));
+        let v1 = CallClock::arm_for(permit, shared, &REASONING_BOUNDED, None).unwrap();
+        assert_eq!(v1.soft - v1.origin, Duration::from_millis(60000));
+        assert_eq!(v1.hard - v1.origin, Duration::from_millis(62000));
+    }
 
     #[test]
     fn guard_frame_values_and_durable_json_use_the_same_closed_vocabulary() {

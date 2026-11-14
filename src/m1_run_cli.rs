@@ -19,8 +19,16 @@ pub(super) fn command(command: &str, args: &[String]) -> Res<()> {
         _ => Err(Fail::Input("unknown_command")),
     }
 }
+fn check_timing_agreement(args: &[String], q: &RunRequest) -> Res<()> {
+    let hint = timing_hint(args)?;
+    if q.timing_profile()?.map(|t| t.name) != hint.map(|t| t.name) {
+        return Err(Fail::Input("invalid_timing_profile"));
+    }
+    Ok(())
+}
+
 fn read_request(args: &[String]) -> Res<RunRequest> {
-    let (flags, hinted) = launch_flags(args)?;
+    let (flags, _) = launch_flags(args)?;
     let file = std::fs::File::open(super::flag(&flags, "input")?)
         .map_err(|_| Fail::Input("unreadable_input"))?;
     let mut bytes = Vec::new();
@@ -28,22 +36,20 @@ fn read_request(args: &[String]) -> Res<RunRequest> {
         .read_to_end(&mut bytes)
         .map_err(|_| Fail::Input("unreadable_input"))?;
     let q = RunRequest::parse(&bytes)?;
-    if q.successor() != hinted {
-        return Err(Fail::Input("invalid_timing_profile"));
-    }
+    check_timing_agreement(args, &q)?;
     Ok(q)
 }
 
 /// Syntax is checked before file/SQL work; the hint itself grants no authority.
-pub(super) fn timing_hint(args: &[String]) -> Res<bool> {
+pub(super) fn timing_hint(
+    args: &[String],
+) -> Res<Option<&'static duskweave::m1_inference_profile::Timing>> {
     if !args.iter().any(|s| s == "--timing-profile") {
-        return Ok(false);
+        return Ok(None);
     }
     let (flags, _) = launch_flags(args)?;
-    if super::flag(&flags, "timing-profile")? != duskweave::m1_inference_profile::TIMING_PROFILE {
-        return Err(Fail::Input("invalid_args"));
-    }
-    Ok(true)
+    duskweave::m1_inference_profile::timing_for_hint(super::flag(&flags, "timing-profile")?)
+        .map(Some)
 }
 /// One exact flag grammar shared by early watchdog selection and the command consumer.
 fn launch_flags(args: &[String]) -> Res<(Vec<(&str, &str)>, bool)> {
@@ -112,7 +118,7 @@ fn drive_phase(
     let deadline = super::m1_run_supervision::selected_phase_deadline(
         run_deadline,
         phase,
-        run.request.successor(),
+        run.request.timing_profile()?,
     );
     let outcome = wait_phase(store, run, phase, deadline, run_deadline);
     if outcome.is_err() {
@@ -201,18 +207,11 @@ fn run_deadline(run: &RunRecord) -> Res<Instant> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| Fail::State("clock_unavailable"))?
         .as_millis();
+    let max_ms = run.request.timing_profile()?.map_or(150000, |t| t.run_ms) as u128;
     let remain = u128::try_from(run.deadline_at_ms)
         .ok()
         .and_then(|d| d.checked_sub(now))
-        .filter(|d| {
-            *d > 0
-                && *d
-                    <= if run.request.successor() {
-                        400000
-                    } else {
-                        150000
-                    }
-        })
+        .filter(|d| *d > 0 && *d <= max_ms)
         .ok_or(Fail::State("run_deadline"))?;
     Ok(Instant::now() + Duration::from_millis(remain as u64))
 }
@@ -236,7 +235,8 @@ fn claim_child(
     Option<super::m1_run_control::Preparation>,
 )> {
     let successor_hint = timing_hint(args)?;
-    let hinted = successor_hint || std::env::var_os(super::m1_run_control::PROVIDER_HINT).is_some();
+    let hinted = successor_hint.is_some()
+        || std::env::var_os(super::m1_run_control::PROVIDER_HINT).is_some();
     let (r, phase) = child_args(args)?;
     let preparation = preparation_cover(phase, hinted)?;
     let record = claimed_run(r, phase)?;
@@ -252,13 +252,14 @@ fn verify_launch_hint(
     record: &RunRecord,
     phase: RunPhase,
     hinted: bool,
-    successor_hint: bool,
+    successor_hint: Option<&'static duskweave::m1_inference_profile::Timing>,
 ) -> Res<()> {
-    let expected = record.request.successor()
+    let expected_timing = record.request.timing_profile()?.map(|t| t.name);
+    let expected = expected_timing.is_some()
         || (record.request.supervised_inference() && phase != RunPhase::Acquisition);
     [
         hinted == expected,
-        record.request.successor() == successor_hint,
+        expected_timing == successor_hint.map(|t| t.name),
     ]
     .into_iter()
     .all(|v| v)

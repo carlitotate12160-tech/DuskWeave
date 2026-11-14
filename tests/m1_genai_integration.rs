@@ -230,6 +230,8 @@ mod context;
 mod episode;
 #[path = "m1_genai_integration/failures.rs"]
 mod failures;
+#[path = "m1_genai_integration/pro_budget.rs"]
+mod pro_budget;
 #[path = "m1_genai_integration/termination.rs"]
 mod termination;
 

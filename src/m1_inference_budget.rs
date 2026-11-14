@@ -110,24 +110,7 @@ impl ReservationRecord {
     }
 
     fn check_capacity(&self) -> Res<()> {
-        let c = &self.capacity;
-        if (c.calls, c.output_token_capacity) != (2, 8192)
-            || [
-                (c.request_bytes, 32768),
-                (c.response_bytes, 131072),
-                (
-                    c.wall_time_ms,
-                    if c.wall_time_ms == 129000 {
-                        129000
-                    } else if c.wall_time_ms == 45000 {
-                        45000
-                    } else {
-                        20000
-                    },
-                ),
-            ]
-            .iter()
-            .any(|(n, cap)| *n <= 0 || n > cap)
+        if !valid_capacity(&self.capacity)
             || [
                 self.registration_operation_id.0,
                 self.registration_event_id.0,
@@ -140,6 +123,16 @@ impl ReservationRecord {
             return Err(Fail::Unresolved("inference_record_decode"));
         }
         Ok(())
+    }
+}
+
+fn valid_capacity(c: &ReservedCapacity) -> bool {
+    match (c.calls, c.output_token_capacity, c.wall_time_ms) {
+        (2, 16384, 249000) => c.request_bytes == 32768 && c.response_bytes == 131072,
+        (2, 8192, 1..=20000 | 45000 | 129000) => {
+            (1..=32768).contains(&c.request_bytes) && (1..=131072).contains(&c.response_bytes)
+        }
+        _ => false,
     }
 }
 

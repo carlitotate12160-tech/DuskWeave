@@ -532,3 +532,22 @@ Limits: the separate filesystem removes the demonstrated build-writeback
 stall of containerd temporary-layer unmount; it is not a readiness
 guarantee against other device/VM coupling. The original 5000-ms
 preparation deadline is unchanged and re-measured, never raised.
+
+### Pro v2 resource-profile successor (migration 0035 / fixture mirror)
+
+`deepseek-genai-v4-pro-low-v2` uses timing hint
+`--timing-profile reasoning-bounded-pro-v2` with a newly registered v5
+controlled-fixture/run-v3 request explicitly naming that inference profile.
+Use it only with schema migration `0035` installed and reviewed (`--schema-revision 0035`
+for fixture bootstrap; companion loopback mirror `fixture-genai-v4-pro-low-v2`
+exercises the deterministic fixture lane without provider calls or credentials).
+Canonical limits are in
+[ADR-016](adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14);
+never enlarge an existing registration or substitute the profile after failure.
+The hint must match the actual request and durable run; it grants no authority.
+Prepare binaries, database and fixture before obtaining fresh finite consent,
+then require sufficient remaining Mission/permission time at admission.
+Retain safe before/after PostgreSQL snapshots as files. A later provider
+attempt stops on failure without automatic retry and must complete D2 plus
+key-free inspect/recover before claiming full episode PASS. LIVE qualification
+and real-target authorization remain separate from this fixture procedure.
