@@ -19,123 +19,11 @@ enum SafeFieldClass {
     AdmittedCampaignDecisionFeedback,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CampaignInferenceLimits {
-    calls: i64,
-    request_bytes: i64,
-    response_bytes: i64,
-    output_token_capacity: i64,
-    wall_time_ms: i64,
-}
+mod limits;
+pub(crate) use limits::ContextDisclosure;
+use limits::{CampaignInferenceLimits, OperationInferenceLimits, present};
 
-impl CampaignInferenceLimits {
-    fn validate(&self) -> Res<()> {
-        let totals = [
-            self.calls,
-            self.request_bytes,
-            self.response_bytes,
-            self.output_token_capacity,
-            self.wall_time_ms,
-        ];
-        if totals.iter().any(|n| *n <= 0) {
-            return Err(Fail::Input("inference_invalid_campaign_limits"));
-        }
-        Ok(())
-    }
-}
-
-/// Every operation bound is explicit. These numbers declare ceilings;
-// consumption and uncertain accounting require the later Broker lane.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OperationInferenceLimits {
-    context_bytes: i64,
-    candidates: i64,
-    request_bytes: i64,
-    configuration_bytes: i64,
-    response_bytes: i64,
-    calls_per_decision: i64,
-    output_tokens_per_call: i64,
-    decision_wall_time_ms: i64,
-    connect_time_ms: i64,
-    proposal_bytes: i64,
-    repair_bytes: i64,
-    text_field_bytes: i64,
-    repair_error_codes: i64,
-    json_depth: i64,
-    collection_entries: i64,
-    concurrency: i64,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
-    per_call_wall_time_ms: Option<i64>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
-    soft_completion_ms: Option<i64>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
-    shared_wall_time_ms: Option<i64>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
-    phase_wall_time_ms: Option<i64>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
-    cancel_grace_ms: Option<i64>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
-    accounting_window_ms: Option<i64>,
-}
-
-impl OperationInferenceLimits {
-    fn validate(&self, depth: i64, context_cap: i64, decision_cap: i64) -> Res<()> {
-        let bounded = [
-            (self.context_bytes, context_cap),
-            (self.candidates, 8),
-            (self.request_bytes, 16384),
-            (self.configuration_bytes, 16384),
-            (self.response_bytes, 65536),
-            (self.decision_wall_time_ms, decision_cap),
-            (self.connect_time_ms, 5000),
-            (self.proposal_bytes, 8192),
-            (self.repair_bytes, 2048),
-            (self.text_field_bytes, 1024),
-            (self.repair_error_codes, 8),
-            (self.json_depth, depth),
-            (self.collection_entries, 64),
-        ];
-        if bounded.iter().any(|(n, cap)| *n <= 0 || n > cap) {
-            return Err(Fail::Input("inference_invalid_operation_limits"));
-        }
-        if (
-            self.calls_per_decision,
-            self.output_tokens_per_call,
-            self.concurrency,
-        ) != (2, 4096, 1)
-            || self.connect_time_ms > self.decision_wall_time_ms
-        {
-            return Err(Fail::Input("inference_unsupported_operation_profile"));
-        }
-        Ok(())
-    }
-}
+/// Closed permission for bounded single-decision autonomous inference.
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -287,25 +175,14 @@ impl InferencePermission {
     }
 }
 
-/// Narrow Mission-owned disclosure projection; arrays use calls, request bytes,
-/// response bytes, output-token capacity, and shared wall-time milliseconds.
-pub(crate) struct ContextDisclosure {
-    pub permission_id: Uuid,
-    pub starts_at: i64,
-    pub ends_at: i64,
-    pub context_bytes: usize,
-    pub configuration_bytes: usize,
-    pub candidates: usize,
-    pub required_classes: bool,
-    pub operator_premises: bool,
-    pub owner_qualified_summaries: bool,
-    pub totals: [i64; 5],
-    pub required: [i64; 5],
-}
 impl InferencePermission {
     pub(crate) fn context_disclosure(&self) -> ContextDisclosure {
         let c = &self.campaign_limits;
         let o = &self.operation_limits;
+        let output_token_capacity = o
+            .calls_per_decision
+            .checked_mul(o.output_tokens_per_call)
+            .unwrap_or(0);
         ContextDisclosure {
             permission_id: self.permission_id,
             starts_at: self.starts_at,
@@ -335,52 +212,81 @@ impl InferencePermission {
                 c.wall_time_ms,
             ],
             required: [
-                2,
+                o.calls_per_decision,
                 2 * o.request_bytes,
                 2 * o.response_bytes,
-                8192,
+                output_token_capacity,
                 o.decision_wall_time_ms,
             ],
         }
     }
 }
 
-// Absent extensions retain legacy serialization; explicit null never does.
-fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
-    d: D,
-) -> Result<Option<T>, D::Error> {
-    T::deserialize(d).map(Some)
-}
-
-impl OperationInferenceLimits {
-    fn check_timers(&self, autonomous: bool) -> Res<()> {
-        if self.soft_completion_ms.is_some() {
-            return Err(Fail::Input("inference_unsupported_operation_profile"));
-        }
-        let actual = [
-            self.per_call_wall_time_ms,
-            self.shared_wall_time_ms,
-            self.phase_wall_time_ms,
-            self.cancel_grace_ms,
-            self.accounting_window_ms,
-        ];
-        let expected = if autonomous {
-            [
-                Some(20000),
-                Some(40000),
-                Some(50000),
-                Some(2000),
-                Some(3000),
-            ]
-        } else {
-            [None; 5]
-        };
-        if actual != expected || (autonomous && self.decision_wall_time_ms != 45000) {
-            return Err(Fail::Input("inference_unsupported_operation_profile"));
-        }
-        Ok(())
-    }
-}
 mod live;
 pub use live::LiveBinding;
 mod successor;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn context_disclosure_computes_selected_two_call_output_capacity() {
+        let limits = json!({
+            "context_bytes": 8192, "candidates": 8, "request_bytes": 16384,
+            "configuration_bytes": 16384, "response_bytes": 65536, "calls_per_decision": 2,
+            "output_tokens_per_call": 8192, "decision_wall_time_ms": 249000,
+            "per_call_wall_time_ms": 122000, "soft_completion_ms": 120000,
+            "shared_wall_time_ms": 244000, "phase_wall_time_ms": 254000,
+            "cancel_grace_ms": 2000, "accounting_window_ms": 3000,
+            "connect_time_ms": 5000, "proposal_bytes": 8192, "repair_bytes": 2048,
+            "text_field_bytes": 1024, "repair_error_codes": 8, "json_depth": 32,
+            "collection_entries": 64, "concurrency": 1
+        });
+        let mut raw = json!({
+            "version": "m1_inference_permission_v5",
+            "permission_id": Uuid::from_u128(1),
+            "engagement_id": Uuid::from_u128(2),
+            "campaign_id": Uuid::from_u128(3),
+            "operator_ref": Uuid::from_u128(4),
+            "authority_ref": Uuid::from_u128(5),
+            "authority_revision": 1,
+            "mission_revision": 1,
+            "goal_ref": Uuid::from_u128(6),
+            "exercise_mode": "blind",
+            "recipient": "http://127.0.0.1:18083/responses",
+            "profile": crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE,
+            "run_profile": crate::m1_inference_profile::RUN_PROFILE,
+            "execution_mode": "controlled_fixture",
+            "field_classes": [
+                "mission_question_constraints",
+                "scoped_opaque_references",
+                "owner_qualified_summaries",
+                "admitted_operator_premises",
+                "manifest_availability",
+                "omissions_unknown",
+                "capacity",
+                "admitted_repair_fields_codes",
+                "admitted_campaign_decision_feedback"
+            ],
+            "starts_at": 1700000001,
+            "ends_at": 1700086399,
+            "provider_terms_ref": Uuid::from_u128(7),
+            "provider_terms_approved": true,
+            "campaign_limits": {
+                "calls": 10, "request_bytes": 100000, "response_bytes": 500000,
+                "output_token_capacity": 32768, "wall_time_ms": 600000
+            },
+            "operation_limits": limits
+        });
+        let p_v2: InferencePermission = serde_json::from_value(raw.clone()).unwrap();
+        assert_eq!(p_v2.context_disclosure().required[3], 16384);
+        assert_eq!(p_v2.context_disclosure().required[4], 249000);
+        raw["profile"] = json!("fixture-genai-responses-v1");
+        raw["operation_limits"]["output_tokens_per_call"] = json!(4096);
+        raw["operation_limits"]["decision_wall_time_ms"] = json!(129000);
+        let p_v1: InferencePermission = serde_json::from_value(raw).unwrap();
+        assert_eq!(p_v1.context_disclosure().required[3], 8192);
+    }
+}

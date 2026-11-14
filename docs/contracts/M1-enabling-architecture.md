@@ -1241,6 +1241,41 @@ admits them, and the trusted SDK translates them with invocation-bound requested
 identity. This amendment grants no provider/target contact, deployment,
 runtime qualification, milestone acceptance or seal.
 
+### Pro v2 resource-profile binding (2026-11-14)
+
+The owner-selected `deepseek-genai-v4-pro-low-v2` adds one closed profile,
+using the same Genai/OpenAIResp recipient, `deepseek-v4-pro`, low effort,
+non-streaming, `store=false`, no tools and existing semantic intent shape.
+Its canonical resource tuple and honest limits are owned exclusively by
+[ADR-016 Pro-v2 policy](../adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14).
+Its timing identity is `reasoning-bounded-pro-v2`; old profiles continue to
+bind `reasoning-bounded-v1`. Runtime wiring and schema migration `0035` are
+delivered in DW-PRO-V2-CANDIDATE-C and verified locally with the companion
+loopback mirror and deterministic Pro-v2 tests; real-provider Pro-v2 completion
+and LIVE qualification remain separately authorized work.
+
+Fresh v5 controlled-fixture or v6 LIVE consent must name the new profile and
+its exact resource tuple; existing version shapes are retained. LIVE still
+requires its current qualified binding, while LAB remains fixture-only.
+Producer, immutable intent, SQL admission, SDK invocation and settlement must
+agree on profile/model/timing and reserved capacities. The SDK's actual wire
+request must carry 8192 output tokens; changing only a disclosure or intent
+is insufficient. Capture safe usage/byte metadata, never reasoning content.
+
+The companion `fixture-genai-v4-pro-low-v2` has the same model/settings/resource
+policy with the fixed loopback recipient and no credential, and only the v5
+controlled-fixture binding. It exercises the actual CLI C-profile lifecycle;
+separate exact Pro-v2 intent/SDK tests verify the production recipient mapping.
+Neither a mirror episode nor a test-only loopback transport substitution proves
+that the real provider completes Pro-v2. Existing fixture identity is unchanged.
+
+The producer's schema, instructions, repair vocabulary and decision semantics
+remain unchanged. Explain adaptation from evidence rather than prescribing a
+D2 category. A valid repair is permitted; a successful episode does not require
+zero repairs or fewer than 1500 reasoning tokens. Key-free inspect/recover must
+preserve identities and issue zero inference/effect calls. A deterministic
+fixture proves wiring, not provider reliability or target acquisition.
+
 ### Immutable inference intent (successor lane only)
 
 - The deterministic producer emits, per call, the immutable pack bytes plus

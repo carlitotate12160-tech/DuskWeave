@@ -140,7 +140,7 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
         "protocol":protocol,"profile":profile.name,"recipient":profile.connection.recipient,
         "model":profile.settings.model,"adapter_release":"genai-a9504f1-dw1",
         "template_version":"m1-autonomous-inference-v3","schema_version":"m1_inference_proposal_v1",
-        "instructions":instructions,"schema":schema,"timing_profile":profiles::TIMING_PROFILE,
+        "instructions":instructions,"schema":schema,"timing_profile":t.name,
         "settings":{"reasoning_effort":profile.settings.reasoning_effort,"max_output_tokens":profile.settings.output_tokens,"stream":profile.settings.stream,"store":false,"tools":[]},
         "repair_error_codes":codes.unwrap_or_default(),"limits":limits});
     if p["version"] == "m1_context_pack_autonomous_v4" {

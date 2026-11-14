@@ -44,12 +44,12 @@ def provisioning_probe(recorded):
 class SchemaRevisionCases(unittest.TestCase):
     def test_revision_0032_accepted_and_out_of_range_refused(self):
         self.assertIn("0032", bootstrap.SCHEMA_REVISIONS)
-        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0034")
+        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0035")
 
         def bomb(args, data=None):
             raise AssertionError("provisioning must not start for an invalid revision")
 
-        for revision, kind in (("0034", "live"), ("0035", "fixture"),
+        for revision, kind in (("0035", "live"), ("0034", "live"), ("0036", "fixture"),
                                ("0033", "live"), ("0032", "live"), ("0031", "live"), ("32", "fixture")):
             with mock.patch.object(bootstrap, "private_run", bomb):
                 with self.assertRaisesRegex(RuntimeError, "^native_schema_revision_refused$"):
@@ -115,7 +115,7 @@ class SchemaRevisionCases(unittest.TestCase):
     def test_revision_tail_counts_stay_distinct(self):
         for revision, initial, refresh in (
             ("0020", 18, 9), ("0021", 19, 10), ("0022", 20, 11),
-            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22), ("0034", 32, 23),
+            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22), ("0034", 32, 23), ("0035", 33, 24),
         ):
             self.assertEqual(len(migrate_calls(revision, initial=True)), initial, revision)
             self.assertEqual(len(migrate_calls(revision, initial=False)), refresh, revision)
@@ -177,6 +177,40 @@ class SchemaRevisionCases(unittest.TestCase):
             self.assertEqual(tail.count("SET search_path=pg_catalog, pg_temp"), 2)
             self.assertEqual(tail.count("LANGUAGE plpgsql SECURITY DEFINER"), 2)
             self.assertIn("FROM pg_catalog.pg_roles", tail)
+
+    def test_revision_0035_provisions_and_replaces_only_candidate_c_owners(self):
+        recorded = []
+        with mock.patch.object(bootstrap, "service_qualified"), \
+             mock.patch.object(bootstrap, "private_run", provisioning_probe(recorded)):
+            fixture = bootstrap.Fixture(bootstrap.LIVE_CONTAINER, "fixture",
+                                        database="dw_native_s35_probe", schema_revision="0035")
+        self.assertIn("stop", fixture.roles)
+        self.assertIn("DW_STOP_WRITER_DATABASE_URL", fixture.env)
+        for initial in (True, False):
+            calls = migrate_calls("0035", initial)
+            tail = calls[-1]
+            self.assertIn("BEGIN;", tail)
+            self.assertTrue(tail.strip().endswith("COMMIT;"))
+            functions = re.findall(r"CREATE OR REPLACE FUNCTION execution\.(\w+)", tail)
+            self.assertEqual(functions, [
+                "inference_profile_matches",
+                "inference_reservation",
+                "inference_window_ms",
+                "inference_may_send",
+                "genai_expected_intent",
+                "inference_call_state",
+                "run_start",
+                "run_current",
+                "assert_autonomous_pack",
+                "run_phase_diagnostic",
+            ])
+            self.assertEqual(tail.count("SET search_path=pg_catalog, pg_temp"), 10)
+            self.assertIn("FROM pg_catalog.pg_roles", tail)
+            self.assertIn("elapsed_max:=CASE WHEN q->>'version'='m1_run_phase_diagnostic_v2'", tail)
+            self.assertIn("THEN 650000 ELSE 150000 END;", tail)
+            self.assertIn("OR q#>>'{live_binding,release_sha256}' IS DISTINCT FROM release", tail)
+            self.assertIn("THEN RAISE EXCEPTION 'live_qualification_unavailable'; END IF;", tail)
+            self.assertIn("lq.valid_until_ms-n", tail)
 
     def test_container_refusal_runs_before_any_provisioning(self):
         def bomb(args, data=None):

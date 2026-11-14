@@ -104,6 +104,17 @@ impl RunRequest {
         self.successor() || self.run_profile == PROVIDER_FIXTURE_PROFILE
     }
 
+    pub fn timing_profile(&self) -> Res<Option<&'static crate::m1_inference_profile::Timing>> {
+        if !self.successor() {
+            return Ok(None);
+        }
+        let name = self
+            .inference_profile
+            .as_deref()
+            .ok_or(Fail::Input("invalid_run_request"))?;
+        Ok(Some(crate::m1_inference_profile::lookup(name)?.timing))
+    }
+
     fn valid_version_profile(&self) -> bool {
         match (self.version.as_str(), self.inference_profile.as_deref()) {
             ("m1_autonomous_run_request_v1", None) => {
@@ -231,22 +242,39 @@ impl PhaseDiagnostic {
             "m1_run_phase_diagnostic_v1"
         }
     }
+    pub fn checked_elapsed_ms(
+        elapsed: std::time::Duration,
+        timing: Option<&crate::m1_inference_profile::Timing>,
+    ) -> Option<u32> {
+        let max = timing.map_or(150000, |t| t.diagnostic_elapsed_max_ms());
+        u32::try_from(elapsed.as_millis())
+            .ok()
+            .filter(|ms| u64::from(*ms) <= max)
+    }
+    fn version_elapsed_max(&self) -> Option<u32> {
+        match self.version.as_str() {
+            "m1_run_phase_diagnostic_v2" => Some(650000),
+            "m1_run_phase_diagnostic_v1" if self.reported_guard.is_none() => Some(150000),
+            _ => None,
+        }
+    }
     pub fn validate(&self) -> Res<()> {
+        let Some(max_elapsed_ms) = self.version_elapsed_max() else {
+            return Err(Fail::Input("invalid_run_diagnostic"));
+        };
         let expected_source = match self.cause {
             DiagnosticCause::ChildError => CauseSource::ChildReport,
             DiagnosticCause::Unavailable => CauseSource::Unavailable,
             _ => CauseSource::ParentObserved,
         };
         let valid = [
-            self.version == "m1_run_phase_diagnostic_v2"
-                || (self.version == "m1_run_phase_diagnostic_v1" && self.reported_guard.is_none()),
             !self.run_id.is_nil(),
             self.cause_source == expected_source,
             self.child_error
                 .as_ref()
                 .is_none_or(|c| safe_child_error(c) == c),
             self.cause != DiagnosticCause::ChildError || self.child_error.is_some(),
-            self.elapsed_ms.is_none_or(|ms| ms <= 150000),
+            self.elapsed_ms.is_none_or(|ms| ms <= max_elapsed_ms),
         ];
         valid
             .into_iter()

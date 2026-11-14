@@ -48,11 +48,22 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Current work:** bounded Linux Phase5/startup-C measurement on accepted source — one existing synthetic autonomous episode through the real SDK/CLI path with pre-READY startup-stage attribution and bounded CPU/memory/I/O/process-lifetime evidence, plus a small terminal-diagnosis test correction.
+**Current work:** DW-PRO-V2-CANDIDATE-C (`reasoning-bounded-pro-v2`, Candidate C:
+8192 reasoning-inclusive output tokens, 65536 response bytes) implemented across
+closed profile, permission, immutable intent, migration `0035`, SDK
+clocks/transport, supervision/watchdog bounds and diagnostic-v2 observation,
+verified locally with companion loopback mirror `fixture-genai-v4-pro-low-v2`
+and deterministic Pro-v2 SDK/restricted-SQL/upgrade tests (pending external
+review, CI and PR merge). Numerical authority belongs to
+[ADR-016](adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14).
 
-**Next product action:** review this packet's published evidence and its bounded findings. If it demonstrates no blocker in the tested environment, the separately authorized real-provider + fixture-DNS episode proceeds next; a concrete measured blocker receives a bounded correction first. Windows control-root/ACL qualification remains a separate OPEN lane.
-
-This packet's PR owns its delivery/candidate/CI state on GitHub. The Linux qualification evidence, historical limitations and seals below remain unchanged.
+**Next product action:** complete external review, CI and merge for
+DW-PRO-V2-CANDIDATE-C, then run a separately authorized real-provider +
+fixture-DNS episode with fresh Pro-v2 consent. The prior pilot stopped UNKNOWN
+at D2 output exhaustion; it is not full episode PASS. Phase5 retains its
+historical partial/INCOMPLETE evidence disposition. Windows control-root/ACL
+remains OPEN; Foundation/M0 seals are unchanged. Candidate and CI evidence
+belong to the delivery PR on GitHub.
 
 **Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
 The heartbeat fence contention mechanism confirmed under the diagnostic witness

@@ -392,3 +392,49 @@ fn mismatched_or_corrupt_record_is_unknown_never_absence() {
         Ok(Some(cancelled))
     );
 }
+
+#[test]
+fn reservation_decode_binds_pro_v2_and_historical_capacity_tuples_and_rejects_mixed_tuples() {
+    let mut pro_v2 = record();
+    pro_v2.capacity = ReservedCapacity {
+        calls: 2,
+        request_bytes: 32768,
+        response_bytes: 131072,
+        output_token_capacity: 16384,
+        wall_time_ms: 249000,
+    };
+    assert_eq!(
+        reservation(
+            &mut store(Ok(Some(pro_v2.clone()))),
+            Some(&mut reader()),
+            ReservationAction::Recover,
+            &request(),
+            id(6)
+        ),
+        Ok(Some(pro_v2))
+    );
+
+    for (output_tokens, wall_ms) in [
+        (16384, 129000),
+        (16384, 45000),
+        (16384, 20000),
+        (16384, 250000),
+        (8192, 249000),
+        (8192, 130000),
+    ] {
+        let mut mixed = record();
+        mixed.capacity.output_token_capacity = output_tokens;
+        mixed.capacity.wall_time_ms = wall_ms;
+        assert_eq!(
+            reservation(
+                &mut store(Ok(Some(mixed))),
+                Some(&mut reader()),
+                ReservationAction::Recover,
+                &request(),
+                id(6)
+            ),
+            Err(Fail::Unresolved("inference_record_decode")),
+            "mixed tuple ({output_tokens}, {wall_ms}) must be rejected"
+        );
+    }
+}

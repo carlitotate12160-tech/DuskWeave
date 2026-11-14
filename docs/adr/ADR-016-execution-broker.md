@@ -599,6 +599,99 @@ finite MVP timing and no-effect recovery.
   database-only work: no SDK invocation, no resumed unused repair slot, no
   replay of a lost call and no refill of consumed capacity.
 
+### Pro v2 resource policy: reasoning-bounded-pro-v2 (2026-11-14)
+
+The product owner selected Candidate C and explicitly retained the 65536-byte
+response ceiling on 2026-11-14 (Asia/Jakarta). This amendment specifies the
+new `deepseek-genai-v4-pro-low-v2` profile implemented with schema migration
+`0035`; local fixture/mirror verification does not qualify live provider
+completion or deployment. It is a profile-specific exception to the older fixed
+output4096/timing allocations, not a replacement for them. The existing
+permission, run, pack and semantic-intent shapes remain unchanged.
+
+| Resource / boundary | Fixed value | Meaning |
+| --- | ---: | --- |
+| Output per call | 8192 tokens | Includes provider reasoning; capacity, not predicted usage |
+| Decision reservation | 2 calls; 32768 request bytes; 131072 response bytes; 16384 output tokens; 249000 ms | Full generation/conditional-repair allocation |
+| Two-decision campaign capacity | 4 calls; 65536 request bytes; 262144 response bytes; 32768 output tokens; 498000 ms | Inference wall time only; not the run clock or billing |
+| Request / configuration | 16384 bytes each | Complete UTF-8 entities, including repair material |
+| Response / proposal / text / repair | 65536 / 8192 / 1024 / 2048 bytes | Separate ceilings; response includes reasoning items and whitespace |
+| Context / candidates | 8192 bytes / 8 | Existing selected-lane maximums |
+| Connect | 5000 ms | Inside the original call window |
+| Soft / hard call | 120000 / 122000 ms | Same prepare/handoff origin; hard includes 2000-ms grace |
+| Shared generation/repair | 244000 ms | One original decision origin; no repair reset |
+| Stop / accounting | 2000 / 3000 ms | Existing cancellation and database-disposition reserves |
+| Decision / phase | 249000 / 254000 ms | Shared + stop + accounting; phase includes 5000-ms preparation |
+| Child watchdog | 259000 ms | Independent guard; no extension of phase authority |
+| Acquisition | 60000 ms | Existing one-attempt bound |
+| Run / parent watchdog | 640000 / 650000 ms | Run includes 72000-ms policy margin beyond two phases + acquisition |
+
+These are resource-policy choices, not measured percentiles, a provider SLA or
+a guarantee that the token ceiling can be exhausted before a timer/byte limit.
+The retained pilot measured D2 at 4096 output tokens, 48.446 seconds and 26502
+response bytes; doubling these observations is only an extrapolation. Retaining
+64 KiB avoids changing the SDK HTTP entity boundary. A larger response still
+rejects honestly, without truncation-to-validity, hidden retry or automatic
+budget expansion. The 72000-ms run margin is policy, not calibrated phase cost.
+
+Only fresh consent explicitly naming this profile and its exact operation
+limits can authorize its use. Existing v5 controlled-fixture/run-v3/pack-v3 and
+v6 LIVE/run-v4/pack-v4 shapes may carry it; v6 keeps the existing LIVE binding,
+qualification and current-use predicates. LAB retains its fixture-only pairing.
+One companion closed fixture profile, `fixture-genai-v4-pro-low-v2`, uses
+Genai/OpenAIResp at `http://127.0.0.1:18083/responses`, model `deepseek-v4-pro`,
+low effort, no credential and this same resource tuple. It is restricted to
+v5 controlled-fixture/run-v3/pack-v3 and is rejected for LIVE and LAB. Its sole
+purpose is complete CLI qualification of the new clocks and accounting without
+paid calls; the existing fixture profile remains unchanged. No endpoint override
+or automatic production-to-fixture substitution is introduced. The mirror's
+success is not a successful real-provider Pro-v2 episode.
+
+Older permission versions and all old named profiles retain their exact policy,
+serialization and recovery obligations. No profile substitution, new consent
+version, deadline refill or reuse of historical consent is implied.
+
+The closed Rust profile owns configured values. Restricted SQL independently
+admits the corresponding finite tuple against current Mission consent; reading
+caller-supplied operation limits alone cannot authorize larger limits. Intent,
+SDK invocation, reservation, consumption and recovery remain bound to the same
+profile. Preserve existing accounting units and uncertain-consumption charging.
+
+The selected timing identity must reach CLI bootstrap, parent/child watchdogs,
+phase supervision, the shared decision clock and the SDK call clock. An early
+CLI timing hint selects only an installed finite resource ceiling; it grants no
+authority and must exactly match the request and persisted run before work is
+released. Missing/mismatched hints cannot select the larger envelope. All clocks
+retain their original lifecycle origins and clamp to current authority and
+remaining budget; semantic progress never restarts them. Keep startup READY,
+renewal cadence, lease duration, revocation and stop bounds unchanged.
+
+Diagnostics must preserve actual elapsed observation, including terminal cleanup,
+without silently clipping to the historical 150000-ms ceiling. For the existing
+successor diagnostic-v2 shape, context-free Rust decoding may recognize the
+finite installed maximum of 650000 ms; SQL must bind Pro-v2 diagnostic writes
+and reads to that selected parent-watchdog observation ceiling and retain
+150000 ms for all historical profiles. This generous observation bound does
+not extend any phase or execution deadline. The producer emits checked actual
+elapsed milliseconds, or unavailable when outside the selected observation
+bound; it never clamps a large value into a plausible measurement.
+
+TTL-only expiry still permits accounting/screened historical recording for an
+already admitted call, while stale premises authorize no new effect. STOP,
+withdrawal, Mission/permission expiry, lease loss and integrity/authority changes
+retain their cancellation semantics. Incomplete response is terminal for that
+decision; no schema-repair slot rescues it. Unknown consumption stays charged.
+Inspect/recover remain key-free, database-only, effect-free and non-refilling.
+
+Delivery requires the real producer -> restricted SQL admission -> SDK ->
+accounting path, old-profile refusal controls, fresh and populated-upgrade
+fixtures, and complete D1 -> fixture DNS -> Terrain -> feedback-qualified D2 ->
+inspect/recover proof with a deterministic provider fixture. Paid-provider
+confirmation is a separate authorized episode. This amendment changes no
+proposal schema, instruction template, repair vocabulary, model/effort, routing,
+SDK dependency, target scope, deployment qualification or milestone seal.
+
+
 ## 5. Consequences
 
 The fence is execution-specific coordination, not campaign truth or a generic scheduler.
