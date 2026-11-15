@@ -551,3 +551,40 @@ Retain safe before/after PostgreSQL snapshots as files. A later provider
 attempt stops on failure without automatic retry and must complete D2 plus
 key-free inspect/recover before claiming full episode PASS. LIVE qualification
 and real-target authorization remain separate from this fixture procedure.
+
+### Candidate Linux Pro-v2 LIVE qualification tooling
+
+`boundary/qualify/qualify.sh candidate <subcommand>` prepares the PR154-baseline
+Linux/ARM64 candidate lane (`boundary/qualify/candidate.sh`, `release_descriptor.py`,
+`candidate_database.py`, `candidate_binding.py`):
+
+- **Offline / verification subcommands**: `package`, `verify-descriptor`, and
+  `render-binding` (emits `UNAPPLIED` evidence and exact manifest bytes without
+  touching `/etc`, PostgreSQL, or services).
+- **Privileged host subcommands**: `build-storage`, `build`, `provision-db`,
+  `install`, `bind`, and read-only `reconcile`. Unknown/extra arguments fail
+  closed (`candidate_arguments_refused`) and never invoke legacy `install` or
+  `lab-*` paths.
+- **Storage and source isolation**: `build-storage` validates ext4 mount isolation
+  for `/srv/duskweave-build/linux-prov2-qual-r1` without disturbing retained
+  siblings (`diag-inference-pre-send-20261111r1`, `proposal-diagnostics-r1`,
+  `normal-sc30cand`); packaging checks ELF64/AArch64 headers, seven fixed
+  members, `release-descriptor.json`, and PR154 production source equivalence.
+- **Database and custody**: `provision-db` writes root-only `0400` admin
+  custody (`O_EXCL` + file/dir `fsync`) before the first `createuser`, creates
+  schema-`0035` database `dw_native_linux_prov2_qual_20261115r1` (`dw_lpq15r1`,
+  seven owners, `negative_controls=False`), emits only the six runtime `.dsn`
+  files plus file-mode `environment.json` under
+  `/etc/duskweave/m1/linux-prov2-qual-r1`, and refuses ambient `DEEPSEEK_API_KEY`
+  or `DW_*`/`*_FILE` overrides.
+- **Install and ordered binding**: `install` checks quiescence, read-only
+  sudoers policy, and image architecture, backs up prior binaries, stages each
+  replacement, and reports `INCOMPLETE` on mid-install failure without auto-rollback.
+  `bind` publishes the `LIVE` manifest (`autonomous-dns-genai-live-v1`, global
+  IPv4 resolver, finite window) before one SQL `INSERT` (`BEGIN; ...; COMMIT;`),
+  returning `UNKNOWN` on commit/ack uncertainty so read-only `reconcile` inspects
+  the same `qualification_ref` without retrying `INSERT`.
+- **Readiness limit**: only offline checks and local `dwpg-r3` integration
+  (`tests/m1_candidate_qualification.py`) run in this preparation slice; Oracle
+  host apply and live `deepseek-genai-v4-pro-low-v2` provider campaigns remain
+  unrun until authorized deployment.

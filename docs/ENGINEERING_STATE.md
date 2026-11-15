@@ -48,22 +48,23 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Current work:** DW-PRO-V2-CANDIDATE-C (`reasoning-bounded-pro-v2`, Candidate C:
-8192 reasoning-inclusive output tokens, 65536 response bytes) implemented across
-closed profile, permission, immutable intent, migration `0035`, SDK
-clocks/transport, supervision/watchdog bounds and diagnostic-v2 observation,
-verified locally with companion loopback mirror `fixture-genai-v4-pro-low-v2`
-and deterministic Pro-v2 SDK/restricted-SQL/upgrade tests (pending external
-review, CI and PR merge). Numerical authority belongs to
-[ADR-016](adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14).
+**Current work (`DW-LINUX-PROV2-QUALIFICATION-PREP-R1` — local tooling prep complete):**
+PR #154 (`850b8b3b3a161ebfa051830fc5037bd5aeff04d0`) landed
+`DW-PRO-V2-CANDIDATE-C` (`reasoning-bounded-pro-v2`, migration `0035`, limits in
+[ADR-016](adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14)).
+Candidate Linux/ARM64 operator tooling (`boundary/qualify/qualify.sh candidate ...`,
+`candidate.sh`, `release_descriptor.py`, `candidate_database.py`, `candidate_binding.py`,
+and `Fixture` pre-create custody extension) is prepared on the PR #154 baseline and
+verified offline plus against local PostgreSQL 17.11 (`dwpg-r3`, schema `0035`,
+real custody/ack-loss/SQL-refusal cases). Not yet built, installed, bound, or
+executed on Oracle (`pica-arm-01`); zero provider or target campaigns run.
 
-**Next product action:** complete external review, CI and merge for
-DW-PRO-V2-CANDIDATE-C, then run a separately authorized real-provider +
-fixture-DNS episode with fresh Pro-v2 consent. The prior pilot stopped UNKNOWN
-at D2 output exhaustion; it is not full episode PASS. Phase5 retains its
-historical partial/INCOMPLETE evidence disposition. Windows control-root/ACL
-remains OPEN; Foundation/M0 seals are unchanged. Candidate and CI evidence
-belong to the delivery PR on GitHub.
+**Next product action:** review and accept `DW-LINUX-PROV2-QUALIFICATION-PREP-R1`,
+execute the ordered candidate steps on `pica-arm-01` under operator custody, and
+run a separately authorized `deepseek-genai-v4-pro-low-v2` verification episode.
+The prior pilot stopped `UNKNOWN` at D2 output exhaustion (not full episode PASS);
+Phase5 retains its historical partial/`INCOMPLETE` disposition; Windows
+control-root/ACL remains `OPEN`; Foundation/M0 seals are unchanged.
 
 **Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
 The heartbeat fence contention mechanism confirmed under the diagnostic witness

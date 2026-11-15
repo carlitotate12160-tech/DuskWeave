@@ -205,18 +205,47 @@ def validate_action(label, args, report):
         raise RuntimeError("native_report_collision")
 
 
+def _validate_custody_options(custody_callback, negative_controls):
+    if type(negative_controls) is not bool:
+        raise RuntimeError("native_custody_argument_refused")
+    if custody_callback is not None and (not callable(custody_callback) or negative_controls):
+        raise RuntimeError("native_custody_callback_refused")
+
+
+def _validate_fixture_options(container, kind, ci, schema_revision, role_prefix,
+                              custody_callback, negative_controls):
+    _validate_custody_options(custody_callback, negative_controls)
+    if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
+        raise RuntimeError("native_schema_revision_refused")
+    if container not in ("dwpg-r3", "dwpg") and not (schema_revision >= "0030" and container == LIVE_CONTAINER):
+        raise RuntimeError("native_service_unqualified")
+    if ci and container != "dwpg":
+        raise RuntimeError("native_service_unqualified")
+    if kind not in KINDS:
+        raise RuntimeError("native_identifier_refused")
+    return validated_role_prefix(role_prefix)
+
+
+def _owner_list(schema_revision, use_negative):
+    owners = ["admin", "core", "broker", "cognition", "history", "terrain"]
+    if schema_revision >= "0030":
+        owners.append("stop")
+    if use_negative:
+        owners.append("otherbroker")
+    return owners
+
+
+def _owner_dsn(role, password, database):
+    return f"postgresql://{role}:{quote(password, safe='')}@127.0.0.1:5432/{database}?sslmode=disable"
+
+
 class Fixture:
-    def __init__(self, container, kind, ci=False, database=None, schema_revision="0021", role_prefix="dw_nf60"):
-        if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
-            raise RuntimeError("native_schema_revision_refused")
+    def __init__(self, container, kind, ci=False, database=None, schema_revision="0021",
+                 role_prefix="dw_nf60", custody_callback=None, negative_controls=True):
+        self.role_prefix = _validate_fixture_options(
+            container, kind, ci, schema_revision, role_prefix, custody_callback, negative_controls
+        )
         self.schema_revision = schema_revision
-        if container not in ("dwpg-r3", "dwpg") and not (schema_revision >= "0030" and container == LIVE_CONTAINER):
-            raise RuntimeError("native_service_unqualified")
-        if ci and container != "dwpg":
-            raise RuntimeError("native_service_unqualified")
-        if kind not in KINDS:
-            raise RuntimeError("native_identifier_refused")
-        self.role_prefix = validated_role_prefix(role_prefix)
         self.container = container
         # Container names allow the existing owned dash spelling, never SQL use.
         self.database = database_name(kind, database)
@@ -229,24 +258,43 @@ class Fixture:
         service_qualified(container, ci=ci, version_prefix="17.", schema_revision=schema_revision)
         if self.sql(f"SELECT 1 FROM pg_database WHERE datname='{self.database}'", database="postgres").strip():
             raise RuntimeError("native_database_collision")
-        self.role_suffix = secrets.token_hex(6)
-        suffix = self.role_suffix
-        owners = ["admin", "core", "broker", "cognition", "history", "terrain"]
-        if schema_revision >= "0030":
-            owners.append("stop")
-        if kind == "fixture":
-            owners.append("otherbroker")
-        self.roles = {name: identifier(f"{self.role_prefix}_{suffix}_{name}") for name in owners}
+        use_negative = (kind == "fixture") and negative_controls
+        passwords, _ = self._plan_owner_credentials(
+            schema_revision, use_negative, custody_callback
+        )
         self.migration_actor = "postgres" if ci else self.roles["admin"]
+        self._provision_roles_and_groups(passwords, schema_revision)
+        self._configure_env(passwords, ci)
+        if use_negative:
+            self.negative_owners()
+
+    def _plan_owner_credentials(self, schema_revision, use_negative, custody_callback):
+        self.role_suffix = secrets.token_hex(6)
+        owners = _owner_list(schema_revision, use_negative)
+        self.roles = {name: identifier(f"{self.role_prefix}_{self.role_suffix}_{name}") for name in owners}
         for role in self.roles.values():
             if self.sql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'", database="postgres").strip():
                 raise RuntimeError("native_login_collision")
-        passwords = {}
+        passwords = {name: secrets.token_urlsafe(36) for name in self.roles}
+        dsns = {name: _owner_dsn(role, passwords[name], self.database) for name, role in self.roles.items()}
+        self.secrets.extend(passwords.values())
+        if custody_callback is not None:
+            custody_callback({
+                "database": self.database,
+                "schema_revision": schema_revision,
+                "role_prefix": self.role_prefix,
+                "role_suffix": self.role_suffix,
+                "roles": dict(self.roles),
+                "passwords": dict(passwords),
+                "dsns": dict(dsns),
+                "runtime_owners": tuple(name for name in owners if name != "admin"),
+            })
+        return passwords, dsns
+
+    def _provision_roles_and_groups(self, passwords, schema_revision):
         for name, role in self.roles.items():
-            password = secrets.token_urlsafe(36)
-            passwords[name] = password
-            self.secrets.append(password)
-            private_run(["docker", "exec", "-i", container, "createuser", "-U", "postgres",
+            password = passwords[name]
+            private_run(["docker", "exec", "-i", self.container, "createuser", "-U", "postgres",
                          "--no-superuser", "--no-createdb", "--no-createrole", "--no-replication",
                          "--no-bypassrls", "--pwprompt", role], password + "\n" + password + "\n")
         self.sql(f"CREATE DATABASE {self.database} OWNER {self.roles['admin']}", database="postgres")
@@ -257,22 +305,21 @@ class Fixture:
             self.sql(f"DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='{group}') "
                      f"THEN CREATE ROLE {group} NOLOGIN NOSUPERUSER NOBYPASSRLS; END IF; END $$")
         self.migrate(initial=True)
-        for name, groups in (("core", "dw_runtime"), ("broker", "dw_m1_broker"),
-                             ("otherbroker", "dw_m1_broker"),
-                             ("cognition", "dw_m1_cognition"), ("history", "dw_m1_trajectory"),
-                             ("terrain", "dw_m1_terrain"), ("stop", "dw_m1_stop_writer")):
-            if name not in self.roles:
-                continue
-            self.sql(f"GRANT {groups} TO {self.roles[name]}")
+        for name, group in (("core", "dw_runtime"), ("broker", "dw_m1_broker"),
+                            ("otherbroker", "dw_m1_broker"),
+                            ("cognition", "dw_m1_cognition"), ("history", "dw_m1_trajectory"),
+                            ("terrain", "dw_m1_terrain"), ("stop", "dw_m1_stop_writer")):
+            if name in self.roles:
+                self.sql(f"GRANT {group} TO {self.roles[name]}")
+
+    def _configure_env(self, passwords, ci):
         variables = {"admin": "DW_TEST_ADMIN_DATABASE_URL", "core": "DW_TEST_DATABASE_URL",
                      "broker": "DW_INFERENCE_BROKER_DATABASE_URL", "cognition": "DW_COGNITION_DATABASE_URL",
                      "history": "DW_TRAJECTORY_DATABASE_URL", "terrain": "DW_TERRAIN_DATABASE_URL",
                      "otherbroker": "DW_NATIVE_OTHER_BROKER_DATABASE_URL", "stop": "DW_STOP_WRITER_DATABASE_URL"}
         for owner, variable in variables.items():
-            if owner not in self.roles:
-                continue
-            self.env[variable] = (f"postgresql://{self.roles[owner]}:{quote(passwords[owner], safe='')}"
-                                  f"@127.0.0.1:5432/{self.database}?sslmode=disable")
+            if owner in self.roles:
+                self.env[variable] = _owner_dsn(self.roles[owner], passwords[owner], self.database)
         if ci:
             # CI's isolated cluster retains its explicitly supplied administrative
             # DSN for the legacy suite; local native tests never use legacy setup.
@@ -283,8 +330,6 @@ class Fixture:
         for variable in variables.values():
             if variable in self.env:
                 self.secrets.append(self.env[variable])
-        if kind == "fixture":
-            self.negative_owners()
 
     def negative_owners(self):
         """Fresh hostile-principal controls; no retained principal is widened."""

@@ -329,3 +329,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/qualification_custody.rs"]
 mod custody_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/m1_live_dns/units/candidate_binding.rs"]
+mod candidate_binding_tests;

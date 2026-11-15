@@ -13,6 +13,7 @@ RELEASE_IMAGE=dw-live-dns-20261030:candidate
 # Deployment custody and the pinned frozen-bundle map live beside this script;
 # a missing or moved module fails closed rather than falling back elsewhere.
 . "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/deployment_custody.sh"
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/candidate.sh"
 refuse() { printf '%s\n' "$1" >&2; exit 1; }
 valid_image_ref() {
     # One explicit unqualified name:tag; never a registry/path or digest form.
@@ -133,28 +134,7 @@ PY
 build_release() {
     local image_ref=$1
     check_build_storage
-    export PATH=$ROOT/toolchains/rust-1.94.1/bin:$ROOT/toolchains/go1.27.3/bin:$PATH
-    export CARGO_HOME=$ROOT/build/cargo-home CARGO_TARGET_DIR=$BUILD/normal
-    export GOCACHE=$BUILD/go-cache GOTMPDIR=$BUILD/tmp/go TMPDIR=$BUILD/tmp/build
-    for component_dir in "$CARGO_TARGET_DIR" "$GOCACHE" "$GOTMPDIR" "$TMPDIR"; do
-        install_storage_dir "$component_dir"
-    done
-    cd "$SOURCE"
-    cargo build --locked --offline --release --features fixture-supervisor --bin duskweave --bin dw-boundary-launcher
-    local output=$BUILD/go-release
-    install_storage_dir "$output"
-    cd boundary
-    for arch in arm64 amd64; do
-        CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/dw-dns-capture-$arch" ./cmd/dw-dns-capture
-        CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/dw-dns-exporter-$arch" ./cmd/dw-dns-exporter
-    done
-    CGO_ENABLED=0 go build -trimpath -o "$output/dns-lab" ./qualify/dns_lab.go
-    local context=$BUILD/boundary-release
-    install_storage_dir "$context"
-    install -m 0555 "$output/dw-dns-capture-arm64" "$context/dw-dns-capture"
-    install -m 0555 "$output/dw-dns-exporter-arm64" "$context/dw-dns-exporter"
-    install -m 0444 Dockerfile "$context/Dockerfile"
-    docker build --network none --tag "$image_ref" "$context"
+    build_release_into "$image_ref" "$SOURCE" "$BUILD"
 }
 
 install_release() {
@@ -356,6 +336,11 @@ build_only() {
 }
 
 main() {
+    if [[ ${1:-} == candidate ]]; then
+        shift
+        candidate_main "$@"
+        return
+    fi
     require_deployment_host
     case "${1:-}" in
         service) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_service ;;
