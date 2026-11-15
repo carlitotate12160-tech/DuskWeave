@@ -128,18 +128,37 @@ fn render_binding_refuses_lab_resolver_6to4_and_lab_profile_and_accepts_neighbor
             release_sha256: h.clone(),
             resolver_ipv4: ip.into(),
         };
-        assert_eq!(b.validate_for(LIVE_RUN_PROFILE).is_ok(), expected_ok, "rust validate {ip}");
+        assert_eq!(
+            b.validate_for(LIVE_RUN_PROFILE).is_ok(),
+            expected_ok,
+            "rust validate {ip}"
+        );
         if expected_ok {
             let out = Command::new("bash")
                 .arg(format!("{root}/boundary/qualify/qualify.sh"))
                 .args([
-                    "candidate", "render-binding",
-                    "--release-sha256", &h, "--launcher-sha256", &h,
-                    "--capture-sha256", &h, "--exporter-sha256", &h,
-                    "--image-digest", &format!("sha256:{h}"),
-                    "--boot-id", "11111111-1111-4111-8111-111111111111",
-                    "--core-uid", "1001", "--resolver-ipv4", ip,
-                    "--valid-from-ms", "1000", "--valid-until-ms", "4000000000000",
+                    "candidate",
+                    "render-binding",
+                    "--release-sha256",
+                    &h,
+                    "--launcher-sha256",
+                    &h,
+                    "--capture-sha256",
+                    &h,
+                    "--exporter-sha256",
+                    &h,
+                    "--image-digest",
+                    &format!("sha256:{h}"),
+                    "--boot-id",
+                    "11111111-1111-4111-8111-111111111111",
+                    "--core-uid",
+                    "1001",
+                    "--resolver-ipv4",
+                    ip,
+                    "--valid-from-ms",
+                    "1000",
+                    "--valid-until-ms",
+                    "4000000000000",
                 ])
                 .output()
                 .expect("render neighbor ip");
