@@ -116,12 +116,13 @@ class OrderedPublicationAndReconcileTests(unittest.TestCase):
         cfg = base / "cfg"
         cfg.mkdir(mode=0o755, exist_ok=True)
         os.chmod(cfg, 0o755)
+        pub_kw = {"now_ms": 2000, **extra}
         return candidate_binding.publish_binding(
             identities=sample_identities("c"),
             installed_identities=sample_identities("c") if installed_check is None else installed_check,
-            resolver_ipv4="9.9.9.9", valid_from_ms=1000, valid_until_ms=4_000_000_000_000, now_ms=2000,
+            resolver_ipv4="9.9.9.9", valid_from_ms=1000, valid_until_ms=4_000_000_000_000,
             manifest_path=cfg / "deployment.json", intent_dir=base / "intent", sql_executor=sql_exec,
-            env=self._base_env(), expected_uids=(os.geteuid(),), stop_at=base, replacer=replace_hook, **extra,
+            env=self._base_env(), expected_uids=(os.geteuid(),), stop_at=base, replacer=replace_hook, **pub_kw,
         )
 
     def test_manifest_publish_failure_executes_zero_sql(self):
@@ -234,3 +235,196 @@ class OrderedPublicationAndReconcileTests(unittest.TestCase):
             res = self._run_publish(base, good_sql, replace_hook=fail_rcpt_only)
             self.assertEqual(res["status"], "UNKNOWN")
             self.assertIn("receipt_persist_failed", res["reason"])
+
+    def test_sql_precheck_timeout_returns_bounded_receipt_with_zero_inserts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            os.chmod(base, 0o755)
+            cfg = base / "cfg"
+            cfg.mkdir(mode=0o755)
+            os.chmod(cfg, 0o755)
+            prior = cfg / "deployment.json"
+            prior.write_bytes(b'{"prior":true}\n')
+            os.chmod(prior, 0o444)
+            state = {"inserts": 0}
+
+            def precheck_timeout(op: str, _arg=None):
+                if op == "exists":
+                    raise TimeoutError("postgresql://admin:secretpw@127.0.0.1:5432/dw")
+                state["inserts"] += 1
+                return None
+
+            res = self._run_publish(base, precheck_timeout, descriptor_sha256="e" * 64)
+            self.assertEqual(res["status"], "UNKNOWN")
+            self.assertFalse(res["current_qualified"])
+            self.assertFalse(res["row_manifest_consistent"])
+            self.assertEqual(res["last_phase"], "sql_precheck")
+            self.assertEqual(state["inserts"], 0)
+            self.assertEqual(prior.read_bytes(), b'{"prior":true}\n')
+            self.assertNotIn("secretpw", res["reason"])
+            self.assertNotIn("postgresql://", res["reason"])
+            receipt_file = base / "intent" / f"receipt-{res['qualification_ref']}.json"
+            self.assertTrue(receipt_file.exists())
+
+    def test_post_insert_clock_and_host_failures_contained(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            os.chmod(base, 0o755)
+            for idx, fail_mode in enumerate(("clock", "host")):
+                sub = base / f"case-{idx}"
+                sub.mkdir(mode=0o755)
+                os.chmod(sub, 0o755)
+                state = {"rows": {}, "writes": 0, "ticks": 0}
+
+                def sql_ok(op: str, row=None, st=state):
+                    if op == "exists":
+                        return row in st["rows"]
+                    if op == "insert":
+                        st["writes"] += 1
+                        st["rows"][row["qualification_ref"]] = dict(row)
+                        return None
+                    return st["rows"].get(row)
+
+                def tick(st=state, mode=fail_mode):
+                    st["ticks"] += 1
+                    if st["ticks"] > 1 and mode == "clock":
+                        raise RuntimeError("clock_unavailable")
+                    return 2000
+
+                reobs = (lambda: (_ for _ in ()).throw(candidate_binding.HostObservationError("UNKNOWN", "reobserve_failed"))) if fail_mode == "host" else None
+                res = self._run_publish(sub, sql_ok, clock_fn=tick, host_reobserver=reobs, now_ms=None)
+                self.assertIn(res["status"], ("INCOMPLETE", "UNKNOWN"))
+                self.assertFalse(res["current_qualified"])
+                self.assertTrue(res["row_manifest_consistent"])
+                self.assertEqual(state["writes"], 1)
+                self.assertEqual(
+                    res["last_phase"],
+                    "final_clock_check" if fail_mode == "clock" else "final_host_reobserve",
+                )
+                self.assertTrue((sub / "intent" / f"receipt-{res['qualification_ref']}.json").exists())
+
+    def test_receipt_persist_oserror_after_commit_cannot_return_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            os.chmod(base, 0o755)
+            rows = {}
+
+            def good_sql(op: str, row=None):
+                if op == "exists":
+                    return row in rows
+                if op == "insert":
+                    rows[row["qualification_ref"]] = dict(row)
+                    return None
+                return rows.get(row)
+
+            def fail_rcpt(s: Path, d: Path):
+                if "receipt-" in d.name:
+                    raise OSError("postgresql://leak:pw@127.0.0.1/db")
+                os.replace(s, d)
+
+            res = self._run_publish(base, good_sql, replace_hook=fail_rcpt)
+            self.assertEqual(res["status"], "UNKNOWN")
+            self.assertFalse(res["current_qualified"])
+            self.assertIn("receipt_persist_failed", res["reason"])
+            self.assertNotIn("postgresql://", res["reason"])
+
+    def test_reconcile_rejects_lab_extra_dup_missing_and_bad_types_even_with_matching_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            os.chmod(base, 0o755)
+            qref = "22222222-2222-4222-8222-222222222222"
+            base_obj = {
+                **sample_identities("c"),
+                "qualification_ref": qref,
+                "purpose": "LIVE",
+                "run_profile": "autonomous-dns-genai-live-v1",
+                "resolver_ipv4": "9.9.9.9",
+                "valid_from_ms": 1000,
+                "valid_until_ms": 4_000_000_000_000,
+            }
+            cases = [
+                json.dumps({**base_obj, "purpose": "LAB", "run_profile": "autonomous-dns-genai-lab-v1", "extra": 1}).encode(),
+                json.dumps({**base_obj, "unknown_field": True}).encode(),
+                ('{"purpose":"LIVE","purpose":"LAB",' + json.dumps({k: v for k, v in base_obj.items() if k != "purpose"})[1:]).encode(),
+                json.dumps({k: v for k, v in base_obj.items() if k != "resolver_ipv4"}).encode(),
+                json.dumps({**base_obj, "core_uid": True}).encode(),
+                json.dumps({**base_obj, "valid_from_ms": True}).encode(),
+                json.dumps({**base_obj, "resolver_ipv4": "192.88.99.1"}).encode(),
+                json.dumps({**base_obj, "boot_id": "00000000-0000-0000-0000-000000000000"}).encode(),
+            ]
+            for idx, raw in enumerate(cases):
+                sub = base / f"bad-{idx}"
+                sub.mkdir(mode=0o755)
+                os.chmod(sub, 0o755)
+                mpath = sub / "deployment.json"
+                mpath.write_bytes(raw)
+                os.chmod(mpath, 0o444)
+                m_sha = hashlib.sha256(raw).hexdigest()
+                parsed = json.loads(raw.decode("utf-8"))
+                row = {k: parsed.get(k) for k in candidate_binding.SQL_COLUMNS if k != "manifest_sha256"}
+                row["manifest_sha256"] = m_sha
+                res = candidate_binding.reconcile_binding(
+                    qualification_ref=qref, manifest_path=mpath, installed_identities=sample_identities("c"),
+                    sql_reader=lambda _q, r=row: r, expected_uids=(os.geteuid(),), stop_at=sub, clock_fn=lambda: 2000,
+                )
+                self.assertEqual(res["status"], "INCOMPLETE", f"case {idx}: {res}")
+                self.assertFalse(res["row_manifest_consistent"], f"case {idx}: {res}")
+                self.assertFalse(res["current_qualified"], f"case {idx}: {res}")
+
+            good_raw = json.dumps(base_obj, sort_keys=True, separators=(",", ":")).encode()
+            good_dir = base / "clock-fail"
+            good_dir.mkdir(mode=0o755)
+            os.chmod(good_dir, 0o755)
+            good_path = good_dir / "deployment.json"
+            good_path.write_bytes(good_raw)
+            os.chmod(good_path, 0o444)
+            good_row = {**{k: base_obj[k] for k in candidate_binding.SQL_COLUMNS if k != "manifest_sha256"}, "manifest_sha256": hashlib.sha256(good_raw).hexdigest()}
+            clk_res = candidate_binding.reconcile_binding(
+                qualification_ref=qref, manifest_path=good_path, installed_identities=sample_identities("c"),
+                sql_reader=lambda _q: good_row, expected_uids=(os.geteuid(),), stop_at=good_dir,
+                clock_fn=lambda: (_ for _ in ()).throw(RuntimeError("clock_err")),
+            )
+            self.assertEqual(clk_res["status"], "INCOMPLETE")
+            self.assertTrue(clk_res["row_manifest_consistent"])
+            self.assertFalse(clk_res["current_qualified"])
+
+    def test_quiescence_reconcile_sql_timeout_nan_and_oversize_contained(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            os.chmod(base, 0o755)
+            state = {"writes": 0}
+            def no_write_sql(op: str, _row=None):
+                if op == "exists":
+                    return False
+                state["writes"] += 1
+                return None
+            q_res = self._run_publish(base, no_write_sql, quiescence_checker=lambda: (_ for _ in ()).throw(TimeoutError("postgresql://q:pw@h/db")))
+            self.assertEqual(q_res["status"], "UNKNOWN")
+            self.assertEqual(q_res["last_phase"], "quiescence_recheck")
+            self.assertEqual(state["writes"], 0)
+            self.assertNotIn("postgresql://", q_res["reason"])
+
+            qref = "33333333-3333-4333-8333-333333333333"
+            for label, payload in (("nan", b'{"valid_from_ms":NaN}'), ("big", b'{"extra":"' + b"a" * 16380 + b'"}')):
+                sub = base / label
+                sub.mkdir(mode=0o755)
+                os.chmod(sub, 0o755)
+                mp = sub / "deployment.json"
+                mp.write_bytes(payload)
+                os.chmod(mp, 0o444)
+                r = candidate_binding.reconcile_binding(qualification_ref=qref, manifest_path=mp, installed_identities=sample_identities("c"), sql_reader=lambda _q: None, expected_uids=(os.geteuid(),), stop_at=sub)
+                self.assertEqual(r["status"], "INCOMPLETE")
+                self.assertFalse(r["row_manifest_consistent"])
+                self.assertFalse(r["current_qualified"])
+
+            ok_dir = base / "sql-timeout"
+            ok_dir.mkdir(mode=0o755)
+            os.chmod(ok_dir, 0o755)
+            ok_p = ok_dir / "deployment.json"
+            ok_raw = json.dumps({**sample_identities("c"), "qualification_ref": qref, "purpose": "LIVE", "run_profile": "autonomous-dns-genai-live-v1", "resolver_ipv4": "9.9.9.9", "valid_from_ms": 1000, "valid_until_ms": 4_000_000_000_000}, sort_keys=True, separators=(",", ":")).encode()
+            ok_p.write_bytes(ok_raw)
+            os.chmod(ok_p, 0o444)
+            s_res = candidate_binding.reconcile_binding(qualification_ref=qref, manifest_path=ok_p, installed_identities=sample_identities("c"), sql_reader=lambda _q: (_ for _ in ()).throw(TimeoutError("postgresql://r:pw@h/db")), expected_uids=(os.geteuid(),), stop_at=ok_dir)
+            self.assertEqual(s_res["status"], "UNKNOWN")
+            self.assertFalse(s_res["row_manifest_consistent"])
+            self.assertNotIn("postgresql://", s_res["reason"])
