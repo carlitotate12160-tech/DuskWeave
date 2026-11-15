@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,6 +146,25 @@ check_candidate_build_storage "{build_mount}" "{cand}" no_nested_mount
 
 
 class ReleaseDescriptorAndPR154Tests(unittest.TestCase):
+    def test_real_qualification_registration_preserves_exact_production_bytes(self):
+        current = (ROOT / "src/bin/dw-boundary-launcher/qualification.rs").read_text()
+        suffix = "\n" + release_descriptor.QUAL_TEST_TAIL
+        self.assertTrue(current.endswith(suffix))
+        baseline = current.removesuffix(suffix)
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            target = repo / "src/bin/dw-boundary-launcher/qualification.rs"
+            target.parent.mkdir(parents=True)
+            with mock.patch.object(release_descriptor, "_run_git", return_value=baseline):
+                target.write_text(current)
+                release_descriptor._check_qualification_rs(repo)
+                target.write_text(baseline)
+                release_descriptor._check_qualification_rs(repo)
+                for invalid in (current + suffix, current.replace("fn host_sinks()", "fn changed_host_sinks()", 1)):
+                    target.write_text(invalid)
+                    with self.assertRaises(release_descriptor.ReleaseError):
+                        release_descriptor._check_qualification_rs(repo)
+
     def _populate_source_and_artifacts(self, base: Path) -> tuple[Path, Path]:
         src, art = base / "src", base / "artifacts"
         (src / "third_party" / "genai").mkdir(parents=True)

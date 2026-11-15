@@ -181,7 +181,7 @@ def _check_qualification_rs(source_root: Path) -> None:
     qual_path = source_root / "src/bin/dw-boundary-launcher/qualification.rs"
     head_blob = _run_git(source_root, ["cat-file", "blob", f"{PR154_BASELINE_COMMIT}:src/bin/dw-boundary-launcher/qualification.rs"])
     cur_text = qual_path.read_text(encoding="utf-8")
-    if cur_text.replace(QUAL_TEST_TAIL, "") != head_blob and cur_text != head_blob:
+    if cur_text not in (head_blob, head_blob + "\n" + QUAL_TEST_TAIL):
         raise ReleaseError("qualification_rs_production_drift")
 
 
