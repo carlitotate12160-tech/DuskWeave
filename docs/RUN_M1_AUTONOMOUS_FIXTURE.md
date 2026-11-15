@@ -555,36 +555,54 @@ and real-target authorization remain separate from this fixture procedure.
 ### Candidate Linux Pro-v2 LIVE qualification tooling
 
 `boundary/qualify/qualify.sh candidate <subcommand>` prepares the PR154-baseline
-Linux/ARM64 candidate lane (`boundary/qualify/candidate.sh`, `release_descriptor.py`,
-`candidate_database.py`, `candidate_binding.py`):
+Linux/ARM64 candidate lane (`boundary/qualify/candidate.sh`, `candidate_files.py`,
+`candidate_postgres.py`, `candidate_host.py`, `candidate_install.py`,
+`release_descriptor.py`, `candidate_database.py`, `candidate_binding.py`):
 
 - **Offline / verification subcommands**: `package`, `verify-descriptor`, and
   `render-binding` (emits `UNAPPLIED` evidence and exact manifest bytes without
   touching `/etc`, PostgreSQL, or services).
-- **Privileged host subcommands**: `build-storage`, `build`, `provision-db`,
-  `install`, `bind`, and read-only `reconcile`. Unknown/extra arguments fail
-  closed (`candidate_arguments_refused`) and never invoke legacy `install` or
-  `lab-*` paths.
+- **Privileged host gate and driver custody**: privileged `candidate`
+  subcommands verify `/etc/duskweave/m1/.live-dns-owner` (`0400`) and verify the
+  pinned driver module tree (`candidate.sh`, Python `candidate_*` /
+  `release_descriptor.py` modules, and `tests/support/m1_native_bootstrap.py`)
+  against clean `HEAD` before lazily sourcing `candidate.sh`. Unknown/extra
+  arguments fail closed (`candidate_arguments_refused`) and never invoke legacy
+  `install` or `lab-*` paths.
 - **Storage and source isolation**: `build-storage` validates ext4 mount isolation
-  for `/srv/duskweave-build/linux-prov2-qual-r1` without disturbing retained
-  siblings (`diag-inference-pre-send-20261111r1`, `proposal-diagnostics-r1`,
-  `normal-sc30cand`); packaging checks ELF64/AArch64 headers, seven fixed
-  members, `release-descriptor.json`, and PR154 production source equivalence.
+  plus `/proc/self/mountinfo` nested-mount safety for
+  `/srv/duskweave-build/linux-prov2-qual-r1` without disturbing retained siblings
+  (`diag-inference-pre-send-20261111r1`, `proposal-diagnostics-r1`,
+  `normal-sc30cand`); `build` isolates `STAGE` subdirectories and refuses target
+  collisions; `package` / `verify-descriptor` check ELF64/AArch64 headers, seven
+  fixed members, `release-descriptor.json`, and PR154 production source equivalence
+  with a clean `git -C` environment immune to parent `GIT_DIR`/`GIT_WORK_TREE`.
 - **Database and custody**: `provision-db` writes root-only `0400` admin
   custody (`O_EXCL` + file/dir `fsync`) before the first `createuser`, creates
   schema-`0035` database `dw_native_linux_prov2_qual_20261115r1` (`dw_lpq15r1`,
-  seven owners, `negative_controls=False`), emits only the six runtime `.dsn`
-  files plus file-mode `environment.json` under
+  seven owners, `negative_controls=False`), verifies exact `0035` function
+  signatures/attributes/body hashes and all seven direct role logins over
+  key-free stdin transport (`INNER_PSQL_SH`), emits mode-`0400` `duskweave-core`-owned
+  runtime `.dsn` files plus file-mode `environment.json` under
   `/etc/duskweave/m1/linux-prov2-qual-r1`, and refuses ambient `DEEPSEEK_API_KEY`
   or `DW_*`/`*_FILE` overrides.
-- **Install and ordered binding**: `install` checks quiescence, read-only
-  sudoers policy, and image architecture, backs up prior binaries, stages each
-  replacement, and reports `INCOMPLETE` on mid-install failure without auto-rollback.
-  `bind` publishes the `LIVE` manifest (`autonomous-dns-genai-live-v1`, global
-  IPv4 resolver, finite window) before one SQL `INSERT` (`BEGIN; ...; COMMIT;`),
-  returning `UNKNOWN` on commit/ack uncertainty so read-only `reconcile` inspects
-  the same `qualification_ref` without retrying `INSERT`.
-- **Readiness limit**: only offline checks and local `dwpg-r3` integration
-  (`tests/m1_candidate_qualification.py`) run in this preparation slice; Oracle
-  host apply and live `deepseek-genai-v4-pro-low-v2` provider campaigns remain
-  unrun until authorized deployment.
+- **Install and ordered binding**: `install` resolves fixed `duskweave-core`
+  (no `--runtime-gid`), checks quiescence (single-sink backups, sockets,
+  containers, retained databases), read-only sudoers policy, and image/archive
+  AArch64 digests, stages replacements atomically (cleaning temporary files on
+  pre-replace abort), emits non-secret receipts (`custody_sha256` omitted), and
+  reports `INCOMPLETE` on mid-install failure without auto-rollback. `bind`
+  validates global IPv4 resolver addresses (rejecting reserved/special ranges
+  such as `192.88.99.0/24`) and bounded `<= 16384`-byte `LIVE` manifests
+  (`autonomous-dns-genai-live-v1`, finite window) before one SQL `INSERT`
+  (`BEGIN; ...; COMMIT;`), returning `UNKNOWN` on commit/ack uncertainty so
+  read-only `reconcile` verifies both DB state and installed image/worker digests
+  without retrying `INSERT`.
+- **Readiness limit**: only offline checks, unprivileged synthetic host/container
+  tests, and local `dwpg-r3` PostgreSQL 17.11 integration
+  (`tests/m1_candidate_qualification.py`, verifying `duskweave inspect` on the
+  emitted `0400` config, `2` direct SQL constraint refusals, and `1`
+  application `qualification_ref_collision` precheck) run in this preparation
+  slice; Oracle ARM64 host execution, root/`duskweave-core` ownership, and live
+  `deepseek-genai-v4-pro-low-v2` campaigns remain unrun until authorized
+  deployment.

@@ -4,15 +4,27 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
-import stat
-import subprocess
-import sys
 from pathlib import Path
+import re
+import sys
 
-ALLOWED_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "TZ", "PYTHONDONTWRITEBYTECODE", "DW_TEST_FIXTURE_SUPERVISOR")
+from candidate_files import (
+    FileCustodyError,
+    create_exclusive_dir,
+    reject_sensitive_env,
+    require_safe_ancestors,
+    verify_driver_custody,
+    write_exclusive_verified,
+)
+from candidate_host import HostObservationError, PRIVILEGED_SCOPE, resolve_core_account
+from candidate_postgres import PostgresError, verify_schema_0035_and_identities
+
+ALLOWED_ENV_KEYS = (
+    "PATH", "HOME", "LANG", "LC_ALL", "TERM", "TZ",
+    "PYTHONDONTWRITEBYTECODE", "DW_TEST_FIXTURE_SUPERVISOR",
+)
 RUNTIME_OWNERS = ("core", "broker", "cognition", "history", "terrain", "stop")
 ENV_FILE_MAP = {
     "core": "DW_DATABASE_URL_FILE",
@@ -22,124 +34,28 @@ ENV_FILE_MAP = {
     "terrain": "DW_TERRAIN_DATABASE_URL_FILE",
     "stop": "DW_STOP_WRITER_DATABASE_URL_FILE",
 }
-SCHEMA_0035_FUNCTIONS = (
-    "execution.inference_profile_matches",
-    "execution.inference_reservation",
-    "execution.inference_window_ms",
-    "execution.inference_may_send",
-    "execution.genai_expected_intent",
-    "execution.inference_call_state",
-    "execution.run_start",
-    "execution.run_current",
-    "execution.assert_autonomous_pack",
-    "execution.run_phase_diagnostic",
-)
-CONTROL_ROOT = "/run/duskweave/m1"
+HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
+DEFAULT_MIGRATION = Path(__file__).resolve().parents[2] / "migrations" / "0035_pro_budget_c_v2.sql"
 
 
 class CandidateDatabaseError(RuntimeError):
     """Sanitized failure carrying a closed operational status."""
 
-    def __init__(self, status: str, reason: str):
+    def __init__(self, status: str, reason: str) -> None:
         super().__init__(reason)
         self.status = status
         self.reason = reason
 
 
 def sanitize_env(raw_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Refuse ambient provider or DB override variables and return allowlisted env."""
-    source = os.environ if raw_env is None else raw_env
-    for key in source:
-        if key == "DW_TEST_FIXTURE_SUPERVISOR":
-            continue
-        if key == "DEEPSEEK_API_KEY" or key.startswith("DW_") or key.endswith("_FILE"):
-            raise CandidateDatabaseError("REFUSED", f"forbidden_env_variable:{key}")
+    """Refuse ambient provider, DB, or path override variables and return allowlisted env."""
+    source = reject_sensitive_env(
+        raw_env,
+        error_cls=lambda s, r: CandidateDatabaseError(s, r.replace("forbidden_release_env:", "forbidden_env_variable:")),
+    )
     cleaned = {key: source[key] for key in ALLOWED_ENV_KEYS if key in source}
     cleaned["PYTHONDONTWRITEBYTECODE"] = "1"
     return cleaned
-
-
-def _fsync_dir(directory: Path) -> None:
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    fd = os.open(directory, flags)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-
-
-def _require_safe_ancestors(target_dir: Path, expected_uids: tuple[int, ...]) -> None:
-    resolved = Path("/")
-    for part in target_dir.parts[1:]:
-        resolved = resolved / part
-        if resolved.is_symlink():
-            raise CandidateDatabaseError("REFUSED", f"symlink_ancestor_refused:{resolved}")
-    if not target_dir.is_dir():
-        raise CandidateDatabaseError("REFUSED", f"directory_missing:{target_dir}")
-    st = os.lstat(target_dir)
-    if stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o022) != 0 or st.st_uid not in expected_uids:
-        raise CandidateDatabaseError("REFUSED", f"unprotected_directory:{target_dir}")
-
-
-def write_exclusive_custody(custody_file: Path, plan: dict, expected_uids: tuple[int, ...]) -> None:
-    """Create a fresh mode-0400 admin/owner custody file before any database writes."""
-    if custody_file.exists() or custody_file.is_symlink():
-        raise CandidateDatabaseError("REFUSED", "custody_file_collision")
-    _require_safe_ancestors(custody_file.parent, expected_uids)
-    payload = (json.dumps(plan, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(custody_file, flags, 0o400)
-    try:
-        os.write(fd, payload)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    _fsync_dir(custody_file.parent)
-    st = os.lstat(custody_file)
-    bad = stat.S_ISLNK(st.st_mode) or st.st_nlink != 1 or stat.S_IMODE(st.st_mode) != 0o400
-    if bad or st.st_uid not in expected_uids:
-        raise CandidateDatabaseError("INCOMPLETE", "custody_metadata_verification_failed")
-
-
-def _atomic_write_text(path: Path, text: str, mode: int, gid: int | None = None) -> None:
-    stage = path.with_name(f".{path.name}.stage.{os.getpid()}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(stage, flags, 0o400)
-    try:
-        os.write(fd, text.encode("utf-8"))
-        os.fchmod(fd, mode)
-        if gid is not None and os.geteuid() == 0:
-            os.fchown(fd, 0, gid)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    os.replace(stage, path)
-    _fsync_dir(path.parent)
-
-
-def write_runtime_config(config_root: Path, dsns: dict[str, str],
-                         expected_uids: tuple[int, ...], runtime_gid: int | None = None) -> dict[str, str]:
-    """Emit the six runtime .dsn files and file-mode environment.json without admin DSNs."""
-    _require_safe_ancestors(config_root, expected_uids)
-    dsn_mode = 0o440 if runtime_gid is not None else 0o400
-    env_payload = {
-        "DW_DATABASE_CONFIG_MODE": "file",
-        "DW_M1_RUN_CONTROL_ROOT": CONTROL_ROOT,
-    }
-    for owner in RUNTIME_OWNERS:
-        if owner not in dsns:
-            raise CandidateDatabaseError("INCOMPLETE", f"missing_runtime_dsn:{owner}")
-        target = config_root / f"{owner}.dsn"
-        _atomic_write_text(target, dsns[owner] + "\n", dsn_mode, gid=runtime_gid)
-        env_payload[ENV_FILE_MAP[owner]] = str(target)
-    env_mode = 0o440 if runtime_gid is not None else 0o400
-    _atomic_write_text(
-        config_root / "environment.json",
-        json.dumps(env_payload, sort_keys=True, indent=2) + "\n",
-        env_mode,
-        gid=runtime_gid,
-    )
-    return env_payload
 
 
 def _load_bootstrap():
@@ -150,89 +66,103 @@ def _load_bootstrap():
     return bootstrap
 
 
-def verify_schema_0035_and_identities(container: str, database: str, roles: dict[str, str],
-                                      dsns: dict[str, str], env: dict[str, str]) -> dict:
-    """Query role OIDs, memberships, schema-0035 function fingerprints, and direct session_user."""
-    bootstrap = _load_bootstrap()
-    role_sql = (
-        "SELECT r.rolname || '|' || r.oid || '|' || "
-        "COALESCE(string_agg(g.rolname, ',' ORDER BY g.rolname), '') "
-        "FROM pg_roles r LEFT JOIN pg_auth_members m ON m.member = r.oid "
-        "LEFT JOIN pg_roles g ON g.oid = m.roleid "
-        "WHERE r.rolname = ANY(ARRAY[" + ",".join(f"'{v}'" for v in roles.values()) + "]) "
-        "GROUP BY r.rolname, r.oid ORDER BY r.rolname"
-    )
-    role_rows = bootstrap.private_run(
-        ["docker", "exec", container, "psql", "-U", "postgres", "-d", database, "-Atqc", role_sql]
-    ).strip().splitlines()
-    role_oids = {}
-    for line in role_rows:
-        rname, roid, _ = line.split("|", 2)
-        role_oids[rname] = int(roid)
-    fn_sql = (
-        "SELECT n.nspname || '.' || p.proname || '|' || "
-        "encode(sha256(convert_to(pg_get_functiondef(p.oid), 'UTF8')), 'hex') "
-        "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
-        "WHERE n.nspname || '.' || p.proname = ANY(ARRAY["
-        + ",".join(f"'{name}'" for name in SCHEMA_0035_FUNCTIONS)
-        + "]) ORDER BY 1"
-    )
-    fn_rows = bootstrap.private_run(
-        ["docker", "exec", container, "psql", "-U", "postgres", "-d", database, "-Atqc", fn_sql]
-    ).strip().splitlines()
-    fingerprints = dict(line.split("|", 1) for line in fn_rows if "|" in line)
-    if set(fingerprints) != set(SCHEMA_0035_FUNCTIONS):
-        raise CandidateDatabaseError("INCOMPLETE", "schema_0035_functions_incomplete")
-    session_users = _probe_session_users(container, dsns, env)
-    if any(session_users.get(owner) != role for owner, role in roles.items()):
-        raise CandidateDatabaseError("INCOMPLETE", "session_user_identity_mismatch")
-    return {"role_oids": role_oids, "schema_0035_functions": fingerprints, "session_users": session_users}
-
-
-def _probe_session_users(container: str, dsns: dict[str, str], env: dict[str, str]) -> dict[str, str]:
-    users = {}
-    for owner, dsn in dsns.items():
-        proc = subprocess.run(
-            ["docker", "exec", "-i", container, "sh", "-c",
-             "IFS= read -r dsn && exec psql \"$dsn\" -Atqc \"SELECT session_user\""],
-            input=dsn + "\n",
-            text=True,
-            capture_output=True,
-            env=env,
-            timeout=15,
-        )
-        if proc.returncode != 0:
-            raise CandidateDatabaseError("INCOMPLETE", f"session_user_probe_failed:{owner}")
-        users[owner] = proc.stdout.strip()
-    return users
-
-
 def _default_factory(**kwargs):
     return _load_bootstrap().Fixture(**kwargs)
 
 
-def _custody_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def write_exclusive_custody(custody_file: Path, plan: dict, expected_uids: tuple[int, ...],
+                            *, stop_at: Path = Path("/"), writer=os.write, fsync_fn=os.fsync) -> None:
+    """Create mode-0400 root-owned admin/owner custody file before any database writes."""
+    payload = (json.dumps(plan, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    try:
+        write_exclusive_verified(
+            custody_file, payload, mode=0o400, expected_uids=expected_uids,
+            stop_at=stop_at, writer=writer, fsync_fn=fsync_fn,
+        )
+    except FileCustodyError as exc:
+        raise CandidateDatabaseError(exc.status, exc.reason) from exc
 
 
-def provision_database(*, container: str, database: str, role_prefix: str,
-                       config_root: Path, custody_file: Path,
-                       env: dict[str, str] | None = None,
-                       runtime_gid: int | None = None,
-                       fixture_factory=None, verifier=None) -> dict:
-    """Provision fresh schema-0035 DB with pre-create custody and fail-closed state."""
-    clean_env = sanitize_env(env)
-    expected_uids = (0, os.geteuid())
-    _require_safe_ancestors(Path(config_root), expected_uids)
-    _require_safe_ancestors(Path(custody_file).parent, expected_uids)
-    if Path(custody_file).exists() or Path(custody_file).is_symlink():
+def _write_core_owned_file(path: Path, data: bytes, expected_uids: tuple[int, ...],
+                           core_uid: int | None, core_gid: int | None, stop_at: Path,
+                           writer, fsync_fn) -> None:
+    try:
+        write_exclusive_verified(
+            path, data, mode=0o400, expected_uids=expected_uids,
+            owner_uid=core_uid, owner_gid=core_gid, stop_at=stop_at, writer=writer, fsync_fn=fsync_fn,
+        )
+    except FileCustodyError as exc:
+        raise CandidateDatabaseError("INCOMPLETE", exc.reason) from exc
+
+
+def write_runtime_config(config_root: Path, dsns: dict[str, str], expected_uids: tuple[int, ...],
+                         *, core_uid: int | None = None, core_gid: int | None = None,
+                         stop_at: Path = Path("/"), writer=os.write, fsync_fn=os.fsync) -> dict[str, str]:
+    """Emit mode-0400 core-owned runtime .dsn files and file-mode environment.json without admin DSN."""
+    try:
+        require_safe_ancestors(config_root, expected_uids, stop_at=stop_at)
+    except FileCustodyError as exc:
+        raise CandidateDatabaseError(exc.status, exc.reason) from exc
+    env_payload = {
+        "DW_DATABASE_CONFIG_MODE": "file",
+        "DW_M1_RUN_CONTROL_ROOT": PRIVILEGED_SCOPE["control_root"],
+    }
+    for owner in RUNTIME_OWNERS:
+        if owner not in dsns:
+            raise CandidateDatabaseError("INCOMPLETE", f"missing_runtime_dsn:{owner}")
+        target = config_root / f"{owner}.dsn"
+        _write_core_owned_file(target, (dsns[owner] + "\n").encode("utf-8"), expected_uids,
+                               core_uid, core_gid, stop_at, writer, fsync_fn)
+        env_payload[ENV_FILE_MAP[owner]] = str(target)
+    env_bytes = (json.dumps(env_payload, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    _write_core_owned_file(config_root / "environment.json", env_bytes, expected_uids,
+                           core_uid, core_gid, stop_at, writer, fsync_fn)
+    return env_payload
+
+
+def _default_verifier(container: str, database: str, roles: dict[str, str], dsns: dict[str, str],
+                      role_prefix: str, migration_path: Path) -> dict:
+    try:
+        return verify_schema_0035_and_identities(
+            container, database, roles, dsns, migration_path=migration_path, role_prefix=role_prefix,
+        )
+    except PostgresError as exc:
+        raise CandidateDatabaseError(exc.status, exc.reason) from exc
+
+
+def _prepare_fresh_config_root(cfg_root: Path, custody_path: Path, expected_uids: tuple[int, ...],
+                               stop_at: Path, fsync_fn) -> None:
+    if cfg_root.exists() or cfg_root.is_symlink():
+        raise CandidateDatabaseError("REFUSED", "config_root_collision")
+    if custody_path.exists() or custody_path.is_symlink():
         raise CandidateDatabaseError("REFUSED", "custody_file_collision")
+    try:
+        require_safe_ancestors(cfg_root.parent, expected_uids, stop_at=stop_at)
+        create_exclusive_dir(cfg_root, mode=0o755, expected_uids=expected_uids, stop_at=stop_at, fsync_fn=fsync_fn)
+    except FileCustodyError as exc:
+        raise CandidateDatabaseError(exc.status, exc.reason) from exc
+
+
+def _resolve_account_for_provision(core_account: dict[str, int | str] | None, core_resolver) -> dict[str, int | str]:
+    if core_account is not None:
+        return core_account
+    resolver = core_resolver or resolve_core_account
+    try:
+        return resolver()
+    except HostObservationError as exc:
+        raise CandidateDatabaseError(exc.status, exc.reason) from exc
+
+
+def _run_provision_sequence(*, container: str, database: str, role_prefix: str, cfg_root: Path,
+                            custody_path: Path, expected_uids: tuple[int, ...], stop_at: Path,
+                            core_uid: int, core_gid: int, clean_env: dict[str, str],
+                            migration_path: Path, fixture_factory, verifier, writer, fsync_fn) -> dict:
     captured_plan: dict = {}
     custody_written = False
 
     def custody_cb(plan: dict) -> None:
         nonlocal custody_written
-        write_exclusive_custody(Path(custody_file), plan, expected_uids)
+        write_exclusive_custody(custody_path, plan, expected_uids, stop_at=stop_at, writer=writer, fsync_fn=fsync_fn)
         custody_written = True
         captured_plan["roles"] = dict(plan["roles"])
         captured_plan["dsns"] = dict(plan["dsns"])
@@ -243,76 +173,98 @@ def provision_database(*, container: str, database: str, role_prefix: str,
         os.environ.clear()
         os.environ.update(clean_env)
         fx = factory(
-            container=container,
-            kind="fixture",
-            ci=False,
-            database=database,
-            schema_revision="0035",
-            role_prefix=role_prefix,
-            custody_callback=custody_cb,
-            negative_controls=False,
+            container=container, kind="fixture", ci=False, database=database, schema_revision="0035",
+            role_prefix=role_prefix, custody_callback=custody_cb, negative_controls=False,
         )
-        write_runtime_config(Path(config_root), captured_plan["dsns"], expected_uids, runtime_gid)
-        facts = (verifier or (lambda inst: verify_schema_0035_and_identities(
-            container, inst.database, captured_plan["roles"], captured_plan["dsns"], clean_env
+        write_runtime_config(
+            cfg_root, captured_plan["dsns"], expected_uids, core_uid=core_uid,
+            core_gid=core_gid, stop_at=stop_at, writer=writer, fsync_fn=fsync_fn,
+        )
+        facts = (verifier or (lambda inst: _default_verifier(
+            container, inst.database, captured_plan["roles"], captured_plan["dsns"], role_prefix, migration_path,
         )))(fx)
     except CandidateDatabaseError as exc:
         if exc.status == "REFUSED" and not custody_written:
             raise
         return {
-            "status": exc.status if custody_written else "REFUSED",
-            "database": database,
-            "role_prefix": role_prefix,
-            "schema_revision": "0035",
-            "custody_preserved": custody_written,
-            "reason": exc.reason,
+            "status": exc.status if (custody_written or exc.status == "INCOMPLETE") else "REFUSED",
+            "database": database, "role_prefix": role_prefix, "schema_revision": "0035",
+            "custody_preserved": custody_written, "reason": exc.reason,
         }
     except Exception as exc:
-        status = "INCOMPLETE" if custody_written else "REFUSED"
         if not custody_written:
-            raise CandidateDatabaseError("REFUSED", type(exc).__name__) from None
+            raise CandidateDatabaseError("REFUSED", type(exc).__name__) from exc
         return {
-            "status": status,
-            "database": database,
-            "role_prefix": role_prefix,
-            "schema_revision": "0035",
-            "custody_preserved": True,
-            "custody_sha256": _custody_sha256(Path(custody_file)),
-            "reason": type(exc).__name__,
+            "status": "INCOMPLETE", "database": database, "role_prefix": role_prefix,
+            "schema_revision": "0035", "custody_preserved": True, "reason": type(exc).__name__,
         }
     finally:
         os.environ.clear()
         os.environ.update(orig_environ)
 
     return {
-        "status": "SUCCESS",
-        "database": fx.database,
-        "role_prefix": role_prefix,
-        "schema_revision": "0035",
-        "custody_preserved": True,
-        "custody_sha256": _custody_sha256(Path(custody_file)),
-        "roles": dict(captured_plan["roles"]),
-        "verification": facts,
+        "status": "SUCCESS", "database": fx.database, "role_prefix": role_prefix,
+        "schema_revision": "0035", "custody_preserved": True, "config_root": str(cfg_root),
+        "custody_file": str(custody_path), "core_uid": core_uid, "core_gid": core_gid,
+        "roles": dict(captured_plan["roles"]), "verification": facts,
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Candidate schema-0035 database provisioner")
-    parser.add_argument("--container", required=True)
-    parser.add_argument("--database", required=True)
-    parser.add_argument("--role-prefix", required=True)
-    parser.add_argument("--config-root", required=True, type=Path)
-    parser.add_argument("--custody-file", required=True, type=Path)
-    parser.add_argument("--runtime-gid", type=int, default=None)
+def provision_database(
+    *,
+    container: str,
+    database: str,
+    role_prefix: str,
+    config_root: Path,
+    custody_file: Path,
+    env: dict[str, str] | None = None,
+    expected_uids: tuple[int, ...] = (0,),
+    stop_at: Path = Path("/"),
+    core_account: dict[str, int | str] | None = None,
+    core_resolver=None,
+    migration_path: Path = DEFAULT_MIGRATION,
+    fixture_factory=None,
+    verifier=None,
+    writer=os.write,
+    fsync_fn=os.fsync,
+) -> dict:
+    """Provision fresh schema-0035 DB with pre-create custody, core-0400 configs, and exact catalog check."""
+    clean_env = sanitize_env(env)
+    account = _resolve_account_for_provision(core_account, core_resolver)
+    cfg_root = Path(config_root)
+    custody_path = Path(custody_file)
+    if custody_path.parent != cfg_root:
+        raise CandidateDatabaseError("REFUSED", "custody_outside_config_root")
+    _prepare_fresh_config_root(cfg_root, custody_path, expected_uids, stop_at, fsync_fn)
+    return _run_provision_sequence(
+        container=container, database=database, role_prefix=role_prefix,
+        cfg_root=cfg_root, custody_path=custody_path, expected_uids=expected_uids,
+        stop_at=stop_at, core_uid=int(account["uid"]), core_gid=int(account["gid"]),
+        clean_env=clean_env, migration_path=migration_path, fixture_factory=fixture_factory,
+        verifier=verifier, writer=writer, fsync_fn=fsync_fn,
+    )
+
+
+def main(argv: list[str] | None = None, *, driver_verifier=verify_driver_custody) -> int:
+    parser = argparse.ArgumentParser(description="Privileged fixed-scope schema-0035 database provisioner")
+    parser.add_argument("--expected-driver-commit", required=True)
+    parser.add_argument("--expected-driver-tree", required=True)
     args = parser.parse_args(argv)
+    drv_dir = Path(__file__).resolve().parent
+    expected_drv = Path(PRIVILEGED_SCOPE["source_dir"]) / "boundary" / "qualify"
     try:
+        if not (HEX40_RE.fullmatch(args.expected_driver_commit) and HEX40_RE.fullmatch(args.expected_driver_tree)):
+            raise CandidateDatabaseError("REFUSED", "expected_driver_pin_invalid")
+        if drv_dir != expected_drv:
+            raise CandidateDatabaseError("REFUSED", "privileged_driver_outside_fixed_source")
+        try:
+            driver_verifier(drv_dir, args.expected_driver_commit, args.expected_driver_tree, expected_uids=(0,))
+        except FileCustodyError as exc:
+            raise CandidateDatabaseError(exc.status, exc.reason) from exc
         receipt = provision_database(
-            container=args.container,
-            database=args.database,
-            role_prefix=args.role_prefix,
-            config_root=args.config_root,
-            custody_file=args.custody_file,
-            runtime_gid=args.runtime_gid,
+            container=PRIVILEGED_SCOPE["pg_container"], database=PRIVILEGED_SCOPE["database"],
+            role_prefix=PRIVILEGED_SCOPE["role_prefix"], config_root=Path(PRIVILEGED_SCOPE["config_dir"]),
+            custody_file=Path(PRIVILEGED_SCOPE["owner_custody_path"]), expected_uids=(0,), stop_at=Path("/"),
         )
     except CandidateDatabaseError as exc:
         print(json.dumps({"status": exc.status, "reason": exc.reason}, sort_keys=True))

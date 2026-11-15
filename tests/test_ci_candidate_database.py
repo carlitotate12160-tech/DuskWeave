@@ -128,27 +128,29 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
             env = {**self._base_env(), **extra}
             with self.subTest(extra=extra), tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
+                os.chmod(base, 0o755)
                 cfg = base / "cfg"
-                cfg.mkdir(mode=0o750)
                 with self.assertRaises(candidate_database.CandidateDatabaseError) as ctx:
                     candidate_database.provision_database(
                         container="dwpg-r3",
                         database="dw_native_lpq_test_01",
                         role_prefix="dw_lpqt01",
                         config_root=cfg,
-                        custody_file=base / "custody.json",
+                        custody_file=cfg / "owner-custody.json",
                         env=env,
+                        expected_uids=(os.geteuid(),),
+                        stop_at=base,
+                        core_account={"name": "duskweave-core", "uid": os.geteuid(), "gid": os.getegid()},
                         fixture_factory=mock.Mock(side_effect=AssertionError("must_not_run")),
                     )
                 self.assertEqual(ctx.exception.status, "REFUSED")
 
-    def test_writes_exclusive_custody_and_runtime_config_without_leaks(self):
+    def test_writes_exclusive_custody_and_core_0400_config_without_leaks(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             os.chmod(base, 0o755)
             cfg = base / "cfg"
-            cfg.mkdir(mode=0o750)
-            custody = base / "admin.custody.json"
+            custody = cfg / "owner-custody.json"
             secret_sentinel = "UltraSecretTok_9911"
 
             def fake_factory(**kwargs):
@@ -157,26 +159,16 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
                     "schema_revision": "0035",
                     "role_prefix": kwargs["role_prefix"],
                     "role_suffix": "abc123",
-                    "roles": {
-                        owner: f"{kwargs['role_prefix']}_abc123_{owner}"
-                        for owner in ("admin", *RUNTIME_OWNERS)
-                    },
-                    "passwords": {
-                        owner: f"{secret_sentinel}_{owner}"
-                        for owner in ("admin", *RUNTIME_OWNERS)
-                    },
+                    "roles": {o: f"{kwargs['role_prefix']}_abc123_{o}" for o in ("admin", *RUNTIME_OWNERS)},
+                    "passwords": {o: f"{secret_sentinel}_{o}" for o in ("admin", *RUNTIME_OWNERS)},
                     "dsns": {
-                        owner: (
-                            f"postgresql://{kwargs['role_prefix']}_abc123_{owner}:"
-                            f"{secret_sentinel}_{owner}@127.0.0.1:5432/{kwargs['database']}?sslmode=disable"
-                        )
-                        for owner in ("admin", *RUNTIME_OWNERS)
+                        o: f"postgresql://{kwargs['role_prefix']}_abc123_{o}:{secret_sentinel}_{o}@127.0.0.1:5432/{kwargs['database']}?sslmode=disable"
+                        for o in ("admin", *RUNTIME_OWNERS)
                     },
                 }
                 kwargs["custody_callback"](plan)
                 fx = mock.Mock()
-                fx.database = kwargs["database"]
-                fx.roles = plan["roles"]
+                fx.database, fx.roles = kwargs["database"], plan["roles"]
                 fx.secrets = list(plan["passwords"].values()) + list(plan["dsns"].values())
                 return fx
 
@@ -189,16 +181,22 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
                     config_root=cfg,
                     custody_file=custody,
                     env=self._base_env(),
+                    expected_uids=(os.geteuid(),),
+                    stop_at=base,
+                    core_account={"name": "duskweave-core", "uid": os.geteuid(), "gid": os.getegid()},
                     fixture_factory=fake_factory,
-                    verifier=lambda fx: {
-                        "role_oids": {k: idx + 100 for idx, k in enumerate(fx.roles)},
-                        "session_users": {k: v for k, v in fx.roles.items()},
-                        "schema_0035_functions": {f"fn_{i}": f"sha_{i}" for i in range(10)},
+                    verifier=lambda *_a, **_kw: {
+                        "role_oids": {o: i + 100 for i, o in enumerate(("admin", *RUNTIME_OWNERS))},
+                        "session_users": {o: f"dw_lpqt02_abc123_{o}" for o in ("admin", *RUNTIME_OWNERS)},
+                        "schema_0035_functions": {f"fn_{i}": "a" * 64 for i in range(10)},
                     },
                 )
 
             self.assertEqual(receipt["status"], "SUCCESS")
+            self.assertNotIn("custody_sha256", receipt)
+            self.assertEqual(stat.S_IMODE(cfg.stat().st_mode), 0o755)
             self.assertEqual(stat.S_IMODE(custody.stat().st_mode), 0o400)
+            self.assertEqual(stat.S_IMODE((cfg / "environment.json").stat().st_mode), 0o400)
             custody_data = json.loads(custody.read_text(encoding="utf-8"))
             self.assertIn("admin", custody_data["dsns"])
             env_json = json.loads((cfg / "environment.json").read_text(encoding="utf-8"))
@@ -207,46 +205,59 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
             self.assertEqual(set(env_json.keys()) - {"DW_DATABASE_CONFIG_MODE", "DW_M1_RUN_CONTROL_ROOT"}, ENV_FILE_KEYS)
             self.assertNotIn("DW_TEST_ADMIN_DATABASE_URL", env_json)
             for owner in RUNTIME_OWNERS:
-                dsn_path = cfg / f"{owner}.dsn"
-                self.assertTrue(dsn_path.is_file())
-                self.assertEqual(stat.S_IMODE(dsn_path.stat().st_mode) & 0o077, 0)
+                self.assertEqual(stat.S_IMODE((cfg / f"{owner}.dsn").stat().st_mode), 0o400)
             serialized = json.dumps(receipt) + out.getvalue()
             self.assertNotIn(secret_sentinel, serialized)
             self.assertNotIn("postgresql://", serialized)
 
-    def test_existing_custody_file_refused_exclusively(self):
+    def test_existing_config_root_and_custody_short_write_leave_zero_pg_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             os.chmod(base, 0o755)
             cfg = base / "cfg"
             cfg.mkdir(mode=0o750)
-            custody = base / "admin.custody.json"
-            custody.write_text("existing", encoding="utf-8")
-            with self.assertRaises(candidate_database.CandidateDatabaseError) as ctx:
+            must_not_call = mock.Mock(side_effect=AssertionError("pg_write_forbidden"))
+            with self.assertRaises(candidate_database.CandidateDatabaseError) as col:
                 candidate_database.provision_database(
-                    container="dwpg-r3",
-                    database="dw_native_lpq_test_03",
-                    role_prefix="dw_lpqt03",
-                    config_root=cfg,
-                    custody_file=custody,
-                    env=self._base_env(),
-                    fixture_factory=lambda **kw: kw["custody_callback"]({
-                        "database": kw["database"], "schema_revision": "0035",
-                        "role_prefix": kw["role_prefix"], "role_suffix": "s1",
-                        "roles": {"admin": "r_a"}, "passwords": {"admin": "p_a"},
-                        "dsns": {"admin": "postgresql://r_a:p_a@127.0.0.1:5432/d"},
-                    }),
+                    container="dwpg-r3", database="dw_native_lpq_test_03", role_prefix="dw_lpqt03",
+                    config_root=cfg, custody_file=cfg / "owner-custody.json", env=self._base_env(),
+                    expected_uids=(os.geteuid(),), stop_at=base,
+                    core_account={"name": "duskweave-core", "uid": os.geteuid(), "gid": os.getegid()},
+                    fixture_factory=must_not_call,
                 )
-            self.assertEqual(ctx.exception.status, "REFUSED")
-            self.assertEqual(custody.read_text(encoding="utf-8"), "existing")
+            self.assertEqual(col.exception.status, "REFUSED")
+            must_not_call.assert_not_called()
 
-    def test_partial_provision_failure_returns_incomplete_keeping_custody(self):
+            cfg2 = base / "cfg2"
+            zero_writes = []
+            def zero_writer(fd, buf):
+                zero_writes.append(len(buf))
+                return 0
+            def factory_with_cb(**kw):
+                kw["custody_callback"]({
+                    "database": kw["database"], "schema_revision": "0035",
+                    "role_prefix": kw["role_prefix"], "role_suffix": "s1",
+                    "roles": {"admin": "r_a"}, "passwords": {"admin": "p_a"},
+                    "dsns": {"admin": "postgresql://r_a:p_a@127.0.0.1:5432/d"},
+                })
+                raise AssertionError("factory_continued_after_short_write")
+            receipt_sw = candidate_database.provision_database(
+                container="dwpg-r3", database="dw_native_lpq_test_03b", role_prefix="dw_lpqt03b",
+                config_root=cfg2, custody_file=cfg2 / "owner-custody.json", env=self._base_env(),
+                expected_uids=(os.geteuid(),), stop_at=base,
+                core_account={"name": "duskweave-core", "uid": os.geteuid(), "gid": os.getegid()},
+                fixture_factory=factory_with_cb, writer=zero_writer,
+            )
+            self.assertEqual(receipt_sw["status"], "INCOMPLETE")
+            self.assertEqual(receipt_sw["reason"], "custody_short_write_zero_progress")
+            self.assertGreaterEqual(len(zero_writes), 1)
+
+    def test_partial_provision_failure_returns_incomplete_and_cli_refuses_outside_fixed_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             os.chmod(base, 0o755)
             cfg = base / "cfg"
-            cfg.mkdir(mode=0o750)
-            custody = base / "admin.custody.json"
+            custody = cfg / "owner-custody.json"
             calls = []
 
             def partial_fail(**kwargs):
@@ -261,12 +272,10 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
                 raise RuntimeError("native_migration_0035_failed")
 
             receipt = candidate_database.provision_database(
-                container="dwpg-r3",
-                database="dw_native_lpq_test_04",
-                role_prefix="dw_lpqt04",
-                config_root=cfg,
-                custody_file=custody,
-                env=self._base_env(),
+                container="dwpg-r3", database="dw_native_lpq_test_04", role_prefix="dw_lpqt04",
+                config_root=cfg, custody_file=custody, env=self._base_env(),
+                expected_uids=(os.geteuid(),), stop_at=base,
+                core_account={"name": "duskweave-core", "uid": os.geteuid(), "gid": os.getegid()},
                 fixture_factory=partial_fail,
             )
             self.assertEqual(receipt["status"], "INCOMPLETE")
@@ -274,3 +283,5 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
             self.assertTrue(custody.exists())
             self.assertNotIn("SecretFail", json.dumps(receipt))
             self.assertNotIn("postgresql://", json.dumps(receipt))
+            rc = candidate_database.main(["--expected-driver-commit", "a" * 40, "--expected-driver-tree", "b" * 40])
+            self.assertEqual(rc, 1)

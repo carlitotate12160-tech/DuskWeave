@@ -49,6 +49,7 @@ fn rendered_live_candidate_manifest_round_trips_into_launcher_parser() {
     assert_eq!(evidence["applied"], false);
 
     let bytes = std::fs::read(&out).expect("read rendered manifest bytes");
+    assert!(bytes.len() <= 16384);
     let qualified =
         parse_manifest(&bytes).expect("launcher parse_manifest must accept rendered bytes");
     qualified
@@ -66,15 +67,19 @@ fn rendered_live_candidate_manifest_round_trips_into_launcher_parser() {
         resolver_ipv4: "1.1.1.1".into(),
     };
     assert!(qualified.manifest.matches(&binding, LIVE_RUN_PROFILE));
+
+    let oversized = vec![b' '; 16385];
+    assert!(parse_manifest(&oversized).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn render_binding_refuses_lab_resolver_or_lab_profile_under_live() {
+fn render_binding_refuses_lab_resolver_6to4_and_lab_profile_and_accepts_neighbors() {
     let root = env!("CARGO_MANIFEST_DIR");
     let h = "b".repeat(64);
     for (flag, value) in [
         ("--resolver-ipv4", "192.0.2.53"),
+        ("--resolver-ipv4", "192.88.99.1"),
         ("--run-profile", "autonomous-dns-genai-lab-v1"),
     ] {
         let mut cmd = Command::new("bash");
@@ -111,6 +116,35 @@ fn render_binding_refuses_lab_resolver_or_lab_profile_under_live() {
             !output.status.success(),
             "expected refusal for {flag}={value}"
         );
+    }
+
+    for (ip, expected_ok) in [
+        ("192.88.99.1", false),
+        ("192.88.98.255", true),
+        ("192.88.100.0", true),
+    ] {
+        let b = LiveBinding {
+            qualification_ref: Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap(),
+            release_sha256: h.clone(),
+            resolver_ipv4: ip.into(),
+        };
+        assert_eq!(b.validate_for(LIVE_RUN_PROFILE).is_ok(), expected_ok, "rust validate {ip}");
+        if expected_ok {
+            let out = Command::new("bash")
+                .arg(format!("{root}/boundary/qualify/qualify.sh"))
+                .args([
+                    "candidate", "render-binding",
+                    "--release-sha256", &h, "--launcher-sha256", &h,
+                    "--capture-sha256", &h, "--exporter-sha256", &h,
+                    "--image-digest", &format!("sha256:{h}"),
+                    "--boot-id", "11111111-1111-4111-8111-111111111111",
+                    "--core-uid", "1001", "--resolver-ipv4", ip,
+                    "--valid-from-ms", "1000", "--valid-until-ms", "4000000000000",
+                ])
+                .output()
+                .expect("render neighbor ip");
+            assert!(out.status.success(), "python render failed for {ip}");
+        }
     }
 }
 

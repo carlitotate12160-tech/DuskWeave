@@ -48,16 +48,25 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Current work (`DW-LINUX-PROV2-QUALIFICATION-PREP-R1` — local tooling prep complete):**
+**Current work (`DW-LINUX-PROV2-QUALIFICATION-PREP-R1` — local tooling prep & FIX1 remediation complete):**
 PR #154 (`850b8b3b3a161ebfa051830fc5037bd5aeff04d0`) landed
 `DW-PRO-V2-CANDIDATE-C` (`reasoning-bounded-pro-v2`, migration `0035`, limits in
 [ADR-016](adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14)).
 Candidate Linux/ARM64 operator tooling (`boundary/qualify/qualify.sh candidate ...`,
-`candidate.sh`, `release_descriptor.py`, `candidate_database.py`, `candidate_binding.py`,
-and `Fixture` pre-create custody extension) is prepared on the PR #154 baseline and
-verified offline plus against local PostgreSQL 17.11 (`dwpg-r3`, schema `0035`,
-real custody/ack-loss/SQL-refusal cases). Not yet built, installed, bound, or
-executed on Oracle (`pica-arm-01`); zero provider or target campaigns run.
+`candidate.sh`, `candidate_files.py`, `candidate_postgres.py`, `candidate_host.py`,
+`candidate_install.py`, `release_descriptor.py`, `candidate_database.py`,
+`candidate_binding.py`, and unchanged `Fixture` pre-create custody extension in
+`tests/support/m1_native_bootstrap.py`) is modularized and verified offline
+(including pre-load driver custody/clean-`HEAD` verification in `qualify.sh`,
+`/proc/self/mountinfo` storage checks, synthetic host/installer/binding unit
+tests, mode-`0400` `duskweave-core` config emission without `custody_sha256`
+receipts, key-free stdin PostgreSQL/schema-`0035` verification, and `16384`-byte /
+global-IPv4 manifest limits) plus against local PostgreSQL 17.11 (`dwpg-r3`,
+schema `0035`, direct-role logins, `duskweave inspect` loading the generated
+file-mode config, custody/ack-loss cases, `2` direct SQL constraint refusals,
+and `1` application `qualification_ref_collision` precheck). Host root/`0400`/
+`duskweave-core` ownership, Docker runtime extraction, and Oracle (`pica-arm-01`)
+build/install/bind/live-provider execution remain unrun until authorized deployment.
 
 **Next product action:** review and accept `DW-LINUX-PROV2-QUALIFICATION-PREP-R1`,
 execute the ordered candidate steps on `pica-arm-01` under operator custody, and
