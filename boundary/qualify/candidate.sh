@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Candidate PR154-baseline qualification tooling; inert when sourced.
+# Candidate pinned-release qualification tooling; inert when sourced.
 
 CANDIDATE_QUALIFY_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 CANDIDATE_FIXED_SOURCE=/srv/duskweave/src/linux-prov2-qual-r1
 CANDIDATE_BUILD_ROOT=/srv/duskweave-build/linux-prov2-qual-r1
-CANDIDATE_REPORT_ROOT=/srv/duskweave/reports/linux-prov2-qual-r1
+CANDIDATE_REPORT_ROOT=/srv/duskweave/reports/live-context-purpose-r1
 CANDIDATE_BUNDLE_DIR=$CANDIDATE_REPORT_ROOT/bundle
 CANDIDATE_IMAGE_REF=dw-live-dns-20261030:candidate-r1
 CANDIDATE_STORAGE_SUBDIRS="normal normal/release normal/release/build normal/release/deps normal/release/examples normal/release/incremental normal/release/.fingerprint go-cache tmp tmp/go tmp/build go-release boundary-release"
@@ -160,7 +160,7 @@ candidate_build() {
     [[ ! -e $br && ! -L $br ]] || candidate_refuse build_root_collision
     [[ ! -e $bdir && ! -L $bdir ]] || candidate_refuse candidate_package_collision
     ! docker image inspect "$img" >/dev/null 2>&1 || candidate_refuse build_image_collision
-    python3 -B "$CANDIDATE_QUALIFY_DIR/release_descriptor.py" verify-pr154 \
+    python3 -B "$CANDIDATE_QUALIFY_DIR/release_descriptor.py" verify-source \
         --source-root "$src" --expected-commit "$CANDIDATE_EXP_COMMIT" --expected-tree "$CANDIDATE_EXP_TREE" \
         --expected-driver-commit "$CANDIDATE_EXP_COMMIT" --expected-driver-tree "$CANDIDATE_EXP_TREE"
     [[ -d $CANDIDATE_REPORT_ROOT || ! -e $CANDIDATE_REPORT_ROOT ]] || candidate_refuse report_root_collision

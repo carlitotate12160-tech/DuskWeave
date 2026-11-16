@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit real PostgreSQL integration qualification runner for PR154-baseline candidate tooling."""
+"""Explicit real PostgreSQL integration qualification runner for pinned-release candidate tooling."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def _case_custody_failure(container: str, database: str, prefix: str, env: dict[
         os.environ.update(env)
         try:
             bootstrap.Fixture(
-                container, "fixture", database=database, schema_revision="0035",
+                container, "fixture", database=database, schema_revision="0036",
                 role_prefix=prefix, custody_callback=fail_cb, negative_controls=False,
             )
             raise AssertionError("expected OSError from failing custody callback")
@@ -190,11 +190,11 @@ def _case_positive_provision_and_bind(container: str, database: str, prefix: str
         container, database, admin_dsn, manifest_path, bind_res["qualification_ref"], report_dir,
     )
     return {
-        "case": "positive_schema_0035_and_live_binding",
+        "case": "positive_schema_0036_and_live_binding",
         "status": "PASS",
         "database": database,
         "role_count": 7,
-        "schema_0035_function_count": len(receipt["verification"]["schema_0035_functions"]),
+        "schema_0036_function_count": len(receipt["verification"]["schema_0036_functions"]),
         "duskweave_inspect": inspect_out,
         "qualification_ref": bind_res["qualification_ref"],
         "manifest_sha256": manifest_sha,
@@ -276,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     args.report.mkdir(parents=True, mode=0o755, exist_ok=True)
     os.chmod(args.report, 0o755)
     env = _clean_env()
-    bootstrap.service_qualified(args.container, version_prefix="17.", schema_revision="0035")
+    bootstrap.service_qualified(args.container, version_prefix="17.", schema_revision="0036")
     results = [
         _case_custody_failure(args.container, args.custody_database, args.custody_prefix, env),
         _case_positive_provision_and_bind(args.container, args.database, args.role_prefix, args.report, env, args.duskweave_bin),

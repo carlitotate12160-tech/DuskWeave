@@ -44,7 +44,7 @@ class FixtureCustodyExtensionTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     bootstrap.Fixture(
                         "dwpg-r3", "fixture", database="dw_native_test_01",
-                        schema_revision="0035", **kwargs,
+                        schema_revision="0036", **kwargs,
                     )
                 svc.assert_not_called()
                 run.assert_not_called()
@@ -74,7 +74,7 @@ class FixtureCustodyExtensionTests(unittest.TestCase):
              mock.patch.object(bootstrap.Fixture, "negative_owners", side_effect=AssertionError("must_not_run")):
             fx = bootstrap.Fixture(
                 "dwpg-r3", "fixture", database="dw_native_lpq_unit_01",
-                schema_revision="0035", role_prefix="dw_lpqu01",
+                schema_revision="0036", role_prefix="dw_lpqu01",
                 custody_callback=custody_cb, negative_controls=False,
             )
 
@@ -105,7 +105,7 @@ class FixtureCustodyExtensionTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 bootstrap.Fixture(
                     "dwpg-r3", "fixture", database="dw_native_lpq_unit_02",
-                    schema_revision="0035", role_prefix="dw_lpqu02",
+                    schema_revision="0036", role_prefix="dw_lpqu02",
                     custody_callback=failing_cb, negative_controls=False,
                 )
         self.assertEqual(writes, [])
@@ -156,7 +156,7 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
             def fake_factory(**kwargs):
                 plan = {
                     "database": kwargs["database"],
-                    "schema_revision": "0035",
+                    "schema_revision": "0036",
                     "role_prefix": kwargs["role_prefix"],
                     "role_suffix": "abc123",
                     "roles": {o: f"{kwargs['role_prefix']}_abc123_{o}" for o in ("admin", *RUNTIME_OWNERS)},
@@ -188,7 +188,7 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
                     verifier=lambda *_a, **_kw: {
                         "role_oids": {o: i + 100 for i, o in enumerate(("admin", *RUNTIME_OWNERS))},
                         "session_users": {o: f"dw_lpqt02_abc123_{o}" for o in ("admin", *RUNTIME_OWNERS)},
-                        "schema_0035_functions": {f"fn_{i}": "a" * 64 for i in range(10)},
+                        "schema_0036_functions": {f"fn_{i}": "a" * 64 for i in range(10)},
                     },
                 )
 
@@ -235,7 +235,7 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
                 return 0
             def factory_with_cb(**kw):
                 kw["custody_callback"]({
-                    "database": kw["database"], "schema_revision": "0035",
+                    "database": kw["database"], "schema_revision": "0036",
                     "role_prefix": kw["role_prefix"], "role_suffix": "s1",
                     "roles": {"admin": "r_a"}, "passwords": {"admin": "p_a"},
                     "dsns": {"admin": "postgresql://r_a:p_a@127.0.0.1:5432/d"},
@@ -263,7 +263,7 @@ class CandidateDatabaseProvisioningTests(unittest.TestCase):
             def partial_fail(**kwargs):
                 calls.append(1)
                 kwargs["custody_callback"]({
-                    "database": kwargs["database"], "schema_revision": "0035",
+                    "database": kwargs["database"], "schema_revision": "0036",
                     "role_prefix": kwargs["role_prefix"], "role_suffix": "p1",
                     "roles": {o: f"{kwargs['role_prefix']}_p1_{o}" for o in ("admin", *RUNTIME_OWNERS)},
                     "passwords": {o: f"SecretFail_{o}" for o in ("admin", *RUNTIME_OWNERS)},

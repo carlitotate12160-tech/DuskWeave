@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for key-free candidate_postgres stdin transport and schema-0035 verifier."""
+"""Unit tests for key-free candidate_postgres stdin transport and schema-0036 verifier."""
 
 from __future__ import annotations
 
@@ -93,10 +93,10 @@ class CandidatePostgresTransportTests(unittest.TestCase):
 
 
 class CandidatePostgresVerifierTests(unittest.TestCase):
-    """Verify exact 0035 migration parser and failure detection on mock catalog answers."""
+    """Verify exact 0035+0036 migration parser and failure detection on mock catalog answers."""
 
     def _clean_fixtures(self):
-        specs = candidate_postgres.extract_0035_function_specs(MIGRATION_0035)
+        specs = candidate_postgres.extract_release_function_specs(MIGRATION_0035)
         prefix = "dw_t1"
         roles = {owner: f"{prefix}_{owner}" for owner in candidate_postgres.EXPECTED_ROLE_GROUPS}
         dsns = {owner: f"postgresql://{role}:pw_{owner}@127.0.0.1:5432/dw_db" for owner, role in roles.items()}
@@ -131,18 +131,18 @@ class CandidatePostgresVerifierTests(unittest.TestCase):
                     return reply
             raise AssertionError(sql)
 
-        return candidate_postgres.verify_schema_0035_and_identities(
+        return candidate_postgres.verify_release_schema_and_identities(
             "pg", "dw_db", roles, dsns, migration_path=MIGRATION_0035, role_prefix="dw_t1", sql_runner=mock_sql,
         )
 
-    def test_extract_0035_matches_all_ten_functions_and_verify_passes_clean(self) -> None:
+    def test_extract_0036_matches_all_eleven_functions_and_verify_passes_clean(self) -> None:
         specs, roles, dsns, *_ = self._clean_fixtures()
-        self.assertEqual(set(specs.keys()), set(candidate_postgres.SCHEMA_0035_FUNCTIONS))
+        self.assertEqual(set(specs.keys()), set(candidate_postgres.RELEASE_FUNCTIONS))
         out = self._run_verifier(roles, dsns)
-        self.assertEqual(set(out["schema_0035_functions"].keys()), set(candidate_postgres.SCHEMA_0035_FUNCTIONS))
+        self.assertEqual(set(out["schema_0036_functions"].keys()), set(candidate_postgres.RELEASE_FUNCTIONS))
         self.assertEqual(out["session_users"]["core"], roles["core"])
 
-    def test_verify_schema_0035_refuses_owner_flag_body_overload_and_session_tamper(self) -> None:
+    def test_verify_schema_0036_refuses_owner_flag_body_overload_and_session_tamper(self) -> None:
         specs, roles, dsns, logins, _groups, fns = self._clean_fixtures()
         wrong_body = fns.replace(specs["execution.run_start"]["prosrc_sha256"], "f" * 64)
         wrong_sp = re.sub(
@@ -157,9 +157,11 @@ class CandidatePostgresVerifierTests(unittest.TestCase):
             ("owner", {"db_row": "false|postgres"}, "database_identity_or_owner_mismatch"),
             ("flags", {"login_rows": bad_flag}, f"role_privilege_flags_refused:{roles['core']}"),
             ("prefixed", {"pref_count": "8"}, "unexpected_prefixed_roles_present"),
-            ("body", {"fn_rows": wrong_body}, "schema_0035_body_or_attr_mismatch:execution.run_start"),
-            ("search_path", {"fn_rows": wrong_sp}, "schema_0035_body_or_attr_mismatch:execution.run_start"),
-            ("overload", {"fn_rows": dup_overload}, "schema_0035_function_count_or_overload_mismatch"),
+            ("successor_body", {"fn_rows": fns.replace(specs["execution.assert_successor_pack"]["prosrc_sha256"], "e" * 64)}, "schema_0036_body_or_attr_mismatch:execution.assert_successor_pack"),
+            ("missing_successor", {"fn_rows": "\n".join(x for x in fns.splitlines() if not x.startswith("execution.assert_successor_pack|"))}, "schema_0036_function_count_or_overload_mismatch"),
+            ("body", {"fn_rows": wrong_body}, "schema_0036_body_or_attr_mismatch:execution.run_start"),
+            ("search_path", {"fn_rows": wrong_sp}, "schema_0036_body_or_attr_mismatch:execution.run_start"),
+            ("overload", {"fn_rows": dup_overload}, "schema_0036_function_count_or_overload_mismatch"),
             ("session", {"bad_session_owner": "core"}, "session_user_identity_mismatch:core"),
         )
         for label, kw, reason in cases:

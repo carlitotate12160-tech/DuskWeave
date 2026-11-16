@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Key-free PostgreSQL stdin transport and exact schema-0035 / role verification."""
+"""Key-free PostgreSQL stdin transport and exact schema-0036 / role verification."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-SCHEMA_0035_FUNCTIONS = (
+RELEASE_FUNCTIONS = (
     "execution.inference_profile_matches",
     "execution.inference_reservation",
     "execution.inference_window_ms",
@@ -21,6 +21,7 @@ SCHEMA_0035_FUNCTIONS = (
     "execution.run_current",
     "execution.assert_autonomous_pack",
     "execution.run_phase_diagnostic",
+    "execution.assert_successor_pack",
 )
 EXPECTED_ROLE_GROUPS = {
     "admin": (),
@@ -122,16 +123,17 @@ def run_psql_stdin(
     return proc.stdout.strip()
 
 
-def extract_0035_function_specs(migration_path: Path) -> dict[str, dict]:
-    """Extract canonical schema-0035 function signatures, attributes, and body hashes."""
-    sql = migration_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+def extract_release_function_specs(migration_path: Path) -> dict[str, dict]:
+    """Extract canonical schema-0036 function signatures, attributes, and body hashes."""
+    successor = migration_path.with_name("0036_live_context_purpose.sql")
+    sql = "\n".join(p.read_text(encoding="utf-8").replace("\r\n", "\n") for p in (migration_path, successor))
     specs: dict[str, dict] = {}
     for match in FN_DEF_RE.finditer(sql):
         name, args, _ret, attrs, _tag, body = match.groups()
         lang_m = LANG_RE.search(attrs)
         sp_m = SEARCH_PATH_RE.search(attrs)
         if not lang_m or not sp_m or name in specs:
-            raise PostgresError("INCOMPLETE", f"migration_0035_parse_ambiguous:{name}")
+            raise PostgresError("INCOMPLETE", f"migration_0036_parse_ambiguous:{name}")
         specs[name] = {
             "args": _norm_args(args),
             "language": lang_m.group(1),
@@ -139,8 +141,8 @@ def extract_0035_function_specs(migration_path: Path) -> dict[str, dict]:
             "search_path": f"search_path={sp_m.group(1).strip()}",
             "prosrc_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
         }
-    if set(specs.keys()) != set(SCHEMA_0035_FUNCTIONS):
-        raise PostgresError("INCOMPLETE", "migration_0035_incomplete_specs")
+    if set(specs.keys()) != set(RELEASE_FUNCTIONS):
+        raise PostgresError("INCOMPLETE", "migration_0036_incomplete_specs")
     return specs
 
 
@@ -195,8 +197,8 @@ def _verify_group_roles(container: str, database: str, run_sql) -> None:
             raise PostgresError("INCOMPLETE", f"group_role_flags_refused:{gname}")
 
 
-def _verify_0035_functions(container: str, database: str, specs: dict[str, dict], run_sql) -> dict[str, str]:
-    quoted = ",".join(f"'{n.split('.', 1)[1]}'" for n in SCHEMA_0035_FUNCTIONS)
+def _verify_release_functions(container: str, database: str, specs: dict[str, dict], run_sql) -> dict[str, str]:
+    quoted = ",".join(f"'{n.split('.', 1)[1]}'" for n in specs)
     fn_rows = run_sql(
         container, None, database,
         "SELECT n.nspname || '.' || p.proname || '|' || pg_get_function_identity_arguments(p.oid) "
@@ -207,14 +209,14 @@ def _verify_0035_functions(container: str, database: str, specs: dict[str, dict]
         "JOIN pg_language l ON l.oid = p.prolang "
         f"WHERE n.nspname = 'execution' AND p.proname = ANY(ARRAY[{quoted}]) ORDER BY 1",
     ).splitlines()
-    if len(fn_rows) != len(SCHEMA_0035_FUNCTIONS):
-        raise PostgresError("INCOMPLETE", "schema_0035_function_count_or_overload_mismatch")
+    if len(fn_rows) != len(specs):
+        raise PostgresError("INCOMPLETE", "schema_0036_function_count_or_overload_mismatch")
     fingerprints: dict[str, str] = {}
     for line in fn_rows:
         fname, fargs, lang, secdef, proconfig, sha = line.split("|", 5)
         exp = specs.get(fname)
         if exp is None or fname in fingerprints:
-            raise PostgresError("INCOMPLETE", f"schema_0035_unexpected_or_duplicate:{fname}")
+            raise PostgresError("INCOMPLETE", f"schema_0036_unexpected_or_duplicate:{fname}")
         matches = (
             _norm_args(fargs) == exp["args"]
             and lang == exp["language"]
@@ -223,7 +225,7 @@ def _verify_0035_functions(container: str, database: str, specs: dict[str, dict]
             and sha == exp["prosrc_sha256"]
         )
         if not matches:
-            raise PostgresError("INCOMPLETE", f"schema_0035_body_or_attr_mismatch:{fname}")
+            raise PostgresError("INCOMPLETE", f"schema_0036_body_or_attr_mismatch:{fname}")
         fingerprints[fname] = sha
     return fingerprints
 
@@ -240,7 +242,7 @@ def _probe_all_session_identities(container: str, roles: dict[str, str], dsns: d
     return sessions
 
 
-def verify_schema_0035_and_identities(
+def verify_release_schema_and_identities(
     container: str,
     database: str,
     roles: dict[str, str],
@@ -250,11 +252,11 @@ def verify_schema_0035_and_identities(
     role_prefix: str | None = None,
     sql_runner=None,
 ) -> dict:
-    """Verify DB ownership, 7 logins, 6 group roles, exact 0035 functions, and direct sessions."""
+    """Verify DB ownership, 7 logins, 6 group roles, exact 0036 functions, and direct sessions."""
     if set(roles.keys()) != set(EXPECTED_ROLE_GROUPS.keys()):
         raise PostgresError("INCOMPLETE", "unexpected_role_owner_set")
     run_sql = sql_runner or run_psql_stdin
-    specs = extract_0035_function_specs(migration_path)
+    specs = extract_release_function_specs(migration_path)
     role_oids = _verify_db_and_logins(container, database, roles, run_sql)
     _verify_group_roles(container, database, run_sql)
     if role_prefix is not None:
@@ -264,11 +266,11 @@ def verify_schema_0035_and_identities(
         )
         if all_pref != str(len(roles)):
             raise PostgresError("INCOMPLETE", "unexpected_prefixed_roles_present")
-    fingerprints = _verify_0035_functions(container, database, specs, run_sql)
+    fingerprints = _verify_release_functions(container, database, specs, run_sql)
     sessions = _probe_all_session_identities(container, roles, dsns, run_sql)
     return {
         "database": database,
         "role_oids": role_oids,
-        "schema_0035_functions": fingerprints,
+        "schema_0036_functions": fingerprints,
         "session_users": sessions,
     }

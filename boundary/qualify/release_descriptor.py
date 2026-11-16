@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Candidate PR154-baseline release packaging, descriptor checks, and source provenance."""
+"""Candidate pinned-release release packaging, descriptor checks, and source provenance."""
 
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ from candidate_files import (
     write_exclusive_verified,
 )
 
-PR154_BASELINE_COMMIT = "850b8b3b3a161ebfa051830fc5037bd5aeff04d0"
-PR154_BASELINE_TREE = "0c2d228b9c303959ab9a7a22d54fb852886bf104"
-SCHEMA_REVISION = "0035"
+RELEASE_BASELINE_COMMIT = "7ea7f4e4f0da4d75c785e376b8f92ec957c11e11"
+RELEASE_BASELINE_TREE = "6b6de45d3d2ada4a266b30cdead57d3d4716c973"
+SCHEMA_REVISION = "0036"
 PLATFORM = "linux/arm64"
 BINARY_MEMBERS = ("duskweave", "dw-boundary-launcher", "dw-dns-capture", "dw-dns-exporter")
 NOTICE_MEMBERS = (
@@ -36,7 +36,7 @@ NOTICE_MEMBERS = (
 FIXED_MEMBERS = BINARY_MEMBERS + NOTICE_MEMBERS
 ALLOWED_DESCRIPTOR_KEYS = frozenset({
     "schema_version", "schema_revision", "platform", "build_source_commit", "build_source_tree",
-    "driver_commit", "driver_tree", "pr154_baseline_commit", "pr154_baseline_tree",
+    "driver_commit", "driver_tree", "release_baseline_commit", "release_baseline_tree",
     "image_ref", "image_digest", "synthetic_fixture", "members",
 })
 ALLOWED_MEMBER_KEYS = frozenset({"path", "size", "sha256"})
@@ -44,16 +44,12 @@ HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 IMAGE_REF_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
-QUAL_TEST_TAIL = (
-    '#[cfg(test)]\n#[path = "../../../tests/m1_live_dns/units/candidate_binding.rs"]\n'
-    "mod candidate_binding_tests;\n"
-)
 PROD_BASELINE_PATHS = (
     "src", "migrations", "boundary/cmd", "boundary/internal", "boundary/Dockerfile",
     "boundary/go.mod", "boundary/go.sum", "Cargo.toml", "Cargo.lock",
     "go.mod", "go.sum", "third_party", "build.rs", ".cargo",
 )
-ALLOWED_NON_PR154_PREFIXES = ("boundary/qualify/", "tests/", "docs/")
+ALLOWED_TOOLING_PREFIXES = ("boundary/qualify/", "tests/", "docs/")
 
 
 class ReleaseError(RuntimeError):
@@ -112,9 +108,9 @@ def _validate_member_entry(entry: object) -> tuple[str, int, str]:
 
 
 def _validate_descriptor_metadata(obj: dict, allow_synthetic: bool) -> None:
-    if obj["schema_version"] != 1 or obj["schema_revision"] != SCHEMA_REVISION or obj["platform"] != PLATFORM:
+    if obj["schema_version"] != 2 or obj["schema_revision"] != SCHEMA_REVISION or obj["platform"] != PLATFORM:
         raise ReleaseError("descriptor_schema_or_platform_refused")
-    if obj["pr154_baseline_commit"] != PR154_BASELINE_COMMIT or obj["pr154_baseline_tree"] != PR154_BASELINE_TREE:
+    if obj["release_baseline_commit"] != RELEASE_BASELINE_COMMIT or obj["release_baseline_tree"] != RELEASE_BASELINE_TREE:
         raise ReleaseError("descriptor_baseline_refused")
     checks = (
         ("build_source_commit", HEX40_RE), ("build_source_tree", HEX40_RE),
@@ -177,36 +173,28 @@ def _check_clean_git_identity(source_root: Path, expected_commit: str | None, ex
     return head, tree
 
 
-def _check_qualification_rs(source_root: Path) -> None:
-    qual_path = source_root / "src/bin/dw-boundary-launcher/qualification.rs"
-    head_blob = _run_git(source_root, ["cat-file", "blob", f"{PR154_BASELINE_COMMIT}:src/bin/dw-boundary-launcher/qualification.rs"])
-    cur_text = qual_path.read_text(encoding="utf-8")
-    if cur_text not in (head_blob, head_blob + "\n" + QUAL_TEST_TAIL):
-        raise ReleaseError("qualification_rs_production_drift")
-
-
-def _check_pr154_diff(source_root: Path) -> None:
+def _check_release_diff(source_root: Path) -> None:
+    if _run_git(source_root, ["rev-parse", f"{RELEASE_BASELINE_COMMIT}^{{tree}}"]).strip() != RELEASE_BASELINE_TREE:
+        raise ReleaseError("release_baseline_tree_mismatch")
     prod_changed = [ln.strip() for ln in _run_git(
-        source_root, ["diff", "--name-only", PR154_BASELINE_COMMIT, "--", *PROD_BASELINE_PATHS]
+        source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT, "--", *PROD_BASELINE_PATHS]
     ).splitlines() if ln.strip()]
-    if prod_changed and prod_changed != ["src/bin/dw-boundary-launcher/qualification.rs"]:
+    if prod_changed:
         raise ReleaseError(f"production_source_drift:{','.join(prod_changed)}")
     all_changed = [ln.strip() for ln in _run_git(
-        source_root, ["diff", "--name-only", PR154_BASELINE_COMMIT]
+        source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT]
     ).splitlines() if ln.strip()]
     for path in all_changed:
-        if path != "src/bin/dw-boundary-launcher/qualification.rs" and not path.startswith(ALLOWED_NON_PR154_PREFIXES):
+        if not path.startswith(ALLOWED_TOOLING_PREFIXES):
             raise ReleaseError(f"unexpected_candidate_diff:{path}")
-    if prod_changed:
-        _check_qualification_rs(source_root)
 
 
-def verify_production_matches_pr154(
+def verify_release_source(
     source_root: Path, *, expected_commit: str | None = None, expected_tree: str | None = None,
     expected_driver_commit: str | None = None, expected_driver_tree: str | None = None,
     check_clean_git: bool = True,
 ) -> tuple[str, str]:
-    """Verify runtime/SQL/build inputs match PR154 cleanly and check exact commit/tree identity."""
+    """Verify runtime/SQL/build inputs match the pinned reviewed release cleanly and check exact commit/tree identity."""
     for forbidden, err in ((".cargo", "candidate_cargo_config_present"), ("build.rs", "unexpected_root_build_rs")):
         if (source_root / forbidden).exists() or (source_root / forbidden).is_symlink():
             raise ReleaseError(err)
@@ -215,7 +203,7 @@ def verify_production_matches_pr154(
         head, tree = _check_clean_git_identity(
             source_root, expected_commit, expected_tree, expected_driver_commit, expected_driver_tree
         )
-    _check_pr154_diff(source_root)
+    _check_release_diff(source_root)
     return head, tree
 
 
@@ -296,7 +284,7 @@ def package_release(*, package_dir: Path, source_root: Path, artifact_dir: Path,
     if package_dir.exists() or package_dir.is_symlink():
         raise ReleaseError("package_dir_collision")
     if verify_git_baseline:
-        verify_production_matches_pr154(
+        verify_release_source(
             source_root, expected_commit=build_source_commit, expected_tree=build_source_tree,
             expected_driver_commit=driver_commit, expected_driver_tree=driver_tree, check_clean_git=True,
         )
@@ -308,10 +296,10 @@ def package_release(*, package_dir: Path, source_root: Path, artifact_dir: Path,
         raise ReleaseError(exc.reason) from exc
     members = _write_package_members(package_dir, source_root, artifact_dir, uids, pkg_anchor)
     descriptor = {
-        "schema_version": 1, "schema_revision": SCHEMA_REVISION, "platform": PLATFORM,
+        "schema_version": 2, "schema_revision": SCHEMA_REVISION, "platform": PLATFORM,
         "build_source_commit": build_source_commit, "build_source_tree": build_source_tree,
         "driver_commit": driver_commit, "driver_tree": driver_tree,
-        "pr154_baseline_commit": PR154_BASELINE_COMMIT, "pr154_baseline_tree": PR154_BASELINE_TREE,
+        "release_baseline_commit": RELEASE_BASELINE_COMMIT, "release_baseline_tree": RELEASE_BASELINE_TREE,
         "image_ref": image_ref, "image_digest": image_digest,
         "synthetic_fixture": synthetic_fixture, "members": members,
     }
@@ -355,8 +343,8 @@ def _dispatch_cli(args) -> dict:
             build_source_commit=args.build_source_commit, build_source_tree=args.build_source_tree,
             driver_commit=args.driver_commit, driver_tree=args.driver_tree,
         )
-    if args.cmd == "verify-pr154":
-        head, tree = verify_production_matches_pr154(
+    if args.cmd == "verify-source":
+        head, tree = verify_release_source(
             Path(args.source_root), expected_commit=args.expected_commit, expected_tree=args.expected_tree,
             expected_driver_commit=args.expected_driver_commit, expected_driver_tree=args.expected_driver_tree,
         )
@@ -374,7 +362,7 @@ def main(argv: list[str] | None = None) -> int:
     p_ver = sub.add_parser("verify-descriptor")
     p_ver.add_argument("--package-dir", required=True, type=Path)
     p_ver.add_argument("--expected-descriptor-sha256", required=True)
-    p_p = sub.add_parser("verify-pr154")
+    p_p = sub.add_parser("verify-source")
     p_p.add_argument("--source-root", required=True)
     for flag in ("--expected-commit", "--expected-tree", "--expected-driver-commit", "--expected-driver-tree"):
         p_p.add_argument(flag, required=False)

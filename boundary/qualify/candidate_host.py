@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from candidate_files import FileCustodyError, read_protected_bytes, require_safe_ancestors
 from candidate_postgres import PostgresError, run_psql_stdin
 
-_RPT = "/srv/duskweave/reports/linux-prov2-qual-r1"
+_RPT = "/srv/duskweave/reports/live-context-purpose-r1"
 _CFG = "/etc/duskweave/m1/linux-prov2-qual-r1"
 PRIVILEGED_SCOPE = {
     "source_dir": "/srv/duskweave/src/linux-prov2-qual-r1", "build_root": "/srv/duskweave-build/linux-prov2-qual-r1",

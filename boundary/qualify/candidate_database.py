@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Candidate PostgreSQL schema-0035 provisioning and protected credential custody."""
+"""Candidate PostgreSQL schema-0036 provisioning and protected credential custody."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from candidate_files import (
     write_exclusive_verified,
 )
 from candidate_host import HostObservationError, PRIVILEGED_SCOPE, resolve_core_account
-from candidate_postgres import PostgresError, verify_schema_0035_and_identities
+from candidate_postgres import PostgresError, verify_release_schema_and_identities
 
 ALLOWED_ENV_KEYS = (
     "PATH", "HOME", "LANG", "LC_ALL", "TERM", "TZ",
@@ -123,7 +123,7 @@ def write_runtime_config(config_root: Path, dsns: dict[str, str], expected_uids:
 def _default_verifier(container: str, database: str, roles: dict[str, str], dsns: dict[str, str],
                       role_prefix: str, migration_path: Path) -> dict:
     try:
-        return verify_schema_0035_and_identities(
+        return verify_release_schema_and_identities(
             container, database, roles, dsns, migration_path=migration_path, role_prefix=role_prefix,
         )
     except PostgresError as exc:
@@ -173,7 +173,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
         os.environ.clear()
         os.environ.update(clean_env)
         fx = factory(
-            container=container, kind="fixture", ci=False, database=database, schema_revision="0035",
+            container=container, kind="fixture", ci=False, database=database, schema_revision="0036",
             role_prefix=role_prefix, custody_callback=custody_cb, negative_controls=False,
         )
         write_runtime_config(
@@ -188,7 +188,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
             raise
         return {
             "status": exc.status if (custody_written or exc.status == "INCOMPLETE") else "REFUSED",
-            "database": database, "role_prefix": role_prefix, "schema_revision": "0035",
+            "database": database, "role_prefix": role_prefix, "schema_revision": "0036",
             "custody_preserved": custody_written, "reason": exc.reason,
         }
     except Exception as exc:
@@ -196,7 +196,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
             raise CandidateDatabaseError("REFUSED", type(exc).__name__) from exc
         return {
             "status": "INCOMPLETE", "database": database, "role_prefix": role_prefix,
-            "schema_revision": "0035", "custody_preserved": True, "reason": type(exc).__name__,
+            "schema_revision": "0036", "custody_preserved": True, "reason": type(exc).__name__,
         }
     finally:
         os.environ.clear()
@@ -204,7 +204,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
 
     return {
         "status": "SUCCESS", "database": fx.database, "role_prefix": role_prefix,
-        "schema_revision": "0035", "custody_preserved": True, "config_root": str(cfg_root),
+        "schema_revision": "0036", "custody_preserved": True, "config_root": str(cfg_root),
         "custody_file": str(custody_path), "core_uid": core_uid, "core_gid": core_gid,
         "roles": dict(captured_plan["roles"]), "verification": facts,
     }
@@ -228,7 +228,7 @@ def provision_database(
     writer=os.write,
     fsync_fn=os.fsync,
 ) -> dict:
-    """Provision fresh schema-0035 DB with pre-create custody, core-0400 configs, and exact catalog check."""
+    """Provision fresh schema-0036 DB with pre-create custody, core-0400 configs, and exact catalog check."""
     clean_env = sanitize_env(env)
     account = _resolve_account_for_provision(core_account, core_resolver)
     cfg_root = Path(config_root)
@@ -246,7 +246,7 @@ def provision_database(
 
 
 def main(argv: list[str] | None = None, *, driver_verifier=verify_driver_custody) -> int:
-    parser = argparse.ArgumentParser(description="Privileged fixed-scope schema-0035 database provisioner")
+    parser = argparse.ArgumentParser(description="Privileged fixed-scope schema-0036 database provisioner")
     parser.add_argument("--expected-driver-commit", required=True)
     parser.add_argument("--expected-driver-tree", required=True)
     args = parser.parse_args(argv)

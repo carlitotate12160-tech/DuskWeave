@@ -8,7 +8,7 @@ from pathlib import Path
 
 from candidate_files import FileCustodyError, create_exclusive_dir, publish_atomic_verified, read_protected_bytes, reject_sensitive_env, verify_driver_custody, write_exclusive_verified
 from candidate_host import HostObservationError, INSTALL_BINARIES, PRIVILEGED_SCOPE, WORKER_BINARIES, check_quiescence, extract_image_worker_digests, observe_installed_facts
-from candidate_postgres import PostgresError, run_psql_stdin, verify_schema_0035_and_identities
+from candidate_postgres import PostgresError, run_psql_stdin, verify_release_schema_and_identities
 import release_descriptor
 
 PURPOSE_LIVE, LIVE_RUN_PROFILE = "LIVE", "autonomous-dns-genai-live-v1"
@@ -297,7 +297,7 @@ def _observe_live_context(kw: dict, *, require_match: bool) -> tuple[dict, str, 
     if not (HEX40_RE.fullmatch(kw["expected_driver_commit"]) and HEX40_RE.fullmatch(kw["expected_driver_tree"])):
         raise BindingError("expected_driver_pin_invalid")
     h_obs = kw.get("host_observer") or (lambda: observe_installed_facts(expected_uids=sc["uids"], stop_at=sc["stop"], require_binaries=True))
-    d_ver = kw.get("db_verifier") or (lambda c, d, r, u, m, p: verify_schema_0035_and_identities(c, d, r, u, migration_path=m, role_prefix=p))
+    d_ver = kw.get("db_verifier") or (lambda c, d, r, u, m, p: verify_release_schema_and_identities(c, d, r, u, migration_path=m, role_prefix=p))
     q_chk = kw.get("quiescence_checker") or (lambda adsn: check_quiescence(pg_container=sc["cnt"], admin_dsn=adsn, candidate_db=sc["dbn"]))
     try:
         (kw.get("driver_verifier") or verify_driver_custody)(kw.get("driver_dir") or Path(__file__).resolve().parent, kw["expected_driver_commit"], kw["expected_driver_tree"], expected_uids=sc["uids"], stop_at=sc["stop"])

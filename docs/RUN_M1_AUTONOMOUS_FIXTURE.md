@@ -562,62 +562,47 @@ references; DNS is optional. `view_request` still terminates explicitly as
 `owner_view_requested`; it does not fetch a view or launch another decision.
 Fixture success proves wiring, not consistent paid-model action selection.
 
-The following PR154-equivalence tooling describes the frozen R1 deployment.
-It must refuse this changed runtime; a subsequent release must bind the reviewed
-new source and verify schema 0036. Do not reuse the old bundle or binding as
-qualification of this correction, and do not reprovision retained pilot data.
+The current tooling qualifies the reviewed context-purpose source baseline and
+schema `0036`. Historical PR154 descriptors and reports remain archived; they do
+not qualify the changed runtime. Retained database roles/configuration and build
+cache are reused where compatible; no pilot database is reprovisioned.
 
 ### Candidate Linux Pro-v2 LIVE qualification tooling
 
-`boundary/qualify/qualify.sh candidate <subcommand>` prepares the PR154-baseline
-Linux/ARM64 candidate lane (`boundary/qualify/candidate.sh`, `candidate_files.py`,
-`candidate_postgres.py`, `candidate_host.py`, `candidate_install.py`,
-`release_descriptor.py`, `candidate_database.py`, `candidate_binding.py`):
+`boundary/qualify/qualify.sh candidate <subcommand>` qualifies the fixed
+Linux/ARM64 deployment using the existing custody, package, install and binding
+owners. The release descriptor is version `2`, schema `0036`, with closed
+`release_baseline_commit`/`release_baseline_tree` pins for the reviewed runtime.
+Actual build-source and driver identities are the clean successor HEAD/tree;
+no arbitrary baseline argument or source-verification bypass is exposed.
 
-- **Offline / verification subcommands**: `package`, `verify-descriptor`, and
-  `render-binding` (emits `UNAPPLIED` evidence and exact manifest bytes without
-  touching `/etc`, PostgreSQL, or services).
-- **Privileged host gate and driver custody**: privileged `candidate`
-  subcommands verify `/etc/duskweave/m1/.live-dns-owner` (`0400`) and verify the
-  pinned driver module tree (`candidate.sh`, Python `candidate_*` /
-  `release_descriptor.py` modules, and `tests/support/m1_native_bootstrap.py`)
-  against clean `HEAD` before lazily sourcing `candidate.sh`. Unknown/extra
-  arguments fail closed (`candidate_arguments_refused`) and never invoke legacy
-  `install` or `lab-*` paths.
-- **Storage and source isolation**: `build-storage` validates ext4 mount isolation
-  plus `/proc/self/mountinfo` nested-mount safety for
-  `/srv/duskweave-build/linux-prov2-qual-r1` without disturbing retained siblings
-  (`diag-inference-pre-send-20261111r1`, `proposal-diagnostics-r1`,
-  `normal-sc30cand`); `build` isolates `STAGE` subdirectories and refuses target
-  collisions; `package` / `verify-descriptor` check ELF64/AArch64 headers, seven
-  fixed members, `release-descriptor.json`, and PR154 production source equivalence
-  with a clean `git -C` environment immune to parent `GIT_DIR`/`GIT_WORK_TREE`.
-- **Database and custody**: `provision-db` writes root-only `0400` admin
-  custody (`O_EXCL` + file/dir `fsync`) before the first `createuser`, creates
-  schema-`0035` database `dw_native_linux_prov2_qual_20261115r1` (`dw_lpq15r1`,
-  seven owners, `negative_controls=False`), verifies exact `0035` function
-  signatures/attributes/body hashes and all seven direct role logins over
-  key-free stdin transport (`INNER_PSQL_SH`), emits mode-`0400` `duskweave-core`-owned
-  runtime `.dsn` files plus file-mode `environment.json` under
-  `/etc/duskweave/m1/linux-prov2-qual-r1`, and refuses ambient `DEEPSEEK_API_KEY`
-  or `DW_*`/`*_FILE` overrides.
-- **Install and ordered binding**: `install` resolves fixed `duskweave-core`
-  (no `--runtime-gid`), checks quiescence (single-sink backups, sockets,
-  containers, retained databases), read-only sudoers policy, and image/archive
-  AArch64 digests, stages replacements atomically (cleaning temporary files on
-  pre-replace abort), emits non-secret receipts (`custody_sha256` omitted), and
-  reports `INCOMPLETE` on mid-install failure without auto-rollback. `bind`
-  validates global IPv4 resolver addresses (rejecting reserved/special ranges
-  such as `192.88.99.0/24`) and bounded `<= 16384`-byte `LIVE` manifests
-  (`autonomous-dns-genai-live-v1`, finite window) before one SQL `INSERT`
-  (`BEGIN; ...; COMMIT;`), returning `UNKNOWN` on commit/ack uncertainty so
-  read-only `reconcile` verifies both DB state and installed image/worker digests
-  without retrying `INSERT`.
-- **Readiness limit**: only offline checks, unprivileged synthetic host/container
-  tests, and local `dwpg-r3` PostgreSQL 17.11 integration
-  (`tests/m1_candidate_qualification.py`, verifying `duskweave inspect` on the
-  emitted `0400` config, `2` direct SQL constraint refusals, and `1`
-  application `qualification_ref_collision` precheck) run in this preparation
-  slice; Oracle ARM64 host execution, root/`duskweave-core` ownership, and live
-  `deepseek-genai-v4-pro-low-v2` campaigns remain unrun until authorized
-  deployment.
+- `package`, `verify-descriptor`, and `render-binding` are offline operations.
+  `release_descriptor.py verify-source` additionally verifies the pinned Git
+  baseline tree and exact production/build-input equivalence. Production edits,
+  including qualification test-registration edits, require a newly reviewed pin.
+- Privileged operations retain root host/driver custody, `0400` ownership,
+  pre-load `.live-dns-owner`, strict clean environment, read-only sudoers checks,
+  ext4/nested-mount isolation and quiescence across retained databases/sinks.
+- Current source remains `/srv/duskweave/src/linux-prov2-qual-r1`; retained build
+  cache remains `/srv/duskweave-build/linux-prov2-qual-r1`. New bundle, install
+  backup and binding receipts use `/srv/duskweave/reports/live-context-purpose-r1`.
+  Historical `/srv/duskweave/reports/linux-prov2-qual-r1` is preserved.
+- For this source-only runtime update, rebuild Rust core/launcher with the
+  locked/offline build environment after `candidate build-storage`; reuse the
+  verified unchanged Go workers/image. Package all four exact binaries. The
+  full `candidate build` continues to require a fresh build root and image;
+  it is not the incremental update procedure.
+- Reuse `dw_native_linux_prov2_qual_20261115r1`, its seven owners and protected
+  `/etc/duskweave/m1/linux-prov2-qual-r1` custody/config. Apply only the new atomic
+  migration `0036` under its existing administrative owner after quiescence.
+  The release verifier checks all ten unchanged `0035` definitions plus exact
+  `0036` `execution.assert_successor_pack`, and all seven direct role sessions.
+  `provision-db` remains a fresh-database command and now provisions `0036`.
+- `install` retains staged replacements, prior-binary/manifest backups and
+  honest `INCOMPLETE` receipts without automatic rollback. `bind` issues a fresh
+  finite LIVE manifest/reference and one SQL INSERT; read-only `reconcile`
+  independently verifies installed/package/image/database identities. Unknown
+  write acknowledgements require reconciliation, never an automatic retry.
+- Reconcile immediately before a freshly authorized LIVE episode. A successful
+  provider call or legitimate defer/view-request terminal is not DNS/D2 success.
+  Record actual decisions, calls, effects, Terrain and key-free recovery.

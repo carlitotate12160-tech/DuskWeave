@@ -145,25 +145,25 @@ check_candidate_build_storage "{build_mount}" "{cand}" no_nested_mount
             self.assertIn("build_storage_foreign_entry", foreign.stderr)
 
 
-class ReleaseDescriptorAndPR154Tests(unittest.TestCase):
-    def test_real_qualification_registration_preserves_exact_production_bytes(self):
-        current = (ROOT / "src/bin/dw-boundary-launcher/qualification.rs").read_text()
-        suffix = "\n" + release_descriptor.QUAL_TEST_TAIL
-        self.assertTrue(current.endswith(suffix))
-        baseline = current.removesuffix(suffix)
+class ReleaseDescriptorAndPinnedSourceTests(unittest.TestCase):
+    def test_reviewed_source_pin_accepts_exact_tree_and_refuses_later_production_edits(self):
         with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            target = repo / "src/bin/dw-boundary-launcher/qualification.rs"
-            target.parent.mkdir(parents=True)
-            with mock.patch.object(release_descriptor, "_run_git", return_value=baseline):
-                target.write_text(current)
-                release_descriptor._check_qualification_rs(repo)
-                target.write_text(baseline)
-                release_descriptor._check_qualification_rs(repo)
-                for invalid in (current + suffix, current.replace("fn host_sinks()", "fn changed_host_sinks()", 1)):
-                    target.write_text(invalid)
-                    with self.assertRaises(release_descriptor.ReleaseError):
-                        release_descriptor._check_qualification_rs(repo)
+            repo = Path(tmp) / "source"
+            path = "src/bin/dw-boundary-launcher/qualification.rs"
+            head, tree = _init_clean_git_repo(repo, {path: b"fn main() {}\n"})
+            with mock.patch.multiple(release_descriptor, RELEASE_BASELINE_COMMIT=head, RELEASE_BASELINE_TREE=tree):
+                self.assertEqual(release_descriptor.verify_release_source(repo, expected_commit=head, expected_tree=tree), (head, tree))
+                with mock.patch.object(release_descriptor, "RELEASE_BASELINE_TREE", "0" * 40):
+                    with self.assertRaisesRegex(release_descriptor.ReleaseError, "release_baseline_tree_mismatch"):
+                        release_descriptor.verify_release_source(repo)
+                target = repo / path
+                os.chmod(target, 0o644)
+                target.write_text("fn main() {}\n#[cfg(test)] mod injected {}\n")
+                env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
+                subprocess.run(["git", "-C", str(repo), "add", "."], check=True, env=env)
+                subprocess.run(["git", "-C", str(repo), "commit", "-qm", "changed source"], check=True, env=env)
+                with self.assertRaisesRegex(release_descriptor.ReleaseError, "production_source_drift"):
+                    release_descriptor.verify_release_source(repo)
 
     def _populate_source_and_artifacts(self, base: Path) -> tuple[Path, Path]:
         src, art = base / "src", base / "artifacts"
@@ -175,7 +175,7 @@ class ReleaseDescriptorAndPR154Tests(unittest.TestCase):
             (src / "third_party" / "genai" / notice).write_text(f"notice:{notice}\n", encoding="utf-8")
         return src, art
 
-    def test_verify_pr154_rejects_cargo_build_rs_dirty_worktree_and_go_mod_drift(self):
+    def test_verify_release_rejects_cargo_build_rs_dirty_worktree_and_go_mod_drift(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             files = {
@@ -186,25 +186,25 @@ class ReleaseDescriptorAndPR154Tests(unittest.TestCase):
             }
             head, tree = _init_clean_git_repo(repo, files)
             with self.assertRaises(release_descriptor.ReleaseError) as wrong_pin:
-                release_descriptor.verify_production_matches_pr154(repo, expected_commit="0" * 40, expected_tree=tree)
+                release_descriptor.verify_release_source(repo, expected_commit="0" * 40, expected_tree=tree)
             self.assertEqual(str(wrong_pin.exception), "source_commit_mismatch")
 
             (repo / ".cargo").mkdir(mode=0o755)
             with self.assertRaises(release_descriptor.ReleaseError) as cargo_err:
-                release_descriptor.verify_production_matches_pr154(repo, expected_commit=head, expected_tree=tree)
+                release_descriptor.verify_release_source(repo, expected_commit=head, expected_tree=tree)
             self.assertEqual(str(cargo_err.exception), "candidate_cargo_config_present")
             (repo / ".cargo").rmdir()
 
             (repo / "build.rs").write_text("fn main() {}\n", encoding="utf-8")
             with self.assertRaises(release_descriptor.ReleaseError) as br_err:
-                release_descriptor.verify_production_matches_pr154(repo, expected_commit=head, expected_tree=tree)
+                release_descriptor.verify_release_source(repo, expected_commit=head, expected_tree=tree)
             self.assertEqual(str(br_err.exception), "unexpected_root_build_rs")
             (repo / "build.rs").unlink()
 
             os.chmod(repo / "boundary" / "go.mod", 0o644)
             (repo / "boundary" / "go.mod").write_text("module hijacked\n", encoding="utf-8")
             with self.assertRaises(release_descriptor.ReleaseError) as dirty_err:
-                release_descriptor.verify_production_matches_pr154(repo, expected_commit=head, expected_tree=tree)
+                release_descriptor.verify_release_source(repo, expected_commit=head, expected_tree=tree)
             self.assertEqual(str(dirty_err.exception), "dirty_source_worktree")
 
     def test_package_and_verify_descriptor_round_trip_and_tamper_guards(self):
@@ -215,12 +215,17 @@ class ReleaseDescriptorAndPR154Tests(unittest.TestCase):
             res = release_descriptor.package_release(
                 package_dir=pkg, source_root=src, artifact_dir=art,
                 image_ref="dw-boundary-cand:20261115r1", image_digest="sha256:" + ("a" * 64),
-                build_source_commit=release_descriptor.PR154_BASELINE_COMMIT, build_source_tree=release_descriptor.PR154_BASELINE_TREE,
+                build_source_commit=release_descriptor.RELEASE_BASELINE_COMMIT, build_source_tree=release_descriptor.RELEASE_BASELINE_TREE,
                 driver_commit="1" * 40, driver_tree="2" * 40, synthetic_fixture=True, verify_git_baseline=False,
             )
             self.assertEqual(res["status"], "SUCCESS")
             verified = release_descriptor.verify_descriptor(pkg, res["descriptor_sha256"], allow_synthetic=True)
             self.assertEqual(len(verified["members"]), 7)
+            self.assertEqual(verified["schema_revision"], "0036")
+            for field, value in (("schema_version", 1), ("schema_revision", "0035"), ("release_baseline_tree", "0" * 40)):
+                changed = {**verified, field: value}
+                with self.assertRaises(release_descriptor.ReleaseError):
+                    release_descriptor.parse_descriptor_bytes(json.dumps(changed).encode())
             with self.assertRaises(release_descriptor.ReleaseError):
                 release_descriptor.verify_descriptor(pkg, res["descriptor_sha256"], allow_synthetic=False)
             os.chmod(pkg / "duskweave", 0o755)
@@ -243,7 +248,7 @@ class CandidateInstallSafetyTests(unittest.TestCase):
         res = release_descriptor.package_release(
             package_dir=pkg, source_root=src, artifact_dir=art,
             image_ref="dw-boundary-cand:20261115r1", image_digest="sha256:" + ("c" * 64),
-            build_source_commit=release_descriptor.PR154_BASELINE_COMMIT, build_source_tree=release_descriptor.PR154_BASELINE_TREE,
+            build_source_commit=release_descriptor.RELEASE_BASELINE_COMMIT, build_source_tree=release_descriptor.RELEASE_BASELINE_TREE,
             driver_commit="1" * 40, driver_tree="2" * 40, synthetic_fixture=True, verify_git_baseline=False,
         )
         install_bin = base / "bin"
