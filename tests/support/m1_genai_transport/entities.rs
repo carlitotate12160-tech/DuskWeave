@@ -322,7 +322,7 @@ pub(super) fn maximum_pack_and_eight_repair_codes_use_observed_sdk_entity_bytes(
     }
 }
 
-fn measure_pro_v2_case(
+pub(super) fn measure_pro_v2_case(
     name: &str,
     pack_value: &Value,
     call: uuid::Uuid,

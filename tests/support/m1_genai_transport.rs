@@ -296,6 +296,13 @@ fn stalled_current_thread_runtime_keeps_independent_clock_termination() {
 
 #[path = "m1_genai_transport/entities.rs"]
 mod entities;
+#[path = "m1_genai_transport/live_context.rs"]
+mod live_context;
+
+#[test]
+fn live_context_question_fits_observed_generation_and_repair_entities() {
+    live_context::exercise();
+}
 #[path = "m1_genai_transport/errors.rs"]
 mod errors;
 #[path = "m1_genai_transport/tls.rs"]

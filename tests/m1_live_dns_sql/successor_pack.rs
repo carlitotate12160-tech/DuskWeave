@@ -233,6 +233,22 @@ fn matrix_case(
     let pack: Value = serde_json::from_str(&pack_text).unwrap();
     assert_eq!(pack["version"], pack_version);
     pack_keys(&pack, live);
+    if live {
+        assert_eq!(
+            pack["question"],
+            duskweave::m1_autonomous_context::LIVE_ROUTING_QUESTION
+        );
+        assert!(pack["question"].as_str().unwrap().len() <= 1024);
+        assert!(!pack_text.contains("seed.duskweave.test"));
+    } else {
+        assert_eq!(pack["question"], duskweave::m1_context::QUESTION);
+    }
+    assert!(request::capacity_fits(
+        pack_text.as_bytes(),
+        8192,
+        16384,
+        16384
+    ));
     assert_eq!(
         pack["inference_profile"].as_str().unwrap(),
         record.request.inference_profile.as_deref().unwrap()
@@ -242,12 +258,57 @@ fn matrix_case(
     let mut port = broker_port(&record, deadline);
     let reservation = port.reserve(&scope, pack_text.as_bytes()).expect("reserve");
     let bound = bind_generation(&scope, &pack_text, &reservation, sdk);
+    if live {
+        let repair = inference_intent::bind(
+            &scope,
+            &reservation,
+            reservation.repair_call,
+            pack_text.as_bytes(),
+            Some(&["unexpected_view_request"; 8]),
+        )
+        .unwrap();
+        assert!(repair.configuration.len() <= 16384);
+        assert_eq!(repair.pack, bound.pack);
+        eprintln!(
+            "live_context_bytes pack={} intent={} repair_intent={}",
+            pack_text.len(),
+            bound.configuration.len(),
+            repair.configuration.len()
+        );
+    }
     assert_eq!(bound.body.is_empty(), sdk, "SDK intents carry no wire body");
     port.may_send(&scope, reservation.generation_call, &bound)
         .unwrap_or_else(|error| {
             panic!("{version} pack must pass the restricted consumer: {error}")
         });
     let row = marker(&scope, reservation.generation_call);
+    for question in [
+        json!("unreviewed question"),
+        json!(format!("{} ", pack["question"].as_str().unwrap())),
+        Value::Null,
+    ] {
+        refused_marker(
+            &scope,
+            reservation.generation_call,
+            &with(&pack, "question", question),
+            &bound,
+            "unadmitted question",
+        );
+    }
+    if !live {
+        let changed = with(
+            &pack,
+            "question",
+            json!(duskweave::m1_autonomous_context::LIVE_ROUTING_QUESTION),
+        );
+        refused_marker(
+            &scope,
+            reservation.generation_call,
+            &changed,
+            &bound,
+            "live question on nonlive pack",
+        );
+    }
     assert_eq!(row.get::<_, String>(0), bound.digest);
     assert_eq!(row.get::<_, String>(1), "may_send_uncertain");
 

@@ -271,9 +271,12 @@ pub fn envelope(proposal: &Value) -> Value {
 }
 pub fn pack_in(value: &Value) -> Option<Value> {
     match value {
-        Value::String(s) => serde_json::from_str::<Value>(s)
-            .ok()
-            .filter(|p| p["version"] == "m1_context_pack_autonomous_v3"),
+        Value::String(s) => serde_json::from_str::<Value>(s).ok().filter(|p| {
+            matches!(
+                p["version"].as_str(),
+                Some("m1_context_pack_autonomous_v3" | "m1_context_pack_autonomous_v4")
+            )
+        }),
         Value::Array(a) => a.iter().find_map(pack_in),
         Value::Object(o) => o.values().find_map(pack_in),
         _ => None,

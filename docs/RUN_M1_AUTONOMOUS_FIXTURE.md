@@ -552,6 +552,21 @@ attempt stops on failure without automatic retry and must complete D2 plus
 key-free inspect/recover before claiming full episode PASS. LIVE qualification
 and real-target authorization remain separate from this fixture procedure.
 
+### LIVE/LAB context clarification (schema 0036)
+
+Current v4 producers require migration `0036_live_context_purpose.sql` before
+new inference. It preserves existing identity/scope/disclosure checks and the
+historical question while admitting the exact routing-oriented wording only
+for matched v4 pack/run identities. Seeds remain premises behind opaque asset
+references; DNS is optional. `view_request` still terminates explicitly as
+`owner_view_requested`; it does not fetch a view or launch another decision.
+Fixture success proves wiring, not consistent paid-model action selection.
+
+The following PR154-equivalence tooling describes the frozen R1 deployment.
+It must refuse this changed runtime; a subsequent release must bind the reviewed
+new source and verify schema 0036. Do not reuse the old bundle or binding as
+qualification of this correction, and do not reprovision retained pilot data.
+
 ### Candidate Linux Pro-v2 LIVE qualification tooling
 
 `boundary/qualify/qualify.sh candidate <subcommand>` prepares the PR154-baseline

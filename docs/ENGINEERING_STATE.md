@@ -48,32 +48,36 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Current work (`DW-LINUX-PROV2-QUALIFICATION-PREP-R1` — local tooling prep & FIX1 remediation complete):**
-PR #154 (`850b8b3b3a161ebfa051830fc5037bd5aeff04d0`) landed
-`DW-PRO-V2-CANDIDATE-C` (`reasoning-bounded-pro-v2`, migration `0035`, limits in
-[ADR-016](adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14)).
-Candidate Linux/ARM64 operator tooling (`boundary/qualify/qualify.sh candidate ...`,
-`candidate.sh`, `candidate_files.py`, `candidate_postgres.py`, `candidate_host.py`,
-`candidate_install.py`, `release_descriptor.py`, `candidate_database.py`,
-`candidate_binding.py`, and unchanged `Fixture` pre-create custody extension in
-`tests/support/m1_native_bootstrap.py`) is modularized and verified offline
-(including pre-load driver custody/clean-`HEAD` verification in `qualify.sh`,
-`/proc/self/mountinfo` storage checks, synthetic host/installer/binding unit
-tests, mode-`0400` `duskweave-core` config emission without `custody_sha256`
-receipts, key-free stdin PostgreSQL/schema-`0035` verification, and `16384`-byte /
-global-IPv4 manifest limits) plus against local PostgreSQL 17.11 (`dwpg-r3`,
-schema `0035`, direct-role logins, `duskweave inspect` loading the generated
-file-mode config, custody/ack-loss cases, `2` direct SQL constraint refusals,
-and `1` application `qualification_ref_collision` precheck). Host root/`0400`/
-`duskweave-core` ownership, Docker runtime extraction, and Oracle (`pica-arm-01`)
-build/install/bind/live-provider execution remain unrun until authorized deployment.
+**Current work (`DW-M1-LIVE-CONTEXT-PURPOSE-R1` — local implementation, not accepted):**
+The owner-reported LIVE episode `live-episode-niagamas-20261115r3` reached
+`owner_view_requested` at D1 with zero effects. Provider completion and exit `0`
+do not demonstrate DNS acquisition or completion of the product loop.
+The v4 ContextPack now describes bounded DNS observation, broker-held opaque
+seed references, Terrain omission semantics, and the terminal unfulfilled owner
+view request. Retain, defer and stop remain valid; no domain disclosure, forced
+DNS, new loop, scope or execution authority is introduced. Migration `0036`
+accepts that exact v4 wording alongside the retained historical question;
+producer and restricted PostgreSQL consumer are tested together.
 
-**Next product action:** review and accept `DW-LINUX-PROV2-QUALIFICATION-PREP-R1`,
-execute the ordered candidate steps on `pica-arm-01` under operator custody, and
-run a separately authorized `deepseek-genai-v4-pro-low-v2` verification episode.
-The prior pilot stopped `UNKNOWN` at D2 output exhaustion (not full episode PASS);
-Phase5 retains its historical partial/`INCOMPLETE` disposition; Windows
-control-root/ACL remains `OPEN`; Foundation/M0 seals are unchanged.
+Local checks cover 29 PostgreSQL SQL cases at schema `0036`, 91 Rust library
+cases (four ignored), SDK loopback generation/repair sizes below 16384 bytes,
+and six Rust link-checker cases. These checks do not establish live-model
+choice, Oracle deployment readiness, CI acceptance or a new seal.
+
+The first complete Python retirement replaces `scripts/check_links.py` with
+opt-in `dw-qualify check-links --root DIRECTORY`, including CI and developer
+callers. The standard-library checker removes one Python file (107 lines);
+remaining candidate provisioning wrappers are unchanged, with no new Python
+driver, dependency, or parallel validator introduced.
+
+**Next product action:** review this local diff, then qualify a release that
+includes the changed runtime and schema `0036`. The frozen PR #154-equivalence
+candidate tooling must refuse this runtime; do not weaken that predicate or
+reuse an old release descriptor/binding. Reuse already verified host/build/
+provisioning work where compatible; do not replay completed steps merely for
+ceremony. A newly authorized, currently bound LIVE episode is still required
+to demonstrate D1 → DNS → Terrain → D2. HTTPS validation follows that outcome.
+Windows control-root/ACL remains `OPEN`; Foundation/M0 seals are unchanged.
 
 **Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
 The heartbeat fence contention mechanism confirmed under the diagnostic witness

@@ -57,9 +57,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version-file: ".python-version"
+      - name: Rust standard-library operator checker toolchain
+        run: rustup toolchain install 1.94.1 --profile minimal
 
       - name: Whitespace and conflict-marker check
         shell: bash
@@ -77,7 +76,14 @@ jobs:
           git diff --check "$BASE"..HEAD
 
       - name: Markdown link and anchor check
-        run: python scripts/check_links.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dw-qualify"
+          rustc +1.94.1 --edition=2024 --test src/bin/dw-qualify/main.rs -o "$RUNNER_TEMP/dw-qualify/tests"
+          "$RUNNER_TEMP/dw-qualify/tests"
+          rustc +1.94.1 --edition=2024 src/bin/dw-qualify/main.rs -o "$RUNNER_TEMP/dw-qualify/dw-qualify"
+          "$RUNNER_TEMP/dw-qualify/dw-qualify" check-links --root "$GITHUB_WORKSPACE"
 
   structure:
     strategy:

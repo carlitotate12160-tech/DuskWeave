@@ -44,12 +44,12 @@ def provisioning_probe(recorded):
 class SchemaRevisionCases(unittest.TestCase):
     def test_revision_0032_accepted_and_out_of_range_refused(self):
         self.assertIn("0032", bootstrap.SCHEMA_REVISIONS)
-        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0035")
+        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0036")
 
         def bomb(args, data=None):
             raise AssertionError("provisioning must not start for an invalid revision")
 
-        for revision, kind in (("0035", "live"), ("0034", "live"), ("0036", "fixture"),
+        for revision, kind in (("0035", "live"), ("0034", "live"), ("0037", "fixture"),
                                ("0033", "live"), ("0032", "live"), ("0031", "live"), ("32", "fixture")):
             with mock.patch.object(bootstrap, "private_run", bomb):
                 with self.assertRaisesRegex(RuntimeError, "^native_schema_revision_refused$"):
@@ -115,7 +115,7 @@ class SchemaRevisionCases(unittest.TestCase):
     def test_revision_tail_counts_stay_distinct(self):
         for revision, initial, refresh in (
             ("0020", 18, 9), ("0021", 19, 10), ("0022", 20, 11),
-            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22), ("0034", 32, 23), ("0035", 33, 24),
+            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22), ("0034", 32, 23), ("0035", 33, 24), ("0036", 34, 25),
         ):
             self.assertEqual(len(migrate_calls(revision, initial=True)), initial, revision)
             self.assertEqual(len(migrate_calls(revision, initial=False)), refresh, revision)

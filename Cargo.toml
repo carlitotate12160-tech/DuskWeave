@@ -8,6 +8,7 @@ default-run = "duskweave"
 [features]
 # Opt-in development tooling: the fixture supervisor/service-check executable.
 fixture-supervisor = ["dep:process-wrap"]
+operator-tooling = []
 
 [dependencies]
 genai = { path = "third_party/genai", default-features = false, features = ["rustls-tls"] }
@@ -36,6 +37,11 @@ required-features = ["fixture-supervisor"]
 [[bin]]
 name = "dw-boundary-launcher"
 path = "src/bin/dw-boundary-launcher/main.rs"
+
+[[bin]]
+name = "dw-qualify"
+path = "src/bin/dw-qualify/main.rs"
+required-features = ["operator-tooling"]
 
 [dev-dependencies]
 tracing = "=0.1.44"
