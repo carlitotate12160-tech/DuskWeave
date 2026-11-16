@@ -48,36 +48,43 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Current work (`DW-M1-LIVE-CONTEXT-PURPOSE-R1` — local implementation, not accepted):**
-The owner-reported LIVE episode `live-episode-niagamas-20261115r3` reached
-`owner_view_requested` at D1 with zero effects. Provider completion and exit `0`
-do not demonstrate DNS acquisition or completion of the product loop.
-The v4 ContextPack now describes bounded DNS observation, broker-held opaque
-seed references, Terrain omission semantics, and the terminal unfulfilled owner
-view request. Retain, defer and stop remain valid; no domain disclosure, forced
-DNS, new loop, scope or execution authority is introduced. Migration `0036`
-accepts that exact v4 wording alongside the retained historical question;
-producer and restricted PostgreSQL consumer are tested together.
+**Current work (`DW-M1-LIVE-CONTEXT-PURPOSE-R1` — Oracle LIVE demonstrated; not sealed):**
+The v4 context correction is implemented: bounded DNS framing, Broker-held
+opaque seed semantics, Terrain omissions and terminal unfulfilled owner views.
+Migration `0036` admits the exact reviewed wording without changing scope,
+fields, disclosure or execution authority. Retain/defer/stop remain valid.
+Local checks cover 29 PostgreSQL SQL cases, 91 Rust library cases (four ignored),
+SDK generation/repair capacity, and the Rust link checker on Windows/Linux.
 
-Local checks cover 29 PostgreSQL SQL cases at schema `0036`, 91 Rust library
-cases (four ignored), SDK loopback generation/repair sizes below 16384 bytes,
-and six Rust link-checker cases. These checks do not establish live-model
-choice, Oracle deployment readiness, CI acceptance or a new seal.
+On 2026-11-16 the explicitly authorized Oracle episode
+`live-episode-niagamas-20261116r1` completed D1 → real DNS → Terrain → D2 in
+73.558 seconds, exit `0`: two provider calls, two decisions/history entries,
+one effect and one Terrain history. D1 proposed `dns_udp`; resolver `1.1.1.1`
+returned `206.189.93.100` for `niagamas.com` (rcode `0`, TTL `1799`). D2 retained
+the hypothesis with `terrain_0` and predecessor feedback. This is routing
+observation, not proof of HTTPS access or completion of cognitive M1.
 
-The first complete Python retirement replaces `scripts/check_links.py` with
-opt-in `dw-qualify check-links --root DIRECTORY`, including CI and developer
-callers. The standard-library checker removes one Python file (107 lines);
-remaining candidate provisioning wrappers are unchanged, with no new Python
-driver, dependency, or parallel validator introduced.
+Deployment reused the database, seven restricted owners, protected config,
+worker image/Go binaries and build cache. Only the changed Rust binaries were
+rebuilt; only migration `0036` was applied. The release successor uses closed
+reviewed-source pins, descriptor v2 and an eleven-function catalog check;
+44 tooling unit tests and real PostgreSQL custody/binding/ack-loss cases pass.
+New LIVE binding and independent pre/post reconciliation succeeded. Three
+key-free inspect/recovery commands passed without added calls/effects; effect
+control is closed with disposal confirmed, no worker containers/core processes
+remain, and retained databases are quiescent. Historical artifacts are preserved.
+Evidence is under `/srv/duskweave/reports/live-context-purpose-r1/` on Oracle.
 
-**Next product action:** review this local diff, then qualify a release that
-includes the changed runtime and schema `0036`. The frozen PR #154-equivalence
-candidate tooling must refuse this runtime; do not weaken that predicate or
-reuse an old release descriptor/binding. Reuse already verified host/build/
-provisioning work where compatible; do not replay completed steps merely for
-ceremony. A newly authorized, currently bound LIVE episode is still required
-to demonstrate D1 → DNS → Terrain → D2. HTTPS validation follows that outcome.
-Windows control-root/ACL remains `OPEN`; Foundation/M0 seals are unchanged.
+The first Python retirement replaces the 107-line document link checker with
+`dw-qualify check-links`, including CI/developer consumers. No Python file,
+driver or dependency was added; provisioning wrappers remain for gradual
+replacement. CI acceptance, owner acceptance and Foundation/M0 seals are unchanged.
+
+**Next product action:** review the source and LIVE evidence, then deliver the
+bounded HTTPS-validation slice in the existing loop/roadmap. This operation
+performed no target HTTP request. Historical binding receipts establish their
+finite observed windows only; they must not be treated as permanent authority.
+Windows control-root/ACL remains `OPEN`.
 
 **Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
 The heartbeat fence contention mechanism confirmed under the diagnostic witness
