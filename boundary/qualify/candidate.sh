@@ -208,7 +208,7 @@ candidate_privileged_dispatch() {
         build-storage) candidate_parse_driver_pins "$@"; check_candidate_build_storage "$BUILD" "$CANDIDATE_BUILD_ROOT" ;;
         build) candidate_build "$@" ;;
         provision-db) python3 -B "$CANDIDATE_QUALIFY_DIR/candidate_database.py" "$@" ;;
-        install) python3 -B "$CANDIDATE_QUALIFY_DIR/candidate_install.py" "$@" ;;
+        install) python3 -B "$CANDIDATE_QUALIFY_DIR/candidate_install.py" install "$@" ;;
         bind|reconcile) python3 -B "$CANDIDATE_QUALIFY_DIR/candidate_binding.py" "$subcmd" "$@" ;;
         *) candidate_refuse candidate_arguments_refused ;;
     esac

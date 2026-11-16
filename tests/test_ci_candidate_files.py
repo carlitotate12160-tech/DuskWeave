@@ -164,6 +164,83 @@ class CandidateFilesTests(unittest.TestCase):
                 candidate_files.publish_atomic_verified(sym, b"x", mode=0o444, expected_uids=(uid,), stop_at=base)
             self.assertEqual(s_err.exception.reason, "symlink_destination_refused:badlink")
 
+    def test_fsync_dir_normalizes_open_sync_and_close_oserror_preserving_cleanup(self) -> None:
+        uid = os.geteuid()
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "dir_fail"
+            base.mkdir(mode=0o755)
+            os.chmod(base, 0o755)
+            secret_msg = "/secret/custody/path"
+
+            missing = base / "nonexistent"
+            with self.assertRaises(candidate_files.FileCustodyError) as open_err:
+                candidate_files.fsync_dir(missing)
+            self.assertEqual(open_err.exception.status, "INCOMPLETE")
+            self.assertTrue(open_err.exception.reason.startswith("custody_dir_fsync_failed:"))
+            self.assertIsInstance(open_err.exception.__cause__, OSError)
+
+            with mock.patch("candidate_files.os.open", side_effect=OSError(errno.EACCES, secret_msg)):
+                with self.assertRaises(candidate_files.FileCustodyError) as m_open_err:
+                    candidate_files.fsync_dir(base)
+            self.assertEqual(m_open_err.exception.status, "INCOMPLETE")
+            self.assertEqual(m_open_err.exception.reason, f"custody_dir_fsync_failed:{errno.EACCES}")
+            self.assertNotIn(secret_msg, m_open_err.exception.reason)
+            self.assertNotIn(secret_msg, str(m_open_err.exception))
+            self.assertIsInstance(m_open_err.exception.__cause__, OSError)
+
+            closed = []
+            real_close = os.close
+
+            def track_close(fd: int) -> None:
+                closed.append(fd)
+                real_close(fd)
+
+            def sync_fail(_fd: int) -> None:
+                raise OSError(errno.EIO, secret_msg)
+
+            with mock.patch("candidate_files.os.close", side_effect=track_close):
+                with self.assertRaises(candidate_files.FileCustodyError) as sync_err:
+                    candidate_files.fsync_dir(base, fsync_fn=sync_fail)
+            self.assertEqual(len(closed), 1)
+            self.assertEqual(sync_err.exception.status, "INCOMPLETE")
+            self.assertEqual(sync_err.exception.reason, f"custody_dir_fsync_failed:{errno.EIO}")
+            self.assertNotIn(secret_msg, sync_err.exception.reason)
+            self.assertIsInstance(sync_err.exception.__cause__, OSError)
+
+            def close_fail(fd: int) -> None:
+                real_close(fd)
+                raise OSError(errno.EIO, secret_msg)
+
+            with mock.patch("candidate_files.os.close", side_effect=close_fail):
+                with self.assertRaises(candidate_files.FileCustodyError) as close_err:
+                    candidate_files.fsync_dir(base, fsync_fn=lambda _fd: None)
+            self.assertEqual(close_err.exception.status, "INCOMPLETE")
+            self.assertEqual(close_err.exception.reason, f"custody_dir_fsync_failed:{errno.EIO}")
+            self.assertNotIn(secret_msg, close_err.exception.reason)
+
+            closed.clear()
+            with mock.patch("candidate_files.os.close", side_effect=track_close):
+                with self.assertRaises(ValueError):
+                    candidate_files.fsync_dir(base, fsync_fn=lambda _fd: (_ for _ in ()).throw(ValueError("bug")))
+            self.assertEqual(len(closed), 1)
+
+            sync_calls = 0
+
+            def dir_sync_only_fail(_fd: int) -> None:
+                nonlocal sync_calls
+                sync_calls += 1
+                if sync_calls == 2:
+                    raise OSError(errno.EIO, secret_msg)
+
+            with self.assertRaises(candidate_files.FileCustodyError) as prop_err:
+                candidate_files.write_exclusive_verified(
+                    base / "dir_sync.json", b"{}", mode=0o400, expected_uids=(uid,),
+                    stop_at=base, fsync_fn=dir_sync_only_fail,
+                )
+            self.assertEqual(sync_calls, 2)
+            self.assertEqual(prop_err.exception.status, "INCOMPLETE")
+            self.assertEqual(prop_err.exception.reason, f"custody_dir_fsync_failed:{errno.EIO}")
+
     def test_verify_driver_custody_validates_files_git_pins_and_clean_tree(self) -> None:
         uid = os.geteuid()
         with tempfile.TemporaryDirectory() as tmp:

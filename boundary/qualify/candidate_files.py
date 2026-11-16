@@ -38,11 +38,17 @@ def reject_sensitive_env(raw_env: dict[str, str] | None, *, error_cls=FileCustod
 def fsync_dir(directory: Path, fsync_fn=os.fsync) -> None:
     """Fsync a directory descriptor so metadata/renames are durable."""
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    fd = os.open(directory, flags)
     try:
-        fsync_fn(fd)
-    finally:
-        os.close(fd)
+        fd = os.open(directory, flags)
+    except OSError as exc:
+        raise FileCustodyError("INCOMPLETE", f"custody_dir_fsync_failed:{exc.errno}") from exc
+    try:
+        try:
+            fsync_fn(fd)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise FileCustodyError("INCOMPLETE", f"custody_dir_fsync_failed:{exc.errno}") from exc
 
 
 def _ancestor_chain(target_dir: Path) -> list[Path]:

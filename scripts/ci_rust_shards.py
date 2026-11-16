@@ -249,7 +249,7 @@ def cmd_manifest(args):
     manifest = {
         "schema": 1, "checkout": args.sha,
         "tools": {"rustc": args.rustc, "cargo_llvm_cov": args.llvm_cov},
-        "selection": {"locked": True, "features": ["fixture-supervisor"],
+        "selection": {"locked": True, "features": ["fixture-supervisor", "operator-tooling"],
                       "all_targets": True, "profile": "test"},
         "cov_dir": args.cov_dir,
         "objects": objects, "targets": targets,

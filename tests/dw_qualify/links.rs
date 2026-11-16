@@ -100,3 +100,44 @@ fn directory_targets_and_non_markdown_fragments_do_not_require_heading_parsing()
     assert_eq!(report.ok, 2);
     assert!(report.bad_anchor.is_empty());
 }
+
+#[test]
+fn code_fence_closing_and_html_comment_headings_and_unicode_punct_slugs() {
+    let f = Fixture::new();
+    f.write(
+        "README.md",
+        concat!(
+            "```rust\nlet s = \"```\";\n[x](missing.md)\n```\n",
+            "<!--\n# Hidden\n-->\n[go](#hidden)\n",
+            "# Foo — bar\n[ok](#foo--bar)\n",
+        ),
+    );
+    let report = links::check(&f.0).unwrap();
+    assert_eq!(report.ok, 1, "only [ok](#foo--bar) is valid");
+    assert!(report.broken.is_empty(), "broken: {:?}", report.broken);
+    assert_eq!(report.bad_anchor, ["ANCHOR README.md:8 -> #hidden"]);
+    assert_eq!(markdown::slug("Foo — bar"), "foo--bar");
+}
+
+#[test]
+fn fence_markers_lengths_unterminated_eof_comments_and_line_numbers() {
+    assert_eq!(
+        markdown::links("~~~md\n[in-tilde](a.md)\n~~~\n[real](b.md)\n"),
+        vec![(4, "b.md".to_owned())]
+    );
+    assert_eq!(
+        markdown::links("````md\n```\n[still-inside](a.md)\n````\n[after](b.md)\n"),
+        vec![(5, "b.md".to_owned())]
+    );
+    assert_eq!(
+        markdown::links("```md\n[bad](a.md)\n```   \n[after](b.md)\n"),
+        vec![(4, "b.md".to_owned())]
+    );
+    assert_eq!(
+        markdown::links("```md\n``` info\n[still-hidden](a.md)\n"),
+        Vec::<(usize, String)>::new()
+    );
+    let anchors = markdown::anchors("```md\n<!--\n```\n# Visible\n<!--\n# Hidden\n-->\n");
+    assert!(anchors.contains("visible"));
+    assert!(!anchors.contains("hidden"));
+}

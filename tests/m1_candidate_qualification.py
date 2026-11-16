@@ -73,6 +73,8 @@ def _verify_custody_and_env(cfg_dir: Path, custody_file: Path, roles: dict[str, 
 def _verify_core_inspect(duskweave_bin: Path, cfg_dir: Path) -> str:
     env_data = json.loads((cfg_dir / "environment.json").read_text(encoding="utf-8"))
     core_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LC_ALL": "C", **env_data}
+    if os.environ.get("LLVM_PROFILE_FILE"):
+        core_env["LLVM_PROFILE_FILE"] = os.environ["LLVM_PROFILE_FILE"]
     proc = subprocess.run(
         [
             str(duskweave_bin), "inspect",
@@ -118,25 +120,14 @@ def _case_custody_failure(container: str, database: str, prefix: str, env: dict[
 def _verify_refusals(container: str, database: str, admin_dsn: str, manifest_path: Path, qref: str, stop_at: Path) -> tuple[list[str], list[str]]:
     uid = os.geteuid()
     app_precheck = []
-    try:
-        candidate_binding.publish_binding(
-            identities=SAMPLE_IDS, installed_identities=SAMPLE_IDS, resolver_ipv4="1.1.1.1",
-            valid_from_ms=1000, valid_until_ms=4_000_000_000_000, now_ms=2000,
-            qualification_ref=qref, manifest_path=manifest_path, intent_dir=stop_at / "dup-intent",
-            sql_executor=candidate_binding.pg_sql_executor(container, database, admin_dsn),
-            env=_clean_env(), expected_uids=(uid,), stop_at=stop_at,
-        )
-        raise AssertionError("expected duplicate qualification_ref precheck receipt")
-    except Exception:
-        pass
     dup_rec = candidate_binding.publish_binding(
         identities=SAMPLE_IDS, installed_identities=SAMPLE_IDS, resolver_ipv4="1.1.1.1",
         valid_from_ms=1000, valid_until_ms=4_000_000_000_000, now_ms=2000,
-        qualification_ref=qref, manifest_path=manifest_path, intent_dir=stop_at / "dup-intent-2",
+        qualification_ref=qref, manifest_path=manifest_path, intent_dir=stop_at / "dup-intent",
         sql_executor=candidate_binding.pg_sql_executor(container, database, admin_dsn),
         env=_clean_env(), expected_uids=(uid,), stop_at=stop_at,
     )
-    assert dup_rec["status"] == "REFUSED" and dup_rec["reason"] == "qualification_ref_collision"
+    assert dup_rec["status"] == "REFUSED" and dup_rec["reason"] == "qualification_ref_collision", dup_rec
     app_precheck.append("duplicate_qualification_ref_precheck_refused")
 
     sql_constraints = []

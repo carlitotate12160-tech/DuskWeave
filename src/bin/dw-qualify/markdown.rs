@@ -1,23 +1,101 @@
 //! The legacy checker's bounded Markdown-link subset; no network or renderer.
 use std::collections::{BTreeMap, BTreeSet};
 
-fn erase_blocks(input: &str, open: &str, close: &str) -> String {
-    let mut bytes = input.as_bytes().to_vec();
-    let mut cursor = 0;
-    while let Some(start) = input[cursor..].find(open).map(|i| cursor + i) {
-        let tail = start + open.len();
-        let Some(end) = input[tail..].find(close).map(|i| tail + i + close.len()) else {
-            break;
-        };
-        for byte in &mut bytes[start..end] {
-            if *byte != b'\n' {
-                *byte = b' ';
+fn strip_fence_indent(line: &str) -> Option<&str> {
+    let trimmed = line.strip_suffix('\r').unwrap_or(line);
+    let lead = trimmed.bytes().take_while(|b| *b == b' ').count();
+    (lead <= 3).then_some(&trimmed[lead..])
+}
+
+fn fence_marker_len(rest: &str) -> Option<(u8, usize)> {
+    let ch = *rest.as_bytes().first()?;
+    if ch != b'`' && ch != b'~' {
+        return None;
+    }
+    let len = rest.bytes().take_while(|b| *b == ch).count();
+    (len >= 3).then_some((ch, len))
+}
+
+fn parse_fence_open(line: &str) -> Option<(u8, usize)> {
+    let rest = strip_fence_indent(line)?;
+    let (ch, len) = fence_marker_len(rest)?;
+    if ch == b'`' && rest[len..].contains('`') {
+        return None;
+    }
+    Some((ch, len))
+}
+
+fn is_fence_close(line: &str, open_ch: u8, open_len: usize) -> bool {
+    let Some(rest) = strip_fence_indent(line) else {
+        return false;
+    };
+    let Some((ch, len)) = fence_marker_len(rest) else {
+        return false;
+    };
+    ch == open_ch && len >= open_len && rest[len..].trim().is_empty()
+}
+
+fn push_spaces(out: &mut String, text: &str) {
+    for ch in text.chars() {
+        out.push(if ch == '\n' { '\n' } else { ' ' });
+    }
+}
+
+fn mask_prose_line(mut rest: &str, in_comment: &mut bool, out: &mut String) {
+    while !rest.is_empty() {
+        if *in_comment {
+            match rest.find("-->") {
+                Some(idx) => {
+                    push_spaces(out, &rest[..idx + 3]);
+                    *in_comment = false;
+                    rest = &rest[idx + 3..];
+                }
+                None => {
+                    push_spaces(out, rest);
+                    return;
+                }
+            }
+        } else {
+            match rest.find("<!--") {
+                Some(idx) => {
+                    out.push_str(&rest[..idx]);
+                    push_spaces(out, &rest[idx..idx + 4]);
+                    *in_comment = true;
+                    rest = &rest[idx + 4..];
+                }
+                None => {
+                    out.push_str(rest);
+                    return;
+                }
             }
         }
-        cursor = end;
     }
-    // Whole UTF-8 blocks become ASCII spaces; all remaining bytes are intact.
-    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+fn mask_non_prose(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut fence: Option<(u8, usize)> = None;
+    let mut in_comment = false;
+    for raw in input.split_inclusive('\n') {
+        let (line, nl) = raw.strip_suffix('\n').map_or((raw, ""), |s| (s, "\n"));
+        if let Some((ch, len)) = fence {
+            push_spaces(&mut out, line);
+            out.push_str(nl);
+            if is_fence_close(line, ch, len) {
+                fence = None;
+            }
+            continue;
+        }
+        if let Some(open) = (!in_comment).then(|| parse_fence_open(line)).flatten() {
+            push_spaces(&mut out, line);
+            out.push_str(nl);
+            fence = Some(open);
+            continue;
+        }
+        mask_prose_line(line, &mut in_comment, &mut out);
+        out.push_str(nl);
+    }
+    out
 }
 
 fn target(body: &str) -> Option<String> {
@@ -30,7 +108,7 @@ fn target(body: &str) -> Option<String> {
 }
 
 pub(super) fn links(input: &str) -> Vec<(usize, String)> {
-    let text = erase_blocks(&erase_blocks(input, "```", "```"), "<!--", "-->");
+    let text = mask_non_prose(input);
     text.match_indices("](")
         .filter_map(|(start, _)| {
             let open = text[..start].rfind('[')?;
@@ -40,7 +118,7 @@ pub(super) fn links(input: &str) -> Vec<(usize, String)> {
             let body_start = start + 2;
             let end = text[body_start..].find(')')? + body_start;
             let value = target(&text[body_start..end])?;
-            let line = input[..start].bytes().filter(|b| *b == b'\n').count() + 1;
+            let line = text[..start].bytes().filter(|b| *b == b'\n').count() + 1;
             Some((line, value))
         })
         .collect()
@@ -68,13 +146,7 @@ pub(super) fn slug(heading: &str) -> String {
     heading_label(heading.trim())
         .to_lowercase()
         .chars()
-        .filter(|c| {
-            c.is_alphanumeric()
-                || c.is_whitespace()
-                || *c == '_'
-                || *c == '-'
-                || ('\u{c0}'..='\u{ffff}').contains(c)
-        })
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '_' || *c == '-')
         .map(|c| if c == ' ' { '-' } else { c })
         .collect()
 }
@@ -82,7 +154,7 @@ pub(super) fn slug(heading: &str) -> String {
 pub(super) fn anchors(input: &str) -> BTreeSet<String> {
     let mut counts = BTreeMap::<String, usize>::new();
     let mut result = BTreeSet::new();
-    for line in erase_blocks(input, "```", "```").lines() {
+    for line in mask_non_prose(input).lines() {
         let hashes = line.bytes().take_while(|b| *b == b'#').count();
         if !(1..=6).contains(&hashes) || !line[hashes..].starts_with(char::is_whitespace) {
             continue;

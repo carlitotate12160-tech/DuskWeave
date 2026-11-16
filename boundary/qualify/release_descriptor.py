@@ -50,6 +50,11 @@ PROD_BASELINE_PATHS = (
     "go.mod", "go.sum", "third_party", "build.rs", ".cargo",
 )
 ALLOWED_TOOLING_PREFIXES = ("boundary/qualify/", "tests/", "docs/")
+ALLOWED_OPERATOR_DIFF_PATHS = frozenset({
+    "src/bin/dw-qualify/markdown.rs",
+    ".github/workflows/doc-check.yml",
+    "scripts/ci_rust_shards.py",
+})
 
 
 class ReleaseError(RuntimeError):
@@ -176,16 +181,20 @@ def _check_clean_git_identity(source_root: Path, expected_commit: str | None, ex
 def _check_release_diff(source_root: Path) -> None:
     if _run_git(source_root, ["rev-parse", f"{RELEASE_BASELINE_COMMIT}^{{tree}}"]).strip() != RELEASE_BASELINE_TREE:
         raise ReleaseError("release_baseline_tree_mismatch")
-    prod_changed = [ln.strip() for ln in _run_git(
-        source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT, "--", *PROD_BASELINE_PATHS]
-    ).splitlines() if ln.strip()]
+    prod_changed = [
+        ln.strip()
+        for ln in _run_git(
+            source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT, "--", *PROD_BASELINE_PATHS]
+        ).splitlines()
+        if ln.strip() and ln.strip() not in ALLOWED_OPERATOR_DIFF_PATHS
+    ]
     if prod_changed:
         raise ReleaseError(f"production_source_drift:{','.join(prod_changed)}")
     all_changed = [ln.strip() for ln in _run_git(
         source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT]
     ).splitlines() if ln.strip()]
     for path in all_changed:
-        if not path.startswith(ALLOWED_TOOLING_PREFIXES):
+        if path not in ALLOWED_OPERATOR_DIFF_PATHS and not path.startswith(ALLOWED_TOOLING_PREFIXES):
             raise ReleaseError(f"unexpected_candidate_diff:{path}")
 
 

@@ -1,5 +1,6 @@
 """Contract tests for candidate build storage, release descriptor packaging, and atomic install."""
 
+import errno
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ QUALIFY_DIR = ROOT / "boundary" / "qualify"
 if str(QUALIFY_DIR) not in sys.path:
     sys.path.insert(0, str(QUALIFY_DIR))
 
+import candidate_files  # noqa: E402
 import candidate_host  # noqa: E402
 import candidate_install  # noqa: E402
 import release_descriptor  # noqa: E402
@@ -144,6 +146,36 @@ check_candidate_build_storage "{build_mount}" "{cand}" no_nested_mount
             self.assertNotEqual(foreign.returncode, 0)
             self.assertIn("build_storage_foreign_entry", foreign.stderr)
 
+    def test_shell_install_dispatch_preserves_install_subcommand_and_distinguishes_parse_errors(self):
+        base_flags = (
+            f'--expected-driver-commit {"a" * 40} '
+            f'--expected-driver-tree {"b" * 40} '
+            f'--expected-descriptor-sha256 {"c" * 64}'
+        )
+        prefix = (
+            f'set -euo pipefail; source "{QUALIFY_DIR / "qualify.sh"}"; qualify_load_candidate_sh; '
+            f'CANDIDATE_FIXED_SOURCE="{ROOT}"; '
+            f'require_candidate_host() {{ return 0; }}; candidate_verify_sources() {{ return 0; }}; '
+        )
+        accepted = self._run_bash(prefix + f'candidate_privileged_dispatch install {base_flags}')
+        self.assertEqual(accepted.returncode, 1, accepted.stderr)
+        out = json.loads(accepted.stdout)
+        self.assertEqual(out["status"], "REFUSED")
+        self.assertEqual(out["reason"], "privileged_driver_outside_fixed_source")
+
+        missing_flag = self._run_bash(
+            prefix + f'candidate_privileged_dispatch install --expected-driver-commit {"a" * 40} --expected-driver-tree {"b" * 40}'
+        )
+        self.assertEqual(missing_flag.returncode, 2)
+        self.assertIn("--expected-descriptor-sha256", missing_flag.stderr)
+
+        direct_missing_subcmd = subprocess.run(
+            [sys.executable, "-B", str(QUALIFY_DIR / "candidate_install.py"), "--expected-driver-commit", "a" * 40],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(direct_missing_subcmd.returncode, 2)
+        self.assertIn("invalid choice", direct_missing_subcmd.stderr)
+
 
 class ReleaseDescriptorAndPinnedSourceTests(unittest.TestCase):
     def test_reviewed_source_pin_accepts_exact_tree_and_refuses_later_production_edits(self):
@@ -164,6 +196,57 @@ class ReleaseDescriptorAndPinnedSourceTests(unittest.TestCase):
                 subprocess.run(["git", "-C", str(repo), "commit", "-qm", "changed source"], check=True, env=env)
                 with self.assertRaisesRegex(release_descriptor.ReleaseError, "production_source_drift"):
                     release_descriptor.verify_release_source(repo)
+
+    def test_release_diff_allows_only_exact_operator_and_ci_paths_and_refuses_neighbors(self):
+        env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "op_diff"
+            base_files = {
+                "src/bin/dw-qualify/markdown.rs": b"// base\n",
+                "src/bin/dw-qualify/links.rs": b"// base\n",
+                "src/bin/dw-boundary-launcher/qualification.rs": b"// base\n",
+                ".github/workflows/doc-check.yml": b"name: doc\n",
+                ".github/workflows/other.yml": b"name: other\n",
+                "scripts/ci_rust_shards.py": b"# base\n",
+                "scripts/other.py": b"# other\n",
+                "Cargo.toml": b"[package]\nname='dw'\n",
+                "migrations/0036.sql": b"-- sql\n",
+                "boundary/cmd/cap/main.go": b"package main\n",
+            }
+            base_head, base_tree = _init_clean_git_repo(repo, base_files)
+
+            def _commit_rel(rel: str, data: bytes) -> tuple[str, str]:
+                p = repo / rel
+                p.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+                if p.exists():
+                    os.chmod(p, 0o644)
+                p.write_bytes(data)
+                os.chmod(p, 0o444)
+                subprocess.run(["git", "-C", str(repo), "add", rel], check=True, env=env)
+                subprocess.run(["git", "-C", str(repo), "commit", "-qm", f"up:{rel}"], check=True, env=env)
+                return (
+                    subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True, env=env).strip(),
+                    subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"], text=True, env=env).strip(),
+                )
+
+            with mock.patch.multiple(release_descriptor, RELEASE_BASELINE_COMMIT=base_head, RELEASE_BASELINE_TREE=base_tree):
+                for allowed in ("src/bin/dw-qualify/markdown.rs", ".github/workflows/doc-check.yml", "scripts/ci_rust_shards.py"):
+                    head, tree = _commit_rel(allowed, b"// updated\n")
+                    self.assertEqual(release_descriptor.verify_release_source(repo, expected_commit=head, expected_tree=tree), (head, tree))
+                for denied, err in (
+                    ("src/bin/dw-qualify/links.rs", "production_source_drift"),
+                    ("src/bin/dw-qualify/extra.rs", "production_source_drift"),
+                    ("src/bin/dw-boundary-launcher/qualification.rs", "production_source_drift"),
+                    ("Cargo.toml", "production_source_drift"),
+                    ("migrations/0036.sql", "production_source_drift"),
+                    ("boundary/cmd/cap/main.go", "production_source_drift"),
+                    (".github/workflows/other.yml", "unexpected_candidate_diff"),
+                    ("scripts/other.py", "unexpected_candidate_diff"),
+                ):
+                    _commit_rel(denied, b"// drifted\n")
+                    with self.assertRaisesRegex(release_descriptor.ReleaseError, err, msg=denied):
+                        release_descriptor.verify_release_source(repo)
+                    subprocess.run(["git", "-C", str(repo), "reset", "--hard", "-q", "HEAD~1"], check=True, env=env)
 
     def _populate_source_and_artifacts(self, base: Path) -> tuple[Path, Path]:
         src, art = base / "src", base / "artifacts"
@@ -334,10 +417,64 @@ class CandidateInstallSafetyTests(unittest.TestCase):
             base4 = base / "b4"
             base4.mkdir(mode=0o755)
             os.chmod(base4, 0o755)
-            pkg4, dsha4, bin4, mfst4, _ = self._setup_install_env(base4)
-            r_unk = self._run(base4, pkg4, dsha4, bin4, mfst4, base4 / "bak4", base4 / "missing_dir" / "rcpt4.json")
+            pkg4, dsha4, bin4, mfst4, old_h4 = self._setup_install_env(base4)
+            rcpt4_dir = base4 / "rcpt4_dir"
+            rcpt4_dir.mkdir(mode=0o755)
+            os.chmod(rcpt4_dir, 0o755)
+            rcpt4 = rcpt4_dir / "rcpt4.json"
+            real_fsync_dir = candidate_files.fsync_dir
+            replace_log4: list[str] = []
+
+            def fail_rcpt_dir_sync(directory: Path, fsync_fn=os.fsync) -> None:
+                if directory == rcpt4_dir:
+                    def _err(_fd: int) -> None:
+                        raise OSError(errno.EIO, "/secret/rcpt/dir")
+                    return real_fsync_dir(directory, fsync_fn=_err)
+                return real_fsync_dir(directory, fsync_fn=fsync_fn)
+
+            def track_replace4(s: Path, d: Path) -> None:
+                replace_log4.append(d.name)
+                os.replace(s, d)
+
+            with mock.patch.object(candidate_files, "fsync_dir", side_effect=fail_rcpt_dir_sync), \
+                 mock.patch.object(candidate_install, "fsync_dir", side_effect=fail_rcpt_dir_sync):
+                r_unk = self._run(base4, pkg4, dsha4, bin4, mfst4, base4 / "bak4", rcpt4, replacer=track_replace4)
             self.assertEqual(r_unk["status"], "UNKNOWN")
-            self.assertIn("install_receipt_persist_failed", r_unk["reason"])
+            self.assertEqual(r_unk["replaced"], list(candidate_host.INSTALL_BINARIES))
+            self.assertEqual(replace_log4, list(candidate_host.INSTALL_BINARIES))
+            self.assertEqual(r_unk["reason"], f"install_receipt_persist_failed:custody_dir_fsync_failed:{errno.EIO}")
+            self.assertNotIn("/secret/rcpt/dir", r_unk["reason"])
+            self.assertEqual((bin4 / "duskweave").read_bytes(), (pkg4 / "duskweave").read_bytes())
+
+            base5 = base / "b5"
+            base5.mkdir(mode=0o755)
+            os.chmod(base5, 0o755)
+            pkg5, dsha5, bin5, mfst5, old_h5 = self._setup_install_env(base5)
+            replace_order5: list[str] = []
+
+            def fail_second_bin_sync(directory: Path, fsync_fn=os.fsync) -> None:
+                if directory == bin5 and len(replace_order5) == 2:
+                    def _err(_fd: int) -> None:
+                        raise OSError(errno.EIO, "/secret/bin/dir")
+                    return real_fsync_dir(directory, fsync_fn=_err)
+                return real_fsync_dir(directory, fsync_fn=fsync_fn)
+
+            def track_replace5(s: Path, d: Path) -> None:
+                replace_order5.append(d.name)
+                os.replace(s, d)
+
+            with mock.patch.object(candidate_files, "fsync_dir", side_effect=fail_second_bin_sync), \
+                 mock.patch.object(candidate_install, "fsync_dir", side_effect=fail_second_bin_sync):
+                r_sync = self._run(base5, pkg5, dsha5, bin5, mfst5, base5 / "bak5", base5 / "rcpt5.json", replacer=track_replace5)
+            self.assertEqual(r_sync["status"], "INCOMPLETE")
+            self.assertEqual(r_sync["replaced"], ["duskweave", "dw-boundary-launcher"])
+            self.assertEqual(replace_order5, ["duskweave", "dw-boundary-launcher"])
+            self.assertEqual(r_sync["reason"], f"custody_dir_fsync_failed:{errno.EIO}")
+            self.assertEqual((bin5 / "duskweave").read_bytes(), (pkg5 / "duskweave").read_bytes())
+            self.assertEqual((bin5 / "dw-boundary-launcher").read_bytes(), (pkg5 / "dw-boundary-launcher").read_bytes())
+            self.assertEqual(hashlib.sha256((bin5 / "dw-dns-capture").read_bytes()).hexdigest(), old_h5["dw-dns-capture"])
+            self.assertEqual(hashlib.sha256((base5 / "bak5" / "dw-boundary-launcher").read_bytes()).hexdigest(), old_h5["dw-boundary-launcher"])
+            self.assertTrue((base5 / "rcpt5.json").is_file())
 
 
 if __name__ == "__main__":

@@ -12,9 +12,12 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 QUALIFY_DIR = ROOT / "boundary" / "qualify"
+TESTS_DIR = ROOT / "tests"
 sys.path.insert(0, str(QUALIFY_DIR))
+sys.path.insert(0, str(TESTS_DIR))
 
 import candidate_binding  # noqa: E402
+import m1_candidate_qualification as m1_qual  # noqa: E402
 
 
 def sample_identities(digest_char: str = "a") -> dict:
@@ -92,19 +95,62 @@ class CandidateBindingRenderTests(unittest.TestCase):
             )
 
     def test_bind_cli_rejects_now_ms_and_boot_id_and_enforces_fixed_source(self):
-        for flag in ("--now-ms", "--boot-id", "--core-uid"):
-            res = subprocess.run(
-                [sys.executable, str(QUALIFY_DIR / "candidate_binding.py"), "bind", flag, "1"],
-                capture_output=True, text=True, timeout=10,
-            )
-            self.assertNotEqual(res.returncode, 0)
-        rc = candidate_binding.main([
-            "bind", "--expected-driver-commit", "a" * 40, "--expected-driver-tree", "b" * 40,
+        base_bind = [
+            "--expected-driver-commit", "a" * 40, "--expected-driver-tree", "b" * 40,
             "--expected-descriptor-sha256", "c" * 64, "--resolver-ipv4", "1.1.1.1",
             "--purpose", "LIVE", "--run-profile", "autonomous-dns-genai-live-v1",
             "--valid-from-ms", "1000", "--valid-until-ms", "4000000000000",
-        ])
+        ]
+        for flag, val in (
+            ("--now-ms", "2000"),
+            ("--boot-id", "11111111-1111-4111-8111-111111111111"),
+            ("--core-uid", "1001"),
+        ):
+            res = subprocess.run(
+                [sys.executable, str(QUALIFY_DIR / "candidate_binding.py"), "bind", *base_bind, flag, val],
+                capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(res.returncode, 2)
+            self.assertIn(f"unrecognized arguments: {flag}", res.stderr)
+        rc = candidate_binding.main(["bind", *base_bind])
         self.assertEqual(rc, 1)
+
+    def test_verify_refusals_rejects_success_single_attempt_and_propagates_inspect_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            mp = base / "deployment.json"
+            mp.write_text("{}\n", encoding="utf-8")
+            with mock.patch.object(m1_qual.candidate_binding, "pg_sql_executor", return_value=lambda *_a: None):
+                with mock.patch.object(m1_qual.subprocess, "run", return_value=mock.Mock(returncode=1)):
+                    with mock.patch.object(
+                        m1_qual.candidate_binding, "publish_binding",
+                        side_effect=[{"status": "SUCCESS", "reason": ""}, {"status": "REFUSED", "reason": "qualification_ref_collision"}],
+                    ) as pub_mock:
+                        with self.assertRaises(AssertionError):
+                            m1_qual._verify_refusals("dwpg", "db", "dsn", mp, "q", base)
+                        self.assertEqual(pub_mock.call_count, 1)
+                    with mock.patch.object(
+                        m1_qual.candidate_binding, "publish_binding",
+                        return_value={"status": "REFUSED", "reason": "qualification_ref_collision"},
+                    ) as ok_pub:
+                        app, sql = m1_qual._verify_refusals("dwpg", "db", "dsn", mp, "q", base)
+                        self.assertEqual(ok_pub.call_count, 1)
+                        self.assertEqual(app, ["duplicate_qualification_ref_precheck_refused"])
+                        self.assertEqual(len(sql), 2)
+                with mock.patch.object(
+                    m1_qual.candidate_binding, "publish_binding",
+                    return_value={"status": "REFUSED", "reason": "qualification_ref_collision"},
+                ), mock.patch.object(m1_qual.subprocess, "run", return_value=mock.Mock(returncode=0)):
+                    with self.assertRaises(AssertionError):
+                        m1_qual._verify_refusals("dwpg", "db", "dsn", mp, "q", base)
+            cfg = base / "cfg"
+            cfg.mkdir()
+            (cfg / "environment.json").write_text('{"DW_DATABASE_CONFIG_MODE":"file"}', encoding="utf-8")
+            with mock.patch.dict(os.environ, {"LLVM_PROFILE_FILE": "/tmp/w0-%p.profraw"}, clear=False):
+                self.assertNotIn("LLVM_PROFILE_FILE", m1_qual._clean_env())
+                with mock.patch.object(m1_qual.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="inspect result=empty\n")) as ins_mock:
+                    self.assertEqual(m1_qual._verify_core_inspect(base / "duskweave", cfg), "inspect result=empty")
+                self.assertEqual(ins_mock.call_args.kwargs["env"]["LLVM_PROFILE_FILE"], "/tmp/w0-%p.profraw")
 
 
 class OrderedPublicationAndReconcileTests(unittest.TestCase):

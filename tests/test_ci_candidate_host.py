@@ -167,21 +167,60 @@ class CandidateHostImageAndQuiescenceTests(unittest.TestCase):
                 return _cp(0, stdout=m) if cmd[2] == "inspect" else _cp(0, stdout=save_bytes)
             return _run
 
-        good_tar = _make_save_tar([("l0.tar", [("dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)])])
-        got = candidate_host.extract_image_worker_digests("dw:test", docker_runner=make_runner(good_tar))
-        self.assertEqual(got["workers"]["dw-dns-capture"], hashlib.sha256(cap_b).hexdigest())
-        self.assertEqual(got["workers"]["dw-dns-exporter"], hashlib.sha256(exp_b).hexdigest())
+        def _make_dev_layer() -> bytes:
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as tf:
+                ti = tarfile.TarInfo("dw-dns-capture")
+                ti.type, ti.devmajor, ti.devminor = tarfile.CHRTYPE, 1, 3
+                tf.addfile(ti)
+            return _wrap_layers([buf.getvalue()])
 
-        for label, bad_members in (
-            ("whiteout", [(".wh.dw-dns-capture", b""), ("dw-dns-exporter", exp_b)]),
-            ("symlink", [("dw-dns-capture", "SYM:/etc/passwd"), ("dw-dns-exporter", exp_b)]),
-            ("extra", [("dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b), ("extra", b"x")]),
+        def _wrap_layers(layers: list[bytes]) -> bytes:
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as tf:
+                mb = json.dumps([{"Layers": [f"l{i}.tar" for i in range(len(layers))]}]).encode("utf-8")
+                mi = tarfile.TarInfo("manifest.json")
+                mi.size = len(mb)
+                tf.addfile(mi, io.BytesIO(mb))
+                for i, lb in enumerate(layers):
+                    li = tarfile.TarInfo(f"l{i}.tar")
+                    li.size = len(lb)
+                    tf.addfile(li, io.BytesIO(lb))
+            return buf.getvalue()
+
+        for good_members in (
+            [("dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)],
+            [("./dw-dns-capture", cap_b), ("./dw-dns-exporter", exp_b)],
+            [("./dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)],
+        ):
+            good_tar = _make_save_tar([("l0.tar", good_members)])
+            got = candidate_host.extract_image_worker_digests("dw:test", docker_runner=make_runner(good_tar))
+            self.assertEqual(got["workers"]["dw-dns-capture"], hashlib.sha256(cap_b).hexdigest())
+            self.assertEqual(got["workers"]["dw-dns-exporter"], hashlib.sha256(exp_b).hexdigest())
+
+        for label, bad_members, expected_prefix in (
+            ("whiteout", [(".wh.dw-dns-capture", b""), ("dw-dns-exporter", exp_b)], "image_layer_unsafe_member"),
+            ("symlink", [("dw-dns-capture", "SYM:/etc/passwd"), ("dw-dns-exporter", exp_b)], "image_layer_link_or_device_refused"),
+            ("extra", [("dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b), ("extra", b"x")], "image_unexpected_worker_member:extra"),
+            ("hidden_dot", [(".dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)], "image_unexpected_worker_member:.dw-dns-capture"),
+            ("dot_slash_hidden", [("./.dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)], "image_unexpected_worker_member:.dw-dns-capture"),
+            ("traversal", [("../dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)], "image_layer_unsafe_member"),
+            ("dot_slash_traversal", [("./../dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)], "image_layer_unsafe_member"),
+            ("absolute", [("/dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)], "image_layer_unsafe_member"),
+            ("double_slash", [(".//dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)], "image_layer_unsafe_member"),
+            ("subdir", [("sub/dw-dns-capture", cap_b), ("dw-dns-exporter", exp_b)], "image_unexpected_worker_member:sub/dw-dns-capture"),
         ):
             bad_tar = _make_save_tar([("l0.tar", bad_members)])
             with self.subTest(case=label):
                 with self.assertRaises(candidate_host.HostObservationError) as err:
                     candidate_host.extract_image_worker_digests("dw:test", docker_runner=make_runner(bad_tar))
                 self.assertEqual(err.exception.status, "REFUSED")
+                self.assertEqual(err.exception.reason, expected_prefix)
+
+        with self.assertRaises(candidate_host.HostObservationError) as dev_err:
+            candidate_host.extract_image_worker_digests("dw:test", docker_runner=make_runner(_make_dev_layer()))
+        self.assertEqual(dev_err.exception.status, "REFUSED")
+        self.assertEqual(dev_err.exception.reason, "image_layer_link_or_device_refused")
 
         with self.assertRaises(candidate_host.HostObservationError) as arch_err:
             candidate_host.extract_image_worker_digests("dw:test", docker_runner=make_runner(good_tar, arch="amd64"))

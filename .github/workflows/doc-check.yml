@@ -343,7 +343,7 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --features fixture-supervisor -- -D warnings
+        run: cargo clippy --all-targets --features fixture-supervisor,operator-tooling -- -D warnings
 
       - name: Fixture supervisor tests and Python bridge tests
         run: |
@@ -361,7 +361,7 @@ jobs:
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/llvm-cov-target"
           source <(cargo llvm-cov show-env --sh)
           cargo llvm-cov clean --workspace
-          cargo test --locked --all-targets --features fixture-supervisor --no-run \
+          cargo test --locked --all-targets --features fixture-supervisor,operator-tooling --no-run \
             --message-format=json-render-diagnostics > "$RUNNER_TEMP/artifacts.jsonl"
 
       - name: Enumerate harness inventory and record the build manifest
@@ -482,6 +482,49 @@ jobs:
           python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
             --report "$RUNNER_TEMP/dw-evidence/suite" --session \
             < "ci-shards/session-${{ needs.changes.outputs.rust_workers }}-${{ matrix.worker }}.jsonl"
+
+      - name: Candidate real-PG qualification witness (designated worker)
+        if: matrix.worker == 0
+        env:
+          DW_TEST_FIXTURE_SUPERVISOR: ${{ github.workspace }}/ci-shards/dw-fixture-supervisor
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/target/llvm-cov-target/w${{ matrix.worker }}-%p-%12m.profraw
+        run: |
+          set -euo pipefail
+          DW_BIN="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/duskweave"
+          [ -x "$DW_BIN" ] || { echo "missing duskweave binary"; exit 1; }
+          [ -x "$DW_TEST_FIXTURE_SUPERVISOR" ] || { echo "missing supervisor binary"; exit 1; }
+          [ "$(docker inspect --format '{{.State.Running}}' dwpg)" = "true" ] || { echo "dwpg not running"; exit 1; }
+          RID="${GITHUB_RUN_ID}a${GITHUB_RUN_ATTEMPT}"
+          POS_DB="dw_native_p155${RID}p"
+          POS_PX="dw_p155${RID}p"
+          FLT_DB="dw_native_p155${RID}f"
+          FLT_PX="dw_p155${RID}f"
+          CST_DB="dw_native_p155${RID}c"
+          CST_PX="dw_p155${RID}c"
+          for id in "$POS_DB" "$FLT_DB" "$CST_DB"; do
+            [[ "$id" =~ ^dw_native_[a-z0-9_]+$ && ${#id} -le 63 ]] || { echo "db identifier out of bounds: $id"; exit 1; }
+          done
+          for pfx in "$POS_PX" "$FLT_PX" "$CST_PX"; do
+            full="${pfx}_000000000000_terrainsetonly"
+            [[ "$pfx" =~ ^dw_[a-z0-9_]+$ && ${#full} -le 63 ]] || { echo "prefix identifier out of bounds: $pfx"; exit 1; }
+          done
+          PRIV_DIR=$(mktemp -d -p "$RUNNER_TEMP" dw-qualify-priv.XXXXXX)
+          cleanup() { rm -rf "$PRIV_DIR"; }
+          trap cleanup EXIT
+          chmod 0700 "$PRIV_DIR"
+          python3 -B tests/m1_candidate_qualification.py \
+            --container dwpg \
+            --database "$POS_DB" --role-prefix "$POS_PX" \
+            --fault-database "$FLT_DB" --fault-prefix "$FLT_PX" \
+            --custody-database "$CST_DB" --custody-prefix "$CST_PX" \
+            --duskweave-bin "$DW_BIN" \
+            --report "$PRIV_DIR/report" >/dev/null
+          [ "$(stat -c '%a' "$PRIV_DIR")" = "700" ] || { echo "parent mode drifted"; exit 1; }
+          RPT="$PRIV_DIR/report/integration-report.json"
+          [ -f "$RPT" ] || { echo "missing sanitized integration report"; exit 1; }
+          python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert d['status']=='PASS' and len(d['cases'])==3" "$RPT"
+          mkdir -p "$RUNNER_TEMP/dw-evidence"
+          cp "$RPT" "$RUNNER_TEMP/dw-evidence/integration-report.json"
 
       - name: Worker execution receipt (any gap fails the worker)
         if: always()
@@ -759,7 +802,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/geiger"
           rustc --version && cargo --version
           set +e
-          "$RUNNER_TEMP/dw-tools/bin/cargo-geiger" geiger --locked --all-targets --features fixture-supervisor \
+          "$RUNNER_TEMP/dw-tools/bin/cargo-geiger" geiger --locked --all-targets --features fixture-supervisor,operator-tooling \
             --output-format Json > "$RUNNER_TEMP/geiger/geiger.json" \
             2> "$RUNNER_TEMP/geiger/geiger.log"
           status=$?

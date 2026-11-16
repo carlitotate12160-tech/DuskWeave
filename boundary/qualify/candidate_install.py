@@ -271,8 +271,8 @@ def _commit_staged_install(bin_dir: Path, bak: Path, staged: dict[str, Path], sh
     try:
         for name in INSTALL_BINARIES:
             replacer(staged[name], bin_dir / name)
-            fsync_dir(bin_dir)
             replaced.append(name)
+            fsync_dir(bin_dir)
         _verify_all_installed(bin_dir, shas, old_bins, expected_uids, stop_at)
     except Exception as exc:
         reason = getattr(exc, "reason", None) or str(exc) or type(exc).__name__

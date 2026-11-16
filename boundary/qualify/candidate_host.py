@@ -220,11 +220,11 @@ def _parse_image_meta(raw: str) -> tuple[str, int]:
 
 
 def _normalize_tar_member(name: str) -> str:
-    clean = name.lstrip("./")
-    parts = PurePosixPath(clean).parts
-    if not clean or ".." in parts or any(p.startswith(".wh.") for p in parts):
+    clean = name.removeprefix("./")
+    parts = clean.split("/")
+    if not clean or "\\" in clean or any(p in ("", ".", "..") or p.startswith(".wh.") for p in parts):
         raise HostObservationError("REFUSED", "image_layer_unsafe_member")
-    return "/".join(parts)
+    return clean
 
 
 def _extract_layer_regular_member(ltf: tarfile.TarFile, member: tarfile.TarInfo,
