@@ -14,6 +14,7 @@
 | Provider-neutral revision | [Section 4a revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, timers, consent and seals unchanged |
 | Lease coordination amendment | [Section 4a lease coordination](#positive-run-lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); liveness renewal is not authority mutation; authority fence, timers and seals unchanged |
+| HTTPS-loop run | [Section 4c](#4c-candidate-https-loop-run-2026-11-17) — CANDIDATE, DW-HTTPS-LOOP-SLIM-DESIGN-R1; not accepted; Pro-v2 clocks and historical run shapes unchanged |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: admission, accounting, cancellation, recovery, inference clocks and resource tuples stay owned here; repeated inventories and measured anecdotes now reference the canonical tables. Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/adr/ADR-016-execution-broker.md). No new acceptance, permission or seal |
 
 ## 1. Context and problem statement
@@ -696,6 +697,113 @@ confirmation is a separate authorized episode. This amendment changes no
 proposal schema, instruction template, repair vocabulary, model/effort, routing,
 SDK dependency, target scope, deployment qualification or milestone seal.
 
+## 4c. Candidate HTTPS-loop run (2026-11-17)
+
+**Status: CANDIDATE — DW-HTTPS-LOOP-SLIM-DESIGN-R1. Not accepted. No execution permission.**
+
+This section owns the successor run. It adds no workflow engine, second supervisor or
+parallel ledger. The existing `m1-run` entrypoint and owner ports remain the composition
+path. Historical runs keep `decision_one` / `acquisition` / `decision_two` and one attempt.
+That shape is what `RunPhase` and `RunRecord` implement today in `src/m1_run.rs`. The
+successor replaces it only on `m1_https_loop_v1`, with indexed run steps linked to the
+existing decision and attempt records. One semantic version covers the new run-step
+meaning. Numeric limits do not each receive a profile. Old decoders stay strict.
+[ADR-013](ADR-013-capability-contract.md#candidate-https-loop-dns-refresh-2026-11-17)
+owns refresh eligibility, the per-host address ceiling and partial-coverage omissions.
+The enabling contract owns the intent field and transitions. APT41, Lazarus and Volt
+Typhoon remain behavioral reference lenses, not a playbook or execution authority.
+
+The loop is one indexed composition: decision, optional admitted acquisition, owner
+reconciliation, a new ContextPack, then the next decision. Ceilings are upper bounds.
+An eligible existing binding may go directly to HEAD. Retain, defer, stop and
+capability-gap remain valid at every decision. The illustration is D1 selecting DNS,
+D2 consuming that DNS and selecting HEAD for IP1, D3 consuming a clear connection
+failure and possibly selecting HEAD for IP2, and D4 consuming the final outcome.
+Shorter successful and no-action branches stay valid.
+
+Successor ceilings for this proof run:
+
+- At most four reasoning decisions. D4 is the last feedback opportunity. Record the
+  model's actual proposal. When that proposal asks for another acquisition, preserve
+  the intent and release no further effect, because decision capacity is exhausted.
+  Do not rewrite the proposal into a model-chosen stop or defer.
+- One authorized hostname in this proof. Multi-hostname execution stays outside the
+  proof and is not prohibited by a new universal campaign rule.
+- At most four admitted IPv4 destinations represented for that hostname, using the
+  ADR-013 per-host ceiling.
+- At most one initial target DNS acquisition, two target HEAD attempts in the whole
+  run, and one conditional DNS refresh per selected HEAD intent. That is at most
+  three target DNS queries. At most three acquisition episodes follow: initial DNS,
+  the first HEAD step, and the second HEAD step.
+
+These ceilings bound one proof run. Mission campaign totals and the ADR-013 capability
+ceilings stay in force; the lower remainder prevails. Episode or run restart does not
+reset campaign totals. Run exhaustion preserves unresolved coverage. It does not complete
+the mission and does not authorize another run. Continuation requires new or amended
+operator authorization under
+[PRD-006](../prd/PRD-006-adaptation.md#31-tempo-aware-adaptation).
+
+Each acquisition episode keeps the existing 60-second ceiling. A HEAD episode may contain
+one admitted DNS refresh and then HEAD. Terrain reconciliation sits between them, with
+no model call between them. Subeffects do not reset the episode clock. Every DNS or HEAD
+attempt keeps its own identity, current admission, accounting and fresh worker pair.
+Refresh does not extend the parent intent's authority or the run deadline.
+
+Before an acquisition chain is released, protect capacity for its next feedback decision
+under the campaign fence and this run. Protect the selected profile's full decision
+allocation: generation plus conditional repair, request and response bytes, token capacity
+and wall time. For this proof that profile is `deepseek-genai-v4-pro-low-v2`, whose
+decision row is two provider calls. `remaining_provider_calls >= 1` does not satisfy the
+check. The protected units are unavailable to every competing reservation path, including
+legacy and direct-SQL paths, by inclusion in the existing campaign capacity sum. They
+do not create an inference session, a `may_send` state or a transport grant, and they
+do not start the next decision's generation or repair timer during acquisition. They
+convert once into a normal decision reservation after the real next ContextPack and an
+eligible decision claim exist. Conversion, recovery, and a refresh-plus-HEAD chain do
+not charge those units twice. Release is available only with proof that the relevant
+work was never released and the previous sender is fenced. UNKNOWN stays charged.
+Protection gives an opportunity to attempt feedback. It does not promise provider
+completion, and withdrawal still wins.
+
+`execution.inference_reservation` in `migrations/0035_pro_budget_c_v2.sql` cannot hold
+this future allocation. Reserve requires a matching `execution.native_input_bindings`
+row and a successful `execution.inference_window_ms` claim. Both belong to a decision
+whose ContextPack already exists. Successor bookkeeping is the run step, not a
+placeholder ContextPack, a generic hold service or a second ledger. The current function
+does not implement these semantics.
+
+Keep the clocks distinct. Values below are the retained Pro-v2 and ADR-013 policy, not
+measured latency. The run stays 640000 ms and the parent watchdog stays 650000 ms.
+Do not inflate either ceiling to make an infeasible trace fit.
+
+| Clock | Policy value | What it bounds |
+| --- | ---: | --- |
+| Run / parent watchdog | 640000 / 650000 ms | Whole proof run; watchdog is the outer fallback |
+| Inference phase | 254000 ms | 5000 ms preparation plus the 249000 ms decision reservation |
+| Decision reservation | 249000 ms | 244000 ms shared generation/repair, 2000 ms stop, 3000 ms accounting |
+| Acquisition episode | 60000 ms | One episode; refresh and HEAD share it |
+| DNS / HEAD attempt | 2000 / 5000 ms | ADR-013 attempt ceilings inside the episode |
+| DNS freshness | `perceived_at + min(TTL, 60s)` | Routing-premise eligibility; it does not extend the run |
+| Host lease | 2000 ms | Existing liveness lease; it does not extend the run |
+
+| Trace | Policy sum | Against the 640000 ms run |
+| --- | --- | --- |
+| No-action decision | 254000 ms, including its preparation, stop and accounting | Fits |
+| Eligible binding, one HEAD, feedback stop | 254000 + 60000 + 254000 = 568000 ms | Fits. The existing 72000 ms Pro-v2 margin is what places 568000 inside 640000. Stop and accounting are already inside each 249000 ms reservation |
+| DNS, one successful HEAD, feedback stop | 3 × 254000 + 2 × 60000 = 882000 ms | Does not fit at full ceilings. Optional refresh stays inside the HEAD episode |
+| Alternate-IP ceiling, including optional refresh | 4 × 254000 + 3 × 60000 = 1196000 ms | Does not fit. Refresh adds no fourth episode and no fifth decision. Four 249000 ms reservations alone are 996000 ms |
+
+Before release, remaining run time must cover that acquisition episode's 60000 ms and
+the next full 254000 ms inference phase. When the remainder is shorter, release no
+acquisition and record a partial or deferred result. Deterministic examples do not
+qualify real-provider latency. A historical routing observation is not HTTPS
+timing evidence.
+
+STOP, withdrawal, expired authority, lease loss and integrity failure keep the accepted
+cancellation rules. UNKNOWN, a refresh that may have started, and a HEAD that may have
+started stay charged and are not replayed. Recovery stays database-only: it reconciles
+durable state, regenerates no proposal, and issues no network attempt. An unresolved
+obligation stays visible.
 
 ## 5. Consequences
 
@@ -720,5 +828,6 @@ No exactly-once external execution guarantee is made.
 
 DESIGN checks links, ownership, dependencies and counterexamples under QUALITY_BAR section 7.
 The cases above are future assertions, not executed runtime tests. The product owner
-accepted R1 for the selected M1 lane on 2026-10-06. Runtime requires an issued bounded
+accepted R1 for the selected M1 lane on 2026-10-06. Section 4c is outside that
+acceptance. Runtime requires an issued bounded
 packet; acceptance grants no target permission, qualified deployment, merge or seal.

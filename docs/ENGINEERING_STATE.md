@@ -13,8 +13,9 @@ entries below keep only outcome, tested-source identity, limits and owners.
 
 - **Project**: DuskWeave. Verify actual worktree, branch and HEAD before delivery.
 - **Current phase**: M1 is unsealed. The active assigned outcome is the
-  single-owner consolidation of M1 contract authority (DW-M1-CONTRACT-SINGLE-OWNER-R1);
-  its PR and check status lives on GitHub.
+  candidate HTTPS-loop successor contract (DW-HTTPS-LOOP-SLIM-DESIGN-R1);
+  its review status lives on GitHub. The amendment is not accepted and grants
+  no execution permission.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence in section 5
   is unchanged.
 - **Platform direction**: per the owner direction recorded in
@@ -99,13 +100,14 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-M1-CONTRACT-SINGLE-OWNER-R1` — editorial consolidation of
-the existing M1 enabling contract and ADR-016 so each rule has one owning
-document before HTTPS adds another capability delta. This is a
-semantics-preserving documentation change: no seal, new execution permission,
-profile, budget, timer or compatibility retirement follows from it. Its
-delivery/merge status lives on GitHub. The completed Linux platform-direction
-and state-index delivery was merged through PR #156.
+**Active work:** `DW-HTTPS-LOOP-SLIM-DESIGN-R1` — candidate successor contract for
+one bounded serial HTTPS feedback loop. Documentation only. Not accepted. No
+execution permission, seal or timer change. Owning text:
+[ADR-013 refresh exception](adr/ADR-013-capability-contract.md#candidate-https-loop-dns-refresh-2026-11-17),
+[ADR-016 run](adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17),
+[enabling contract](contracts/M1-enabling-architecture.md#9-candidate-https-loop-successor-2026-11-17)
+and the [orientation consistency note](contracts/M1-external-orientation-decision-loop.md#candidate-https-loop-consistency-2026-11-17).
+Delivery status lives on GitHub.
 
 **Latest completed product evidence (bounded historical observation):**
 On 2026-11-16 the explicitly authorized Oracle ARM64 episode
@@ -128,11 +130,11 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** bounded HTTPS-validation DESIGN through the actual
-reasoning → acquisition → Terrain → adaptation loop in the existing roadmap
-order, with cost bounded before code. Fresh disclosure/authorization, accepted
-profiles and qualified live boundaries remain prerequisites; fixture or expired
-consent cannot satisfy them.
+**Next product action:** external document review of the candidate HTTPS-loop
+amendment. Acceptance, seal and runtime implementation stay unauthorized.
+Fresh disclosure, an accepted amendment and a qualified live boundary remain
+prerequisites for any later HTTPS execution; fixture or expired consent cannot
+satisfy them.
 
 ## 7. Unresolved constraints
 

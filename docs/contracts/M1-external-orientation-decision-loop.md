@@ -13,6 +13,7 @@
 | Acceptance basis | Owner accepted the final scope proposal and then the sequential delivery flow in this session; documentation recording explicitly requested |
 | Readiness | Product/behavior contract ACCEPTED; enabling architecture and sequencing remain required before IMPLEMENT |
 | Execution permission | This contract records the selected capability; it grants no current target/pilot permission or milestone seal |
+| HTTPS-loop consistency | [Candidate note](#candidate-https-loop-consistency-2026-11-17) — CANDIDATE, DW-HTTPS-LOOP-SLIM-DESIGN-R1; not accepted; broader M1 scope unchanged |
 
 ## 1. Product outcome
 
@@ -87,6 +88,27 @@ Resolution is bounded, CNAME loops/depth overflow are rejected, and the connecti
 Redirects are observed but not followed in M1. An outside-authority redirect may explain why the candidate remains unresolved; it does not authorize visiting the destination. A possible supporting-domain visit is a later, separately declared permission, not an implicit feature of the HTTPS adapter.
 
 M0 eligibility/planning history remains historical. It is not a reusable execution grant. Dispatch and actual effect start require current M1 authority, required premises, unexpired budgets and no withdrawal/freeze/termination.
+
+### Candidate HTTPS-loop consistency (2026-11-17)
+
+**Status: CANDIDATE — DW-HTTPS-LOOP-SLIM-DESIGN-R1. Not accepted. No execution permission.**
+
+The first HTTPS proof executes one authorized hostname and its alternative admitted
+IPv4 addresses. That scope is the proof, not a new universal one-hostname campaign rule.
+Sections 1–3, the two-candidate qualification scenario, CT, synthesis, the minimum
+report and the rest of this contract stay in force.
+
+The accepted rule remains that contact uses the admitted address and that an
+uncontrolled second resolution is forbidden. The only proposed exception is the
+explicit `dns_once_if_stale` refresh owned by
+[ADR-013](../adr/ADR-013-capability-contract.md#candidate-https-loop-dns-refresh-2026-11-17):
+same hostname, same resolver and vantage, one distinct admitted DNS attempt, then HEAD
+only when the originally selected IPv4 is still supported. A changed required binding
+still returns to reasoning. Run composition, the proof ceilings and the rule that run
+exhaustion preserves unresolved coverage are owned by
+[ADR-016](../adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17).
+Intent and transitions are owned by
+[the enabling contract](M1-enabling-architecture.md#9-candidate-https-loop-successor-2026-11-17).
 
 ## 5. The connected workflow
 
