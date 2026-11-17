@@ -551,3 +551,58 @@ Retain safe before/after PostgreSQL snapshots as files. A later provider
 attempt stops on failure without automatic retry and must complete D2 plus
 key-free inspect/recover before claiming full episode PASS. LIVE qualification
 and real-target authorization remain separate from this fixture procedure.
+
+### LIVE/LAB context clarification (schema 0036)
+
+Current v4 producers require migration `0036_live_context_purpose.sql` before
+new inference. It preserves existing identity/scope/disclosure checks and the
+historical question while admitting the exact routing-oriented wording only
+for matched v4 pack/run identities. Seeds remain premises behind opaque asset
+references; DNS is optional. `view_request` still terminates explicitly as
+`owner_view_requested`; it does not fetch a view or launch another decision.
+Fixture success proves wiring, not consistent paid-model action selection.
+
+The current tooling qualifies the reviewed context-purpose source baseline and
+schema `0036`. Historical PR154 descriptors and reports remain archived; they do
+not qualify the changed runtime. Retained database roles/configuration and build
+cache are reused where compatible; no pilot database is reprovisioned.
+
+### Candidate Linux Pro-v2 LIVE qualification tooling
+
+`boundary/qualify/qualify.sh candidate <subcommand>` qualifies the fixed
+Linux/ARM64 deployment using the existing custody, package, install and binding
+owners. The release descriptor is version `2`, schema `0036`, with closed
+`release_baseline_commit`/`release_baseline_tree` pins for the reviewed runtime.
+Actual build-source and driver identities are the clean successor HEAD/tree;
+no arbitrary baseline argument or source-verification bypass is exposed.
+
+- `package`, `verify-descriptor`, and `render-binding` are offline operations.
+  `release_descriptor.py verify-source` additionally verifies the pinned Git
+  baseline tree and exact production/build-input equivalence. Production edits,
+  including qualification test-registration edits, require a newly reviewed pin.
+- Privileged operations retain root host/driver custody, `0400` ownership,
+  pre-load `.live-dns-owner`, strict clean environment, read-only sudoers checks,
+  ext4/nested-mount isolation and quiescence across retained databases/sinks.
+- Current source remains `/srv/duskweave/src/linux-prov2-qual-r1`; retained build
+  cache remains `/srv/duskweave-build/linux-prov2-qual-r1`. New bundle, install
+  backup and binding receipts use `/srv/duskweave/reports/live-context-purpose-r1`.
+  Historical `/srv/duskweave/reports/linux-prov2-qual-r1` is preserved.
+- For this source-only runtime update, rebuild Rust core/launcher with the
+  locked/offline build environment after `candidate build-storage`; reuse the
+  verified unchanged Go workers/image. Package all four exact binaries. The
+  full `candidate build` continues to require a fresh build root and image;
+  it is not the incremental update procedure.
+- Reuse `dw_native_linux_prov2_qual_20261115r1`, its seven owners and protected
+  `/etc/duskweave/m1/linux-prov2-qual-r1` custody/config. Apply only the new atomic
+  migration `0036` under its existing administrative owner after quiescence.
+  The release verifier checks all ten unchanged `0035` definitions plus exact
+  `0036` `execution.assert_successor_pack`, and all seven direct role sessions.
+  `provision-db` remains a fresh-database command and now provisions `0036`.
+- `install` retains staged replacements, prior-binary/manifest backups and
+  honest `INCOMPLETE` receipts without automatic rollback. `bind` issues a fresh
+  finite LIVE manifest/reference and one SQL INSERT; read-only `reconcile`
+  independently verifies installed/package/image/database identities. Unknown
+  write acknowledgements require reconciliation, never an automatic retry.
+- Reconcile immediately before a freshly authorized LIVE episode. A successful
+  provider call or legitimate defer/view-request terminal is not DNS/D2 success.
+  Record actual decisions, calls, effects, Terrain and key-free recovery.

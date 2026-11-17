@@ -88,6 +88,15 @@ Cognition compiles the accepted M1 mission question:
 > and which routing or response premise still needs observation, a different
 > candidate, or deferral?"
 
+This initial/context-only question is unchanged. Autonomous LIVE/LAB v4 uses
+`m1_autonomous_context::LIVE_ROUTING_QUESTION`: the Broker holds the admitted
+hostname behind each opaque asset, DNS is optional and current-authority-gated,
+Terrain zero-count/omissions are not query history, and an owner view request is
+terminal and unfulfilled within this bounded run. Migration `0036` admits this
+exact wording for matched v4 pack/run identities while preserving the historical
+question; no free-form prompt, new disclosure, field, budget or execution grant
+is introduced. Controlled SDK v3 and retained v1/v2 keep their prior question.
+
 - **Views**:
   - `mission`: available with its publication lineage and revision.
   - `cyber_terrain`: controlled by `owner_qualified_summaries` disclosure and

@@ -48,22 +48,43 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 
 ## 6. Current slices and next action
 
-**Current work:** DW-PRO-V2-CANDIDATE-C (`reasoning-bounded-pro-v2`, Candidate C:
-8192 reasoning-inclusive output tokens, 65536 response bytes) implemented across
-closed profile, permission, immutable intent, migration `0035`, SDK
-clocks/transport, supervision/watchdog bounds and diagnostic-v2 observation,
-verified locally with companion loopback mirror `fixture-genai-v4-pro-low-v2`
-and deterministic Pro-v2 SDK/restricted-SQL/upgrade tests (pending external
-review, CI and PR merge). Numerical authority belongs to
-[ADR-016](adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14).
+**Current work (`DW-M1-LIVE-CONTEXT-PURPOSE-R1` — Oracle LIVE demonstrated; not sealed):**
+The v4 context correction is implemented: bounded DNS framing, Broker-held
+opaque seed semantics, Terrain omissions and terminal unfulfilled owner views.
+Migration `0036` admits the exact reviewed wording without changing scope,
+fields, disclosure or execution authority. Retain/defer/stop remain valid.
+Local checks cover 29 PostgreSQL SQL cases, 91 Rust library cases (four ignored),
+SDK generation/repair capacity, and the Rust link checker on Windows/Linux.
 
-**Next product action:** complete external review, CI and merge for
-DW-PRO-V2-CANDIDATE-C, then run a separately authorized real-provider +
-fixture-DNS episode with fresh Pro-v2 consent. The prior pilot stopped UNKNOWN
-at D2 output exhaustion; it is not full episode PASS. Phase5 retains its
-historical partial/INCOMPLETE evidence disposition. Windows control-root/ACL
-remains OPEN; Foundation/M0 seals are unchanged. Candidate and CI evidence
-belong to the delivery PR on GitHub.
+On 2026-11-16 the explicitly authorized Oracle episode
+`live-episode-niagamas-20261116r1` completed D1 → real DNS → Terrain → D2 in
+73.558 seconds, exit `0`: two provider calls, two decisions/history entries,
+one effect and one Terrain history. D1 proposed `dns_udp`; resolver `1.1.1.1`
+returned `206.189.93.100` for `niagamas.com` (rcode `0`, TTL `1799`). D2 retained
+the hypothesis with `terrain_0` and predecessor feedback. This is routing
+observation, not proof of HTTPS access or completion of cognitive M1.
+
+Deployment reused the database, seven restricted owners, protected config,
+worker image/Go binaries and build cache. Only the changed Rust binaries were
+rebuilt; only migration `0036` was applied. The release successor uses closed
+reviewed-source pins, descriptor v2 and an eleven-function catalog check;
+44 tooling unit tests and real PostgreSQL custody/binding/ack-loss cases pass.
+New LIVE binding and independent pre/post reconciliation succeeded. Three
+key-free inspect/recovery commands passed without added calls/effects; effect
+control is closed with disposal confirmed, no worker containers/core processes
+remain, and retained databases are quiescent. Historical artifacts are preserved.
+Evidence is under `/srv/duskweave/reports/live-context-purpose-r1/` on Oracle.
+
+The first Python retirement replaces the 107-line document link checker with
+`dw-qualify check-links`, including CI/developer consumers. No Python file,
+driver or dependency was added; provisioning wrappers remain for gradual
+replacement. CI acceptance, owner acceptance and Foundation/M0 seals are unchanged.
+
+**Next product action:** review the source and LIVE evidence, then deliver the
+bounded HTTPS-validation slice in the existing loop/roadmap. This operation
+performed no target HTTP request. Historical binding receipts establish their
+finite observed windows only; they must not be treated as permanent authority.
+Windows control-root/ACL remains `OPEN`.
 
 **Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
 The heartbeat fence contention mechanism confirmed under the diagnostic witness

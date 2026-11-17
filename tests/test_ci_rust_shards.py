@@ -166,7 +166,7 @@ class ManifestTest(unittest.TestCase):
     def test_manifest_records_objects_targets_and_config(self):
         m = read_json(self.ws.manifest())
         self.assertEqual(m["checkout"], "a" * 40)
-        self.assertEqual(m["selection"]["features"], ["fixture-supervisor"])
+        self.assertEqual(m["selection"]["features"], ["fixture-supervisor", "operator-tooling"])
         ids = {t["id"] for t in m["targets"]}
         self.assertEqual(ids, set(self.ws.TARGET_TESTS))
         for t in m["targets"]:

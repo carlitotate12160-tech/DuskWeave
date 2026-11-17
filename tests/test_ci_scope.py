@@ -290,7 +290,10 @@ class WorkflowWiring(unittest.TestCase):
         # The instrumented build, not the report, selects the feature graph.
         build = self.jobs["rust-build"]
         self.assertIn("cargo test --locked --all-targets "
-                      "--features fixture-supervisor --no-run", build)
+                      "--features fixture-supervisor,operator-tooling --no-run", build)
+        self.assertIn("--features fixture-supervisor,operator-tooling",
+                      self.jobs["geiger"])
+        self.assertIn("--features fixture-supervisor,operator-tooling", build)
         # Instrumented build happens exactly once, not per worker.
         self.assertIn("cargo llvm-cov show-env", build)
         self.assertNotIn("cargo llvm-cov show-env", self.jobs["rust-tests"])

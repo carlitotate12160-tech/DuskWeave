@@ -202,9 +202,10 @@ try {
             Invoke-Checked $cargo @("+$toolchain", 'fmt', '--', '--check')
             Invoke-Checked $cargo @("+$toolchain", 'clippy', '--locked', '--all-targets',
                 '--features', 'fixture-supervisor', '--', '-D', 'warnings')
-            foreach ($checker in @('check_links.py', 'check_structure.py')) {
-                Invoke-Checked $pythonTool @('-B', (Join-Path $repo "scripts/$checker"))
-            }
+            Invoke-Checked $cargo @("+$toolchain", 'build', '--locked',
+                '--features', 'operator-tooling', '--bin', 'dw-qualify')
+            Invoke-Checked (Join-Path $normal 'debug/dw-qualify.exe') @('check-links', '--root', $repo)
+            Invoke-Checked $pythonTool @('-B', (Join-Path $repo 'scripts/check_structure.py'))
             foreach ($suite in @('test_structure.py', 'test_ci_scope.py',
                 'test_m1_bootstrap_progress.py', 'test_m1_native_helpers.py')) {
                 Invoke-Checked $pythonTool @('-B', '-m', 'unittest', 'discover',

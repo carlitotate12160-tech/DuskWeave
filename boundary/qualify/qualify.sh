@@ -10,27 +10,59 @@ VOLUME=dw-live-dns-20261030-pg17
 IMAGE=postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d
 SECRETS=/etc/duskweave/m1/service
 RELEASE_IMAGE=dw-live-dns-20261030:candidate
-# Deployment custody and the pinned frozen-bundle map live beside this script;
-# a missing or moved module fails closed rather than falling back elsewhere.
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/deployment_custody.sh"
+QUALIFY_SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+PRIVILEGED_CANDIDATE_SOURCE=/srv/duskweave/src/linux-prov2-qual-r1
+CANDIDATE_MARKER=/etc/duskweave/m1/.live-dns-owner
+. "$QUALIFY_SCRIPT_DIR/deployment_custody.sh"
 refuse() { printf '%s\n' "$1" >&2; exit 1; }
-valid_image_ref() {
-    # One explicit unqualified name:tag; never a registry/path or digest form.
-    [[ $1 =~ ^[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]
+qualify_load_candidate_sh() { . "$QUALIFY_SCRIPT_DIR/candidate.sh"; }
+valid_image_ref() { [[ $1 =~ ^[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; }
+require_candidate_host() {
+    [[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
+    protected_ancestors "$CANDIDATE_MARKER" && protected_regular_file "$CANDIDATE_MARKER" || refuse deployment_owner_refused
+    [[ $(stat -c %a "$CANDIDATE_MARKER") == 400 && $(cat "$CANDIDATE_MARKER") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
+}
+qualify_extract_driver_pins() {
+    QUALIFY_EXP_COMMIT="" QUALIFY_EXP_TREE=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --expected-driver-commit) QUALIFY_EXP_COMMIT=${2:-}; shift 2 || return 1 ;;
+            --expected-driver-tree) QUALIFY_EXP_TREE=${2:-}; shift 2 || return 1 ;;
+            *) shift ;;
+        esac
+    done
+    [[ $QUALIFY_EXP_COMMIT =~ ^[0-9a-f]{40}$ && $QUALIFY_EXP_TREE =~ ^[0-9a-f]{40}$ ]]
+}
+qualify_check_driver_file() {
+    local p=$1 enforce_root=$2
+    if [[ $enforce_root == 1 ]]; then
+        protected_ancestors "$p" && protected_regular_file "$p" || refuse driver_custody_refused
+    else
+        [[ -f $p && ! -L $p && $(stat -c %h "$p") == 1 ]] || refuse driver_custody_refused
+    fi
+}
+qualify_verify_driver_before_load() {
+    local qdir=$1 commit=$2 tree=$3 enforce_root=${4:-1} repo f st hd tr
+    [[ $commit =~ ^[0-9a-f]{40}$ && $tree =~ ^[0-9a-f]{40}$ ]] || refuse driver_pin_malformed
+    repo=$(cd -- "$qdir/../.." && pwd -P)
+    [[ ! -e $repo/.cargo && ! -L $repo/.cargo ]] || refuse driver_cargo_config_present
+    for f in deployment_custody.sh qualify.sh candidate.sh release_descriptor.py candidate_files.py \
+             candidate_postgres.py candidate_host.py candidate_install.py candidate_database.py candidate_binding.py; do
+        qualify_check_driver_file "$qdir/$f" "$enforce_root"
+    done
+    qualify_check_driver_file "$repo/tests/support/m1_native_bootstrap.py" "$enforce_root"
+    st=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" status --porcelain=v1 --untracked-files=all) || refuse driver_git_failed
+    [[ -z $st ]] || refuse driver_worktree_unclean
+    hd=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" rev-parse HEAD) || refuse driver_git_failed
+    tr=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" rev-parse 'HEAD^{tree}') || refuse driver_git_failed
+    [[ $hd == "$commit" && $tr == "$tree" ]] || refuse driver_git_pin_mismatch
 }
 require_deployment_host() {
     [[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
-    [[ -f $ROOT/.live-dns-20261030-owner ]] || refuse deployment_owner_refused
-    [[ $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
+    [[ -f $ROOT/.live-dns-20261030-owner && $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused
 }
-
-# Fixed output/cache/temp components consumed by compiler, Go and Docker steps.
 STORAGE_COMPONENTS="normal normal/release normal/release/build normal/release/deps normal/release/examples normal/release/incremental normal/release/.fingerprint go-cache tmp tmp/go tmp/build go-release boundary-release coverage"
-
 require_storage_component() {
-    # An absent fixed component is allowed; an existing one must be a real
-    # root-owned directory on the build filesystem, never a symlink, file,
-    # foreign device or nested mount point.
     local path=$1
     [[ -e $path || -L $path ]] || return 0
     [[ -d $path && ! -L $path ]] || refuse build_storage_content_refused
@@ -38,43 +70,24 @@ require_storage_component() {
     [[ $(stat -c %d "$path") == $(stat -c %d "$BUILD") ]] || refuse build_storage_coupled_filesystem
     ! mountpoint -q "$path" || refuse build_storage_coupled_filesystem
 }
-
-check_storage_components() {
-    local component
-    for component in $STORAGE_COMPONENTS; do
-        require_storage_component "$BUILD/$component"
-    done
-}
-
+check_storage_components() { local c; for c in $STORAGE_COMPONENTS; do require_storage_component "$BUILD/$c"; done; }
 install_storage_dir() {
-    # Newly created fixed directories receive the same validation as existing
-    # ones before any compiler/Docker consumer touches them.
-    local path=$1 current
+    local path=$1 cur
     install -d -m 0755 "$path"
-    current=$path
-    while [[ $current == "$BUILD"/* ]]; do
-        require_storage_component "$current"
-        current=${current%/*}
-    done
+    cur=$path
+    while [[ $cur == "$BUILD"/* ]]; do require_storage_component "$cur"; cur=${cur%/*}; done
 }
-
 check_build_storage() {
     [[ -d $BUILD && ! -L $BUILD ]] || refuse build_storage_absent
     mountpoint -q "$BUILD" || refuse build_storage_unmounted
-    local device coupled
+    local device coupled entry
     device=$(stat -c %d "$BUILD")
-    for coupled in / /var/lib/docker /var/lib/containerd; do
-        [[ $(stat -c %d "$coupled") != "$device" ]] || refuse build_storage_coupled_filesystem
-    done
+    for coupled in / /var/lib/docker /var/lib/containerd; do [[ $(stat -c %d "$coupled") != "$device" ]] || refuse build_storage_coupled_filesystem; done
     [[ $(findmnt --noheadings --output FSTYPE --target "$BUILD") == ext4 ]] || refuse build_storage_filesystem_refused
     [[ $(stat -c %u "$BUILD") == 0 && $(( (8#$(stat -c %a "$BUILD") & 022) == 0 )) == 1 ]] || refuse build_storage_identity_refused
-    local entry
     for entry in "$BUILD"/* "$BUILD"/.[!.]* "$BUILD"/..?*; do
         [[ -e $entry || -L $entry ]] || continue
-        case ${entry##*/} in
-            lost+found|normal|go-cache|tmp|go-release|boundary-release|coverage) ;;
-            *) refuse build_storage_content_refused ;;
-        esac
+        case ${entry##*/} in lost+found|normal|go-cache|tmp|go-release|boundary-release|coverage) ;; *) refuse build_storage_content_refused ;; esac
     done
     [[ -z $(find "$BUILD" -mindepth 1 -maxdepth 1 \( ! -type d -o ! -uid 0 -o -perm /022 \) -print -quit) ]] || refuse build_storage_content_refused
     check_storage_components
@@ -132,29 +145,9 @@ PY
 
 build_release() {
     local image_ref=$1
+    qualify_load_candidate_sh
     check_build_storage
-    export PATH=$ROOT/toolchains/rust-1.94.1/bin:$ROOT/toolchains/go1.27.3/bin:$PATH
-    export CARGO_HOME=$ROOT/build/cargo-home CARGO_TARGET_DIR=$BUILD/normal
-    export GOCACHE=$BUILD/go-cache GOTMPDIR=$BUILD/tmp/go TMPDIR=$BUILD/tmp/build
-    for component_dir in "$CARGO_TARGET_DIR" "$GOCACHE" "$GOTMPDIR" "$TMPDIR"; do
-        install_storage_dir "$component_dir"
-    done
-    cd "$SOURCE"
-    cargo build --locked --offline --release --features fixture-supervisor --bin duskweave --bin dw-boundary-launcher
-    local output=$BUILD/go-release
-    install_storage_dir "$output"
-    cd boundary
-    for arch in arm64 amd64; do
-        CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/dw-dns-capture-$arch" ./cmd/dw-dns-capture
-        CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/dw-dns-exporter-$arch" ./cmd/dw-dns-exporter
-    done
-    CGO_ENABLED=0 go build -trimpath -o "$output/dns-lab" ./qualify/dns_lab.go
-    local context=$BUILD/boundary-release
-    install_storage_dir "$context"
-    install -m 0555 "$output/dw-dns-capture-arm64" "$context/dw-dns-capture"
-    install -m 0555 "$output/dw-dns-exporter-arm64" "$context/dw-dns-exporter"
-    install -m 0444 Dockerfile "$context/Dockerfile"
-    docker build --network none --tag "$image_ref" "$context"
+    build_release_into "$image_ref" "$SOURCE" "$BUILD"
 }
 
 install_release() {
@@ -356,6 +349,28 @@ build_only() {
 }
 
 main() {
+    if [[ ${1:-} == candidate ]]; then
+        shift
+        local subcmd=${1:-}
+        case "$subcmd" in
+            package|verify-descriptor|render-binding)
+                [[ -f $QUALIFY_SCRIPT_DIR/candidate.sh && ! -L $QUALIFY_SCRIPT_DIR/candidate.sh ]] || refuse driver_custody_refused
+                qualify_load_candidate_sh
+                candidate_main "$@"
+                return
+                ;;
+            build-storage|build|provision-db|install|bind|reconcile)
+                require_candidate_host
+                [[ $QUALIFY_SCRIPT_DIR == "$PRIVILEGED_CANDIDATE_SOURCE/boundary/qualify" ]] || refuse privileged_driver_outside_fixed_source
+                qualify_extract_driver_pins "$@" || refuse driver_pin_malformed
+                qualify_verify_driver_before_load "$QUALIFY_SCRIPT_DIR" "$QUALIFY_EXP_COMMIT" "$QUALIFY_EXP_TREE" 1
+                qualify_load_candidate_sh
+                candidate_main "$@"
+                return
+                ;;
+            *) refuse qualification_arguments_refused ;;
+        esac
+    fi
     require_deployment_host
     case "${1:-}" in
         service) [[ $# == 1 ]] || refuse qualification_arguments_refused; prepare_service ;;

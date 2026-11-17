@@ -4,6 +4,10 @@ use crate::{Fail, Res};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+// Closed wording revision for the existing v4 LIVE/LAB artifact. This describes
+// the broker's seed binding and run semantics; it does not grant execution.
+pub const LIVE_ROUTING_QUESTION: &str = "Which mission-relevant routing uncertainty warrants a bounded DNS observation, or is retain, defer or stop better? An admitted_operator_seed reference identifies a hostname seed held by the Broker; select that asset reference with dns_udp without inventing or disclosing the name. A seed is a premise, not observed DNS and not an execution grant; the Broker rechecks current input binding, scope and permission. Only DNS observation is executable in this run; HTTPS contact is unavailable. Read Terrain availability and omissions together: shown_claims=0 means no eligible claims are displayed, not never queried or not loaded. A view_request records owner_view_requested and ends this run without fetching a view, executing DNS or another decision; it does not refresh an already loaded empty view. With committed predecessor feedback, explain whether evidence supports or revises the hypothesis; further effects remain proposals. DNS is optional.";
+
 pub struct RunContextBinding {
     pub engagement_id: EngagementId,
     pub campaign_id: CampaignId,
@@ -24,13 +28,7 @@ impl AutonomousContext {
         context_cap: usize,
         configuration_cap: usize,
     ) -> Res<()> {
-        self.binding.validate()?;
-        pack["version"] = json!(self.binding.pack_version()?);
-        if let Some(profile) = &self.binding.inference_profile {
-            pack["inference_profile"] = json!(profile);
-        }
-        pack["execution_mode"] = json!(self.binding.execution_mode);
-        pack["run_profile"] = json!(self.binding.run_profile);
+        self.binding.apply_identity(pack)?;
         pack["pending_unknown"] = json!(["unloaded_owner_views_not_loaded_by_profile"]);
         pack["omissions"]["manifests"] = json!("qualified_profiles_only");
         pack["manifests"] = json!([{"availability":"qualified","execution_mode":self.binding.execution_mode,
@@ -110,6 +108,20 @@ fn set_trajectory_view(pack: &mut Value, event: Option<Value>) -> Res<()> {
 }
 
 impl RunContextBinding {
+    fn apply_identity(&self, pack: &mut Value) -> Res<()> {
+        self.validate()?;
+        pack["version"] = json!(self.pack_version()?);
+        if pack["version"] == "m1_context_pack_autonomous_v4" {
+            pack["question"] = json!(LIVE_ROUTING_QUESTION);
+        }
+        if let Some(profile) = &self.inference_profile {
+            pack["inference_profile"] = json!(profile);
+        }
+        pack["execution_mode"] = json!(self.execution_mode);
+        pack["run_profile"] = json!(self.run_profile);
+        Ok(())
+    }
+
     fn pack_version(&self) -> Res<&'static str> {
         use crate::m1_inference_profile::{Backend, lookup};
         match self
@@ -223,6 +235,32 @@ fn bind_selected_seed(prior: &mut Value, pack: &Value) -> Res<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_question_explains_broker_seed_and_terminal_view_without_forcing_dns() {
+        let a = AutonomousContext {
+            binding: RunContextBinding {
+                engagement_id: EngagementId(Uuid::from_u128(1)),
+                campaign_id: CampaignId(Uuid::from_u128(2)),
+                run_profile: crate::m1_inference_profile::LAB_RUN_PROFILE.into(),
+                execution_mode: "live".into(),
+                inference_profile: Some("fixture-genai-responses-v1".into()),
+                release_sha256: "a".repeat(64),
+                qualification_ref: Uuid::from_u128(3),
+            },
+            predecessor: None,
+        };
+        let mut pack = json!({"question":crate::m1_context::QUESTION,"references":[],
+            "omissions":{},"pending_unknown":[]});
+        a.extend(&mut pack, 8192, 16384).unwrap();
+        let question = pack["question"].as_str().unwrap();
+        assert!(question.contains("hostname seed held by the Broker"));
+        assert!(question.contains("not an execution grant"));
+        assert!(question.contains("owner_view_requested"));
+        assert!(question.contains("DNS is optional"));
+        assert!(question.len() <= 1024);
+        assert!(!question.contains("best next subject for access-validation planning"));
+    }
+
     #[test]
     fn sdk_optional_summary_omission_retains_required_feedback_and_shared_capacity() {
         let id = "00000000-0000-0000-0000-000000000021";

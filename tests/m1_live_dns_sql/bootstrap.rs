@@ -1,4 +1,4 @@
-//! Target-private native bootstrap wrapper for schema-0035 SQL assertions.
+//! Target-private native bootstrap wrapper for schema-0036 SQL assertions.
 use super::fixture::{GROUP, MARKER, worker};
 
 pub fn run_fixture_wrapper() {
@@ -43,7 +43,7 @@ pub fn run_fixture_wrapper() {
             "--database-name",
             database,
             "--schema-revision",
-            "0035",
+            "0036",
             "--role-prefix",
             &format!("dw_lsq{}", &unique[..unique.len().min(10)]),
             "--report",
@@ -57,7 +57,7 @@ pub fn run_fixture_wrapper() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "dedicated schema-0035 fixture failed; report {}: {stdout}\n{stderr}",
+        "dedicated schema-0036 fixture failed; report {}: {stdout}\n{stderr}",
         report.display()
     );
     let log = std::fs::read_to_string(report.join("qualification.log"))
@@ -96,7 +96,7 @@ pub fn run_fixture_wrapper() {
     }
     assert!(passed >= 29, "SQL assertion group must execute: {log}");
     eprintln!(
-        "schema0035_sql_group passed={passed} report={}",
+        "schema0036_sql_group passed={passed} report={}",
         report.display()
     );
 }

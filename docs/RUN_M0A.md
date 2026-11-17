@@ -173,7 +173,7 @@ cargo fmt -- --check
 cargo clippy --all-targets -- -D warnings
 DW_TEST_DATABASE_URL=... DW_TEST_ADMIN_DATABASE_URL=... cargo test --locked --all-targets
 cargo audit
-python scripts/check_links.py
+cargo run --locked --features operator-tooling --bin dw-qualify -- check-links --root .
 python scripts/check_structure.py
 python -m unittest discover -s tests -p test_runtime_budget.py
 python tests/check_coverage_gate.py --selftest
