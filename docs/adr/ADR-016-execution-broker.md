@@ -14,6 +14,7 @@
 | Provider-neutral revision | [Section 4a revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, timers, consent and seals unchanged |
 | Lease coordination amendment | [Section 4a lease coordination](#positive-run-lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); liveness renewal is not authority mutation; authority fence, timers and seals unchanged |
+| Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: admission, accounting, cancellation, recovery, inference clocks and resource tuples stay owned here; repeated inventories and measured anecdotes now reference the canonical tables. Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/adr/ADR-016-execution-broker.md). No new acceptance, permission or seal |
 
 ## 1. Context and problem statement
 
@@ -345,8 +346,9 @@ context/candidate/request/configuration limits remain valid only when the minimu
 useful P/C/B can fit; no silent truncation of required context or output capacity.
 
 These are engineering-selected initial ceilings, not measured latency percentiles
-or success guarantees. The historical 10.084-second generation is one sample,
-not a P50 or proof of which watchdog killed repair. Two full 20-second calls need
+or success guarantees. The historical single-sample generation recorded in the
+[pre-consolidation text](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/adr/ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19)
+remains one sample, not a P50 or proof of which watchdog killed repair. Two full calls need
 additional local work, so admission clamps each call to the remaining shared
 clock; a completed generation does not guarantee time for repair. Configure curl's
 whole-transfer timeout and connection bound accordingly, with bounded response
@@ -451,11 +453,10 @@ independent hard stop remains the fallback for blocked transport/callbacks, and
 semantic events never extend a hard authority deadline. Admission validates
 finite feasibility against the full reservation — generation, conditional
 repair, stop escalation and accounting reserves; insufficient remainder yields
-a visible defer/stop disposition, never silent truncation. The current
-legacy inventory — 20-second provider call, 40-second shared generation/repair,
-45-second decision envelope, 50-second inference phase, 60-second CLI phase,
-150-second run and the 90000-ms two-decision inference reservation, plus
-campaign/window limits — remains authoritative for legacy bindings; each guard begins at its own
+a visible defer/stop disposition, never silent truncation. The legacy inventory
+selected above — provider-call, shared, decision, phase, CLI/acquisition, run
+and two-decision reservation bounds, plus campaign/window limits — remains
+authoritative for legacy bindings; each guard begins at its own
 lifecycle point, and a run need not permit every phase to consume its maximum.
 The 2026-10-22 design did not select successor timer numbers. The owner-issued
 runtime packet now selects the versioned resource policy in the
@@ -628,8 +629,9 @@ permission, run, pack and semantic-intent shapes remain unchanged.
 
 These are resource-policy choices, not measured percentiles, a provider SLA or
 a guarantee that the token ceiling can be exhausted before a timer/byte limit.
-The retained pilot measured D2 at 4096 output tokens, 48.446 seconds and 26502
-response bytes; doubling these observations is only an extrapolation. Retaining
+The retained pilot's single-episode measurements are recorded in the
+[pre-consolidation text](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14);
+doubling those observations was only an extrapolation. Retaining
 64 KiB avoids changing the SDK HTTP entity boundary. A larger response still
 rejects honestly, without truncation-to-validity, hidden retry or automatic
 budget expansion. The 72000-ms run margin is policy, not calibrated phase cost.
