@@ -37,9 +37,23 @@ Native operations bind validated input before reserving capacity; inspection and
 recovery do not replay provider calls. Current qualification and limitations belong
 in [Engineering State](docs/ENGINEERING_STATE.md).
 
+## Platform direction
+
+Linux is the MVP core/Execution Broker/acquisition runtime under accepted
+[ADR-015](docs/adr/ADR-015-execution-boundary.md) and the
+[roadmap](docs/MVP_AND_DEFERRED_SCOPE.md#16-mvp-platform-direction-owner-direction-2026-11-17).
+Windows remains an operator/developer workstation; WSL is the preferred
+development direction. WSL availability alone does not establish qualified
+deployment, host isolation or acquisition readiness, and OS-specific target
+adapters are a separate capability concern. Native Windows M1 acquisition is
+deferred for MVP; the commands below remain supported for retained Windows
+development and compatibility checks.
+
 ## Windows developer commands
 
-Use Windows PowerShell 5.1 or later, Git, the pinned Rust toolchain, and Python
+These commands cover the retained Windows development/compatibility lane, not
+the MVP runtime platform. Use Windows PowerShell 5.1 or later, Git, the pinned
+Rust toolchain, and Python
 from the 3.12 series in `.python-version` (matching CI). Scripts use the standard
 library; no Python package manager is required. Tests also need OpenSSL, selected
 from PATH or Git for Windows. Override tool selection with `-Python` / `-OpenSsl`.

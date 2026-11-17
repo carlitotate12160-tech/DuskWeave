@@ -100,6 +100,7 @@ Establish these sources at the start of a task/session. On subsequent edits,
 recheck repository identity, HEAD, worktree status and relevant authority changes;
 reuse unchanged verified context and reread changed/newly affected boundaries.
 After context loss, rebuild the required context. Do not reread unrelated stages.
+Reading an implementation prompt alone does not satisfy this check.
 Current acceptance/seal status comes from docs/ENGINEERING_STATE.md; old memory,
 startup examples and portable skill copies cannot establish current authority.
 
@@ -341,7 +342,9 @@ propagate local configuration between worktrees.
 Maintain one owner for each kind of information:
 - PR state, candidate SHA and CI results: GitHub.
 - Active work, next action and milestone/seal evidence index: docs/ENGINEERING_STATE.md.
-- Product scope, priorities and retirement triggers: docs/MVP_AND_DEFERRED_SCOPE.md.
+- Product scope, priorities, MVP platform direction and retirement triggers:
+  docs/MVP_AND_DEFERRED_SCOPE.md; deployment mechanisms remain in their
+  accepted ADRs.
 - Dependency navigation: docs/BUILD_ORDER.md; decisions remain in their PRD/ADR/contract.
 - Supported operator procedures: the relevant RUN_* guide.
 
@@ -380,7 +383,11 @@ to improve a ratio. Skills carry workflow guidance, not project history.
 ## Local build and coverage artifacts
 
 Compiled artifacts are reusable local resources, separate from source
-isolation. On the current Windows x86_64 MSVC baseline they follow a
+isolation. These conventions govern the retained Windows developer checks;
+the MVP runtime platform direction is Linux (see
+docs/MVP_AND_DEFERRED_SCOPE.md and ADR-015), and any Linux/WSL lane uses its
+own packet-qualified paths rather than replacing these. On the current
+Windows x86_64 MSVC baseline they follow a
 process-scoped convention, not global machine state:
 
 ```text

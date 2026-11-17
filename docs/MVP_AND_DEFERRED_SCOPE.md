@@ -210,6 +210,30 @@ Retire remaining mechanisms in bounded consumer-complete changes:
 
 Record migration evidence in its existing PR; closed packets stay historical.
 
+### 1.6 MVP platform direction (owner direction, 2026-11-17)
+
+The owner directs Linux as the MVP platform for the core, Execution Broker and
+acquisition lane, consistent with accepted
+[ADR-015](adr/ADR-015-execution-boundary.md); that ADR owns the isolation and
+deployment mechanisms and is unchanged by this record.
+
+- Linux is the MVP core/Broker/acquisition runtime.
+- Windows remains an operator/developer workstation; WSL is the preferred
+  development direction.
+- WSL availability does not establish qualified deployment, host isolation,
+  acquisition readiness or authorization.
+- OS-specific target adapters/agents remain a separate capability concern; a
+  Linux core does not exclude future authorized Windows target operations.
+- Existing Linux ARM64 deployment evidence and Linux x86-64 development
+  evidence retain their actual scopes; no universal Linux support is claimed.
+
+Native Windows M1/ACL qualification work is deferred for MVP; its OPEN
+evidence stays OPEN and is not relabeled. Accepted M0 behavior, retained
+Windows code and tests, `scripts/dev.ps1` and their operational/recovery
+consumers remain supported until a separately authorized, consumer-complete
+replacement and compatibility disposition exist. This is a support-direction
+decision, not completed Windows runtime retirement.
+
 ## 2. Deferred development candidates
 
 Deferred means outside initial scope; evaluate means a possible direction, not a commitment to build it. Revisit using evidence and the stated trigger.
