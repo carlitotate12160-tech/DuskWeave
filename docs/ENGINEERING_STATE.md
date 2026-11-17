@@ -1,13 +1,29 @@
 # DuskWeave Engineering State
 
+Current-state index: active work, next action, milestone/seal status and the
+evidence pointers needed to interpret authority. PR state, candidate SHA and CI
+results belong to GitHub; scope and priorities belong to
+[the roadmap](MVP_AND_DEFERRED_SCOPE.md); dependency navigation belongs to
+[BUILD_ORDER](BUILD_ORDER.md). This file is not a merge log or episode
+chronicle. The retired episode chronology remains readable at
+[the immutable pre-compaction record](https://github.com/carlitotate12160-tech/DuskWeave/blob/9d6cd89d8349c57dfca67e0a246daf1e5125f339/docs/ENGINEERING_STATE.md);
+entries below keep only outcome, tested-source identity, limits and owners.
+
 ## 1. Project Identity & Status
 
 - **Project**: DuskWeave. Verify actual worktree, branch and HEAD before delivery.
-- **Current Phase**: M1 is unsealed. Current work is the bounded Linux live-DNS
-  SDK slice; PR state, committed head and checks come from GitHub.
-- **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence below is unchanged.
-- Scope/priorities belong to [the roadmap](MVP_AND_DEFERRED_SCOPE.md); dependency
-  navigation belongs to [BUILD_ORDER](BUILD_ORDER.md). Neither duplicates PR state.
+- **Current phase**: M1 is unsealed. The active assigned outcome is the Linux
+  platform-direction and state-index documentation delivery; its PR and check
+  status lives on GitHub.
+- **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence in section 5
+  is unchanged.
+- **Platform direction**: per the owner direction recorded in
+  [the roadmap](MVP_AND_DEFERRED_SCOPE.md#16-mvp-platform-direction-owner-direction-2026-11-17),
+  Linux is the MVP core/Broker/acquisition runtime — consistent with accepted
+  [ADR-015](adr/ADR-015-execution-boundary.md), which owns the M1
+  execution-boundary lane. Windows remains an operator/developer workstation
+  with WSL as the preferred development direction; terms and retained
+  compatibility stay in the roadmap entry.
 
 ## 2. Stage 0 Artifact Checklist & Verification
 
@@ -29,557 +45,129 @@ Use [PRD-000](prd/PRD-000-product-thesis.md) and
 ## 5. Foundation Seal Evidence
 
 - **Authority completeness**: PRD-000..006 and ADR-001..007 are `ACCEPTED`.
-- **Coherence**: Historical F1–F7 reconciliation remains recorded. The accepted 2026-09-29 INV-005 amendment preserves five operational models and ordinary-surface zero exposure while allowing bounded campaign-scoped operational-secret custody. Refreshed cross-foundation terminology and status scans found no new contradiction.
-- **Document verification**: The reseal check covered 41 tracked Markdown files and 87 relative links with zero broken links; all documents remain below 400 lines, current-status scans are coherent, and `git show --check` passes for the sealed baseline.
-- **Review**: One refreshed adversarial review covered initial access without a foothold, authorized reuse, resumable restart, custody loss, cross-campaign isolation, PostgreSQL/evidence contamination, safety freeze, termination/withdrawal, in-flight uncertainty, and the distinction between disposing DuskWeave-held copies and revoking the client-side credential. No blocking contradiction remains.
-- **Scope**: This seal accepts the foundation design at baseline `f93087b52c480822544bad0fb5d99d17eedf8ac0`. No runtime, tool integration, payload implementation, or CI result is claimed.
-- **Product-owner action**: The product owner explicitly authorized the `DW-FOUNDATION-001` reseal on 2026-09-29 after accepting PRD-010.
+- **Coherence**: Historical F1–F7 reconciliation remains recorded. The accepted
+  2026-09-29 INV-005 amendment preserves five operational models and
+  ordinary-surface zero exposure while allowing bounded campaign-scoped
+  operational-secret custody. Refreshed cross-foundation terminology and status
+  scans found no new contradiction.
+- **Document verification**: The reseal check covered 41 tracked Markdown files
+  and 87 relative links with zero broken links; all documents remained below
+  400 lines and `git show --check` passes for the sealed baseline.
+- **Review**: One refreshed adversarial review covered initial access without a
+  foothold, authorized reuse, resumable restart, custody loss, cross-campaign
+  isolation, PostgreSQL/evidence contamination, safety freeze,
+  termination/withdrawal, in-flight uncertainty, and the distinction between
+  disposing DuskWeave-held copies and revoking the client-side credential. No
+  blocking contradiction remains.
+- **Scope**: This seal accepts the foundation design at baseline
+  `f93087b52c480822544bad0fb5d99d17eedf8ac0`. No runtime, tool integration,
+  payload implementation, or CI result is claimed.
+- **Product-owner action**: The product owner explicitly authorized the
+  `DW-FOUNDATION-001` reseal on 2026-09-29 after accepting PRD-010.
 
----
+Accepted amendment exact-text records stay in their owning documents: the
+[roadmap §1.2 entry](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19)
+records the 2026-10-19 autonomous-run amendment acceptance at exact text
+`0615fb72c946fd6abf0823692be621096091377c`; the INV-005 foundation amendment is
+recorded above; scoped R1/R2/R3 acceptances are recorded in the ADR-015/016 and
+M1-contract revision rows. An amendment status not recorded in an owning
+document or owner direction is proposed, not accepted.
 
 ## 5a. M0 Seal Evidence (`DW-M0-001`)
 
-- **Scope**: accepts the bounded local M0 lane at verified commit `669f2f36bf2909f3c28f4018a6ae69e76364b286` — M0A registration/history, M0B planning/history, M0C withdrawal/refusal/recovery including C0 fresh-authority confirmation and the C1a/C1b corrections, plus the assurance tooling merged alongside (parser mutation qualification, dependency hardening).
-- **Evidence**: owner-accepted `DW-DEMO-M0-TWO-ASSETS` — register → assess → withdraw → refuse → restart → inspect on two operator-reviewed real-asset scopes with live C0 exchanges; bounded Work REVIEW_PASS recorded through the PR #31 reconciliation; merged runtime deliveries #21–#30 each with exact-master CI; parser boundary qualification 33/17/0/16 (PR #32, run 37297574836); dependency gate with real negative controls (PR #33); exact-master run 37339827937 SUCCESS on the sealed commit.
-- **Limits**: local loopback core only — no target observation, acquisition, execution, compromise, reachability or ownership proof is claimed; retained demo database `dw_m0_demo_two_assets_20261005` remains evidence, not authorization. The scoped historical RED-evidence gap remains UNVERIFIED-not-PASS; the DSN rotation/reference sync remains IDE attestation. The seal grants no `DW-DOMAIN-001`, no target runtime, no LLM integration and no five-model scaffolding. `DW-FOUNDATION-001` is unchanged.
-- **Product-owner action**: the product owner explicitly accepted the Work-reviewed demo evidence and authorized the M0 seal on 2026-10-05.
-
----
+- **Scope**: accepts the bounded local M0 lane at verified commit
+  `669f2f36bf2909f3c28f4018a6ae69e76364b286` — M0A registration/history, M0B
+  planning/history, M0C withdrawal/refusal/recovery including C0
+  fresh-authority confirmation and the C1a/C1b corrections, plus the assurance
+  tooling merged alongside.
+- **Evidence**: owner-accepted `DW-DEMO-M0-TWO-ASSETS` — register → assess →
+  withdraw → refuse → restart → inspect on two operator-reviewed real-asset
+  scopes with live C0 exchanges; bounded Work REVIEW_PASS recorded through the
+  PR #31 reconciliation; merged runtime deliveries #21–#30 each with
+  exact-master CI; parser boundary qualification 33/17/0/16 (PR #32, run
+  37297574836); dependency gate with real negative controls (PR #33);
+  exact-master run 37339827937 SUCCESS on the sealed commit.
+- **Limits**: local loopback core only — no target observation, acquisition,
+  execution, compromise, reachability or ownership proof is claimed; retained
+  demo database `dw_m0_demo_two_assets_20261005` remains evidence, not
+  authorization. The scoped historical RED-evidence gap remains
+  UNVERIFIED-not-PASS; the DSN rotation/reference sync remains IDE attestation.
+  The seal grants no `DW-DOMAIN-001`, no target runtime, no LLM integration and
+  no five-model scaffolding. `DW-FOUNDATION-001` is unchanged.
+- **Product-owner action**: the product owner explicitly accepted the
+  Work-reviewed demo evidence and authorized the M0 seal on 2026-10-05.
 
 ## 6. Current slices and next action
 
-**Current work (`DW-M1-LIVE-CONTEXT-PURPOSE-R1` — Oracle LIVE demonstrated; not sealed):**
-The v4 context correction is implemented: bounded DNS framing, Broker-held
-opaque seed semantics, Terrain omissions and terminal unfulfilled owner views.
-Migration `0036` admits the exact reviewed wording without changing scope,
-fields, disclosure or execution authority. Retain/defer/stop remain valid.
-Local checks cover 29 PostgreSQL SQL cases, 91 Rust library cases (four ignored),
-SDK generation/repair capacity, and the Rust link checker on Windows/Linux.
+**Active work:** `DW-MVP-LINUX-STATE-INDEX-R1` — records the owner-requested
+Linux MVP platform direction and restores this file as a concise current-state
+index. This is a support-direction decision: no seal, deployment
+qualification, Windows runtime retirement or new execution permission follows
+from it. Its delivery/merge status lives on GitHub.
 
-On 2026-11-16 the explicitly authorized Oracle episode
-`live-episode-niagamas-20261116r1` completed D1 → real DNS → Terrain → D2 in
-73.558 seconds, exit `0`: two provider calls, two decisions/history entries,
-one effect and one Terrain history. D1 proposed `dns_udp`; resolver `1.1.1.1`
-returned `206.189.93.100` for `niagamas.com` (rcode `0`, TTL `1799`). D2 retained
-the hypothesis with `terrain_0` and predecessor feedback. This is routing
-observation, not proof of HTTPS access or completion of cognitive M1.
+**Latest completed product evidence (bounded historical observation):**
+On 2026-11-16 the explicitly authorized Oracle ARM64 episode
+`live-episode-niagamas-20261116r1` on tested source `7ea3b90` (delivered through
+PR #155) completed D1 → real DNS → Terrain → D2 in 73.558 seconds, exit `0`:
+two provider calls, two decisions/history entries, one effect and one Terrain
+history. Resolver `1.1.1.1` returned `206.189.93.100` for `niagamas.com`
+(rcode `0`, TTL `1799`); D2 retained the hypothesis on `terrain_0` with
+predecessor feedback. This is a routing observation — not HTTPS proof, an M1
+seal, permanent qualification or reusable provider/target authorization; its
+binding windows were finite. Deployment detail, custody/inspect evidence and
+the report root are in
+[the immutable record](https://github.com/carlitotate12160-tech/DuskWeave/blob/9d6cd89d8349c57dfca67e0a246daf1e5125f339/docs/ENGINEERING_STATE.md).
 
-Deployment reused the database, seven restricted owners, protected config,
-worker image/Go binaries and build cache. Only the changed Rust binaries were
-rebuilt; only migration `0036` was applied. The release successor uses closed
-reviewed-source pins, descriptor v2 and an eleven-function catalog check;
-44 tooling unit tests and real PostgreSQL custody/binding/ack-loss cases pass.
-New LIVE binding and independent pre/post reconciliation succeeded. Three
-key-free inspect/recovery commands passed without added calls/effects; effect
-control is closed with disposal confirmed, no worker containers/core processes
-remain, and retained databases are quiescent. Historical artifacts are preserved.
-Evidence is under `/srv/duskweave/reports/live-context-purpose-r1/` on Oracle.
+**Also delivered:** the bounded Rust-genai SDK transport lane (accepted
+[ADR-016 §4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
+and enabling contract §8, merge `a85afcb` via #132) and the DNS selector
+contextual-reference/entity-ordinal fix (#120, `e11f62f`), qualified on Windows
+fixtures. These are not a seal, paid-provider qualification or live
+qualification; legacy libcurl remains only for its explicitly retained old
+profiles and M0 consumers.
 
-The first Python retirement replaces the 107-line document link checker with
-`dw-qualify check-links`, including CI/developer consumers. No Python file,
-driver or dependency was added; provisioning wrappers remain for gradual
-replacement. CI acceptance, owner acceptance and Foundation/M0 seals are unchanged.
+**Next product action:** bounded HTTPS-validation DESIGN through the actual
+reasoning → acquisition → Terrain → adaptation loop in the existing roadmap
+order, with cost bounded before code. Fresh disclosure/authorization, accepted
+profiles and qualified live boundaries remain prerequisites; fixture or expired
+consent cannot satisfy them.
 
-**Next product action:** review the source and LIVE evidence, then deliver the
-bounded HTTPS-validation slice in the existing loop/roadmap. This operation
-performed no target HTTP request. Historical binding receipts establish their
-finite observed windows only; they must not be treated as permanent authority.
-Windows control-root/ACL remains `OPEN`.
+## 7. Unresolved constraints
 
-**Run lease coordination fix (DW-M1-FIX-HEARTBEAT-FENCE-AND-CLOSE-B-R1) — QUALIFIED (Linux):**
-The heartbeat fence contention mechanism confirmed under the diagnostic witness
-was resolved by migration 0034 replacing `execution.private_live_mutation_guard()`
-and `execution.run_renew(uuid)`. Liveness-only lease renewals validate caller
-(`writer_oid`), state (`running`), and monotonic positive renewal (`now <= lease <= now + 2000ms`)
-on `execution.autonomous_control` without acquiring `pg_advisory_xact_lock(engagement:campaign)`.
-Migration 0034 is wrapped in an atomic `BEGIN`/`COMMIT` transaction.
-Four dedicated regression witnesses across `lease_coordination.rs` and
-`lease_coordination_races.rs` verify:
-1. Active lease renewal with a full LAB lifecycle (D1/publication/history,
-   acquisition, `PgEffectStore::reserve`) does not own the release fence
-   (`sql_live_lease_renewal_does_not_own_release_fence`).
-2. Scoped `test_mutate_lease` with explicit `allowed_runs` and role grants
-   rejects regressing, oversized, foreign-caller, unqualified-caller
-   (`terrain_column`), stopped (actual `run_stop`) and expired renewal
-   mutations at the trigger level (`sql_live_lease_coordination_rejects_invalid_renewals`).
-3. Actual `execution.run_stop` transaction (not manual `pg_advisory_xact_lock`)
-   produces the authority fence; committed stopped state verified
-   (`sql_live_authority_mutations_still_fence_release`).
-4. Concurrent row-lock waiting observed via `pg_blocking_pids` (not
-   `sleep(100ms)`): monotonic concurrency, STOP-after-precheck,
-   expiry-after-precheck, and orderly unwind cleanup under scoped thread ownership
-   (`sql_live_lease_renewal_preserves_stop_and_expiry`). Scoped ownership via
-   `std::thread::scope` guarantees prompt rollback of A's row lock on panic/unwind
-   and channel hangup before joining B, verified by controlled subcases.
+Current open items with their owning references. Historical entries marked
+FAIL/NOT READY/UNQUALIFIED describe those episodes, not present verdicts.
 
-All 21 Linux SQL cases passed on fresh schema 0034 (**21/21 PASS**).
-Forward upgrade from schema 0033 observed pre-upgrade causal RED on case 1,
-rollback witness verified (injected syntax error), executed migration 0034
-with identical data snapshot, exact function delta (`CHANGED_0034`), original
-pre-upgrade records preserved, and passed all 21 cases (**21/21 PASS**).
-Forward upgrade from schema 0032 observed pre-upgrade causal RED on case 1,
-executed migrations 0033 and 0034 with identical data snapshot, exact function
-delta (`CHANGED_0033 | CHANGED_0034`), original pre-upgrade records preserved,
-and passed all 21 cases (**21/21 PASS**).
-All 13 required witnesses passed across all three runs.
-Windows control-root / ACL qualification remains OPEN (not addressed by this Linux SQL fix).
+| Item | Status | Owning reference |
+| --- | --- | --- |
+| Native Windows M1 control-root/ACL qualification | OPEN — deferred for MVP; retained Windows code, tests and dev tooling unchanged, not relabeled PASS | [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md); retained evidence `D:/DuskWeave-build/rust-1.94.1/reports/deepseek-pro-profile-r4` |
+| TTL-bounded premise and repair under a stale premise | OPEN | [enabling contract](contracts/M1-enabling-architecture.md) premise/freshness rules; [historical qualification ledger](M1_TERRAIN_INFORMED_DNS_QUALIFICATION.md) |
+| HTTPS admission prerequisites | OPEN — fresh authorization, accepted profile and qualified live boundary required before execution | [roadmap §1.2](MVP_AND_DEFERRED_SCOPE.md#12-autonomous-campaign-delivery-order-owner-direction-2026-10-19) |
+| Original R2 real-provider + fixture-DNS external harness | PARTIAL / NOT READY — incomplete snapshots can produce an unsupported COMPLETE verdict; a final persistence failure can retain a COMPLETE disposition; malformed typed receipts can interrupt the recovery schedule; missing/wrong-scope evidence can default to BLOCKED_BEFORE_SEND | 16 November handoff §14; evidence root `/home/ekoku/duskweave-build/rust-1.94.1/reports/real-provider-fixture-dns-r2-pro-v2-20261115/fix1-offline/`; a separate harness from the PR #139 LAB episode in section 8 |
+| Original-recovery restricted-role credentials | BLOCKED/UNVERIFIED — five legitimate restricted-role credentials remain unavailable; positive direct-login and original inspect/recover/recover evidence remain BLOCKED/UNVERIFIED | 16 November handoff §14; same evidence root |
+| Parked Rust operator release-descriptor port | PARKED — intentionally outside delivered scope | PR #155 delivery notes; branch `implement/operator-release-cli-r1` |
+| GitGuardian dashboard disposition, incidents 40144272/40144273 | UNVERIFIED — repository literals verified as synthetic test sentinels; dashboard state not checked | PR #155 delivery notes |
+| Attribution of the two recorded `current_authority_unavailable` refusals and populated-upgrade evidence | OPEN/UNATTRIBUTED — the confirmed heartbeat-fence mechanism does not establish historical cause; upgrade refresh stays UNVERIFIED | [historical record](https://github.com/carlitotate12160-tech/DuskWeave/blob/9d6cd89d8349c57dfca67e0a246daf1e5125f339/docs/ENGINEERING_STATE.md); PR #151 delivery notes |
+| Audit debt: named McCabe debts, host-bound coverage, CI performance | OPEN | [roadmap §1.3–1.5](MVP_AND_DEFERRED_SCOPE.md#13-audit-disposition-attached-to-these-deliveries) |
 
-**Closed Pro candidate (DW-DEEPSEEK-PRO-LOW-PROFILE-R4-FIX1) — historical, NOT READY:**
-Linux WSL qualification reused the unchanged committed runtime/SQL/tests with
-native ELF CLI, supervisor and test executables, Rust 1.94.1, private ext4
-temporary roots and the maintained non-CI `dwpg-r3` PostgreSQL 17.11 owner.
-All 15 SDK tests, three pure admission tests, 45 Python helper tests, formatting
-and all-target Clippy passed. The native Git helper initially could not resolve
-the Windows-style worktree link; process-local `GIT_DIR`/`GIT_WORK_TREE` pointed
-to the real existing metadata, without configuration/source changes, and the
-helper suite then passed. Original RED/baseline evidence was preserved.
+## 8. Historical episode index
 
-The named fresh schema-0033 database passed **17/17**, with all nine required
-witnesses and zero failed/ignored worker cases. Retained feedback reached
-D1 -> fixture acquisition -> owner-qualified Terrain -> D2; diagnostic repair
-and Pro missing-key/key-free recovery reached their intended assertions.
-Container-side readback and a native CLI inspect resolved the same completed
-run with two decisions, one fixture effect and one Terrain history entry.
-Its evidence inventory has 39 tables (33 populated), 17 inference-call rows,
-14 reservation rows and four diagnostic-bearing calls. All three observed
-Linux product-control roots were private `0700` directories.
+Outcome, tested-source identity and carried limits only; full detail lives in
+the owning PRs and
+[the immutable record](https://github.com/carlitotate12160-tech/DuskWeave/blob/9d6cd89d8349c57dfca67e0a246daf1e5125f339/docs/ENGINEERING_STATE.md).
 
-The separate schema-0032 pre-upgrade worker executed 14 cases: **13 PASS,
-1 FAIL**. `successor_episode::sql_live_sdk_v3_cli_feedback_and_key_free_recovery_on_schema0030`
-reached D1/acquisition/Terrain, then D2 recorded `current_authority_unavailable`;
-its original call is `failed_never_released`, with no usage and only one loopback
-send overall. The run stayed UNKNOWN. This is a release/current-authority
-refusal, distinct from the Windows ACL signature; the specific rejecting branch
-or lock holder is not established. `PgBroker::release_into` and
-`verify_release_current` own the relevant admission boundary. No retry or
-migration followed: the populated upgrade database remains at 0032. Numeric
-catalog metadata/readback is retained, but forward-refresh preservation and the
-post-refresh three-Pro group are UNVERIFIED, not PASS.
+| Episode | Outcome / status | Limits carried forward |
+| --- | --- | --- |
+| Run lease coordination fix (PR #151) | QUALIFIED (Linux): heartbeat-fence mechanism confirmed, then resolved by migration `0034`; 21/21 SQL cases on fresh schema `0034` and on `0033→0034`/`0032→0034` upgrades | Offline/Linux scope; no Windows ACL change; no deployment qualification |
+| AUD-007 catalog resolution (PR #150) | Merged: 24 SECURITY DEFINER functions plus `terrain.admit_dns_request` resolved catalog relations through `pg_temp` first; migration `0032` pins `search_path`; fresh-0032 group passed 14/14 and populated-0031 refresh preserved bodies/ACLs/digests | Deployed databases stay unverified until they receive `0032`; no seal |
+| Proposal-admission diagnostics + coverage classifier (PR #147) | Merged: closed diagnostic metadata settles on the original call; declarations-only recognizer accepts visibility-prefixed fields; new-head CI coverage gate passed (95.59%) | No deployment qualification; floors stay 90%/80% |
+| Schema-0030 successor-pack compatibility (PR #146) | Merged: v2/v3/v4 admission matrix corrected (RED 8/10 → GREEN 10/10, harness `37f7fc9c…`); the bounded provider episode passed admission then refused `current_authority_unavailable` (unattributed) | LIVE readiness not verified by that packet; provider refusal unattributed |
+| Final-release LAB qualification R1 + FIX2 (PRs #144/#145) | R1: 16/17 PASS, 1 FAIL classified as a VALID test defect; FIX2's corrected case passed once on fixture b — a 16+1 corpus for delta review, not a fresh 17/17 | Host UNQUALIFIED after finite window expiry; no M1 seal |
+| Closed Pro candidate R4-FIX1 + D2 release diagnosis | Linux fresh-0033 group passed 17/17; populated-0032 attempt passed 13/14 with a second silent `current_authority_unavailable`; the heartbeat-fence mechanism was later confirmed and fixed (PR #151) | Both recorded refusals remain OPEN/UNATTRIBUTED — the confirmed mechanism does not establish their historical cause; populated-upgrade evidence stays incomplete; the diagnosis made no production change; Linux results do not qualify Windows |
+| Live-DNS LAB lane r2.1/r2.2 (PR #139, closed) | 4/4 LAB scenarios PASS on Oracle ARM64 at `4c59ef2`, qualification `93318766-3139-423d-962b-c91bc588db04` | Witnesses do not qualify a release, M1 seal, provider or public-target run |
+| Controlled skeleton → provider wiring → live-DNS direction | Delivered via #74, #107/#109, #116, #117, #118, #120, #122 and #132; merge IDs and per-episode detail are in the immutable record | Fixture/loopback scope only; no live or seal claim |
 
-Windows remains OPEN: its retained fresh worker passed 14/17; diagnostic,
-missing-key and feedback CLI outcomes failed before their required results.
-Successful ACL probes took 2094/1343/1579 ms against the unchanged 1500 ms bound.
-These observations support a platform-cause hypothesis, not proof of the sole
-cause; Linux results do not qualify Windows. No ACL code or deadline changed.
-Original Windows evidence stays at
-`D:/DuskWeave-build/rust-1.94.1/reports/deepseek-pro-profile-r4`; FIX1 logs,
-binary identities and database evidence are under
-`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-fix1`.
-The unchanged-source serialized-byte/LOC/McCabe evidence is retained; separate
-audit CPU/memory/disk/startup comparisons remain unmeasured. No real-provider
-confirmation, real-target acquisition, deployment, LIVE qualification,
-acceptance or seal follows from fixture success. Preserve frozen resources and
-all failed fixtures; the [operator guide](RUN_M1_AUTONOMOUS_FIXTURE.md#linux-lab-build-storage-owned-oracle-arm64)
-owns deployment procedures.
-
-**D2 release-boundary diagnosis (DW-B-R4-D2-RELEASE-FIX-R1) — historical, UNATTRIBUTED,
-no production change:** a byte-verified instrumented export of the unchanged
-candidate, per-edge release probes and a task-owned pg_locks/pg_stat_activity
-observer ran under
-`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-d2-r1`.
-Probe capture was validated on all four native-release control witnesses (4/4),
-which recorded the exact held-fence `current_authority_unavailable`,
-stop-before-launch, deadline-release and owned-launch-uncertainty categories.
-Three predeclared attempts were run: two reached the release boundary — the
-fresh schema-0032 observation and the schema-0033 comparator both cleared
-release (the comparator returned a complete instrumented D2 trace, 44 records,
-all verify edges, `released/completed`) — while the second schema-0032 attempt
-never reached `release_into`: its D1 child claimed 4.46 s after phase start and
-hit the 5 s readiness deadline with zero advisory locks observed. That
-readiness latency is recorded as observed; environmental causation remains
-unverified.
-
-For the preserved failing run, the retained PostgreSQL log artifact contains
-no record inside the recorded run interval 2026-11-12 14:12:03.619–14:12:17.232
-UTC (the broader 14:11:59–14:12:19.2 UTC range carries ERROR records at its
-edges). This limited observation eliminates only server-authored refusals
-(`run_not_current`, `run_phase_refused`, `inference_*`) and server-visible
-SQLSTATE classes on logged backends; it does not eliminate
-`mission_matches_scope`, which returns `current_authority_unavailable` from a
-pure Rust field comparison with no SQL, client-side driver/connection failures
-on the independent Mission/Terrain/run-control connections, or other
-uninstrumented local edges. Deadline branches are eliminated by the ~123 s
-window and ~286 s run margins; the fence-query error branch by the immediately
-succeeding `never_released` write on the same connection; the STOP-marker
-branch by the empty write-once control roots, and no withdrawal rows exist for
-the engagement. The surviving branches stay unresolved — including fence busy
-(`pg_try_advisory_lock` returning false; a designed same-key holder was
-identified later — see the heartbeat witness below), the mission-scope
-predicate, and local binding or client-side failures — with no exhaustive
-surviving-branch claim. The result
-is UNATTRIBUTED: no speculative patch was applied and B does not close. The
-first remaining evidence gap is recorded in `classification.json` and corrected
-in `classification-corrected.json` under the report root.
-
-**Populated upgrade attempt (DW-B-R4-REPORT-CORRECTION-AND-UPGRADE-R1) — historical,
-INCOMPLETE, second occurrence of the silent refusal:** all 566
-runtime/test/SQL/vendor/Cargo input hashes and the three normal action-binary
-identities are byte-identical to the FIX1 manifests, so the fresh Linux 17/17
-result is retained as unchanged-input evidence (not rerun). A fresh populated
-schema-0032 fixture `dw_native_pro_profile_upgrade_review_20261113` ran the
-retained worker under
-`/home/ekoku/duskweave-build/rust-1.94.1/reports/deepseek-pro-profile-r4-upgrade-review-r1`:
-13/14 original cases passed, including
-`successor_episode` clearing the D2 boundary (`sends=2`). The first failure is
-`diagnostic_episode::sql_live_proposal_diagnostics_survive_terminal_repair_and_recovery`
-(recorded decision `d641b0a7` at 2026-11-13 02:51:24 UTC): expected
-`schema_repair_exhausted`, observed `current_authority_unavailable` — the
-`generation` call completed with its malformed-proposal diagnostic while the
-`repair` call recorded `failed_never_released` at the release boundary, again
-with no server-side record in the run window. This is the second recorded instance of the silent
-`current_authority_unavailable` code family at an inference release boundary.
-Per the packet the dependent sequence stopped: migration and the post-refresh
-three-Pro group did not run, forward-refresh preservation stays UNVERIFIED, the
-populated fixture is retained at 0032, and upgrade readiness is not claimed.
-The original anomaly remains OPEN/UNATTRIBUTED; Windows qualification remains
-OPEN; provider, deployment and target readiness remain unverified.
-
-**Heartbeat fence witness (DW-B-R4-HEARTBEAT-FENCE-WITNESS-R1) —
-HEARTBEAT_FENCE_MECHANISM_CONFIRMED, no production change:** review identified
-a designed lock holder the earlier lock map missed. `PgRunStore::renew` →
-`execution.run_renew` → UPDATE `execution.autonomous_control` fires the
-`live_authority_fence` trigger (`private_live_mutation_guard`, migrations
-0024/0032), which takes `pg_advisory_xact_lock` on the `engagement:campaign`
-key unconditionally at entry — before its absent-LIVE-session early return.
-The parent heartbeat renewal therefore owns the same key
-`PgBroker::release_into` probes with its session try-lock; ordinary
-transaction overlap suffices as a mechanism, no leaked transaction required.
-A deterministic export-only witness under
-`/home/ekoku/duskweave-build/rust-1.94.1/reports/heartbeat-release-fence-r1`
-(tracked-source export of the verified input head, the recorded release-probe
-diff retargeted to its own output path, fresh fixture
-`dw_native_heartbeat_release_20261113` at schema 0032) executed
-`sql_live_heartbeat_transaction_fences_inference_release` once: an explicit
-still-open `run_renew` transaction on the restricted run-owner login was
-observed owning the matching advisory key in `pg_locks`, `release_into`
-refused promptly as `NeverReleased`/`current_authority_unavailable` with zero
-provider calls and the retained probe recorded `fence/busy`; after the
-controlled COMMIT released the fence, `never_released` settled to
-`failed_never_released_reserved`. A separate fresh identity's ordinary
-autocommit renewal retained no fence and release reached the provider exactly
-once, settling conservatively to `uncertain_charged`. The explicit transaction
-intentionally prolongs the overlap — the witness proves the real heartbeat SQL
-path's locking behavior, not normal renewal duration, production frequency or
-historical attribution; both recorded failures remain OPEN/UNATTRIBUTED.
-Whether strictly-validated lease-only renewal should join the coordinated
-writer set is a narrow architecture question now held for ADR/contract
-disposition. B upgrade evidence remains incomplete.
-
-**DW-AUD-007 catalog resolution (DW-AUD007-CATALOG-RESOLUTION-R1) — source
-reviewed and merged in PR150:**
-the audit's catalog-shadow hypothesis was verified dynamically, not assumed.
-Twenty-four SECURITY DEFINER functions plus the invoker
-`terrain.admit_dns_request` resolved unqualified catalog relations through
-`pg_temp` first under `search_path=pg_catalog`; a TEMP-eligible restricted
-caller could shadow `pg_roles` and cross the original-writer and
-role-qualification checks. On a fresh schema-0031 fixture the three new
-worker cases reproduced the defect (foreign run-current/record read, foreign
-inference settlement and live stop, denied-principal qualification) while
-every control and warmed session refused. Migration `0032_catalog_resolution`
-sets `search_path = pg_catalog, pg_temp` on exactly those 25 functions in one
-transaction; adapter-local qualification SQL gained `pg_catalog.` on catalog
-relations only. On a fresh schema-0032 fixture the full 14-case group passed,
-and a populated schema-0031 fixture refreshed through the maintained
-`migrate()` path to 0032 with unchanged bodies, ACLs and evidence digests;
-the historical report did not dynamically compare numeric `pg_proc.oid`.
-OIDs are preserved by the ALTER FUNCTION mechanism, rather than established
-by that reported comparison; that refresh replay for migration 0024's dynamic trigger is
-now idempotent. Driver, verdicts and attempt archives live at
-`D:/DuskWeave-build/rust-1.94.1/reports/aud007-catalog-resolution-r1`.
-Limitations: existing deployed databases stay unverified until they receive
-0032; source merge does not qualify a deployment or seal; slot 0032 consumed by
-this fix moves the planned profile migration to 0033.
-
-**Proposal-admission diagnostics — source reviewed and merged in PR147:**
-structural failures retain only closed reason/kind/known-field metadata; arbitrary
-member names, values, response bodies and private reasoning remain excluded.
-Generation and repair keep the original repair material and one-repair bound.
-Optional `proposal_diagnostic` metadata is settled on each original call and flows
-through existing provenance/receipt/inspect/recover. Migration 0031 supplies the
-validated diagnostic-completion entrypoint; old rows are not amended. Native setup
-restores that migration after its 0012/0013 replay. Diagnostic completion accepts
-requested model `deepseek-flash` or `protocol-fixture-v1`; JSON null, non-strings,
-unknown strings and `probe-fixture` still refuse before a terminal rewrite.
-`probe-fixture` remains reported-model metadata. The provider-response branch is
-unchanged. Historical Oracle evidence stays at
-`/srv/duskweave/reports/proposal-diagnostics-r1/`. On fresh base-0021 fixture
-`dw_native_pr147fix2_20261111r1`, lifecycle T6, Terrain repair and SDK
-repair/exhaust each ran once and passed. T6's generation call completed with
-`protocol-fixture-v1` and closed `proposal_admission_diagnostic_v1` metadata, then
-opened its one eligible repair. The schema-0031 SQL group passed, including the
-new requested-model refusals. Python helper compatibility, formatting, locked
-all-target Clippy, links, diff hygiene, LOC and McCabe passed against base
-`6066a771`. That head's Rust shards passed. Its coverage gate failed only on the
-declarations-only file named below.
-
-**Coverage classifier — reviewed and merged with PR147:**
-run 43005834065 reported 95.59% (17221/18016) and failed because
-`src/m1_reasoning/inference/provider_evidence.rs` has no llvm-cov record. That
-source is data declarations, attributes and public named fields. The gate already
-exempts declarations-only files; its private field/variant recognizer missed
-visibility-prefixed fields. A separate recognizer accepts `pub`, `pub(crate)`,
-`pub(self)` and `pub(super)` named fields. Executable and unknown constructs,
-including `pub(in ...)`, stay fail-closed. Floors stay 90% total and 80% per
-file. The new positive case failed on the previous recognizer (22/23); the
-selftest then passed 23/23. The unchanged source classifies as declarations-only.
-The unmodified JSON from that run, read locally after an in-memory Linux
-workspace-prefix adjustment required on Windows, reports the file as not
-applicable and the same total with no gate problems. That reading is old-head
-provenance. New-head CI run 43029799330 passed the Rust shards, coverage
-gate (95.59%) and ci-ok before the reviewed PR147 source merge. This does
-not qualify a deployed database, installation or seal.
-
-**Separate model spike (not release acceptance):** retained local report
-`D:/DuskWeave-build/spike-v4pro-report-complete/` records two completed
-`deepseek-v4-pro` calls, validated D1/D2, committed fixture acquisition/Terrain
-and exit 0. The unsuffixed report now records a different incomplete Flash
-episode; the spike worktree has since changed. These artifacts support a Pro
-profile candidate, not a controlled host-matched causal conclusion or changed
-production pin. A separate contract/profile amendment and qualification remain
-necessary; no provider or real-target execution is added by this diagnostic fix.
-
-**Schema-0030 successor pack compatibility (DW-FIX-SCHEMA0030-SUCCESSOR-PACK-R1)
-— merged in [PR #146](https://github.com/carlitotate12160-tech/DuskWeave/pull/146):** the installed
-`execution.assert_successor_pack` unconditionally required
-`live_binding`/`qualification_purpose` while rejecting both on non-v4 requests,
-so no retained v2/v3 pack could pass the restricted marker consumer. The
-correction admits the two live-only keys only for
-`m1_autonomous_run_request_v4` before strict key validation; all identity,
-scope, owner, premise, freshness and authority checks are unchanged, as is the
-real Rust producer. Two new dedicated-worker cases prove the retained/v2/v3/v4
-matrix with per-field refusal controls and a real-CLI SDK v3 loopback run
-(controlled feedback, Terrain/history, key-free inspect/recover with
-before/after immutable-identity comparison and explicit D2
-predecessor/Terrain linkage) on the retained 0030 function; shared lifecycle
-support lives in the target-private `run_support` module consumed by the
-receipt, pack and episode cases. Oracle ARM64 offline evidence on the
-consolidated harness executable SHA-256
-`37f7fc9cd0b19aa1601b9c4309bb19331bcf22617df36f30b64e7085fadc97b9`: RED on the
-byte-verified unpatched source (`dw_native_fix0030_red2_20261110r1`, 8 pass/2
-fail — exactly the two new cases, zero provider sends) and GREEN on the
-corrected candidate (`dw_native_fix0030_green3_20261110r1`, 10/10 pass);
-earlier pre-consolidation runs (`dw_native_fix0030_red_20261110r1`,
-`dw_native_fix0030_green_20261110r1`/`dw_native_fix0030_green2_20261110r1`)
-showed the same signature and remain preserved; reports at
-`/srv/duskweave/reports/fix-schema0030-successor-20261110r1`. Draft PR
-[#146](https://github.com/carlitotate12160-tech/DuskWeave/pull/146) head
-`9bf1f70` passed all committed-head required checks (one stuck
-`structure (ubuntu-latest)` posting was recovered by rerun; the job itself
-had succeeded). The single authorized bounded DeepSeek episode then ran
-once on the frozen release CLI (`e4aad5ca…`, image-verified) against fresh
-provider fixture `dw_native_fix0030_provider_20261110r1` with all-new
-identities and one 300-second window: `register` accepted
-(history=completed); `m1-run` started, claimed decision_one, reserved and
-bound the generation call, and the v3 successor pack was admitted past
-`inference_may_send` on the corrected schema — the surface this fix owns.
-The send was then refused after the may_send marker and before the
-provider call with the mapped `current_authority_unavailable`; which of
-the fence/current-authority/basis branches fired is not identified from
-retained evidence (postgres error text is not captured on that host). The
-call is durable as `failed_never_released`, the decision recorded
-disposition `current_authority_unavailable`, and the run closed `unknown`
-with a committed diagnostic. Zero provider sends occurred (the ≤4-call
-bound was never consumed), zero effects were recorded, and key-free
-`m1-run-inspect`/`m1-run-recover` afterwards left decision/call/run/
-effect/terrain identities byte-identical. That observability gap is
-reported as provider feedback, not attributed to this fix. **LIVE
-readiness: not verified or delivered by this packet** —
-`boundary/qualify/qualify.sh lab-bind` is purpose-locked to
-`LAB`/`autonomous-dns-genai-lab-v1`; whether a supported procedure can
-mint the `purpose=LIVE`/`autonomous-dns-genai-live-v1` binding a v6 live
-run requires was not verified, and no such procedure or binding is
-delivered here; no row was fabricated. Distinct review of the fix, the
-provider outcome and the LIVE-readiness question is pending; niagamas.com
-discovery remains an unproven prerequisite, not delivered by this fix.
-
-**Final-release LAB qualification (R1) — FAIL / NOT READY:** owner-authorized
-backup, fresh schema-0030 database/config provisioning, frozen-bundle installation
-and finite LAB binding completed on 2026-11-10. Release source remains
-`8c6f752`; driver `d78d204` has the same Git tree as the integrated driver
-([#144](https://github.com/carlitotate12160-tech/DuskWeave/pull/144)). No runtime,
-SQL, bundle or image input was rebuilt or changed. Driver run
-[42751002099](https://github.com/carlitotate12160-tech/DuskWeave/actions/runs/42751002099)
-passed required checks and the 90/80 coverage gate (95.56%, 17039/17830).
-
-All 17 physical cases executed serially on the installed frozen release:
-16 PASS, 1 FAIL, no skipped/zero-test successes. The mid-D1 case failed at
-`tests/m1_live_dns/withdrawal/pre_acquisition.rs:196`: it expects top-level
-`operation`, while the existing durable producer owns
-`contract.operation_id`. Independent read-only review classified this as a
-VALID test defect, not a demonstrated runtime defect. Earlier held-D1/parent
-STOP assertions executed; subsequent scope/receipt-STOP/zero-result assertions
-did not. Supplemental database/resolver witnesses show durable withdrawal and
-zero DNS/results but do not turn the failed case into PASS.
-
-Evidence is retained at `/srv/duskweave/reports/final-release-qual-20261110`
-(`qualification-summary.json`, per-case logs/results and verified rollback).
-Fresh database `dw_native_final_release_qual_20261110` (OID 39077), restricted
-roles, protected config and LAB row `af0a0d66-9f11-4713-857d-4dc8e3d2c863`
-remain preserved. Resource/schema checks passed after every case, with the
-normal case's supplemental metadata-checker correction retained. After all
-owned resources were reconciled, the failure rollback restored exact prior
-binary/manifest bytes and ownership/modes. That prior qualification is expired:
-the host is **UNQUALIFIED**. The frozen bundle/image and historical resources
-remain intact. No real-provider/public-target qualification or M1 seal is claimed.
-
-A later deployment installed the same unchanged frozen release against the
-fresh b fixture `dw_native_final_release_qual_20261110b` (OID 40150, role
-prefix `dw_frq10b`), protected config
-`/etc/duskweave/m1/lab-final-release-20261110b`, report root
-`/srv/duskweave/reports/final-release-qual-20261110b` and LAB row
-`4629211c-4fdc-48bc-b8fe-c4c1124a2a9d` (manifest SHA-256
-`80667eac1ba0b63f40d0e33e78d361cd93891aea7c3285a81648a2debc8c8835`) under the
-original finite interval ending 2026-11-11 13:01:10.035 WIB — never extended.
-Installed hashes equal the frozen bundle; the b database held zero
-autonomous runs until the Phase B rerun, which added exactly one for the
-corrected case, while the original 17-case matrix ran only on the first
-fixture. This binding is administrative deployment evidence, not an accepted
-qualification.
-
-**Mid-D1 correction (DW-FINAL-RELEASE-QUAL-R1-FIX2) — corrected case passed on
-b, awaiting external review:** the case consumes the existing durable contract
-(`contract.operation_id`) and persists the parsed withdrawal receipt as
-`mid-d1-withdrawal.json` in its case report directory immediately after
-parsing. Every other scenario assertion, deadline, witness and counter is
-unchanged. On 2026-11-10 the single corrected case executed once on the
-verified b binding via harness executable SHA-256
-`c4742cf3f85b71560a9f1d2e7675f44e9a735e2dc15f4b955f61aaf8d87b8174` (built from
-the byte-verified `757b0c36` export): exit 0, exactly one test passed in 1.03s,
-no retry. The durable receipt carries `contract.operation_id`,
-`mission_authority_withdrawn`, `stop_latched` plus `disposal_confirmed`, scope
-limited to the run's engagement/campaign, and zero DNS counters while the
-fixture reply stayed held; `execution.autonomous_runs`, `mission.withdrawals`
-and `trajectory.withdrawal_history` each gained exactly one row and the
-live/fixture DNS tables stayed empty. Post-run reconciliation left the
-manifest, installed binaries, schema, functions, grants and qualification row
-unchanged, with no owned namespace/route/rule/listener residue; evidence is
-retained at `/srv/duskweave/reports/final-release-qual-20261110b/fix2-phase-b`
-and `cases-mid-d1-fix2`. Sixteen retained first-fixture PASS plus this
-corrected PASS on b form the corpus for external delta review — not a fresh
-17/17 run on b and not an acceptance.
-
-**Delivered SDK runtime:** the accepted
-[ADR-016 section 4b](adr/ADR-016-execution-broker.md#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28)
-and [enabling contract section 8](contracts/M1-enabling-architecture.md#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28)
-were delivered by [#132](https://github.com/carlitotate12160-tech/DuskWeave/pull/132)
-(merge `a85afcb`): pinned SDK and bounded per-call evidence patch,
-shared semantic preflight, post-reservation `dw-inference-intent-v1` binding,
-restricted schema 0022 admission/source recovery, and explicit v5/v3 bindings.
-Local Windows fixture tests exercise D1, one DNS fixture acquisition, qualified
-D2 feedback and key-free recovery, plus failure/STOP/lease/parent-loss paths.
-GitHub owns SDK candidate/PR/check status. These observations are not a seal, paid-provider
-qualification, Linux acquisition qualification or global SDK error-safety proof.
-Legacy libcurl remains only for its explicitly retained old profiles and M0
-consumers; no SDK profile may select it or construct its legacy vendor binding.
-`DW-FIX-M1-DNS-SELECTOR-CONTRACT` merged as `e11f62f`
-([#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120)): an
-admitted `observe_more` + `dns_udp` proposal carrying contextual references
-alongside a single canonical `asset_N` seed now selects and reserves that seed
-identically in Rust and restricted SQL, and pack-local `asset_N` ordinals
-resolve through entity identity to the correct `seed_names` entry even when
-ContextPack omission shifts them. Fresh disclosure, current terms/window,
-credential and actual platform qualification are required before provider
-contact. Historical consent is unusable.
-
-Relevant merged implementation/evidence pointers, not a rolling merge log:
-
-| Outcome | Durable reference |
-| --- | --- |
-| Controlled skeleton | [#74](https://github.com/carlitotate12160-tech/DuskWeave/pull/74), [record](workflows/DW-IMPLEMENT-M1-AUTONOMOUS-SKELETON.md) |
-| Real-provider wiring and diagnostics | [#107](https://github.com/carlitotate12160-tech/DuskWeave/pull/107), [#109](https://github.com/carlitotate12160-tech/DuskWeave/pull/109), [diagnostics evidence](workflows/DW-FIX-M1-RUN-DIAGNOSTICS.md#12-merge-reconciliation-2026-10-22) |
-| Successor lifecycle / Rust fixture supervision | [#116](https://github.com/carlitotate12160-tech/DuskWeave/pull/116), merged `618c885`; [final Windows qualification](workflows/DW-FIX-M1-FIXTURE-SUPERVISOR-RUST.md#final-windows-qualification-2026-10-25) |
-| Nonblocking release and transport error precedence | [#117](https://github.com/carlitotate12160-tech/DuskWeave/pull/117), merged `7d7e696`; [record](workflows/DW-FIX-M1-INFERENCE-RELEASE-INTEGRITY.md) |
-| Conditional maintenance and qualified skill-doc CI routing | [#118](https://github.com/carlitotate12160-tech/DuskWeave/pull/118), merged `d29a1fb` |
-| DNS selector contextual references and entity-based ordinals | [#120](https://github.com/carlitotate12160-tech/DuskWeave/pull/120), merged `e11f62f` |
-| Rejected-provider diagnostic metadata with uncertainty-only accounting | [#122](https://github.com/carlitotate12160-tech/DuskWeave/pull/122) |
-| Live DNS LAB lane + build-storage guard hardening (draft, candidate `517e92c`) | [#139](https://github.com/carlitotate12160-tech/DuskWeave/pull/139) |
-
-**Unproved:** the 2026-10-22 provider run `4a4ce477-5734-4b92-bb6a-dce74f430114`
-committed Decision 1 and fixture Terrain; Decision 2 ended exit 124 with
-`may_send_uncertain`. Exact terminating guard and complete cognitive feedback
-remain unproved. [Retained evidence](workflows/DW-DESIGN-M1-PROVIDER-NEUTRAL-LIFECYCLE.md)
-does not authorize replay or establish a successful successor episode.
-
-**Live acquisition remains unqualified:** selected uncommitted Oracle ARM64 LAB
-witnesses demonstrate normal CLI D1, one real isolated UDP exchange, durable safe
-result, Terrain/history, D2 and fresh key-free recovery. Separate physical cases
-cover limited/negative results, TTL-only stale D2 history, in-flight withdrawal,
-delayed authority, private egress probes and result-COMMIT/ACK-loss recovery.
-The corrected Broker terminal-handling window also has successful physical
-unanswered-query timeout witnesses. These use the deterministic HTTP fixture,
-not a local model or a real DeepSeek invocation.
-The cumulative McCabe gate passes with 10 retained debts unchanged.
-Cold preparation was sensitive to shared storage: build artifacts, Docker
-and containerd used the same backing filesystem. Historical pending attempts
-localize delay to init-snapshot preparation. Controlled dirty-file experiments
-held temporary-layer unmount for 886 ms at 128 MiB and 14212 ms at 768 MiB;
-the latter create took 14317 ms, exceeding the unchanged 5000 ms preparation
-policy. This reproduced the writeback-coupling mechanism; exact dirty-buffer
-counts for the historical failures were not recorded. Pending creates remain
-UNKNOWN with no replay/refund or inferred disposal. On 2026-10-31 an
-operator-provisioned 50 GB ext4 block volume (iSCSI, `_netdev` fstab) was
-mounted at `/srv/duskweave-build` on a device disjoint from `/`,
-`/var/lib/docker` and `/var/lib/containerd`. The qualification script now
-fails closed on absent/unmounted/coupled/wrong-filesystem/symlink/foreign
-content before any compiler or Docker write (all seven refusal cases
-exercised; read-only `build-storage` subcommand added) and scopes
-`CARGO_TARGET_DIR`, `GOCACHE`, `GOTMPDIR`, `TMPDIR`, Go release and Docker
-build context to the new filesystem. One real build installed binaries whose
-digests match the new-filesystem artifacts; the old `/srv/duskweave/build`
-tree is retained untouched and no longer consumed. Earlier controlled
-measurements (167-190 ms clean, 174-187 ms at 128 MiB dirty, 161-179 ms at
-768 MiB dirty, 209-350 ms under concurrent write load) covered only Docker
-create→start→PID→rm — the OS-level worker lifecycle, not the complete
-application READY handshake; full `Pair::prepare` readiness now measures
-899-1298 ms on the separated filesystem (3 samples each at the clean
-baseline and 128/768 MiB dirty writeback), plus 1047-1157 ms across
-3 samples with a verified concurrent `rustc -O` compilation running
-(rc=0, ~27 s per 4 MB-binary iteration, alive throughout every
-measurement window), still below the unchanged 5000 ms deadline. The storage guard now
-also refuses dot-prefixed foreign names and non-conforming fixed
-components (symlink, foreign mount, wrong owner/mode/device) before any
-build write; 23/23 negative and positive cases refused correctly through
-both the `build-storage` and `release` entrypoints. One normal LAB run
-completed D1, the isolated DNS exchange, durable result, Terrain/history,
-D2 and two fresh key-free recoveries; an immediately preceding attempt
-recorded a transient decision-two authority refusal as UNKNOWN with no
-replay and passed on a single rerun. A controlled demonstration reproduced
-that exact signature — `failed_never_released`, `current_authority_unavailable`,
-honest UNKNOWN, committed effect and confirmed disposal — by holding the
-campaign advisory fence across the post-`may_send` release window, so the
-refusal is fail-closed behavior under a competing owner, not a proved
-implementation defect; the historical lock holder remains unidentified and
-both attempts' identities, charged state and receipts stay preserved.
-Storage separation removes the demonstrated coupling but is
-not a universal readiness guarantee. Committed-head CI on the draft PR
-(#139, candidate `517e92c`) passes every functional gate — builds, both test
-shards, mutation, structure, metrics, CodeQL, geiger, links, dependencies,
-Go boundary and the guarded qualification lane — on run `41370937004` /
-`41370936961` (mutation). The production coverage floor is FAIL/BLOCKED
-(measured coverage below the floor is FAIL/BLOCKED, not merely UNVERIFIED):
-run `41377109367` reached total 84.99% (<90% floor) with 21 host-bound files
-under the 80% per-file floor. Option A (B2 completion) expands CI-runnable
-owner unit tests across launcher admission, attempt journal, control/exchange,
-watchdog, docker, network namespace disposal, qualification, relay, effect
-session/socket, context live binding, run effect and live withdrawal CLI.
-External qualification evidence retains source/version identities and metadata-only traces.
-`DW-FIX-PR139-QUALIFIED-LAB` (r2.1/r2.2) physical Oracle ARM64 LAB
-qualification (`qualification_ref: 93318766-3139-423d-962b-c91bc588db04`,
-`purpose: LAB`, DB `dw_native_pr139_r2_20261101a`, cloned at `4c59ef2`):
-4/4 LAB scenarios PASS — normal D1/DNS-exchange/result/history/D2/recovery,
-limited/negative, in-flight withdrawal, and result-COMMIT/ACK-loss recovery.
-`DW-FIX-PR139-QUALIFIED-LAB` CodeRabbit review: 15 VALID resolved
-(13 in U1/U2, 2 in `517e92c`; docker-inspect timeout + broad cleanup handler),
-7 FALSE POSITIVE / deferred (CARGO_HOME intentional disk, ACK-wait fail-fast,
-launcher-child reap deadlock risk, UUID slot M1-sequential, exporter-child
-wait-bounded, deployment.next invariant, root-cause masking).
-Distinct review found run-STOP serialization and ordinary launcher-child reaping
-defects; focused regressions pass after correction. Remaining loss cases,
-compatibility/boundary evidence, final release rebinding and an M1/full-domain
-seal remain incomplete. These selected witnesses do not qualify a final
-release, M1 seal, provider or public-target run.
-
-**Debt remains open:** use [roadmap sections 1.3-1.5](MVP_AND_DEFERRED_SCOPE.md#13-audit-disposition-attached-to-these-deliveries)
+**Debt remains open:** use
+[roadmap sections 1.3-1.5](MVP_AND_DEFERRED_SCOPE.md#13-audit-disposition-attached-to-these-deliveries)
 and current candidate metrics. Legacy CLI/M0 behavior remains supported until
-tested replacements and compatibility disposition exist. No M1/full-domain seal,
-new provider support or blanket Windows full-suite PASS is implied.
+tested replacements and compatibility disposition exist. No M1/full-domain
+seal, new provider support or blanket Windows full-suite PASS is implied.
