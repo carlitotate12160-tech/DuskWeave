@@ -12,10 +12,11 @@ entries below keep only outcome, tested-source identity, limits and owners.
 ## 1. Project Identity & Status
 
 - **Project**: DuskWeave. Verify actual worktree, branch and HEAD before delivery.
-- **Current phase**: M1 is unsealed. The active assigned outcome is the
-  candidate HTTPS-loop successor contract (DW-HTTPS-LOOP-SLIM-DESIGN-R1);
-  its review status lives on GitHub. The amendment is not accepted and grants
-  no execution permission.
+- **Current phase**: M1 is unsealed. The HTTPS-loop successor amendment
+  (DW-HTTPS-LOOP-SLIM-DESIGN-R1) is ACCEPTED by the product owner on
+  2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at
+  `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`. The status lines add no rule.
+  Delivery status lives on GitHub. No execution permission or seal.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence in section 5
   is unchanged.
 - **Platform direction**: per the owner direction recorded in
@@ -100,9 +101,10 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-HTTPS-LOOP-SLIM-DESIGN-R1` — candidate successor contract for
-one bounded serial HTTPS feedback loop. Documentation only. Not accepted. No
-execution permission, seal or timer change. Owning text:
+**Active work:** `DW-HTTPS-LOOP-SLIM-DESIGN-R1` is ACCEPTED by the product owner
+on 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at
+`0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`. The status lines add no rule. No
+execution permission, seal, or timer change. Owning text:
 [ADR-013 refresh exception](adr/ADR-013-capability-contract.md#candidate-https-loop-dns-refresh-2026-11-17),
 [ADR-016 run](adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17),
 [enabling contract](contracts/M1-enabling-architecture.md#9-candidate-https-loop-successor-2026-11-17)
@@ -130,11 +132,10 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** external document review of the candidate HTTPS-loop
-amendment. Acceptance, seal and runtime implementation stay unauthorized.
-Fresh disclosure, an accepted amendment and a qualified live boundary remain
-prerequisites for any later HTTPS execution; fixture or expired consent cannot
-satisfy them.
+**Next product action:** HTTPS runtime implementation stays unauthorized. Fresh
+disclosure and a qualified live boundary remain prerequisites for any later
+HTTPS execution; fixture or expired consent cannot satisfy them. The accepted
+amendment grants no execution permission or seal.
 
 ## 7. Unresolved constraints
 

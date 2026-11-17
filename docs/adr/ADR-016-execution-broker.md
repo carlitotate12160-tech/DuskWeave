@@ -14,7 +14,7 @@
 | Provider-neutral revision | [Section 4a revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, timers, consent and seals unchanged |
 | Lease coordination amendment | [Section 4a lease coordination](#positive-run-lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); liveness renewal is not authority mutation; authority fence, timers and seals unchanged |
-| HTTPS-loop run | [Section 4c](#4c-candidate-https-loop-run-2026-11-17) — CANDIDATE, DW-HTTPS-LOOP-SLIM-DESIGN-R1; not accepted; Pro-v2 clocks and historical run shapes unchanged |
+| HTTPS-loop run | [Section 4c](#4c-candidate-https-loop-run-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; Pro-v2 clocks and historical run shapes unchanged; no execution permission or seal |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: admission, accounting, cancellation, recovery, inference clocks and resource tuples stay owned here; repeated inventories and measured anecdotes now reference the canonical tables. Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/adr/ADR-016-execution-broker.md). No new acceptance, permission or seal |
 
 ## 1. Context and problem statement
@@ -699,7 +699,7 @@ SDK dependency, target scope, deployment qualification or milestone seal.
 
 ## 4c. Candidate HTTPS-loop run (2026-11-17)
 
-**Status: CANDIDATE — DW-HTTPS-LOOP-SLIM-DESIGN-R1. Not accepted. No execution permission.**
+**Status: ACCEPTED — product owner, 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`.** This status record adds no rule. It grants no execution permission, target contact, runtime qualification, or seal.
 
 This section owns the successor run. It adds no workflow engine, second supervisor or
 parallel ledger. The existing `m1-run` entrypoint and owner ports remain the composition
@@ -834,5 +834,5 @@ No exactly-once external execution guarantee is made.
 DESIGN checks links, ownership, dependencies and counterexamples under QUALITY_BAR section 7.
 The cases above are future assertions, not executed runtime tests. The product owner
 accepted R1 for the selected M1 lane on 2026-10-06. Section 4c is outside that
-acceptance. Runtime requires an issued bounded
+acceptance and has its own 2026-11-17 acceptance above. Runtime requires an issued bounded
 packet; acceptance grants no target permission, qualified deployment, merge or seal.

@@ -13,7 +13,7 @@
 | Acceptance basis | Owner accepted the final scope proposal and then the sequential delivery flow in this session; documentation recording explicitly requested |
 | Readiness | Product/behavior contract ACCEPTED; enabling architecture and sequencing remain required before IMPLEMENT |
 | Execution permission | This contract records the selected capability; it grants no current target/pilot permission or milestone seal |
-| HTTPS-loop consistency | [Candidate note](#candidate-https-loop-consistency-2026-11-17) — CANDIDATE, DW-HTTPS-LOOP-SLIM-DESIGN-R1; not accepted; broader M1 scope unchanged |
+| HTTPS-loop consistency | [Candidate note](#candidate-https-loop-consistency-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; broader M1 scope unchanged; no execution permission or seal |
 
 ## 1. Product outcome
 
@@ -91,7 +91,7 @@ M0 eligibility/planning history remains historical. It is not a reusable executi
 
 ### Candidate HTTPS-loop consistency (2026-11-17)
 
-**Status: CANDIDATE — DW-HTTPS-LOOP-SLIM-DESIGN-R1. Not accepted. No execution permission.**
+**Status: ACCEPTED — product owner, 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`.** This status record adds no rule. It grants no execution permission, target contact, runtime qualification, or seal.
 
 The first HTTPS proof executes one authorized hostname and its alternative admitted
 IPv4 addresses. That scope is the proof, not a new universal one-hostname campaign rule.

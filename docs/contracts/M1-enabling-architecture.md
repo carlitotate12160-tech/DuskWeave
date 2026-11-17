@@ -15,7 +15,7 @@
 | Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
 | Lease coordination amendment | [Section 7 lease coordination](#lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); positive renewal is not authority mutation; authority fence, timers and seals unchanged |
-| HTTPS-loop successor | [Section 9](#9-candidate-https-loop-successor-2026-11-17) — CANDIDATE, DW-HTTPS-LOOP-SLIM-DESIGN-R1; not accepted; historical proposal and run shapes unchanged |
+| HTTPS-loop successor | [Section 9](#9-candidate-https-loop-successor-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; historical proposal and run shapes unchanged; no execution permission or seal |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: each rule now lives in its one owning document — field/contract semantics, profile/version pairing and sequencing here; admission, accounting, cancellation, recovery, inference clocks and resource tuples in [ADR-016](../adr/ADR-016-execution-broker.md); acquisition limits in [ADR-013](../adr/ADR-013-capability-contract.md); isolation and egress-lease controls in [ADR-015](../adr/ADR-015-execution-boundary.md); wire framing in [ADR-017](../adr/ADR-017-cross-process-contract.md). Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md). No new acceptance, permission or seal |
 
 ## 1. Outcome and decision boundary
@@ -1367,7 +1367,7 @@ each step's evidence exists.
 
 ## 9. Candidate HTTPS-loop successor (2026-11-17)
 
-**Status: CANDIDATE — DW-HTTPS-LOOP-SLIM-DESIGN-R1. Not accepted. No execution permission.**
+**Status: ACCEPTED — product owner, 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`.** This status record adds no rule. It grants no execution permission, target contact, runtime qualification, or seal.
 
 This section owns successor intent, references, step transitions and the HTTPS
 producer/consumer boundary. Capability ceilings and the refresh exception stay in

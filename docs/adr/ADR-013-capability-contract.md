@@ -9,7 +9,7 @@
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted PRD-000/001/006/007/010, M1 product contract and ADR-009/011; selected-lane rebind in accepted M1 enabling section 2 |
 | Scope | [M1 enabling lane](../contracts/M1-enabling-architecture.md); no full-stage acceptance |
-| HTTPS-loop refresh | [Candidate exception](#candidate-https-loop-dns-refresh-2026-11-17) — CANDIDATE, DW-HTTPS-LOOP-SLIM-DESIGN-R1; not accepted; historical profiles unchanged |
+| HTTPS-loop refresh | [Candidate exception](#candidate-https-loop-dns-refresh-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; historical profiles unchanged; no execution permission or seal |
 
 ## 1. Context and problem statement
 
@@ -176,7 +176,7 @@ effect accounting/lifecycle. A batch reservation or historical result bypasses n
 
 ### Candidate HTTPS-loop DNS refresh (2026-11-17)
 
-**Status: CANDIDATE — DW-HTTPS-LOOP-SLIM-DESIGN-R1. Not accepted. No execution permission.**
+**Status: ACCEPTED — product owner, 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`.** This status record adds no rule. It grants no execution permission, target contact, runtime qualification, or seal.
 
 This is the explicit exception to the accepted zero-recollection row. It applies only to
 semantic successor version `m1_https_loop_v1`. Historical profiles keep zero automatic
@@ -257,6 +257,6 @@ remains reserved.
 
 DESIGN checks links, ownership, dependencies and counterexamples under QUALITY_BAR section 7.
 The cases above are future assertions, not executed runtime tests. The product owner
-accepted R1 for the selected M1 lane on 2026-10-06. The candidate HTTPS-loop section
-is outside that acceptance. Runtime requires an issued bounded
+accepted R1 for the selected M1 lane on 2026-10-06. The HTTPS-loop section
+is outside that acceptance and has its own 2026-11-17 acceptance above. Runtime requires an issued bounded
 packet; acceptance grants no target permission, qualified deployment, merge or seal.
