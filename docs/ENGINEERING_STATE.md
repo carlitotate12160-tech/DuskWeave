@@ -17,11 +17,13 @@ entries below keep only outcome, tested-source identity, limits and owners.
   status lives on GitHub.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence in section 5
   is unchanged.
-- **Platform direction**: Linux is the MVP core/Broker/acquisition runtime under
-  accepted [ADR-015](adr/ADR-015-execution-boundary.md). Windows remains an
-  operator/developer workstation with WSL as the preferred development
-  direction. Terms and retained compatibility live in
-  [the roadmap](MVP_AND_DEFERRED_SCOPE.md#16-mvp-platform-direction-owner-direction-2026-11-17).
+- **Platform direction**: per the owner direction recorded in
+  [the roadmap](MVP_AND_DEFERRED_SCOPE.md#16-mvp-platform-direction-owner-direction-2026-11-17),
+  Linux is the MVP core/Broker/acquisition runtime — consistent with accepted
+  [ADR-015](adr/ADR-015-execution-boundary.md), which owns the M1
+  execution-boundary lane. Windows remains an operator/developer workstation
+  with WSL as the preferred development direction; terms and retained
+  compatibility stay in the roadmap entry.
 
 ## 2. Stage 0 Artifact Checklist & Verification
 
@@ -97,11 +99,11 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work (unmerged):** `DW-MVP-LINUX-STATE-INDEX-R1` — records the
-owner-requested Linux MVP platform direction and restores this file as a
-concise current-state index. This is a support-direction decision: no seal,
-deployment qualification, Windows runtime retirement or new execution
-permission follows from it.
+**Active work:** `DW-MVP-LINUX-STATE-INDEX-R1` — records the owner-requested
+Linux MVP platform direction and restores this file as a concise current-state
+index. This is a support-direction decision: no seal, deployment
+qualification, Windows runtime retirement or new execution permission follows
+from it. Its delivery/merge status lives on GitHub.
 
 **Latest completed product evidence (bounded historical observation):**
 On 2026-11-16 the explicitly authorized Oracle ARM64 episode
@@ -143,6 +145,7 @@ FAIL/NOT READY/UNQUALIFIED describe those episodes, not present verdicts.
 | Original R2 live-DNS LAB harness | NOT READY — r2.1/r2.2 LAB witnesses passed 4/4 scenarios, but the coverage floor was FAIL/BLOCKED (84.99%) and PR #139 closed unmerged | PR #139 delivery notes |
 | Parked Rust operator release-descriptor port | PARKED — intentionally outside delivered scope | PR #155 delivery notes; branch `implement/operator-release-cli-r1` |
 | GitGuardian dashboard disposition, incidents 40144272/40144273 | UNVERIFIED — repository literals verified as synthetic test sentinels; dashboard state not checked | PR #155 delivery notes |
+| Attribution of the two recorded `current_authority_unavailable` refusals and populated-upgrade evidence | OPEN/UNATTRIBUTED — the confirmed heartbeat-fence mechanism does not establish historical cause; upgrade refresh stays UNVERIFIED | [historical record](https://github.com/carlitotate12160-tech/DuskWeave/blob/9d6cd89d8349c57dfca67e0a246daf1e5125f339/docs/ENGINEERING_STATE.md); PR #151 delivery notes |
 | Audit debt: named McCabe debts, host-bound coverage, CI performance | OPEN | [roadmap §1.3–1.5](MVP_AND_DEFERRED_SCOPE.md#13-audit-disposition-attached-to-these-deliveries) |
 
 ## 8. Historical episode index
@@ -158,7 +161,7 @@ the owning PRs and
 | Proposal-admission diagnostics + coverage classifier (PR #147) | Merged: closed diagnostic metadata settles on the original call; declarations-only recognizer accepts visibility-prefixed fields; new-head CI coverage gate passed (95.59%) | No deployment qualification; floors stay 90%/80% |
 | Schema-0030 successor-pack compatibility (PR #146) | Merged: v2/v3/v4 admission matrix corrected (RED 8/10 → GREEN 10/10, harness `37f7fc9c…`); the bounded provider episode passed admission then refused `current_authority_unavailable` (unattributed) | LIVE readiness not verified by that packet; provider refusal unattributed |
 | Final-release LAB qualification R1 + FIX2 (PRs #144/#145) | R1: 16/17 PASS, 1 FAIL classified as a VALID test defect; FIX2's corrected case passed once on fixture b — a 16+1 corpus for delta review, not a fresh 17/17 | Host UNQUALIFIED after finite window expiry; no M1 seal |
-| Closed Pro candidate R4-FIX1 + D2 release diagnosis | Linux fresh-0033 group passed 17/17; populated-0032 attempt passed 13/14 with a second silent `current_authority_unavailable`; the heartbeat-fence mechanism was later confirmed and fixed (PR #151) | The diagnosis made no production change; Linux results do not qualify Windows |
+| Closed Pro candidate R4-FIX1 + D2 release diagnosis | Linux fresh-0033 group passed 17/17; populated-0032 attempt passed 13/14 with a second silent `current_authority_unavailable`; the heartbeat-fence mechanism was later confirmed and fixed (PR #151) | Both recorded refusals remain OPEN/UNATTRIBUTED — the confirmed mechanism does not establish their historical cause; populated-upgrade evidence stays incomplete; the diagnosis made no production change; Linux results do not qualify Windows |
 | Live-DNS LAB lane r2.1/r2.2 (PR #139, closed) | 4/4 LAB scenarios PASS on Oracle ARM64 at `4c59ef2`, qualification `93318766-3139-423d-962b-c91bc588db04` | Witnesses do not qualify a release, M1 seal, provider or public-target run |
 | Controlled skeleton → provider wiring → live-DNS direction | Delivered via #74, #107/#109, #116, #117, #118, #120, #122 and #132; merge IDs and per-episode detail are in the immutable record | Fixture/loopback scope only; no live or seal claim |
 

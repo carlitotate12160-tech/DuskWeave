@@ -39,9 +39,11 @@ in [Engineering State](docs/ENGINEERING_STATE.md).
 
 ## Platform direction
 
-Linux is the MVP core/Execution Broker/acquisition runtime under accepted
-[ADR-015](docs/adr/ADR-015-execution-boundary.md) and the
-[roadmap](docs/MVP_AND_DEFERRED_SCOPE.md#16-mvp-platform-direction-owner-direction-2026-11-17).
+Per the owner direction in the
+[roadmap](docs/MVP_AND_DEFERRED_SCOPE.md#16-mvp-platform-direction-owner-direction-2026-11-17),
+Linux is the MVP core/Execution Broker/acquisition runtime — consistent with
+accepted [ADR-015](docs/adr/ADR-015-execution-boundary.md), which owns the M1
+execution boundary.
 Windows remains an operator/developer workstation; WSL is the preferred
 development direction. WSL availability alone does not establish qualified
 deployment, host isolation or acquisition readiness, and OS-specific target
