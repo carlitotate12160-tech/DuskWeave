@@ -12,9 +12,9 @@ entries below keep only outcome, tested-source identity, limits and owners.
 ## 1. Project Identity & Status
 
 - **Project**: DuskWeave. Verify actual worktree, branch and HEAD before delivery.
-- **Current phase**: M1 is unsealed. The active assigned outcome is the Linux
-  platform-direction and state-index documentation delivery; its PR and check
-  status lives on GitHub.
+- **Current phase**: M1 is unsealed. The active assigned outcome is the
+  single-owner consolidation of M1 contract authority (DW-M1-CONTRACT-SINGLE-OWNER-R1);
+  its PR and check status lives on GitHub.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence in section 5
   is unchanged.
 - **Platform direction**: per the owner direction recorded in
@@ -99,11 +99,13 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-MVP-LINUX-STATE-INDEX-R1` — records the owner-requested
-Linux MVP platform direction and restores this file as a concise current-state
-index. This is a support-direction decision: no seal, deployment
-qualification, Windows runtime retirement or new execution permission follows
-from it. Its delivery/merge status lives on GitHub.
+**Active work:** `DW-M1-CONTRACT-SINGLE-OWNER-R1` — editorial consolidation of
+the existing M1 enabling contract and ADR-016 so each rule has one owning
+document before HTTPS adds another capability delta. This is a
+semantics-preserving documentation change: no seal, new execution permission,
+profile, budget, timer or compatibility retirement follows from it. Its
+delivery/merge status lives on GitHub. The completed Linux platform-direction
+and state-index delivery was merged through PR #156.
 
 **Latest completed product evidence (bounded historical observation):**
 On 2026-11-16 the explicitly authorized Oracle ARM64 episode

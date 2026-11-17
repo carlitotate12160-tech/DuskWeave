@@ -15,6 +15,7 @@
 | Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
 | Lease coordination amendment | [Section 7 lease coordination](#lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); positive renewal is not authority mutation; authority fence, timers and seals unchanged |
+| Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: each rule now lives in its one owning document — field/contract semantics, profile/version pairing and sequencing here; admission, accounting, cancellation, recovery, inference clocks and resource tuples in [ADR-016](../adr/ADR-016-execution-broker.md); acquisition limits in [ADR-013](../adr/ADR-013-capability-contract.md); isolation and egress-lease controls in [ADR-015](../adr/ADR-015-execution-boundary.md); wire framing in [ADR-017](../adr/ADR-017-cross-process-contract.md). Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md). No new acceptance, permission or seal |
 
 ## 1. Outcome and decision boundary
 
@@ -512,13 +513,17 @@ forensic erasure, tamper-proof administrator audit, exactly-once external effect
 discovery claim is made. Safe diagnostic categories do not imply raw debug retention.
 
 R1 selects ct-existing-v2 and dns-routing-v2 with safe dynamic hints, parent-selected UDP/TCP
-and counted new DNS follow-ups; https-head-v1 stays fixed. All TCP <=5/episode, DNS <=10,
-HEAD <=2; campaign totals remain finite and durable. Start consumption <=1s, communication
-lease <=2s and renewal interval 500ms are distinct, deadline-clamped selected assumptions.
+and counted new DNS follow-ups; https-head-v1 stays fixed. The per-effect ceilings and
+finite durable campaign totals are canonical in
+[ADR-013's finite R1 ceilings](../adr/ADR-013-capability-contract.md#finite-r1-ceilings-and-accounting),
+and the READY-to-start consumption, in-flight egress lease and renewal interval in
+[ADR-015's selected timers](../adr/ADR-015-execution-boundary.md#distinct-selected-timers-and-stop-control);
+all are distinct, deadline-clamped selected assumptions.
 Qualification is future evidence, not a benchmark or production throughput claim.
-Stop-only Mission writer plus a monotonic host STOP latch and shared host grant/STOP
-section covers Broker-unreachable withdrawal; pending/unknown receipt and no-auto-resume
-cover unavailable persistence. No SQL lock spans network or host-control waiting.
+The stop-only Mission writer, monotonic host STOP latch and shared host grant/STOP
+section under ADR-016/ADR-015 cover Broker-unreachable withdrawal; pending/unknown
+receipt and no-auto-resume cover unavailable persistence. No SQL lock spans network
+or host-control waiting.
 
 R2 adds the generated-implementation lane: Go candidate source bundles are compiled by a
 trusted build adapter under ADR-015's isolated build boundary, qualified against the
@@ -577,18 +582,20 @@ The owner accepted the initial #51 inference profile and its required R2/R3 refi
 for this lane on 2026-10-11; unrelated amendment text remains pending exact-text acceptance.
 M0 evidence and seals are unchanged.
 
-`DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT` merged through PR #52 at `1ea0ea7`.
-The current runtime packet is `DW-IMPLEMENT-M1-INFERENCE-RESERVATION`: a
-Broker-owned pre-send capacity ledger — durable reserve/recover/cancel with
-campaign/operation accounting and session/inference mutual exclusion.
-Later consent amendment/rebinding and real-inference ContextPack/proposal/history,
-bounded repair and recovery remain required. These are partial enabling
-delivery, not cognitive MVP completion. Subsequent connected outcomes must provide
-owner-qualified action feedback and LLM belief/question revision, bounded applicable
-campaign-local retrieval, isolated synthesis/admission and report completion within M1.
-Their exact order follows real dependencies and measurement, not a compulsory tool
-sequence or fixed PR count. Each IMPLEMENT packet needs its own accepted base and
-complete observable entrypoint/consumer map.
+`DW-IMPLEMENT-M1-INITIAL-INFERENCE-CONSENT` merged through PR #52 at `1ea0ea7`,
+followed by `DW-IMPLEMENT-M1-INFERENCE-RESERVATION`: the Broker-owned pre-send
+capacity ledger — durable reserve/recover/cancel with campaign/operation
+accounting and session/inference mutual exclusion — as partial enabling
+delivery, not cognitive MVP completion; its assignment text is retained in the
+[pre-consolidation section 6](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md#6-completion-and-next-packet).
+Current work, phase and next action live in
+[ENGINEERING_STATE](../ENGINEERING_STATE.md#6-current-slices-and-next-action).
+The remaining cognitive-M1 outcomes named by this contract — owner-qualified
+action feedback and LLM belief/question revision, bounded applicable
+campaign-local retrieval, isolated synthesis/admission and report completion
+within M1 — keep their ordering by real dependencies and measurement, not a
+compulsory tool sequence or fixed PR count. Each IMPLEMENT packet needs its own
+accepted base and complete observable entrypoint/consumer map.
 
 Engineering delivery follows the canonical policy in [QUALITY_BAR.md](../../QUALITY_BAR.md). Each later packet requires a measured complete path
 and exact map; full provider-chain fit/deployment remain UNVERIFIED.
@@ -710,15 +717,16 @@ it cannot fit; it is never required over the retained current Terrain premise.
 Disclosure requires the new class above; missing permission defers without a send.
 Source/time/uncertainty/omissions remain explicit. This is not an all-run
 history dump. Select an 8192-byte context ceiling for this version, not the
-legacy 4096 or an assumed-sufficient 6144. The following DESIGN serialization
-measurements bind concrete synthetic examples, including the complete escaped
-pack, schema, instructions and repair-code request; they are not Rust runtime
-qualification or an exhaustive proof for every legal combination. Each case is
-an independent capacity example: no committed-predecessor field was produced by
-executing another case, and together they are not evidence of a linked
-two-decision execution. Linked deterministic-fixture producer/consumer
-qualification through the real `m1-run` path remains a requirement of the
-Walking Skeleton runtime packet.
+legacy 4096 or an assumed-sufficient 6144. The DESIGN serialization measurements
+behind that selection — concrete synthetic cases covering the complete escaped
+pack, schema, instructions and repair-code request — are recorded in the
+[pre-consolidation text](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md#bootstrap-and-proposal-to-effect-mapping);
+they were not Rust runtime qualification or an exhaustive proof for every legal
+combination. Each case was an independent capacity example: no
+committed-predecessor field was produced by executing another case, and together
+they were not evidence of a linked two-decision execution. Linked
+deterministic-fixture producer/consumer qualification through the real `m1-run`
+path remains a requirement of the Walking Skeleton runtime packet.
 
 The autonomous profile serializes only the bounded states below; all other
 fields, bounds and semantics are inherited unchanged from `m1_context_pack_v1`,
@@ -746,21 +754,14 @@ consent, scope and owner state for each decision. These are the only states the
 proposed profile serializes; the vocabulary adds no product behavior beyond
 this amendment.
 
-| Example | Pack | Configuration | Generation request | Repair request |
-| --- | ---: | ---: | ---: | ---: |
-| Decision 1, one seed, qualified manifest, absent predecessor | 3300 | 5503 | 8078 | 8298 |
-| Decision 2, one seed, one claim/two limitations, full predecessor/128-byte summary | 5131 | 5759 | 10329 | 10549 |
-| Decision 2, eight candidates, otherwise same | 7581 | 6319 | 13703 | 13923 |
-| Decision 2, eight candidates, wide numeric fields, 128 quote bytes | 7831 | 6319 | 14209 | 14429 |
-| Decision 2, same widths, 128-byte multibyte summary | 7703 | 6319 | 13825 | 14045 |
-| Provider-fixture Decision 2, eight candidates, quote/width case | 7900 | 6350 | 14278 | 14498 |
-
 The [wire examples](fixtures/m1-autonomous-wire-examples-v1.json) contain the exact
-proposed serialized P/C/B strings, static instructions and SHA-256 call bindings. Serialize
+proposed serialized P/C/B strings, static instructions and SHA-256 call bindings
+behind those cases. Serialize
 recursively sorted keys as compact UTF-8 JSON without ASCII escaping or a trailing
 newline; lengths count bytes, not characters. Hash using the existing
-`dw-inference-binding-v1` length-prefixed P/C/B algorithm. The largest tested case leaves
-292 bytes of pack headroom and 1886 bytes of complete-request headroom. Numeric
+`dw-inference-binding-v1` length-prefixed P/C/B algorithm. The largest recorded
+case's pack and complete-request headroom stay with the
+[pre-consolidation text](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md#bootstrap-and-proposal-to-effect-mapping). Numeric
 examples use SQL-supported claim revision 10001, i64-width capacity and synthetic
 owner times; they do not imply a newly widened Mission/time policy. No target or
 provider was contacted. The fixture documents a proposed wire format, not a new
@@ -775,7 +776,7 @@ cannot fit P, C and both generation/repair B limits, defer without reserving or
 sending. Parse pack/verify binding with this profile's 8192 limit; raising only
 pack construction while leaving `request::reference_ids`/`verify_binding` at
 4096 fails the contract. Configuration and request limits stay 16384 each.
-Before runtime delivery, reproduce these cases through the real Rust producer and
+Before runtime delivery, reproduce the recorded cases through the real Rust producer and
 consumer, add exact-limit/+1 and escaping cases, and remeasure after any template
 change. An example fitting does not authorize arbitrary request growth.
 
@@ -870,14 +871,16 @@ pack and explicitly references the first decision/result; it cannot reuse the fi
 
 ### Budgets, failures and verification boundary
 
-Use the proposed ADR-016 section 4a profile: 20 seconds per provider call,
-40 seconds shared active work, a 45-second reserved decision envelope and
-50-second supervised phase. The legacy 20/30-second profiles and 60-second
+Use the
+[ADR-016 section 4a profile](../adr/ADR-016-execution-broker.md#4a-proposed-bounded-run-supervision-2026-10-19)
+for the per-call, shared generation/repair, decision-envelope and supervised-phase
+bounds; that section owns their canonical values. The legacy profiles and
 acquisition ceiling remain unchanged. New run authority must cover both decisions
-and conditional repair reservations, including 90000 inference wall-time ms;
-old consent is never reused, widened or refilled. Profile-aware Rust/SQL quota
-validation, capacity snapshots and CLI admission must agree with the new values.
-No global replacement of every 20000/4096 constant is permitted.
+and conditional repair reservations under that section's two-decision inference
+wall-time allocation; old consent is never reused, widened or refilled.
+Profile-aware Rust/SQL quota
+validation, capacity snapshots and CLI admission must agree with the selected
+profile values. No global replacement of the legacy constants is permitted.
 Preserve perceived time and TTL:
 expiry is `min(perceived_at + TTL, perceived_at + 60s)`. A stale/short-lived result
 may yield defer, not timestamp refresh, DNS replay or forced second-call success.
@@ -1053,9 +1056,10 @@ retry/redirect/proxy/fallback, the `reasoning-bounded-v1` timing and accounting
 allocation, and the 4096 `max_output_tokens` ceiling. That ceiling is
 reasoning-inclusive: reasoning tokens and visible proposal text share one
 output budget, so an exhausted budget yields `incomplete` with no proposal,
-no published decision and no effect release. The observed low-effort fit
-(3343 reasoning + 460 visible of 4096 on the measured Decision 2) is a
-single-episode measurement, not a latency or reliability calibration; both
+no published decision and no effect release. The single-episode low-effort fit
+observation is retained in the
+[pre-consolidation text](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22)
+as a single-episode measurement, not a latency or reliability calibration; both
 profiles remain fallible under the same honest incomplete handling.
 
 Freshness resolves independently of inference completion. The pack contains a
@@ -1078,10 +1082,14 @@ formula is preserved: `perceived_at + min(lowest applicable DNS TTL,
 60 seconds)`. This revision changes the relationship between expiry and
 inference waiting, not Terrain's TTL.
 
-Timing profiles are coherent, immutable and versioned: connection, transfer
-inactivity where available, semantic-event observation, soft completion, shared
-generation/repair, decision, preparation/phase, run, stop escalation and
-accounting boundaries are separate. Profile values are finite and fixed for the
+Timing profiles are coherent, immutable and versioned: the separate guard
+boundaries — connection, transfer inactivity where available, semantic-event
+observation, soft completion, shared generation/repair, decision,
+preparation/phase, run, stop escalation and accounting — their finite values,
+the two-decision reservation and the renewal check/lease bounds are canonical in
+[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22);
+this revision defines qualification and consistency rules and selects no
+successor numbers. Profile values are finite and fixed for the
 admitted run; runtime only clamps to legitimate remaining authority/budget.
 Soft completion leaves room for cooperative cancellation and database-only
 disposition within the original envelope; the independent hard stop remains the
@@ -1090,12 +1098,7 @@ authority deadline, and no LLM settlement call is required to save already
 committed facts. A model profile reflects model, settings, output capacity and
 measured latency; adequate inference time is not derived solely from prompt
 bytes, fixed durations are not claimed as industry guarantees, and one
-successful sample establishes no percentile. The current guard inventory —
-call/shared/decision/phase/run values, the two-decision reservation and the
-renewal check/lease bounds — is canonical in
-[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#provider-neutral-lifecycle-and-freshness-revision-2026-10-22);
-this revision defines qualification and consistency rules and selects no
-successor numbers. Renewal cadence and lease duration are a separate
+successful sample establishes no percentile. Renewal cadence and lease duration are a separate
 revocation/availability contract owned there, preserved pending explicit
 qualification and never enlarged by the LLM deadline.
 
@@ -1126,7 +1129,8 @@ operational debt, not an assumed available API.
 
 Positive, liveness-only renewal of an already-running, unexpired autonomous run
 is not an authority mutation under
-[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#positive-run-lease-coordination-amendment-2026-11-13):
+[ADR-016 section 4a](../adr/ADR-016-execution-broker.md#positive-run-lease-coordination-amendment-2026-11-13),
+which owns the complete validated-renewal predicate and bounds:
 it updates only that run's lease through the validated port without acquiring
 the campaign authority fence. Authority mutations and stopping retain strict
 fencing.
@@ -1213,9 +1217,8 @@ protocol adaptation and data custody.
   Debug redacts content. There is no global last-response slot or caller hook.
   The non-streaming conversion-error constructor retains the existing category
   with static decode-failure cause and null request/response payloads; derived
-  Debug and field access cannot recover the rejected values. This behavior patch
-  covers five owning files; one additional module has an exact trailing-whitespace
-  correction. The pinned vendor snapshot records source/patch identities in
+  Debug and field access cannot recover the rejected values. The pinned vendor
+  snapshot records source/patch identities in
   `third_party/genai/source-manifest.json`. It adds no provider protocol,
   DuskWeave policy or general SDK error-safety claim. Actual byte accounting
   requires executed per-call evidence, not a preflight estimate.
@@ -1249,17 +1252,18 @@ non-streaming, `store=false`, no tools and existing semantic intent shape.
 Its canonical resource tuple and honest limits are owned exclusively by
 [ADR-016 Pro-v2 policy](../adr/ADR-016-execution-broker.md#pro-v2-resource-policy-reasoning-bounded-pro-v2-2026-11-14).
 Its timing identity is `reasoning-bounded-pro-v2`; old profiles continue to
-bind `reasoning-bounded-v1`. Runtime wiring and schema migration `0035` are
-delivered in DW-PRO-V2-CANDIDATE-C and verified locally with the companion
-loopback mirror and deterministic Pro-v2 tests; real-provider Pro-v2 completion
-and LIVE qualification remain separately authorized work.
+bind `reasoning-bounded-v1`. Runtime wiring and schema migration `0035` were
+delivered under DW-PRO-V2-CANDIDATE-C with local fixture/mirror verification;
+real-provider Pro-v2 completion and LIVE qualification remain separately
+authorized work.
 
 Fresh v5 controlled-fixture or v6 LIVE consent must name the new profile and
 its exact resource tuple; existing version shapes are retained. LIVE still
 requires its current qualified binding, while LAB remains fixture-only.
 Producer, immutable intent, SQL admission, SDK invocation and settlement must
-agree on profile/model/timing and reserved capacities. The SDK's actual wire
-request must carry 8192 output tokens; changing only a disclosure or intent
+agree on profile/model/timing and reserved capacities under the canonical
+ADR-016 Pro-v2 tuple. The SDK's actual wire request must carry that profile's
+selected output bound; changing only a disclosure or intent
 is insufficient. Capture safe usage/byte metadata, never reasoning content.
 
 The companion `fixture-genai-v4-pro-low-v2` has the same model/settings/resource
