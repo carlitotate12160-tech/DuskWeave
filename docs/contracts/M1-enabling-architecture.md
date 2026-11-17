@@ -1381,27 +1381,44 @@ HTTP/1.1 HEAD, and normal certificate validation. The HEAD worker performs no am
 DNS, redirect, GET fallback, authentication, cookie use or application-body output.
 Byte and time limits remain the ADR-owned tables.
 
-One semantic version, `m1_https_loop_v1`, carries the new intent and run-step meaning.
-It is not a profile per numeric limit. Historical `m1_inference_proposal_v1` stays a
-closed object and gains no field. Old decoders are not widened, and old records are
-not reinterpreted. On this version the proposal is that same closed field set plus
-required `dependency_refresh`, whose only values are `none` and `dns_once_if_stale`.
-`dns_once_if_stale` is legal only on a `validate` intent whose manifest is
-`https-head-v1`. Every other intent uses `none`. The field grants no execution
-authority; Mission admits the intent separately.
+One semantic version, `m1_https_loop_v1`, is the successor proposal `version` and the
+run-step meaning. It is not a profile per numeric limit. Historical
+`m1_inference_proposal_v1` stays a closed object and gains no field. Old decoders are
+not widened, and old records are not reinterpreted. The successor proposal keeps that
+closed field set and adds required `next_intent.dependency_refresh`. Its only values
+are `none` and `dns_once_if_stale`. `dns_once_if_stale` is legal only on the selected
+HTTPS `validate` intent, whose manifest is `https-head-v1`. Every other intent uses
+`none`. The field grants no execution authority; Mission admits the intent separately.
 
-References stay pack-local. DNS `observe_more` keeps the accepted single-seed rule.
-HEAD `validate` names the authorized hostname, the selected admitted IPv4, the approved
-path, and the declared resolver and vantage of the binding being used. Free text cannot
-supply an endpoint, method or provider.
+References stay opaque and pack-local. Existing ContextPack composition issues them
+from authorized owner views. DNS `observe_more` keeps the accepted single-seed rule.
+An issued `endpoint_N` binds exactly one asset, one selected IPv4, the approved path,
+the parent DNS premise identity and revision, the resolver and vantage, the validity
+bound, and the original pack identity. This is an issued request-binding view. It is
+not a domain aggregate, endpoint registry, database table, service, or selection
+framework. A later pack may renumber references. It cannot reinterpret an older intent.
+Operational mapping values stay under existing disclosure authority. An opaque reference
+does not authorize showing a literal hostname or address to the model.
+
+HEAD `next_intent.references` selects exactly one `asset_N` and exactly one `endpoint_N`
+issued for that asset. Other admitted references are context only. Missing, multiple,
+unissued, wrong-asset, and wrong-pack endpoint choices reject. The Broker resolves that
+issued mapping deterministically and submits the resolved binding. It does not choose an
+address from a multi-address claim on the model's behalf. Free text cannot supply an
+endpoint, method, or provider. When one DNS claim contains IP1 and IP2, the model can
+select the `endpoint_N` bound to IP1 and, after feedback, explicitly select the
+`endpoint_N` bound to IP2. Conditional refresh keeps the originally selected IP. A
+replacement binding may support that same selection only under the ADR-013 refresh
+rules. It cannot substitute another IP.
 
 Rust owns application composition, the typed arguments and their serialization.
 PostgreSQL owns current authority, scope, premise checks, state transitions, fencing
 and atomic budget accounting. The new SQL boundary takes narrow typed arguments:
 the authority identities admission already requires, the step index, intent category,
-profile, `dependency_refresh`, and the hostname, selected-IPv4, resolver/vantage,
-path and expected-premise references. It does not take a proposal document or a pack.
-It does not copy prompt wording or build Rust–Go frames. A schema version or payload
+profile, `dependency_refresh`, and the Broker-resolved binding behind the selected
+`endpoint_N`: asset, selected IPv4, resolver and vantage, path, and expected premise
+identity and revision. It does not take a proposal document, a pack, or a model-chosen
+address. It does not copy prompt wording or build Rust–Go frames. A schema version or payload
 digest does not replace an authority check. Repeating a check at a separate trust
 boundary is defense in depth; copying the business rule into a second owner is not.
 Run steps link to existing decision and attempt records. They are not another campaign

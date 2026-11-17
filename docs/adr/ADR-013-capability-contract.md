@@ -196,12 +196,21 @@ refresh allowance, and returns through ordinary Terrain reconciliation. The allo
 is once per HEAD intent, including after restart. The refresh does not extend the parent
 intent's authority, the attempt deadline or the run deadline.
 
-Eligibility is TTL-only expiry of an existing routing premise, including expiry discovered
-while that HEAD decision was still in generation or repair. The opt-in is what makes
-the one refresh eligible after admission; generation and repair do not refresh by
-themselves. A missing premise, an incompatible owner revision, a conflict or integrity
-hold, withdrawal, expired consent or window, and lost control are not refresh grounds. Returned TTL of zero remains a
-valid observation and still cannot support the later HEAD.
+TTL-only expiry means the existing effective DNS validity bound has passed. That bound
+is the accepted formula in this ADR: perception time plus the minimum of the lowest
+relevant returned TTL and 60 seconds, equivalently `perceived_at + min(lowest relevant
+returned TTL, 60 seconds)`. The formula and historical profiles stay unchanged. Expiry caused only by the
+60-second freshness cap is eligible for this same single conditional refresh, even when
+the returned TTL is still positive. Expiry discovered while that HEAD decision was still
+in generation or repair is the same case. The opt-in is what makes the one refresh
+eligible after admission; generation and repair do not refresh by themselves. A missing
+premise, an incompatible owner revision, a conflict or integrity hold, withdrawal,
+expired consent or window, and lost control are not refresh grounds. Returned TTL of
+zero remains a valid observation and still cannot support the later HEAD.
+
+A returned TTL of 1799 seconds with this 60-second cap expires at 60 seconds. That expiry
+may qualify for the one refresh. It does not authorize HEAD and does not extend a
+deadline.
 
 HEAD continues only when the originally selected IPv4 remains on a currently eligible
 binding and every other required premise remains valid. The selected IP, hostname, path,

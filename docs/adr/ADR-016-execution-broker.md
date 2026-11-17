@@ -738,10 +738,15 @@ Successor ceilings for this proof run:
 
 These ceilings bound one proof run. Mission campaign totals and the ADR-013 capability
 ceilings stay in force; the lower remainder prevails. Episode or run restart does not
-reset campaign totals. Run exhaustion preserves unresolved coverage. It does not complete
-the mission and does not authorize another run. Continuation requires new or amended
-operator authorization under
-[PRD-006](../prd/PRD-006-adaptation.md#31-tempo-aware-adaptation).
+reset campaign totals or enlarge these proof limits. The run stops at its own limits.
+Run exhaustion preserves unresolved coverage. It does not complete the mission, and
+termination of this run grants no authority for another run. A later run needs its own
+current admission. Existing Mission authorization can cover that later run only when it
+already covers the work, its window is still valid, and campaign capacity remains. When
+existing authority or campaign capacity is insufficient, new or amended operator
+authorization is required under
+[PRD-006](../prd/PRD-006-adaptation.md#31-tempo-aware-adaptation). This candidate
+implements no automatic run continuation and no scheduler.
 
 Each acquisition episode keeps the existing 60-second ceiling. A HEAD episode may contain
 one admitted DNS refresh and then HEAD. Terrain reconciliation sits between them, with
