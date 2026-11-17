@@ -454,9 +454,12 @@ semantic events never extend a hard authority deadline. Admission validates
 finite feasibility against the full reservation — generation, conditional
 repair, stop escalation and accounting reserves; insufficient remainder yields
 a visible defer/stop disposition, never silent truncation. The legacy inventory
-selected above — provider-call, shared, decision, phase, CLI/acquisition, run
-and two-decision reservation bounds, plus campaign/window limits — remains
-authoritative for legacy bindings; each guard begins at its own
+— the section 4a provider-call, shared generation/repair, decision-envelope,
+inference-phase, acquisition, run and two-decision reservation bounds above,
+plus the original autonomous profile's separate 60000-ms CLI phase (distinct
+from the 50000-ms inference phase and the 60000-ms acquisition bound) and
+campaign/window limits — remains authoritative for legacy bindings; each guard
+begins at its own
 lifecycle point, and a run need not permit every phase to consume its maximum.
 The 2026-10-22 design did not select successor timer numbers. The owner-issued
 runtime packet now selects the versioned resource policy in the
