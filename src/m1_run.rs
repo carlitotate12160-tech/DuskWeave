@@ -125,7 +125,10 @@ impl RunRequest {
     fn valid_version_profile(&self) -> bool {
         match (self.version.as_str(), self.inference_profile.as_deref()) {
             ("m1_autonomous_run_request_v1", None) => {
-                self.run_profile != crate::m1_inference_profile::RUN_PROFILE
+                matches!(
+                    self.run_profile.as_str(),
+                    FIXTURE_PROFILE | PROVIDER_FIXTURE_PROFILE
+                )
             }
             ("m1_autonomous_run_request_v2", Some(n)) => {
                 self.backend_match(n, crate::m1_inference_profile::Backend::Legacy)

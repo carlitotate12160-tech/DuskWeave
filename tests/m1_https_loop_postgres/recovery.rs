@@ -199,8 +199,12 @@ fn five_ips_omission_failboth_honesty_and_recover_zero_replay() {
         assert_eq!(d2_pack["omissions"]["endpoints"]["omitted_endpoints"], 0);
         assert_eq!(d2_pack["omissions"]["endpoints"]["partial_coverage"], true);
         let req_count = reqs.lock().unwrap().len();
-        let (_ok_r1, _) = https_support::cli(&["m1-run-recover", "--run", &run_id.to_string()]);
-        let (_ok_r2, _) = https_support::cli(&["m1-run-recover", "--run", &run_id.to_string()]);
+        let (ok_r1, rec1) = https_support::cli(&["m1-run-recover", "--run", &run_id.to_string()]);
+        let (ok_r2, rec2) = https_support::cli(&["m1-run-recover", "--run", &run_id.to_string()]);
+        assert!(ok_r1 && ok_r2, "recover1={rec1} recover2={rec2}");
+        assert_eq!(rec1, receipt);
+        assert_eq!(rec2, receipt);
+        assert_eq!(rec1, rec2);
         assert_eq!(reqs.lock().unwrap().len(), req_count);
     }
 
