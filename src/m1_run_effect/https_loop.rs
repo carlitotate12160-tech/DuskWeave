@@ -4,7 +4,7 @@ use duskweave::m1_https::{
     AdmittedHttpsHeadRequest, HttpsHeadResult, HttpsOutcomeKind, HttpsSourceKind,
     RedirectDisposition, VERSION_HEAD_RESULT,
 };
-use duskweave::m1_run::{RunPhase, RunRecord};
+use duskweave::m1_run::{FIXTURE_MODE, RunPhase, RunRecord};
 use duskweave::m1_terrain_input::{DnsAnswer, TerrainDnsRequest};
 use duskweave::m1_terrain_issued::IssuedDnsReference;
 use duskweave::mission::OperationId;
@@ -15,19 +15,17 @@ use duskweave::postgres_mission::PgMissionStore;
 use duskweave::postgres_terrain_history::{record_https_terrain_history, record_terrain_history};
 use duskweave::trajectory::HistoryStatus;
 use duskweave::{Fail, Res};
+use postgres::Client;
 use uuid::Uuid;
 
 pub(crate) fn acquire(run: &RunRecord, phase: RunPhase) -> Res<()> {
-    let valid =
-        run.request.https_loop() && run.request.execution_mode == duskweave::m1_run::FIXTURE_MODE;
-    if !valid {
+    if !run.request.https_loop() || run.request.execution_mode != FIXTURE_MODE {
         return Err(Fail::State("fixture_source_refused"));
     }
     let mut broker = PgRunStore::new(m1_reasoning_cli::broker_connection()?);
     let step = broker.https_step_for_phase(run.request.run_id, phase)?;
-    let step_idx =
-        usize::try_from(step.step_index).map_err(|_| Fail::State("run_phase_refused"))?;
-    dispatch_acquire(&mut broker, run, &step, step_idx)
+    let idx = usize::try_from(step.step_index).map_err(|_| Fail::State("run_phase_refused"))?;
+    dispatch_acquire(&mut broker, run, &step, idx)
 }
 
 fn dispatch_acquire(
@@ -116,25 +114,14 @@ fn deliver_dns_result_and_close(
 ) -> Res<()> {
     let id = run.request.run_id;
     let step = broker.https_step(id, step_idx)?;
-    let res_id = if refresh {
+    let slot = if refresh {
         step.refresh_result_id
     } else {
         step.dns_result_id
-    }
-    .ok_or(Fail::Unresolved("run_terrain_history_pending"))?;
+    };
+    let res_id = slot.ok_or(Fail::Unresolved("run_terrain_history_pending"))?;
     deliver_dns(run, res_id)?;
     broker.close_https_effect_session(id, "completed")
-}
-
-fn read_refresh_decision(
-    broker: &mut PgRunStore,
-    id: Uuid,
-    step: usize,
-) -> Res<Option<RefreshDecision>> {
-    match broker.https_refresh_decision(id, step) {
-        Ok(decision) => Ok(Some(decision)),
-        Err(err) => handle_head_err(broker, id, step, ("refresh", "refresh_check_unknown"), err),
-    }
 }
 
 fn apply_refresh_decision(
@@ -154,10 +141,13 @@ fn apply_refresh_decision(
 }
 
 fn prepare_head_refresh(broker: &mut PgRunStore, run: &RunRecord, step: usize) -> Res<bool> {
-    if let Some(d) = read_refresh_decision(broker, run.request.run_id, step)? {
-        apply_refresh_decision(broker, run, step, d)
-    } else {
-        Ok(false)
+    let id = run.request.run_id;
+    match broker.https_refresh_decision(id, step) {
+        Ok(d) => apply_refresh_decision(broker, run, step, d),
+        Err(err) => {
+            handle_head_err::<()>(broker, id, step, ("refresh", "refresh_check_unknown"), err)?;
+            Ok(false)
+        }
     }
 }
 
@@ -271,21 +261,10 @@ fn deliver_step_artifacts(
     Ok(())
 }
 
-fn deliver_dns(run: &RunRecord, result_id: Uuid) -> Res<()> {
-    let q = &run.request.context.mission;
-    let reference = IssuedDnsReference::controlled_fixture(
-        q.engagement_id,
-        q.campaign_id,
-        result_id,
-        &run.request.run_profile,
-    )?;
-    let mut terrain = PgTerrainStore::new(m1_terrain_cli::terrain_connection()?);
-    let mut mission = PgMissionStore::new(connect()?);
-    let (event, _, _, _) = terrain
-        .record_issued(&mut mission, &reference)?
-        .map_err(Fail::State)?;
-    let mut traj = m1_terrain_cli::trajectory_connection()?;
-    require_completed_history(record_terrain_history(&mut traj, &event)?)
+fn delivery_stores() -> Res<(PgTerrainStore, PgMissionStore, Client)> {
+    let terrain = PgTerrainStore::new(m1_terrain_cli::terrain_connection()?);
+    let mission = PgMissionStore::new(connect()?);
+    Ok((terrain, mission, m1_terrain_cli::trajectory_connection()?))
 }
 
 fn require_completed_history(status: HistoryStatus) -> Res<()> {
@@ -294,34 +273,54 @@ fn require_completed_history(status: HistoryStatus) -> Res<()> {
         .ok_or(Fail::Unresolved("run_terrain_history_pending"))
 }
 
+fn deliver_dns(run: &RunRecord, result_id: Uuid) -> Res<()> {
+    let q = &run.request.context.mission;
+    let r = IssuedDnsReference::controlled_fixture(
+        q.engagement_id,
+        q.campaign_id,
+        result_id,
+        &run.request.run_profile,
+    )?;
+    let (mut terrain, mut mission, mut traj) = delivery_stores()?;
+    let ev = terrain
+        .record_issued(&mut mission, &r)?
+        .map_err(Fail::State)?
+        .0;
+    require_completed_history(record_terrain_history(&mut traj, &ev)?)
+}
+
+fn head_result_and_op(
+    broker: &mut PgRunStore,
+    id: Uuid,
+    step_idx: usize,
+) -> Res<(HttpsHeadResult, OperationId)> {
+    let step = broker.https_step(id, step_idx)?;
+    let result = broker
+        .read_committed_https_result(id, step_idx)?
+        .ok_or(Fail::Unresolved("run_terrain_history_pending"))?;
+    let op = step
+        .head_terrain_operation_id
+        .ok_or(Fail::Store("run_decode"))?;
+    Ok((result, OperationId(op)))
+}
+
 fn deliver_https_step(broker: &mut PgRunStore, run: &RunRecord, step_idx: usize) -> Res<()> {
-    let step = broker.https_step(run.request.run_id, step_idx)?;
-    let Some(result) = broker.read_committed_https_result(run.request.run_id, step_idx)? else {
-        return Err(Fail::Unresolved("run_terrain_history_pending"));
-    };
-    let op = OperationId(
-        step.head_terrain_operation_id
-            .ok_or(Fail::Store("run_decode"))?,
-    );
-    let mut terrain = PgTerrainStore::new(m1_terrain_cli::terrain_connection()?);
-    let mut mission = PgMissionStore::new(connect()?);
+    let (result, op) = head_result_and_op(broker, run.request.run_id, step_idx)?;
+    let (mut terrain, mut mission, mut traj) = delivery_stores()?;
     let event = PgHttpsTerrainStore::new(&mut terrain).record_https(&mut mission, &result, op)?;
-    let mut traj = m1_terrain_cli::trajectory_connection()?;
     require_completed_history(record_https_terrain_history(&mut traj, &event)?)
 }
 
-fn ans(ipv4: &str, ttl_seconds: u32) -> DnsAnswer {
+fn ans(last_octet: u8, ttl_seconds: u32) -> DnsAnswer {
     DnsAnswer {
-        ipv4: ipv4.into(),
+        ipv4: format!("198.51.100.{last_octet}"),
         ttl_seconds,
     }
 }
 
 fn fixture_dns_answers(seed_name: &str, kind: &str) -> Vec<DnsAnswer> {
     if seed_name == "fiveips.example.invalid" {
-        return [10, 11, 12, 13]
-            .map(|n| ans(&format!("198.51.100.{n}"), 60))
-            .into();
+        return [10, 11, 12, 13].map(|o| ans(o, 60)).into();
     }
     if kind == "initial" {
         initial_dns_answers(seed_name)
@@ -333,19 +332,19 @@ fn fixture_dns_answers(seed_name: &str, kind: &str) -> Vec<DnsAnswer> {
 fn initial_dns_answers(seed_name: &str) -> Vec<DnsAnswer> {
     match seed_name {
         "ttl30.example.invalid" | "refreshdrop.example.invalid" | "refreshzero.example.invalid" => {
-            vec![ans("198.51.100.10", 30)]
+            vec![ans(10, 30)]
         }
-        "ttl300.example.invalid" => vec![ans("198.51.100.10", 300)],
-        _ => vec![ans("198.51.100.10", 60), ans("198.51.100.11", 60)],
+        "ttl300.example.invalid" => vec![ans(10, 300)],
+        _ => vec![ans(10, 60), ans(11, 60)],
     }
 }
 
 fn refresh_dns_answers(seed_name: &str) -> Vec<DnsAnswer> {
     match seed_name {
-        "refreshdrop.example.invalid" => vec![ans("198.51.100.99", 60)],
-        "refreshzero.example.invalid" => vec![ans("198.51.100.10", 0)],
-        "ttl30.example.invalid" | "ttl300.example.invalid" => vec![ans("198.51.100.10", 60)],
-        _ => vec![ans("198.51.100.10", 60), ans("198.51.100.11", 60)],
+        "refreshdrop.example.invalid" => vec![ans(99, 60)],
+        "refreshzero.example.invalid" => vec![ans(10, 0)],
+        "ttl30.example.invalid" | "ttl300.example.invalid" => vec![ans(10, 60)],
+        _ => vec![ans(10, 60), ans(11, 60)],
     }
 }
 
