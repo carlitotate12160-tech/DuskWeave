@@ -131,31 +131,38 @@ pub fn digest(pack: &[u8], intent: &[u8]) -> String {
     }
     hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
-fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
-    let p = parsed_pack(pack)?;
-    let (profile, versions, protocol) = sdk_binding(&p)?;
+fn validate_repair_codes_opt(codes: Option<&[&str]>) -> Res<()> {
     if codes.is_some_and(<[_]>::is_empty) {
         return Err("repair_code_ineligible");
     }
-    super::request::validate_repair_codes(codes.unwrap_or_default())?;
-    let https_loop = p["version"] == crate::m1_https::VERSION_HTTPS_LOOP;
-    let (instructions, schema, schema_version, template_version) = if https_loop {
+    super::request::validate_repair_codes(codes.unwrap_or_default())
+}
+
+fn semantic_material_parts(pack: &[u8], version: &Value) -> Res<(String, Value, String, String)> {
+    if *version == crate::m1_https::VERSION_HTTPS_LOOP {
         let (tpl, _, _) = https_loop_template::semantic_template(pack)?;
-        (
+        return Ok((
             tpl.instructions,
             tpl.schema,
             tpl.schema_version,
             tpl.template_version,
-        )
-    } else {
-        let (inst, sch) = super::request::semantic_material(pack)?;
-        (
-            inst,
-            sch,
-            "m1_inference_proposal_v1".into(),
-            "m1-autonomous-inference-v3".into(),
-        )
-    };
+        ));
+    }
+    let (inst, sch) = super::request::semantic_material(pack)?;
+    Ok((
+        inst,
+        sch,
+        "m1_inference_proposal_v1".into(),
+        "m1-autonomous-inference-v3".into(),
+    ))
+}
+
+fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
+    let p = parsed_pack(pack)?;
+    let (profile, versions, protocol) = sdk_binding(&p)?;
+    validate_repair_codes_opt(codes)?;
+    let (instructions, schema, schema_version, template_version) =
+        semantic_material_parts(pack, &p["version"])?;
     let t = profile.timing;
     let limits = json!({"request_bytes":16384,"response_bytes":65536,"context_bytes":8192,
             "configuration_bytes":16384,"connect_time_ms":t.connect_ms,"soft_completion_ms":t.soft_ms,

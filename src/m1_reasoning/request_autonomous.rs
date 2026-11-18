@@ -216,6 +216,11 @@ pub(super) fn autonomous_schema(p: &Value, ids: &[String]) -> Result<Value, &'st
     Ok(schema)
 }
 
+fn qualified_manifest(refs: &[Value], name: &str) -> bool {
+    refs.iter()
+        .any(|m| m["reference"] == name && m["availability"] == "qualified")
+}
+
 pub(super) fn https_loop_material(
     p: &Value,
     ids: &[String],
@@ -223,30 +228,30 @@ pub(super) fn https_loop_material(
     let mut s = schema(ids);
     s["properties"]["version"]["enum"] = json!([crate::m1_https::VERSION_HTTPS_LOOP]);
     let refs = p["manifests"].as_array().ok_or("request_encode")?;
-    let is_qualified = |name: &str| {
-        refs.iter()
-            .any(|m| m["reference"] == name && m["availability"] == "qualified")
-    };
-    let has_head = is_qualified(crate::m1_https::INTENT_HTTPS_HEAD_V1);
-    let has_dns = is_qualified(crate::m1_https::INTENT_DNS_UDP);
+    apply_https_variants(&mut s, refs)?;
+    Ok((HTTPS_LOOP_INSTRUCTIONS.to_owned(), s))
+}
+
+fn apply_https_variants(s: &mut Value, refs: &[Value]) -> Result<(), &'static str> {
+    let has_dns = qualified_manifest(refs, crate::m1_https::INTENT_DNS_UDP);
     let variants = s["properties"]["next_intent"]["anyOf"]
         .as_array_mut()
-        .ok_or("request_encode")?;
-    let head_base = variants
-        .iter()
-        .find(|v| v["properties"]["category"]["enum"][0] == "validate")
-        .cloned()
         .ok_or("request_encode")?;
     for v in variants.iter_mut() {
         update_https_variant(v, has_dns)?;
     }
-    if has_head {
-        variants.push(https_validate_variant(head_base)?);
+    if qualified_manifest(refs, crate::m1_https::INTENT_HTTPS_HEAD_V1) {
+        variants.push(https_validate_variant(variants)?);
     }
-    Ok((HTTPS_LOOP_INSTRUCTIONS.to_owned(), s))
+    Ok(())
 }
 
-fn https_validate_variant(mut v: Value) -> Result<Value, &'static str> {
+fn https_validate_variant(variants: &[Value]) -> Result<Value, &'static str> {
+    let mut v = variants
+        .iter()
+        .find(|v| v["properties"]["category"]["enum"][0] == "validate")
+        .cloned()
+        .ok_or("request_encode")?;
     v["properties"]["manifest_reference"] =
         json!({"type":"string","enum":[crate::m1_https::INTENT_HTTPS_HEAD_V1]});
     v["properties"]["dependency_refresh"] =

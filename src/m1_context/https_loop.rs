@@ -228,7 +228,11 @@ fn material_eligible(mat: &DnsEndpointMaterial, cands: &[Candidate], evaluated_a
         && mat.effective_status == "observed"
         && !mat.conflicted
         && !mat.integrity_hold
-        && mat.lowest_ttl_seconds.is_some_and(|t| t > 0)
+        && dns_ttl_valid(mat, evaluated_at)
+}
+
+fn dns_ttl_valid(mat: &DnsEndpointMaterial, evaluated_at: i64) -> bool {
+    mat.lowest_ttl_seconds.is_some_and(|t| t > 0)
         && mat.claim_revision >= 1
         && evaluated_at >= mat.perceived_at
         && mat.valid_until >= mat.perceived_at
