@@ -9,6 +9,7 @@
 | Product authority | Accepted PRD-000..010 and M1 product contract; no new product breadth |
 | Direct dependencies | accepted PRD-000/001/006/007/010, M1 product contract and ADR-009/011; selected-lane rebind in accepted M1 enabling section 2 |
 | Scope | [M1 enabling lane](../contracts/M1-enabling-architecture.md); no full-stage acceptance |
+| HTTPS-loop refresh | [Candidate exception](#candidate-https-loop-dns-refresh-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; historical profiles unchanged; no execution permission or seal |
 
 ## 1. Context and problem statement
 
@@ -95,6 +96,10 @@ Only one episode/effect runs in a campaign at a time. New episode/restart cannot
 | Automatic network replay/redirect/pagination/recollection | 0; declared new DNS follow-up is counted separately above |
 | Database-only recovery | At most 3 tries/invocation, then visible pending obligation |
 
+Accepted profiles keep the zero automatic recollection in the table above. The
+[candidate HTTPS-loop exception](#candidate-https-loop-dns-refresh-2026-11-17)
+is the only proposed departure, and it is unavailable to historical profiles.
+
 Broker owns durable campaign/episode reservation and consumption. Reserve each question/
 connection/request before its effect-start; phases charge their own counters without double
 charging. Provably not released may free its reservation through an accountable record.
@@ -169,6 +174,62 @@ context to ADR-011's safe projection/diagnostics; it cannot assert accepted/fact
 Authority owns permission/premises; Gateway owns fixed request/version/bounds; Broker owns
 effect accounting/lifecycle. A batch reservation or historical result bypasses none of them.
 
+### Candidate HTTPS-loop DNS refresh (2026-11-17)
+
+**Status: ACCEPTED — product owner, 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`.** This status record adds no rule. It grants no execution permission, target contact, runtime qualification, or seal.
+
+This is the explicit exception to the accepted zero-recollection row. It applies only to
+semantic successor version `m1_https_loop_v1`. Historical profiles keep zero automatic
+recollection. `dns-routing-v2` and `https-head-v1` stay the accepted profile rows; byte,
+time and attempt ceilings stay the table above.
+[ADR-016](ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17) owns the
+proof-run ceilings, protected feedback capacity and clocks. The
+[enabling contract](../contracts/M1-enabling-architecture.md#9-candidate-https-loop-successor-2026-11-17)
+owns the intent field and step transitions.
+
+`dependency_refresh = dns_once_if_stale` may accompany one admitted `https-head-v1` intent.
+The field grants no execution authority. Mission must independently admit that intent.
+The refresh is one `dns-routing-v2` question for the same authorized hostname and the
+same declared resolver and vantage. It has its own attempt identity, current admission,
+counters and disposition, consumes campaign DNS capacity and that intent's one run
+refresh allowance, and returns through ordinary Terrain reconciliation. The allowance
+is once per HEAD intent, including after restart. The refresh does not extend the parent
+intent's authority, the attempt deadline or the run deadline.
+
+TTL-only expiry means the existing effective DNS validity bound has passed. That bound
+is the accepted formula in this ADR: perception time plus the minimum of the lowest
+relevant returned TTL and 60 seconds, equivalently `perceived_at + min(lowest relevant
+returned TTL, 60 seconds)`. The formula and historical profiles stay unchanged. Expiry caused only by the
+60-second freshness cap is eligible for this same single conditional refresh, even when
+the returned TTL is still positive. Expiry discovered while that HEAD decision was still
+in generation or repair is the same case. The opt-in is what makes the one refresh
+eligible after admission; generation and repair do not refresh by themselves. A missing
+premise, an incompatible owner revision, a conflict or integrity hold, withdrawal,
+expired consent or window, and lost control are not refresh grounds. Returned TTL of
+zero remains a valid observation and still cannot support the later HEAD.
+
+A returned TTL of 1799 seconds with this 60-second cap expires at 60 seconds. That expiry
+may qualify for the one refresh. It does not authorize HEAD and does not extend a
+deadline.
+
+HEAD continues only when the originally selected IPv4 remains on a currently eligible
+binding and every other required premise remains valid. The selected IP, hostname, path,
+method and provider stay the ones the intent named. A materially changed required binding
+returns to reasoning. Refresh failure, UNKNOWN, zero TTL, an incomplete binding or
+insufficient capacity blocks HEAD with a closed honest disposition. There is no automatic
+refresh retry, recursive repair or recovery-triggered network replay.
+
+The accepted four-IPv4-per-host ceiling remains the capability ceiling. When that ceiling
+omits alternatives, the successor records an explicit partial-coverage omission on the
+existing omission channel under
+[PRD-007's partial-result rule](../prd/PRD-007-observation-model.md#10-conflict-correction-and-failure-semantics).
+Omitted alternatives remain untested, reachability-unknown and present-unknown. A response
+of exactly four addresses with no truncation signal is unresolved completeness and creates
+no omitted-address list. One DNS response does not prove that every address was discovered.
+Two failed addresses do not prove hostname-wide unreachability. Tested addresses, omitted
+coverage and unresolved alternatives stay distinguishable. This ceiling is not a new
+campaign-wide asset limit.
+
 ## 5. Consequences
 
 Small fixed profiles avoid shell and registry authority. IPv4, 443 and one declared resolver
@@ -196,5 +257,6 @@ remains reserved.
 
 DESIGN checks links, ownership, dependencies and counterexamples under QUALITY_BAR section 7.
 The cases above are future assertions, not executed runtime tests. The product owner
-accepted R1 for the selected M1 lane on 2026-10-06. Runtime requires an issued bounded
+accepted R1 for the selected M1 lane on 2026-10-06. The HTTPS-loop section
+is outside that acceptance and has its own 2026-11-17 acceptance above. Runtime requires an issued bounded
 packet; acceptance grants no target permission, qualified deployment, merge or seal.

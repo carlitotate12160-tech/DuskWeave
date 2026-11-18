@@ -15,6 +15,7 @@
 | Provider-neutral revision | [Section 7 revision](#provider-neutral-lifecycle-and-freshness-revision-2026-10-22) ACCEPTED by the product owner on 2026-10-22 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text and timers unchanged |
 | rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
 | Lease coordination amendment | [Section 7 lease coordination](#lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); positive renewal is not authority mutation; authority fence, timers and seals unchanged |
+| HTTPS-loop successor | [Section 9](#9-candidate-https-loop-successor-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; historical proposal and run shapes unchanged; no execution permission or seal |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: each rule now lives in its one owning document — field/contract semantics, profile/version pairing and sequencing here; admission, accounting, cancellation, recovery, inference clocks and resource tuples in [ADR-016](../adr/ADR-016-execution-broker.md); acquisition limits in [ADR-013](../adr/ADR-013-capability-contract.md); isolation and egress-lease controls in [ADR-015](../adr/ADR-015-execution-boundary.md); wire framing in [ADR-017](../adr/ADR-017-cross-process-contract.md). Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md). No new acceptance, permission or seal |
 
 ## 1. Outcome and decision boundary
@@ -1363,3 +1364,107 @@ and provider-fixture qualification on the actual platform -> new versioned
 permission/run bindings with fresh consent -> only then a provider contact.
 The currently delivered commands and profiles remain the supported lane until
 each step's evidence exists.
+
+## 9. Candidate HTTPS-loop successor (2026-11-17)
+
+**Status: ACCEPTED — product owner, 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`.** This status record adds no rule. It grants no execution permission, target contact, runtime qualification, or seal.
+
+This section owns successor intent, references, step transitions and the HTTPS
+producer/consumer boundary. Capability ceilings and the refresh exception stay in
+[ADR-013](../adr/ADR-013-capability-contract.md#candidate-https-loop-dns-refresh-2026-11-17).
+Run composition, protected feedback capacity, clocks, cancellation and recovery stay in
+[ADR-016](../adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17).
+ADR-015 and ADR-017 stay unchanged: fresh capture/exporter pair, existing launcher,
+fixed control protocol, and qualified STOP/UNKNOWN semantics. `https-head-v1` stays
+pinned admitted IPv4, original hostname and SNI, port 443, the approved path,
+HTTP/1.1 HEAD, and normal certificate validation. The HEAD worker performs no ambient
+DNS, redirect, GET fallback, authentication, cookie use or application-body output.
+Byte and time limits remain the ADR-owned tables.
+
+One semantic version, `m1_https_loop_v1`, is the successor proposal `version` and the
+run-step meaning. It is not a profile per numeric limit. Historical
+`m1_inference_proposal_v1` stays a closed object and gains no field. Old decoders are
+not widened, and old records are not reinterpreted. The successor proposal keeps that
+closed field set and adds required `next_intent.dependency_refresh`. Its only values
+are `none` and `dns_once_if_stale`. `dns_once_if_stale` is legal only on the selected
+HTTPS `validate` intent, whose manifest is `https-head-v1`. Every other intent uses
+`none`. The field grants no execution authority; Mission admits the intent separately.
+
+References stay opaque and pack-local. Existing ContextPack composition issues them
+from authorized owner views. DNS `observe_more` keeps the accepted single-seed rule.
+An issued `endpoint_N` binds exactly one asset, one selected IPv4, the approved path,
+the parent DNS premise identity and revision, the resolver and vantage, the validity
+bound, and the original pack identity. This is an issued request-binding view. It is
+not a domain aggregate, endpoint registry, database table, service, or selection
+framework. A later pack may renumber references. It cannot reinterpret an older intent.
+Operational mapping values stay under existing disclosure authority. An opaque reference
+does not authorize showing a literal hostname or address to the model.
+
+HEAD `next_intent.references` selects exactly one `asset_N` and exactly one `endpoint_N`
+issued for that asset. Other admitted references are context only. Missing, multiple,
+unissued, wrong-asset, and wrong-pack endpoint choices reject. The Broker resolves that
+issued mapping deterministically and submits the resolved binding. It does not choose an
+address from a multi-address claim on the model's behalf. Free text cannot supply an
+endpoint, method, or provider. When one DNS claim contains IP1 and IP2, the model can
+select the `endpoint_N` bound to IP1 and, after feedback, explicitly select the
+`endpoint_N` bound to IP2. Conditional refresh keeps the originally selected IP. A
+replacement binding may support that same selection only under the ADR-013 refresh
+rules. It cannot substitute another IP.
+
+Rust owns application composition, the typed arguments and their serialization.
+PostgreSQL owns current authority, scope, premise checks, state transitions, fencing
+and atomic budget accounting. The new SQL boundary takes narrow typed arguments:
+the authority identities admission already requires, the step index, intent category,
+profile, `dependency_refresh`, and the Broker-resolved binding behind the selected
+`endpoint_N`: asset, selected IPv4, resolver and vantage, path, and expected premise
+identity and revision. It does not take a proposal document, a pack, or a model-chosen
+address. It does not copy prompt wording or build Rust–Go frames. A schema version or payload
+digest does not replace an authority check. Repeating a check at a separate trust
+boundary is defense in depth; copying the business rule into a second owner is not.
+Run steps link to existing decision and attempt records. They are not another campaign
+history, event store or scheduler.
+
+Transitions on this path:
+
+1. A decision proposes DNS, HEAD, retain, defer, stop or a capability gap.
+2. Deterministic admission releases the next admitted attempt or records the refusal.
+   A HEAD episode may release its refresh attempt and, after Terrain reconciliation,
+   the HEAD attempt, without a model call between them. Each DNS or HEAD attempt has
+   its own identity, admission, accounting and fresh worker pair.
+3. Terrain reconciles the admitted result. Historical ContextPacks and the earlier
+   decision's evidence and timestamps stay immutable. The next pack records the new
+   binding and its relationship to the conditional intent.
+4. The next decision consumes that pack. D4 records the model's actual proposal.
+   A further acquisition proposed at D4 is preserved and not released, under ADR-016.
+5. An eligible current binding may enter at HEAD and skip initial DNS.
+
+The reachable illustration is D1 selecting DNS, D2 selecting HEAD for IP1, D3 consuming
+a clear connection failure and possibly selecting HEAD for IP2, and D4 consuming the
+final outcome. It is not a mandatory script.
+
+When the admitted HEAD intent says `dns_once_if_stale` and ADR-013 finds only TTL expiry,
+the same HEAD episode issues one refresh attempt, Terrain reconciles it, and HEAD follows
+only when the originally selected IPv4 is still supported and the other required premises
+remain valid. No model call sits between those subeffects. A changed or missing binding,
+or any ADR-013 block, ends the HEAD attempt with a closed disposition and returns to
+reasoning. The episode does not substitute another IP, hostname, path, method or provider.
+Protected feedback capacity is converted only after the actual next ContextPack and
+eligible decision claim exist, under ADR-016.
+
+The current capture image is `FROM scratch` and copies only the DNS entrypoints
+(`boundary/Dockerfile`). It contains no CA bundle. LIVE `https-head-v1` requires one
+reproducible public-root bundle identified by upstream name, version, retrieval
+provenance and SHA-256, placed read-only in the capture image and bound by the image
+digest under the existing ADR-013 release allowlist. LIVE refuses a missing bundle, a
+digest mismatch, a campaign-supplied trust path and every root installed for tests.
+Synthetic fixture roots exist only in trusted test configuration and are unavailable
+to LIVE. There is no insecure verification mode. This candidate does not pin the
+upstream bytes; the implementation packet does.
+
+The exporter owns the closed safe projection before ordinary receipt.
+[ADR-011](../adr/ADR-011-sensitive-data-barrier.md) owns the HTTPS egress categories.
+Raw headers, Location URLs, certificate fields, bodies and peer error text do not reach
+Rust, persistence, logs or reasoning. Framing and launcher mechanics stay the accepted
+ones. A new binary family or directory layout is not required.
+
+These transitions are future runtime assertions. They do not claim that a test has run.
