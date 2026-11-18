@@ -129,7 +129,7 @@ fn known_identity(c: &mut Client, s: &Scope, input_hash: &str) -> Res<bool> {
     }
     Ok(known)
 }
-struct Owners {
+pub(super) struct Owners {
     broker: reasoning::postgres::PgBroker,
     store: reasoning::postgres::PgDecisionStore,
     history: PgTrajectory,
@@ -297,6 +297,7 @@ fn identity(q: &duskweave::m1_context_input::ContextRequest) -> Res<String> {
 #[path = "../tests/support/m1_native_cli.rs"]
 mod tests;
 
+pub(super) mod https_loop;
 mod timing;
 
 pub(super) fn autonomous_inference<B, P, G>(
@@ -322,7 +323,7 @@ where
     let (provider, _control) = provider(&s, &p, o.broker.deadline)?;
     infer_autonomous(q, &s, &mut o, p, basis(terrain), provider)
 }
-fn infer_autonomous<B: reasoning::proposal::ProposalBasis, P: inference::Provider>(
+pub(super) fn infer_autonomous<B: reasoning::proposal::ProposalBasis, P: inference::Provider>(
     q: &ContextRequest,
     s: &Scope,
     o: &mut Owners,

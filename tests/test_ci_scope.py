@@ -264,6 +264,21 @@ class WorkflowWiring(unittest.TestCase):
         self.assertIn("prelude.jsonl", tests)
         self.assertIn("LLVM_PROFILE_FILE", tests)
 
+    def test_https_loop_postgres_matrix_step_wired_on_worker0(self):
+        tests = self.jobs["rust-tests"]
+        body = step_body(tests, "HTTPS-loop PostgreSQL end-to-end matrix (designated worker)")
+        self.assertIn("--schema-revision 0037", body)
+        self.assertIn('tests/m1_https_loop_postgres.rs', body)
+        self.assertIn('--ignored --test-threads=1', body)
+        self.assertIn('DW_TEST_RUN_BINARY="$DW_BIN"', body)
+        self.assertIn("${#HTTPS_DB} -le 63", body)
+        self.assertIn("${#full} -le 63", body)
+        section = re.search(
+            r"- name: HTTPS-loop PostgreSQL end-to-end matrix \(designated worker\)\r?\n(.*?)- name:",
+            tests, re.S).group(1)
+        self.assertIn("if: matrix.worker == 0", section)
+        self.assertIn("LLVM_PROFILE_FILE", section)
+
     def test_helper_and_gate_wiring(self):
         for name in ("rust-build", "rust-tests", "rust"):
             self.assertIn("scripts/ci_rust_shards.py", self.jobs[name])

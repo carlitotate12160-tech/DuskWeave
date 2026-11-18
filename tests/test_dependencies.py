@@ -26,6 +26,9 @@ class Direction(unittest.TestCase):
             'use crate::m1_run::RunRecord;',
         ):
             self.assertTrue(check.violations('m1_context.rs', source), source)
+        for source in ('use reqwest::Client;', 'use crate::postgres_m1_terrain::https;', 'use curl::easy::Easy;', 'use std::process::Command;'):
+            self.assertTrue(check.violations('m1_https.rs', source), source)
+            self.assertTrue(check.violations('m1_https_terrain.rs', source), source)
         self.assertTrue(check.violations('m1_reasoning/inference.rs', 'use super::{transport as p};'))
 
     def test_comments_strings_and_typed_contracts_are_not_imports(self):

@@ -68,6 +68,7 @@ impl IssuedDnsReference {
                 "autonomous-dns-fixture-v1"
                     | "autonomous-dns-provider-fixture-v1"
                     | crate::m1_inference_profile::RUN_PROFILE
+                    | crate::m1_inference_profile::HTTPS_LOOP_RUN_PROFILE
             ),
             ("m1_terrain_dns_issued_observation_v2", "live") => matches!(
                 self.run_profile.as_str(),

@@ -57,6 +57,8 @@ pub mod m1_dns;
 pub mod m1_effect_control;
 pub mod m1_effect_session;
 pub mod m1_fixture_dns;
+pub mod m1_https;
+pub mod m1_https_terrain;
 pub mod m1_run;
 pub mod m1_terrain_issued;
 pub mod postgres_m1_effect;

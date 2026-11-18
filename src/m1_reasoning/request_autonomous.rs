@@ -199,6 +199,8 @@ fn profile(p: &Value) -> Result<Profile, &'static str> {
     }
 }
 
+pub(super) const HTTPS_LOOP_INSTRUCTIONS: &str = "DuskWeave m1_https_loop_v1: propose one objective-led hypothesis, alternative, expected and falsifying observation, uncertainty, rationale and next intent over this immutable pack. APT41, Lazarus and Volt Typhoon are behavioral lenses, not permission. Use exact references[].id (asset_N, endpoint_N, terrain_N, previous_decision, mission) and qualified manifests[].reference (dns_udp, https-head-v1) values only. Never invent hostnames, IPv4s, paths, availability, access or scope. validate with https-head-v1 requires one asset_N and its issued endpoint_N, and may set dependency_refresh to none or dns_once_if_stale; all other categories must set dependency_refresh to none. Return concise safe explanation only; output grants no dispatch.";
+
 pub(super) fn autonomous_schema(p: &Value, ids: &[String]) -> Result<Value, &'static str> {
     let mut schema = schema(ids);
     let refs: Vec<_> = p["manifests"]
@@ -212,4 +214,124 @@ pub(super) fn autonomous_schema(p: &Value, ids: &[String]) -> Result<Value, &'st
             json!({"anyOf":[{"type":"null"},{"type":"string","enum":refs}]});
     }
     Ok(schema)
+}
+
+pub(super) fn https_loop_material(
+    p: &Value,
+    ids: &[String],
+) -> Result<(String, Value), &'static str> {
+    let mut s = schema(ids);
+    s["properties"]["version"]["enum"] = json!([crate::m1_https::VERSION_HTTPS_LOOP]);
+    let refs = p["manifests"].as_array().ok_or("request_encode")?;
+    let has_head = refs
+        .iter()
+        .any(|m| m["reference"] == crate::m1_https::INTENT_HTTPS_HEAD_V1);
+    let has_dns = refs
+        .iter()
+        .any(|m| m["reference"] == crate::m1_https::INTENT_DNS_UDP);
+    let variants = s["properties"]["next_intent"]["anyOf"]
+        .as_array_mut()
+        .ok_or("request_encode")?;
+    for v in variants.iter_mut() {
+        update_https_variant(v, has_head, has_dns)?;
+    }
+    Ok((HTTPS_LOOP_INSTRUCTIONS.to_owned(), s))
+}
+
+fn https_manifest_schema(cat: &str, has_head: bool, has_dns: bool) -> Option<Value> {
+    if cat == "validate" && has_head {
+        return Some(
+            json!({"anyOf":[{"type":"null"},{"type":"string","enum":[crate::m1_https::INTENT_HTTPS_HEAD_V1]}]}),
+        );
+    }
+    if cat == "observe_more" && has_dns {
+        return Some(
+            json!({"anyOf":[{"type":"null"},{"type":"string","enum":[crate::m1_https::INTENT_DNS_UDP]}]}),
+        );
+    }
+    None
+}
+
+fn update_https_variant(v: &mut Value, has_head: bool, has_dns: bool) -> Result<(), &'static str> {
+    let cat = v["properties"]["category"]["enum"][0]
+        .as_str()
+        .ok_or("request_encode")?
+        .to_owned();
+    v["properties"]["dependency_refresh"] = if cat == "validate" {
+        json!({"type":"string","enum":["none","dns_once_if_stale"]})
+    } else {
+        json!({"type":"string","enum":["none"]})
+    };
+    let req = v["required"].as_array_mut().ok_or("request_encode")?;
+    req.push(json!("dependency_refresh"));
+    req.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+    if let Some(schema) = https_manifest_schema(&cat, has_head, has_dns) {
+        v["properties"]["manifest_reference"] = schema;
+    }
+    Ok(())
+}
+
+use crate::m1_reasoning::{inference, proposal, provider_diagnostic};
+pub(in crate::m1_reasoning) fn check_screened(
+    res: Result<inference::Received, &'static str>,
+    ref_hit: bool,
+    key: &str,
+    diag: &mut provider_diagnostic::ProviderDiagnostic,
+) -> Result<inference::Received, &'static str> {
+    let bad = ref_hit
+        || diag
+            .report
+            .as_ref()
+            .is_some_and(|r| serde_json::to_string(r).map_or(true, |s| s.contains(key)));
+    if bad {
+        diag.report = None;
+        return Err("provider_unsafe_response");
+    }
+    res
+}
+
+pub(in crate::m1_reasoning) struct ScreenedBasis<'a> {
+    pub(in crate::m1_reasoning) owner: &'a mut dyn proposal::ProposalBasis,
+    pub(in crate::m1_reasoning) key: &'a str,
+    pub(in crate::m1_reasoning) reflected: std::cell::Cell<bool>,
+}
+
+impl ScreenedBasis<'_> {
+    fn clear(&self, s: &str) -> bool {
+        let ok = !s.contains(self.key);
+        if !ok {
+            self.reflected.set(true);
+        }
+        ok
+    }
+}
+
+impl proposal::ProposalBasis for ScreenedBasis<'_> {
+    fn reference_eligible(&self, r: &str) -> bool {
+        self.clear(r) && self.owner.reference_eligible(r)
+    }
+    fn manifest_eligible(&self, r: &str) -> bool {
+        self.clear(r) && self.owner.manifest_eligible(r)
+    }
+    fn safe_explanation(&self, t: &str) -> bool {
+        self.clear(t) && self.owner.safe_explanation(t)
+    }
+    fn current_authority_and_premises(&mut self) -> Result<(), &'static str> {
+        self.owner.current_authority_and_premises()
+    }
+    fn before_provider_release(&mut self) -> Result<(), &'static str> {
+        self.owner.before_provider_release()
+    }
+    fn recording_premises(&mut self) -> Result<proposal::RecordingPremises, &'static str> {
+        self.owner.recording_premises()
+    }
+    fn expected_proposal_version(&self) -> &'static str {
+        self.owner.expected_proposal_version()
+    }
+    fn current_authority_for_references(&mut self, refs: &[String]) -> Result<(), &'static str> {
+        if !refs.iter().all(|r| self.clear(r)) {
+            return Err("provider_unsafe_response");
+        }
+        self.owner.current_authority_for_references(refs)
+    }
 }

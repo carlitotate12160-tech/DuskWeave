@@ -262,6 +262,7 @@ impl Provider for MockSuccessProvider {
                     references: vec!["ref-1".into()],
                     manifest_reference: None,
                     view_request: None,
+                    dependency_refresh: None,
                 },
             })),
         })

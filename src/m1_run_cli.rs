@@ -5,6 +5,7 @@ use duskweave::{Fail, Res};
 use std::io::Read;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
+mod https_loop;
 
 fn store() -> Res<PgRunStore> {
     Ok(PgRunStore::new(
@@ -93,6 +94,9 @@ fn start_run(store: &mut PgRunStore, q: &RunRequest, release: &str) -> Res<()> {
     Ok(())
 }
 fn supervise(store: &mut PgRunStore, run: &RunRecord) -> Res<()> {
+    if run.request.https_loop() {
+        return https_loop::supervise(store, run);
+    }
     let deadline = run_deadline(run)?;
     if let NextStep::Terminal(reason) = first_decision(store, run, deadline)? {
         return store.terminal(run.request.run_id, reason);
@@ -106,7 +110,7 @@ fn first_decision(store: &mut PgRunStore, run: &RunRecord, deadline: Instant) ->
     drive_phase(store, run, RunPhase::DecisionOne, deadline)?;
     store.first_step(run)
 }
-fn drive_phase(
+pub(super) fn drive_phase(
     store: &mut PgRunStore,
     run: &RunRecord,
     phase: RunPhase,
@@ -202,7 +206,7 @@ fn poll_phase(
         std::thread::sleep(Duration::from_millis(25));
     }
 }
-fn run_deadline(run: &RunRecord) -> Res<Instant> {
+pub(super) fn run_deadline(run: &RunRecord) -> Res<Instant> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| Fail::State("clock_unavailable"))?
@@ -255,8 +259,8 @@ fn verify_launch_hint(
     successor_hint: Option<&'static duskweave::m1_inference_profile::Timing>,
 ) -> Res<()> {
     let expected_timing = record.request.timing_profile()?.map(|t| t.name);
-    let expected = expected_timing.is_some()
-        || (record.request.supervised_inference() && phase != RunPhase::Acquisition);
+    let expected =
+        expected_timing.is_some() || (record.request.supervised_inference() && phase.is_decision());
     [
         hinted == expected,
         expected_timing == successor_hint.map(|t| t.name),
@@ -270,7 +274,7 @@ fn preparation_cover(
     phase: RunPhase,
     hinted: bool,
 ) -> Res<Option<super::m1_run_control::Preparation>> {
-    (hinted && phase != RunPhase::Acquisition)
+    (hinted && phase.is_decision())
         .then(super::m1_run_control::Preparation::start)
         .transpose()
 }
@@ -278,6 +282,7 @@ fn child(args: &[String]) -> Res<()> {
     let (record, phase, preparation) = claim_child(args)?;
     match phase {
         RunPhase::Acquisition => super::m1_run_effect::acquire(&record),
+        p if p.is_acquisition() => super::m1_run_effect::https_loop::acquire(&record, p),
         _ => super::m1_run_inference::decide(&record, phase, preparation),
     }
 }

@@ -6,6 +6,7 @@ pub const TIMING_PROFILE: &str = "reasoning-bounded-v1";
 pub const PRO_V2_TIMING_PROFILE: &str = "reasoning-bounded-pro-v2";
 pub const PRO_V2_PROFILE: &str = "deepseek-genai-v4-pro-low-v2";
 pub const FIXTURE_PRO_V2_PROFILE: &str = "fixture-genai-v4-pro-low-v2";
+pub const HTTPS_LOOP_RUN_PROFILE: &str = "m1_https_loop_v1";
 pub const LIVE_RUN_PROFILE: &str = "autonomous-dns-genai-live-v1";
 pub const LAB_RUN_PROFILE: &str = "autonomous-dns-genai-lab-v1";
 
@@ -35,6 +36,12 @@ pub fn sdk_versions(run_profile: &str) -> Res<SdkVersions> {
             "m1_autonomous_run_request_v4",
             "m1_context_pack_autonomous_v4",
             Some("LAB"),
+        ),
+        HTTPS_LOOP_RUN_PROFILE => (
+            "m1_https_loop_v1",
+            "m1_https_loop_v1",
+            "m1_https_loop_v1",
+            None,
         ),
         _ => return Err(Fail::Input("inference_unsupported_profile")),
     };

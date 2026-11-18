@@ -526,6 +526,33 @@ jobs:
           mkdir -p "$RUNNER_TEMP/dw-evidence"
           cp "$RPT" "$RUNNER_TEMP/dw-evidence/integration-report.json"
 
+      - name: HTTPS-loop PostgreSQL end-to-end matrix (designated worker)
+        if: matrix.worker == 0
+        env:
+          DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
+          DW_TEST_FIXTURE_SUPERVISOR: ${{ github.workspace }}/ci-shards/dw-fixture-supervisor
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/target/llvm-cov-target/w${{ matrix.worker }}-%p-%12m.profraw
+        run: |
+          set -euo pipefail
+          DW_BIN="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/duskweave"
+          HTTPS_EXE="$GITHUB_WORKSPACE/$(python3 -c 'import json; m=json.load(open("ci-shards/manifest.json")); print([t["exe"] for t in m["targets"] if t["id"]=="tests/m1_https_loop_postgres.rs"][0])')"
+          [ -x "$DW_BIN" ] || { echo "missing duskweave binary"; exit 1; }
+          [ -x "$HTTPS_EXE" ] || { echo "missing m1_https_loop_postgres binary"; exit 1; }
+          [ -x "$DW_TEST_FIXTURE_SUPERVISOR" ] || { echo "missing supervisor binary"; exit 1; }
+          [ "$(docker inspect --format '{{.State.Running}}' dwpg)" = "true" ] || { echo "dwpg not running"; exit 1; }
+          RID="${GITHUB_RUN_ID}a${GITHUB_RUN_ATTEMPT}"
+          HTTPS_DB="dw_native_hl${RID}"
+          HTTPS_PX="dw_hl${RID}"
+          [[ "$HTTPS_DB" =~ ^dw_native_[a-z0-9_]+$ && ${#HTTPS_DB} -le 63 ]] || { echo "db identifier out of bounds: $HTTPS_DB"; exit 1; }
+          full="${HTTPS_PX}_000000000000_terrainsetonly"
+          [[ "$HTTPS_PX" =~ ^dw_[a-z0-9_]+$ && ${#full} -le 63 ]] || { echo "prefix identifier out of bounds: $HTTPS_PX"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/dw-evidence/https-loop"
+          DW_TEST_RUN_BINARY="$DW_BIN" \
+          python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
+            --schema-revision 0037 --database-name "$HTTPS_DB" --role-prefix "$HTTPS_PX" \
+            --report "$RUNNER_TEMP/dw-evidence/https-loop" \
+            -- "$HTTPS_EXE" --ignored --test-threads=1
+
       - name: Worker execution receipt (any gap fails the worker)
         if: always()
         run: |

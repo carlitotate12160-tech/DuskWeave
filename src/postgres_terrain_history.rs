@@ -1,4 +1,5 @@
 //! Trajectory verification, idempotent acceptance, anomaly dominance, and receipts for M1 Terrain.
+use crate::m1_https_terrain::TerrainHttpsChangedEvent;
 use crate::m1_terrain::TerrainAcceptedEvent;
 use crate::trajectory::HistoryStatus;
 use crate::{Fail, Res};
@@ -40,20 +41,36 @@ pub fn record_terrain_history(
 ) -> Res<HistoryStatus> {
     event.validate()?;
     let payload = serde_json::to_value(event).map_err(|_| Fail::Store("contract_encode"))?;
+    record_history_payload(client, &payload)
+}
+
+pub fn record_https_terrain_history(
+    client: &mut Client,
+    event: &TerrainHttpsChangedEvent,
+) -> Res<HistoryStatus> {
+    let payload = serde_json::to_value(event).map_err(|_| Fail::Store("contract_encode"))?;
+    record_history_payload(client, &payload)
+}
+
+fn record_history_payload(client: &mut Client, payload: &Value) -> Res<HistoryStatus> {
     let mut tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)
         .start()
         .map_err(|e| map_pg_err(&e))?;
     let row = tx
-        .query_one("SELECT trajectory.record_terrain_history($1)", &[&payload])
+        .query_one("SELECT trajectory.record_terrain_history($1)", &[payload])
         .map_err(|e| map_pg_err(&e))?;
     let status: String = row
         .try_get(0)
         .map_err(|_| Fail::Store("trajectory_history_error"))?;
     tx.commit()
         .map_err(|_| Fail::Unresolved("trajectory_commit_unknown"))?;
-    match status.as_str() {
+    parse_history_status(&status)
+}
+
+fn parse_history_status(status: &str) -> Res<HistoryStatus> {
+    match status {
         "completed" => Ok(HistoryStatus::Completed),
         "pending" => Ok(HistoryStatus::Pending),
         "anomaly" => Ok(HistoryStatus::Anomaly),

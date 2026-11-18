@@ -1,5 +1,6 @@
 #[path = "request_autonomous.rs"]
 mod autonomous;
+pub(super) use autonomous::{ScreenedBasis, check_screened};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
@@ -141,6 +142,7 @@ pub fn bind(pack: &[u8], repair_codes: Option<&[&str]>) -> Result<BoundCall, &'s
                 | "m1_context_pack_autonomous_v2"
                 | "m1_context_pack_autonomous_v3"
                 | "m1_context_pack_autonomous_v4"
+                | crate::m1_https::VERSION_HTTPS_LOOP
         )
     ) {
         return autonomous::bind(pack, &parsed, &ids, repair_codes);
@@ -319,6 +321,7 @@ fn pack_limit(value: &Value) -> usize {
                 | "m1_context_pack_autonomous_v2"
                 | "m1_context_pack_autonomous_v3"
                 | "m1_context_pack_autonomous_v4"
+                | crate::m1_https::VERSION_HTTPS_LOOP
         )
     ) {
         8192
@@ -331,6 +334,9 @@ fn pack_limit(value: &Value) -> usize {
 pub(super) fn semantic_material(pack: &[u8]) -> Result<(String, Value), &'static str> {
     let ids = reference_ids(pack)?;
     let p: Value = serde_json::from_slice(pack).map_err(|_| "request_encode")?;
+    if p["version"] == crate::m1_https::VERSION_HTTPS_LOOP {
+        return autonomous::https_loop_material(&p, &ids);
+    }
     Ok((
         autonomous::AUTONOMOUS_INSTRUCTIONS.to_owned(),
         autonomous::autonomous_schema(&p, &ids)?,

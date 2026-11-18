@@ -47,7 +47,11 @@ pub fn sdk_pack(pack: &[u8]) -> bool {
     serde_json::from_slice::<Value>(pack).is_ok_and(|p| {
         matches!(
             p["version"].as_str(),
-            Some("m1_context_pack_autonomous_v3" | "m1_context_pack_autonomous_v4")
+            Some(
+                "m1_context_pack_autonomous_v3"
+                    | "m1_context_pack_autonomous_v4"
+                    | crate::m1_https::VERSION_HTTPS_LOOP
+            )
         )
     })
 }
@@ -73,24 +77,32 @@ fn parsed_pack(pack: &[u8]) -> Res<Value> {
     Ok(p)
 }
 fn pack_binding(p: &Value) -> bool {
-    if p["version"] == "m1_context_pack_autonomous_v4" {
-        return profiles::live_binding(
-            p["run_profile"].as_str().unwrap_or_default(),
-            p["execution_mode"].as_str().unwrap_or_default(),
-            p["inference_profile"].as_str().unwrap_or_default(),
-        ) && serde_json::from_value::<crate::m1_inference_permission::LiveBinding>(
-            p["live_binding"].clone(),
-        )
-        .is_ok_and(|binding| {
-            binding
-                .validate_for(p["run_profile"].as_str().unwrap_or_default())
-                .is_ok()
-        }) && profiles::sdk_versions(p["run_profile"].as_str().unwrap_or_default())
-            .is_ok_and(|v| p["qualification_purpose"].as_str() == v.qualification_purpose);
+    match p["version"].as_str() {
+        Some(crate::m1_https::VERSION_HTTPS_LOOP) => [
+            p["run_profile"] == profiles::HTTPS_LOOP_RUN_PROFILE,
+            p["execution_mode"] == "controlled_fixture",
+            p["inference_profile"] == profiles::FIXTURE_PRO_V2_PROFILE,
+        ]
+        .into_iter()
+        .all(|v| v),
+        Some("m1_context_pack_autonomous_v4") => live_pack_binding(p),
+        Some("m1_context_pack_autonomous_v3") => {
+            p["run_profile"] == profiles::RUN_PROFILE && p["execution_mode"] == "controlled_fixture"
+        }
+        _ => false,
     }
-    p["version"] == "m1_context_pack_autonomous_v3"
-        && p["run_profile"] == profiles::RUN_PROFILE
-        && p["execution_mode"] == "controlled_fixture"
+}
+fn live_pack_binding(p: &Value) -> bool {
+    let run = p["run_profile"].as_str().unwrap_or_default();
+    let mode = p["execution_mode"].as_str().unwrap_or_default();
+    let inf = p["inference_profile"].as_str().unwrap_or_default();
+    let binding_ok = serde_json::from_value::<crate::m1_inference_permission::LiveBinding>(
+        p["live_binding"].clone(),
+    )
+    .is_ok_and(|binding| binding.validate_for(run).is_ok());
+    let purpose_ok = profiles::sdk_versions(run)
+        .is_ok_and(|v| p["qualification_purpose"].as_str() == v.qualification_purpose);
+    profiles::live_binding(run, mode, inf) && binding_ok && purpose_ok
 }
 fn scope_matches(p: &Value, s: &Scope) -> bool {
     p["engagement_id"] == json!(s.engagement)
@@ -132,6 +144,8 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
             "decision_wall_time_ms":t.decision_ms,"phase_wall_time_ms":t.phase_ms,
             "cancel_grace_ms":t.stop_ms,"accounting_window_ms":t.accounting_ms,
             "output_tokens_per_call":profile.settings.output_tokens,"calls_per_decision":2,"concurrency":1});
+    let https_loop = p["version"] == crate::m1_https::VERSION_HTTPS_LOOP;
+    let (schema_version, template_version) = version_pair(https_loop);
     let mut intent = json!({"version":VERSION,"permission_version":versions.permission,
         "run_version":versions.run,"engagement_id":p["engagement_id"],
         "campaign_id":p["campaign_id"],"decision_id":p["decision_id"],
@@ -139,7 +153,7 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
         "run_profile":p["run_profile"],"execution_mode":p["execution_mode"],
         "protocol":protocol,"profile":profile.name,"recipient":profile.connection.recipient,
         "model":profile.settings.model,"adapter_release":"genai-a9504f1-dw1",
-        "template_version":"m1-autonomous-inference-v3","schema_version":"m1_inference_proposal_v1",
+        "template_version":template_version,"schema_version":schema_version,
         "instructions":instructions,"schema":schema,"timing_profile":t.name,
         "settings":{"reasoning_effort":profile.settings.reasoning_effort,"max_output_tokens":profile.settings.output_tokens,"stream":profile.settings.stream,"store":false,"tools":[]},
         "repair_error_codes":codes.unwrap_or_default(),"limits":limits});
@@ -148,6 +162,13 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
         intent["qualification_purpose"] = p["qualification_purpose"].clone();
     }
     Ok(intent)
+}
+fn version_pair(https_loop: bool) -> (&'static str, &'static str) {
+    if https_loop {
+        (crate::m1_https::VERSION_HTTPS_LOOP, "m1-https-loop-v1")
+    } else {
+        ("m1_inference_proposal_v1", "m1-autonomous-inference-v3")
+    }
 }
 fn sdk_binding(p: &Value) -> Res<(profiles::Profile, profiles::SdkVersions, &'static str)> {
     let profile = profiles::lookup(p["inference_profile"].as_str().ok_or("request_encode")?)

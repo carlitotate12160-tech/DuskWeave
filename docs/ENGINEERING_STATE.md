@@ -101,10 +101,12 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-HTTPS-LOOP-SLIM-DESIGN-R1` is ACCEPTED by the product owner
-on 2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at
-`0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`. The status lines add no rule. No
-execution permission, seal, or timer change. Owning text:
+**Active work:** `DW-M1-HTTPS-LOOP-SKELETON-R1` implements the accepted
+[DW-HTTPS-LOOP-SLIM-DESIGN-R1](adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17)
+four-decision bounded HTTPS-loop walking skeleton (`m1_https_loop_v1`) over
+schema `0037` (`migrations/0037_https_loop.sql`), `duskweave m1-run`, SDK
+fixture transport (`127.0.0.1:18083`), and deterministic DNS/HEAD fixtures. No
+execution permission, seal, or timer change. Design authorities:
 [ADR-013 refresh exception](adr/ADR-013-capability-contract.md#candidate-https-loop-dns-refresh-2026-11-17),
 [ADR-016 run](adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17),
 [enabling contract](contracts/M1-enabling-architecture.md#9-candidate-https-loop-successor-2026-11-17)
