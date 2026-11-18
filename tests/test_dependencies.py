@@ -64,5 +64,13 @@ class SdkBoundary(unittest.TestCase):
                     self.assertTrue(check.violations(name, source))
         for name in ('mission.rs', 'm1_reasoning/inference_intent.rs'):
             self.assertTrue(check.violations(name, 'use crate::m1_reasoning::sdk_transport as infrastructure;'))
+        for name, bad in (
+            ('m1_https/result.rs', 'use postgres::Client;'),
+            ('m1_https/result.rs', 'use crate::m1_run::RunRecord;'),
+            ('m1_reasoning/inference_intent/https_loop_template.rs', 'use crate::m1_reasoning::transport;'),
+            ('m1_reasoning/inference_intent/https_loop_template.rs', 'use postgres::Client;'),
+        ):
+            with self.subTest(name=name, source=bad):
+                self.assertTrue(check.violations(name, bad))
         self.assertEqual(check.violations('m1_run_inference.rs', 'use crate::m1_reasoning::sdk_transport::SdkProvider;'), [])
         self.assertEqual(check.violations('m1_reasoning/sdk_transport.rs', 'use genai::Client;'), [])

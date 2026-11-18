@@ -223,50 +223,51 @@ pub(super) fn https_loop_material(
     let mut s = schema(ids);
     s["properties"]["version"]["enum"] = json!([crate::m1_https::VERSION_HTTPS_LOOP]);
     let refs = p["manifests"].as_array().ok_or("request_encode")?;
-    let has_head = refs
-        .iter()
-        .any(|m| m["reference"] == crate::m1_https::INTENT_HTTPS_HEAD_V1);
-    let has_dns = refs
-        .iter()
-        .any(|m| m["reference"] == crate::m1_https::INTENT_DNS_UDP);
+    let is_qualified = |name: &str| {
+        refs.iter()
+            .any(|m| m["reference"] == name && m["availability"] == "qualified")
+    };
+    let has_head = is_qualified(crate::m1_https::INTENT_HTTPS_HEAD_V1);
+    let has_dns = is_qualified(crate::m1_https::INTENT_DNS_UDP);
     let variants = s["properties"]["next_intent"]["anyOf"]
         .as_array_mut()
         .ok_or("request_encode")?;
+    let head_base = variants
+        .iter()
+        .find(|v| v["properties"]["category"]["enum"][0] == "validate")
+        .cloned()
+        .ok_or("request_encode")?;
     for v in variants.iter_mut() {
-        update_https_variant(v, has_head, has_dns)?;
+        update_https_variant(v, has_dns)?;
+    }
+    if has_head {
+        variants.push(https_validate_variant(head_base)?);
     }
     Ok((HTTPS_LOOP_INSTRUCTIONS.to_owned(), s))
 }
 
-fn https_manifest_schema(cat: &str, has_head: bool, has_dns: bool) -> Option<Value> {
-    if cat == "validate" && has_head {
-        return Some(
-            json!({"anyOf":[{"type":"null"},{"type":"string","enum":[crate::m1_https::INTENT_HTTPS_HEAD_V1]}]}),
-        );
-    }
-    if cat == "observe_more" && has_dns {
-        return Some(
-            json!({"anyOf":[{"type":"null"},{"type":"string","enum":[crate::m1_https::INTENT_DNS_UDP]}]}),
-        );
-    }
-    None
+fn https_validate_variant(mut v: Value) -> Result<Value, &'static str> {
+    v["properties"]["manifest_reference"] =
+        json!({"type":"string","enum":[crate::m1_https::INTENT_HTTPS_HEAD_V1]});
+    v["properties"]["dependency_refresh"] =
+        json!({"type":"string","enum":["none","dns_once_if_stale"]});
+    push_required_refresh(&mut v)?;
+    Ok(v)
 }
 
-fn update_https_variant(v: &mut Value, has_head: bool, has_dns: bool) -> Result<(), &'static str> {
-    let cat = v["properties"]["category"]["enum"][0]
-        .as_str()
-        .ok_or("request_encode")?
-        .to_owned();
-    v["properties"]["dependency_refresh"] = if cat == "validate" {
-        json!({"type":"string","enum":["none","dns_once_if_stale"]})
-    } else {
-        json!({"type":"string","enum":["none"]})
-    };
+fn push_required_refresh(v: &mut Value) -> Result<(), &'static str> {
     let req = v["required"].as_array_mut().ok_or("request_encode")?;
     req.push(json!("dependency_refresh"));
     req.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
-    if let Some(schema) = https_manifest_schema(&cat, has_head, has_dns) {
-        v["properties"]["manifest_reference"] = schema;
+    Ok(())
+}
+
+fn update_https_variant(v: &mut Value, has_dns: bool) -> Result<(), &'static str> {
+    let is_observe = v["properties"]["category"]["enum"][0].as_str() == Some("observe_more");
+    v["properties"]["dependency_refresh"] = json!({"type":"string","enum":["none"]});
+    push_required_refresh(v)?;
+    if is_observe && has_dns {
+        v["properties"]["manifest_reference"] = json!({"anyOf":[{"type":"null"},{"type":"string","enum":[crate::m1_https::INTENT_DNS_UDP]}]});
     }
     Ok(())
 }
@@ -333,5 +334,58 @@ impl proposal::ProposalBasis for ScreenedBasis<'_> {
             return Err("provider_unsafe_response");
         }
         self.owner.current_authority_for_references(refs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn https_schema_forbids_refresh_when_manifest_null_or_unavailable() {
+        let pack_unavail = json!({
+            "manifests": [
+                {"reference": "dns_udp", "availability": "qualified"},
+                {"reference": "https-head-v1", "availability": "requires_dns_premise"}
+            ]
+        });
+        let (_, schema_unavail) = https_loop_material(&pack_unavail, &["asset_0".into()]).unwrap();
+        let variants = schema_unavail["properties"]["next_intent"]["anyOf"]
+            .as_array()
+            .unwrap();
+        assert!(
+            variants
+                .iter()
+                .all(|v| { v["properties"]["dependency_refresh"]["enum"] == json!(["none"]) })
+        );
+
+        let pack_qual = json!({
+            "manifests": [
+                {"reference": "dns_udp", "availability": "qualified"},
+                {"reference": "https-head-v1", "availability": "qualified"}
+            ]
+        });
+        let (_, schema_qual) =
+            https_loop_material(&pack_qual, &["asset_0".into(), "endpoint_0".into()]).unwrap();
+        for v in schema_qual["properties"]["next_intent"]["anyOf"]
+            .as_array()
+            .unwrap()
+        {
+            if v["properties"]["manifest_reference"]["type"] == "null" {
+                assert_eq!(
+                    v["properties"]["dependency_refresh"]["enum"],
+                    json!(["none"])
+                );
+            } else if v["properties"]["category"]["enum"] == json!(["validate"]) {
+                assert_eq!(
+                    v["properties"]["manifest_reference"],
+                    json!({"type": "string", "enum": ["https-head-v1"]})
+                );
+                assert_eq!(
+                    v["properties"]["dependency_refresh"]["enum"],
+                    json!(["none", "dns_once_if_stale"])
+                );
+            }
+        }
     }
 }

@@ -1,9 +1,8 @@
 //! Typed HTTPS request/result and Broker-private endpoint binding contracts. No HTTP client.
-pub use crate::m1_https_terrain::{
-    HttpsHeadResult, HttpsOutcomeKind, HttpsSourceKind, RedirectDisposition,
-};
+pub mod result;
 use crate::mission::{AssetRef, CampaignId, EngagementId, OperationId};
 use crate::{Fail, Res};
+pub use result::{HttpsHeadResult, HttpsOutcomeKind, HttpsSourceKind, RedirectDisposition};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::net::Ipv4Addr;

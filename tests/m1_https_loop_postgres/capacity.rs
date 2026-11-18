@@ -3,6 +3,51 @@ use crate::terrain::terrain_support::native;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+fn bind_step1_input(q: &Value, run_id: Uuid, d1: Uuid) {
+    let m = &q["context"]["mission"];
+    let eng = Uuid::parse_str(m["engagement_id"].as_str().unwrap()).unwrap();
+    let cmp = Uuid::parse_str(m["campaign_id"].as_str().unwrap()).unwrap();
+    let ctx_req: duskweave::m1_context_input::ContextRequest =
+        serde_json::from_value(q["context"].clone()).unwrap();
+    let auto = duskweave::m1_autonomous_context::AutonomousContext {
+        binding: duskweave::m1_autonomous_context::RunContextBinding {
+            engagement_id: duskweave::mission::EngagementId(eng),
+            campaign_id: duskweave::mission::CampaignId(cmp),
+            run_profile: https_support::RUN_PROFILE.into(),
+            execution_mode: "controlled_fixture".into(),
+            inference_profile: Some(https_support::PROFILE.into()),
+            release_sha256: "a".repeat(64),
+            qualification_ref: Uuid::new_v4(),
+        },
+        predecessor: None,
+    };
+    let mut reader = duskweave::postgres_mission::PgContextReader::new(native::client(
+        "DW_INFERENCE_BROKER_DATABASE_URL",
+    ));
+    let prep = duskweave::m1_context::https_loop::prepare(
+        &mut reader,
+        &ctx_req,
+        duskweave::mission::OperationId(d1),
+        run_id,
+        &auto,
+    )
+    .unwrap();
+    let mut store = duskweave::postgres_m1_run::PgRunStore::new(native::client(
+        "DW_INFERENCE_BROKER_DATABASE_URL",
+    ));
+    store
+        .bind_https_input(
+            eng,
+            cmp,
+            d1,
+            run_id,
+            &"b".repeat(64),
+            &prep.endpoint_map,
+            prep.prepared.utf8().as_bytes(),
+        )
+        .unwrap();
+}
+
 #[ignore]
 #[test]
 fn protected_capacity_enforces_exact_allocation_ownership_and_honest_release() {
@@ -75,6 +120,7 @@ fn protected_capacity_enforces_exact_allocation_ownership_and_honest_release() {
         .unwrap()
         .get(0);
     let d1 = Uuid::parse_str(st1["decision_id"].as_str().unwrap()).unwrap();
+    bind_step1_input(&q_steal, run_id, d1);
     let d1_req = json!({
         "version": "m1_inference_reservation_request_v1",
         "engagement_id": eng,
@@ -163,6 +209,7 @@ fn protected_capacity_enforces_exact_allocation_ownership_and_honest_release() {
         .unwrap()
         .get(0);
     let sd1 = Uuid::parse_str(st_s["decision_id"].as_str().unwrap()).unwrap();
+    bind_step1_input(&q_stop, s_run_id, sd1);
     let sd1_req = json!({
         "version": "m1_inference_reservation_request_v1",
         "engagement_id": s_eng, "campaign_id": s_cmp,
@@ -179,6 +226,18 @@ fn protected_capacity_enforces_exact_allocation_ownership_and_honest_release() {
             &[&s_run_id],
         )
         .unwrap();
+    assert!(
+        broker
+            .execute(
+                "SELECT execution.release_protected_capacity($1,1,'released')",
+                &[&s_run_id],
+            )
+            .is_err(),
+        "active unstopped run cannot release protected capacity"
+    );
+    broker
+        .execute("SELECT execution.run_stop($1)", &[&s_run_id])
+        .unwrap();
     broker
         .execute(
             "SELECT execution.release_protected_capacity($1,1,'released')",
@@ -193,6 +252,92 @@ fn protected_capacity_enforces_exact_allocation_ownership_and_honest_release() {
         .unwrap()
         .get(0);
     assert_eq!(held_stop["calls"], 0);
+
+    // Active/claimed acquisition (and even stopped unclosed acquisition attempt) cannot refund protected capacity.
+    let q_act = https_support::registered_with(0xb30a, |_| {});
+    let a_run = Uuid::parse_str(q_act["run_id"].as_str().unwrap()).unwrap();
+    let a_asset = Uuid::parse_str(q_act["seed_names"][0]["asset_ref"].as_str().unwrap()).unwrap();
+    broker
+        .execute(
+            "SELECT execution.run_start($1,$2)",
+            &[&q_act, &"a".repeat(64)],
+        )
+        .unwrap();
+    broker
+        .execute(
+            "SELECT execution.run_phase_start($1,'decision_one')",
+            &[&a_run],
+        )
+        .unwrap();
+    broker
+        .execute(
+            "SELECT execution.run_phase_claim($1,'decision_one',$2)",
+            &[&a_run, &"a".repeat(64)],
+        )
+        .unwrap();
+    broker
+        .execute(
+            "SELECT execution.protect_next_decision_capacity($1,1)",
+            &[&a_run],
+        )
+        .unwrap();
+    broker
+        .execute(
+            "SELECT execution.record_https_loop_dns_intent($1,1,$2,'www.example.invalid')",
+            &[&a_run, &a_asset],
+        )
+        .unwrap();
+    native::admin()
+        .execute(
+            "INSERT INTO execution.autonomous_phases VALUES ($1,'decision_one','completed',floor(extract(epoch FROM clock_timestamp())*1000)::bigint) ON CONFLICT DO NOTHING",
+            &[&a_run],
+        )
+        .unwrap();
+    broker
+        .execute(
+            "SELECT execution.run_phase_start($1,'acquisition_one')",
+            &[&a_run],
+        )
+        .unwrap();
+    broker
+        .execute(
+            "SELECT execution.run_phase_claim($1,'acquisition_one',$2)",
+            &[&a_run, &"a".repeat(64)],
+        )
+        .unwrap();
+    assert!(
+        broker
+            .execute(
+                "SELECT execution.release_protected_capacity($1,1,'released')",
+                &[&a_run]
+            )
+            .is_err(),
+        "active/claimed acquisition must not release protected feedback capacity"
+    );
+    broker
+        .query_one(
+            "SELECT execution.reserve_https_loop_dns($1,1,'initial',0)",
+            &[&a_run],
+        )
+        .unwrap();
+    broker
+        .execute("SELECT execution.run_stop($1)", &[&a_run])
+        .unwrap();
+    assert!(
+        broker
+            .execute(
+                "SELECT execution.release_protected_capacity($1,1,'released')",
+                &[&a_run]
+            )
+            .is_err(),
+        "unclosed reserved attempt must not refund protected capacity even after stop"
+    );
+    broker
+        .execute(
+            "SELECT execution.release_protected_capacity($1,1,'unknown')",
+            &[&a_run],
+        )
+        .unwrap();
 }
 
 #[ignore]
@@ -254,7 +399,7 @@ fn release_returns_protected_capacity_and_budget_time_ceilings_block_cleanly() {
     assert!(ok, "{receipt}");
     assert_eq!(receipt["head_effect_count"], 1);
     assert_eq!(receipt["steps"][2]["head_outcome"], "blocked");
-    assert_eq!(receipt["steps"][2]["disposition"], "head_admission_refused");
+    assert_eq!(receipt["steps"][2]["disposition"], "fixture_head_exhausted");
 
     // Remaining run time < 314_000 ms blocks next acquisition cleanly with blocked_budget_or_time.
     let q_time = https_support::registered_with(0xb304, |_| {});

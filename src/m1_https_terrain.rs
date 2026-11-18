@@ -1,111 +1,13 @@
 //! Terrain-owned HTTPS observation, evaluation, current view and event types.
-use crate::m1_https::{
-    HTTPS_METHOD_HEAD, HTTPS_PORT, VERSION_HEAD_RESULT, valid_approved_path, valid_hostname,
-    valid_local_id,
+pub use crate::m1_https::{
+    HttpsHeadResult, HttpsOutcomeKind, HttpsSourceKind, RedirectDisposition,
 };
 use crate::m1_policy::{NamePurpose, PolicyReason};
 pub use crate::m1_terrain_input::{TerrainClaimStatus, TerrainIds, TrustTier};
 use crate::mission::{AssetRef, CampaignId, EngagementId, EventId, MissionRegistered, OperationId};
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
-use std::net::Ipv4Addr;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HttpsOutcomeKind {
-    HeadResponse,
-    ConnectionFailed,
-    TlsFailed,
-    TimedOut,
-    ExecutionRefused,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RedirectDisposition {
-    None,
-    RefusedRedirect,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HttpsSourceKind {
-    FixtureHttpsAcquisition,
-    IssuedHttpsAcquisition,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HttpsHeadResult {
-    pub version: String,
-    pub engagement_id: EngagementId,
-    pub campaign_id: CampaignId,
-    pub run_id: Uuid,
-    pub decision_id: OperationId,
-    pub attempt_id: Uuid,
-    pub result_id: Uuid,
-    pub asset_ref: AssetRef,
-    pub endpoint_ref: String,
-    pub hostname: String,
-    pub ipv4: String,
-    pub port: u16,
-    pub approved_path: String,
-    pub method: String,
-    pub parent_claim_id: Uuid,
-    pub parent_claim_revision: u32,
-    pub perceived_at: i64,
-    pub uncertainty_seconds: u32,
-    pub outcome: HttpsOutcomeKind,
-    pub status_code: Option<u16>,
-    pub redirect: RedirectDisposition,
-    pub source_kind: HttpsSourceKind,
-    pub limitations: Vec<String>,
-}
-
-impl HttpsHeadResult {
-    pub fn validate(&self) -> Res<()> {
-        let status_ok = match self.outcome {
-            HttpsOutcomeKind::HeadResponse => {
-                self.status_code.is_some_and(|c| (100..=599).contains(&c))
-            }
-            _ => self.status_code.is_none(),
-        };
-        let limitations_ok = !self.limitations.is_empty()
-            && self
-                .limitations
-                .iter()
-                .all(|s| !s.is_empty() && s.len() <= 96 && !s.contains("://") && !s.contains('\n'));
-        let valid = [
-            self.version == VERSION_HEAD_RESULT,
-            !self.engagement_id.0.is_nil(),
-            !self.campaign_id.0.is_nil(),
-            !self.run_id.is_nil(),
-            !self.decision_id.0.is_nil(),
-            !self.attempt_id.is_nil(),
-            !self.result_id.is_nil(),
-            !self.asset_ref.0.is_nil(),
-            valid_local_id(&self.endpoint_ref, "endpoint_"),
-            valid_hostname(&self.hostname),
-            self.ipv4
-                .parse::<Ipv4Addr>()
-                .is_ok_and(|ip| !ip.is_unspecified()),
-            self.port == HTTPS_PORT,
-            valid_approved_path(&self.approved_path),
-            self.method == HTTPS_METHOD_HEAD,
-            !self.parent_claim_id.is_nil(),
-            self.parent_claim_revision >= 1,
-            self.perceived_at > 0,
-            status_ok,
-            limitations_ok,
-        ];
-        valid
-            .into_iter()
-            .all(|v| v)
-            .then_some(())
-            .ok_or(Fail::Input("invalid_https_head_result"))
-    }
-}
 
 pub const CLAIM_KIND_HTTPS_OBSERVATION: &str = "https_endpoint_head_observation";
 pub const EVENT_KIND_TERRAIN_CHANGED: &str = "terrain_changed";

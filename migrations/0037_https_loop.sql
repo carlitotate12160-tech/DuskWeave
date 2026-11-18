@@ -7,10 +7,20 @@ ALTER TABLE execution.native_input_bindings
     ADD COLUMN pack_digest text,
     ADD COLUMN request_id uuid,
     ADD COLUMN private_endpoint_map jsonb,
-    ADD COLUMN map_version text;
+    ADD COLUMN map_version text,
+    ADD COLUMN semantic_template jsonb,
+    ADD COLUMN template_digest text;
 
 REVOKE SELECT ON execution.native_input_bindings FROM dw_m1_cognition;
 GRANT SELECT (e, c, d, input_hash, writer_oid) ON execution.native_input_bindings TO dw_m1_cognition;
+
+ALTER TABLE execution.autonomous_runs DROP CONSTRAINT autonomous_runs_e_c_key;
+CREATE UNIQUE INDEX autonomous_runs_legacy_ec_uidx
+    ON execution.autonomous_runs (e, c)
+    WHERE request->>'version' IS DISTINCT FROM 'm1_https_loop_v1';
+
+DROP FUNCTION IF EXISTS execution.genai_https_loop_schema(jsonb);
+DROP FUNCTION IF EXISTS execution.bind_https_loop_input(uuid, uuid, uuid, uuid, text, text, jsonb);
 
 -- 2. Extend fixture DNS attempt/result cardinality only for explicit `m1_https_loop_v1` runs.
 ALTER TABLE execution.fixture_dns_results DROP CONSTRAINT fixture_dns_results_run_id_fkey;
@@ -207,7 +217,7 @@ GRANT SELECT ON terrain.https_observations, terrain.https_outbox TO dw_m1_terrai
 
 -- 5. Decision resolution helper and capacity protection accounting.
 CREATE OR REPLACE FUNCTION execution.find_decision_run(e uuid, c uuid, d uuid)
-RETURNS execution.autonomous_runs LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
+RETURNS execution.autonomous_runs LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
     SELECT x.*
     FROM execution.autonomous_runs x
     WHERE (x.e, x.c) = ($1, $2)
@@ -226,7 +236,7 @@ CREATE OR REPLACE FUNCTION execution.https_loop_protected_held(
     c uuid,
     exclude_decision uuid DEFAULT NULL,
     exclude_converted boolean DEFAULT false
-) RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
+) RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
     SELECT jsonb_build_object(
         'calls', coalesce(sum((s.protected_capacity->>'calls')::bigint), 0),
         'request_bytes', coalesce(sum((s.protected_capacity->>'request_bytes')::bigint), 0),
@@ -255,7 +265,7 @@ CREATE OR REPLACE FUNCTION execution.https_loop_protected_held(
 $$;
 
 CREATE OR REPLACE FUNCTION execution.inference_capacity_snapshot(e uuid, c uuid)
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
     WITH prot AS (SELECT execution.https_loop_protected_held($1, $2, NULL, false) AS p)
     SELECT jsonb_build_object(
         'version', 'm1_inference_capacity_snapshot_v2',
@@ -284,7 +294,7 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog 
 $$;
 
 CREATE OR REPLACE FUNCTION execution.inference_capacity_snapshot(e uuid, c uuid, d uuid)
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
     WITH prot AS (SELECT execution.https_loop_protected_held($1, $2, $3, false) AS p)
     SELECT jsonb_build_object(
         'version', 'm1_inference_capacity_snapshot_v2',
@@ -440,70 +450,120 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE
     e uuid; c uuid;
+    actor oid := (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = session_user);
     prior execution.inference_reservations;
-    source jsonb; consent jsonb; totals jsonb; limits jsonb;
+    source jsonb; consent jsonb; limits jsonb; totals jsonb;
     cap jsonb; held jsonb; prot jsonb;
-    actor oid; next_generation bigint; now_s bigint; pro_v2 boolean; auto_ver boolean;
+    now_s bigint; next_generation bigint; claimed uuid; pro_v2 boolean; auto_ver boolean;
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER')
-       OR action NOT IN ('reserve', 'cancel_never_sent')
+       OR actor IS NULL
+       OR EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE oid = actor AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole))
+       OR current_setting('fsync') <> 'on' OR current_setting('full_page_writes') <> 'on'
+       OR current_setting('synchronous_commit') <> 'on'
+       OR action NOT IN ('reserve', 'recover', 'cancel') OR action IS NULL
        OR op IS NULL OR op = '00000000-0000-0000-0000-000000000000'
-       OR q IS NULL OR jsonb_typeof(q) <> 'object' THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_request_invalid';
-    END IF;
-    IF q->>'version' IS DISTINCT FROM 'm1_inference_reservation_request_v1'
-       OR (SELECT count(*) FROM jsonb_object_keys(q)) <> 8
+       OR jsonb_typeof(q) IS DISTINCT FROM 'object'
+       OR q->'version' IS DISTINCT FROM '"m1_inference_reservation_request_v1"'::jsonb
+       OR q->'expected_mission_revision' IS DISTINCT FROM '1'::jsonb
+       OR q->>'expected_mission_revision' IS DISTINCT FROM '1'
+       OR coalesce(q->>'exercise_mode', '') NOT IN ('blind', 'defender_informed')
        OR EXISTS (SELECT 1 FROM unnest(ARRAY['engagement_id','campaign_id','operator_ref','permission_id','goal_ref']) k
-           WHERE jsonb_typeof(q->k) IS DISTINCT FROM 'string' OR (q->>k)::uuid = '00000000-0000-0000-0000-000000000000')
-       OR jsonb_typeof(q->'expected_mission_revision') IS DISTINCT FROM 'number'
-       OR q->>'expected_mission_revision' <> '1'
-       OR q->>'exercise_mode' NOT IN ('blind', 'defender_informed') THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_request_invalid';
+           WHERE jsonb_typeof(q->k) IS DISTINCT FROM 'string'
+           OR coalesce(q->>k, '') !~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
+           OR q->>k = '00000000-0000-0000-0000-000000000000')
+       OR q - ARRAY['version','engagement_id','campaign_id','operator_ref',
+                   'expected_mission_revision','permission_id','goal_ref','exercise_mode'] <> '{}' THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_request_refused';
     END IF;
     e := (q->>'engagement_id')::uuid; c := (q->>'campaign_id')::uuid;
-    SELECT oid INTO actor FROM pg_catalog.pg_roles WHERE rolname = session_user;
-    IF actor IS NULL THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_request_invalid'; END IF;
-    PERFORM pg_advisory_xact_lock(hashtextextended(e::text || ':' || c::text, 0));
-    UPDATE execution.session_fences SET epoch = epoch + 1 WHERE engagement_id = e AND campaign_id = c;
-
-    SELECT * INTO prior FROM execution.inference_reservations x
-    WHERE x.engagement_id = e AND x.campaign_id = c AND x.operation_id = op ORDER BY x.record_revision DESC LIMIT 1;
-    IF action = 'cancel_never_sent' THEN
-        IF NOT FOUND OR prior.request <> q OR prior.writer_oid <> actor THEN
-            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_cancel_refused';
+    -- Recover is historical/read-only. Mutating actions order before their one
+    -- identity lookup; duplicate receipts require no epoch or ledger mutation.
+    IF action <> 'recover' THEN
+        PERFORM pg_advisory_xact_lock(hashtextextended(e::text || ':' || c::text, 0));
+    END IF;
+    SELECT * INTO prior FROM execution.inference_reservations
+    WHERE engagement_id = e AND campaign_id = c AND operation_id = op
+    ORDER BY record_revision DESC LIMIT 1;
+    IF FOUND THEN
+        IF prior.writer_oid <> actor OR prior.request IS DISTINCT FROM q THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_identity_conflict';
         END IF;
-        IF EXISTS (SELECT 1 FROM execution.inference_calls x WHERE (x.e, x.c, x.d) = (e, c, op) AND x.state <> 'failed_never_released') THEN
-            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_cancel_refused';
+        IF action <> 'cancel' OR prior.kind = 'cancelled_never_sent' THEN RETURN prior; END IF;
+    ELSIF action = 'recover' THEN RETURN NULL;
+    ELSIF action = 'cancel' THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_missing_reservation';
+    END IF;
+    UPDATE execution.session_fences SET epoch = epoch + 1
+    WHERE engagement_id = e AND campaign_id = c RETURNING operation_id INTO claimed;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_mission_missing';
+    END IF;
+    IF prior.operation_id IS NOT NULL THEN
+        IF prior.kind <> 'reserved_not_sent' THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_cancellation_refused';
         END IF;
-        IF prior.record_revision = 2 THEN RETURN prior; END IF;
-        prior.record_revision := 2; prior.kind := 'cancelled_never_sent'; prior.recorded_at := now();
+        prior.kind := 'cancelled_never_sent'; prior.record_revision := 2;
+        prior.recorded_at := clock_timestamp();
         INSERT INTO execution.inference_reservations SELECT prior.* RETURNING * INTO prior;
         RETURN prior;
     END IF;
-    IF FOUND THEN
-        IF prior.record_revision = 1 AND prior.request = q AND prior.writer_oid = actor THEN RETURN prior; END IF;
-        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_operation_conflict';
+    IF claimed IS NOT NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_busy';
+    END IF;
+    IF EXISTS (SELECT 1 FROM execution.session_history
+        WHERE engagement_id = e AND campaign_id = c AND operation_id = op)
+       OR EXISTS (SELECT 1 FROM execution.prepared_withdrawals
+        WHERE engagement_id = e AND campaign_id = c AND operation_id = op)
+       OR EXISTS (SELECT 1 FROM cognition.reasoning_decisions rd
+        WHERE (rd.e, rd.c, rd.d) = (e, c, op))
+       OR EXISTS (SELECT 1 FROM cognition.reasoning_outbox ro JOIN cognition.reasoning_decisions rd ON rd.event = ro.event
+        WHERE (rd.e, rd.c, rd.d) = (e, c, op)) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_identity_conflict';
     END IF;
     source := mission.current_inference_publication(e, c, op);
     IF source IS NULL OR source IS DISTINCT FROM expected_source THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_mission_unavailable';
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_authority_unavailable';
     END IF;
     consent := source->'fields'->'m1_inference_permission';
+    IF consent->>'version' IN ('m1_inference_permission_v2','m1_inference_permission_v3','m1_inference_permission_v4','m1_inference_permission_v5','m1_inference_permission_v6','m1_https_loop_v1') THEN
+        IF NOT coalesce(consent->'field_classes' ? 'admitted_repair_fields_codes', false)
+           OR NOT EXISTS (
+               SELECT 1 FROM execution.native_input_bindings i
+               WHERE (i.e, i.c, i.d, i.writer_oid) = (e, c, op, actor)
+                 AND (consent->>'version' <> 'm1_https_loop_v1' OR (
+                     i.pack_digest ~ '^[0-9a-f]{64}$'
+                     AND i.request_id IS NOT NULL
+                     AND i.private_endpoint_map IS NOT NULL
+                     AND i.map_version = 'm1_https_endpoint_map_v1'
+                     AND i.semantic_template IS NOT NULL
+                     AND i.template_digest ~ '^[0-9a-f]{64}$'
+                 ))
+           ) THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_input_or_consent_refused';
+        END IF;
+        PERFORM execution.inference_window_ms(e, c, op);
+    END IF;
     now_s := floor(extract(epoch FROM clock_timestamp()))::bigint;
     IF consent IS NULL OR jsonb_typeof(consent) <> 'object'
-       OR (consent->>'permission_id')::uuid IS DISTINCT FROM (q->>'permission_id')::uuid
-       OR (source->'fields'->>'starts_at')::bigint > now_s OR now_s >= (source->'fields'->>'ends_at')::bigint
+       OR q IS DISTINCT FROM jsonb_build_object('version','m1_inference_reservation_request_v1',
+           'engagement_id',e,'campaign_id',c,'operator_ref',source->'fields'->'operator_ref',
+           'expected_mission_revision',1,'permission_id',consent->'permission_id',
+           'goal_ref',source->'fields'->'goal_ref','exercise_mode',source->'fields'->'exercise_mode')
+       OR (source->'fields'->>'starts_at')::bigint > now_s
+       OR now_s >= (source->'fields'->>'ends_at')::bigint
        OR (consent->>'starts_at')::bigint > now_s OR now_s >= (consent->>'ends_at')::bigint
        OR NOT execution.inference_profile_matches(consent)
        OR consent->'provider_terms_approved' IS DISTINCT FROM 'true'::jsonb THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_consent_refused';
     END IF;
     IF (consent->>'provider_terms_ref')::uuid = '00000000-0000-0000-0000-000000000000'
-       OR (consent->'engagement_id', consent->'campaign_id', consent->'operator_ref', consent->'authority_ref',
-           consent->'authority_revision', consent->'goal_ref', consent->'exercise_mode', consent->'mission_revision')
-          IS DISTINCT FROM (source->'engagement_id', source->'campaign_id', source->'fields'->'operator_ref',
-           source->'fields'->'authority_ref', source->'fields'->'authority_revision', source->'fields'->'goal_ref',
-           source->'fields'->'exercise_mode', '1'::jsonb)
+       OR (consent->'engagement_id', consent->'campaign_id', consent->'operator_ref',
+           consent->'authority_ref', consent->'authority_revision', consent->'goal_ref',
+           consent->'exercise_mode', consent->'mission_revision') IS DISTINCT FROM
+          (source->'engagement_id', source->'campaign_id', source->'fields'->'operator_ref',
+           source->'fields'->'authority_ref', source->'fields'->'authority_revision',
+           source->'fields'->'goal_ref', source->'fields'->'exercise_mode', '1'::jsonb)
        OR (consent->>'starts_at')::bigint < (source->'fields'->>'starts_at')::bigint
        OR (consent->>'ends_at')::bigint > (source->'fields'->>'ends_at')::bigint THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_consent_refused';
@@ -513,24 +573,34 @@ BEGIN
     pro_v2 := coalesce(consent->>'version' IN ('m1_inference_permission_v5','m1_inference_permission_v6','m1_https_loop_v1')
        AND consent->>'profile' IN ('deepseek-genai-v4-pro-low-v2','fixture-genai-v4-pro-low-v2'), false);
     IF (SELECT count(*) FROM jsonb_object_keys(consent)) <> (CASE WHEN auto_ver THEN CASE WHEN consent->>'version' = 'm1_inference_permission_v6' THEN 22 ELSE 21 END ELSE 19 END)
-       OR jsonb_typeof(consent->'provider_terms_ref') IS DISTINCT FROM 'string' OR (consent->>'provider_terms_ref')::uuid IS NULL
+       OR jsonb_typeof(consent->'provider_terms_ref') IS DISTINCT FROM 'string'
+       OR (consent->>'provider_terms_ref')::uuid IS NULL
        OR jsonb_typeof(consent->'field_classes') IS DISTINCT FROM 'array'
        OR jsonb_array_length(consent->'field_classes') NOT BETWEEN 1 AND (CASE WHEN auto_ver THEN 9 ELSE 8 END)
-       OR (SELECT count(DISTINCT v) FROM jsonb_array_elements(consent->'field_classes') v) <> jsonb_array_length(consent->'field_classes')
+       OR (SELECT count(DISTINCT v) FROM jsonb_array_elements(consent->'field_classes') v)
+          <> jsonb_array_length(consent->'field_classes')
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(consent->'field_classes') v
+           WHERE jsonb_typeof(v) IS DISTINCT FROM 'string')
        OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(consent->'field_classes') v
-           WHERE v NOT IN ('mission_question_constraints','scoped_opaque_references','owner_qualified_summaries','admitted_operator_premises','manifest_availability','omissions_unknown','capacity','admitted_repair_fields_codes')
+           WHERE v NOT IN ('mission_question_constraints','scoped_opaque_references',
+               'owner_qualified_summaries','admitted_operator_premises','manifest_availability',
+               'omissions_unknown','capacity','admitted_repair_fields_codes')
              AND NOT (auto_ver AND v = 'admitted_campaign_decision_feedback'))
        OR (SELECT count(*) FROM jsonb_object_keys(limits)) <> (CASE WHEN auto_ver THEN 22 ELSE 16 END)
-       OR (SELECT count(*) FROM jsonb_object_keys(totals)) <> 5 THEN
+       OR (SELECT count(*) FROM jsonb_object_keys(totals)) <> 5
+       OR EXISTS (SELECT 1 FROM unnest(ARRAY['starts_at','ends_at','authority_revision','mission_revision']) k
+           WHERE jsonb_typeof(consent->k) IS DISTINCT FROM 'number'
+           OR consent->>k !~ '^-?[0-9]+$') THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_consent_refused';
     END IF;
     IF EXISTS (SELECT 1 FROM (VALUES ('request_bytes',1,16384),('response_bytes',1,65536),
-        ('decision_wall_time_ms',1,CASE WHEN pro_v2 THEN 249000 WHEN consent->>'version' IN ('m1_inference_permission_v4','m1_inference_permission_v5','m1_inference_permission_v6','m1_https_loop_v1') THEN 129000 WHEN consent->>'version'='m1_inference_permission_v3' THEN 45000 ELSE 20000 END),
+        ('decision_wall_time_ms',1,CASE WHEN pro_v2 THEN 249000 WHEN consent->>'version' IN ('m1_inference_permission_v4','m1_inference_permission_v5','m1_inference_permission_v6','m1_https_loop_v1') THEN 129000 WHEN consent->>'version' = 'm1_inference_permission_v3' THEN 45000 ELSE 20000 END),
         ('context_bytes',1,CASE WHEN auto_ver THEN 8192 ELSE 4096 END),('candidates',1,8),('configuration_bytes',1,16384),
         ('connect_time_ms',1,5000),('proposal_bytes',1,8192),('repair_bytes',1,2048),('text_field_bytes',1,1024),
-        ('repair_error_codes',1,8),('json_depth',1,CASE WHEN consent->>'version'='m1_inference_permission_v1' THEN 8 ELSE 32 END),
+        ('repair_error_codes',1,8),('json_depth',1,CASE WHEN consent->>'version' = 'm1_inference_permission_v1' THEN 8 ELSE 32 END),
         ('collection_entries',1,64),('calls_per_decision',2,2),('output_tokens_per_call',CASE WHEN pro_v2 THEN 8192 ELSE 4096 END,CASE WHEN pro_v2 THEN 8192 ELSE 4096 END),('concurrency',1,1)) AS b(name,floor,ceiling)
-        WHERE CASE WHEN jsonb_typeof(limits->b.name)='number' AND limits->>b.name ~ '^[0-9]+$' THEN (limits->>b.name)::numeric < b.floor OR (limits->>b.name)::numeric > b.ceiling ELSE true END) THEN
+        WHERE CASE WHEN jsonb_typeof(limits->b.name) = 'number' AND limits->>b.name ~ '^[0-9]+$'
+            THEN (limits->>b.name)::numeric < b.floor OR (limits->>b.name)::numeric > b.ceiling ELSE true END) THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'inference_limits_refused';
     END IF;
     IF (limits->>'connect_time_ms')::bigint > (limits->>'decision_wall_time_ms')::bigint THEN
@@ -570,15 +640,17 @@ BEGIN
     RETURN prior;
 END $$;
 
--- 7. Write-once private endpoint map binding and Broker read.
+-- 7. Write-once private endpoint map + immutable semantic template binding and Broker read.
 CREATE OR REPLACE FUNCTION execution.bind_https_loop_input(
-    e uuid, c uuid, d uuid, run_id uuid, input_hash text, p_pack_digest text, private_map jsonb
-) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+    e uuid, c uuid, d uuid, run_id uuid, input_hash text, p_pack_digest text,
+    private_map jsonb, p_template jsonb, p_template_digest text
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE actor oid; cur execution.native_input_bindings; x execution.autonomous_runs;
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER')
-       OR input_hash !~ '^[0-9a-f]{64}$' OR p_pack_digest !~ '^[0-9a-f]{64}$' OR input_hash = p_pack_digest
+       OR input_hash !~ '^[0-9a-f]{64}$' OR p_pack_digest !~ '^[0-9a-f]{64}$' OR p_template_digest !~ '^[0-9a-f]{64}$'
+       OR input_hash = p_pack_digest
        OR jsonb_typeof(private_map) IS DISTINCT FROM 'object'
        OR private_map->>'version' IS DISTINCT FROM 'm1_https_endpoint_map_v1'
        OR (private_map->>'engagement_id')::uuid IS DISTINCT FROM e
@@ -587,7 +659,16 @@ BEGIN
        OR (private_map->>'request_id')::uuid IS DISTINCT FROM run_id
        OR private_map->>'pack_digest' IS DISTINCT FROM p_pack_digest
        OR jsonb_typeof(private_map->'bindings') IS DISTINCT FROM 'array'
-       OR jsonb_array_length(private_map->'bindings') > 4 THEN
+       OR jsonb_array_length(private_map->'bindings') > 4
+       OR jsonb_typeof(p_template) IS DISTINCT FROM 'object'
+       OR (SELECT count(*) FROM jsonb_object_keys(p_template)) <> 4
+       OR p_template - ARRAY['template_version','schema_version','instructions','schema'] <> '{}'::jsonb
+       OR p_template->>'template_version' IS DISTINCT FROM 'm1-https-loop-v1'
+       OR p_template->>'schema_version' IS DISTINCT FROM 'm1_https_loop_v1'
+       OR jsonb_typeof(p_template->'instructions') IS DISTINCT FROM 'string'
+       OR length(p_template->>'instructions') = 0
+       OR jsonb_typeof(p_template->'schema') IS DISTINCT FROM 'object'
+       OR p_template_digest IS DISTINCT FROM encode(sha256(convert_to(execution.genai_canonical(p_template), 'UTF8')), 'hex') THEN
         RAISE EXCEPTION 'inference_input_conflict';
     END IF;
     SELECT oid INTO actor FROM pg_catalog.pg_roles WHERE rolname = session_user;
@@ -598,30 +679,38 @@ BEGIN
     SELECT * INTO cur FROM execution.native_input_bindings i WHERE (i.e, i.c, i.d) = (e, c, d) FOR UPDATE;
     IF NOT FOUND THEN
         INSERT INTO execution.native_input_bindings
-            (e, c, d, input_hash, writer_oid, pack_digest, request_id, private_endpoint_map, map_version)
-        VALUES (e, c, d, input_hash, actor, p_pack_digest, run_id, private_map, 'm1_https_endpoint_map_v1');
+            (e, c, d, input_hash, writer_oid, pack_digest, request_id, private_endpoint_map, map_version, semantic_template, template_digest)
+        VALUES (e, c, d, input_hash, actor, p_pack_digest, run_id, private_map, 'm1_https_endpoint_map_v1', p_template, p_template_digest);
         RETURN;
     END IF;
-    IF cur.writer_oid <> actor OR cur.input_hash <> input_hash THEN
-        RAISE EXCEPTION 'inference_input_conflict';
+    IF cur.writer_oid = actor AND cur.input_hash = input_hash
+       AND cur.pack_digest IS NULL AND cur.request_id IS NULL
+       AND cur.private_endpoint_map IS NULL AND cur.map_version IS NULL
+       AND cur.semantic_template IS NULL AND cur.template_digest IS NULL
+       AND NOT EXISTS (SELECT 1 FROM execution.inference_reservations r WHERE (r.engagement_id, r.campaign_id, r.operation_id) = (e, c, d))
+       AND NOT EXISTS (SELECT 1 FROM cognition.reasoning_decisions rd WHERE (rd.e, rd.c, rd.d) = (e, c, d)) THEN
+        UPDATE execution.native_input_bindings nb
+        SET pack_digest = p_pack_digest, request_id = run_id, private_endpoint_map = private_map,
+            map_version = 'm1_https_endpoint_map_v1', semantic_template = p_template, template_digest = p_template_digest
+        WHERE (nb.e, nb.c, nb.d) = (e, c, d);
+        RETURN;
     END IF;
-    IF cur.pack_digest IS NULL THEN
-        UPDATE execution.native_input_bindings i
-        SET pack_digest = p_pack_digest, request_id = run_id,
-            private_endpoint_map = private_map, map_version = 'm1_https_endpoint_map_v1'
-        WHERE (i.e, i.c, i.d) = (e, c, d);
-    ELSIF cur.pack_digest IS DISTINCT FROM p_pack_digest OR cur.request_id IS DISTINCT FROM run_id
-       OR cur.private_endpoint_map IS DISTINCT FROM private_map OR cur.map_version IS DISTINCT FROM 'm1_https_endpoint_map_v1' THEN
+    IF cur.writer_oid <> actor OR cur.input_hash <> input_hash
+       OR cur.pack_digest IS NULL OR cur.pack_digest IS DISTINCT FROM p_pack_digest
+       OR cur.request_id IS DISTINCT FROM run_id OR cur.private_endpoint_map IS DISTINCT FROM private_map
+       OR cur.map_version IS DISTINCT FROM 'm1_https_endpoint_map_v1'
+       OR cur.semantic_template IS DISTINCT FROM p_template OR cur.template_digest IS DISTINCT FROM p_template_digest THEN
         RAISE EXCEPTION 'inference_input_conflict';
     END IF;
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.read_https_endpoint_map(p_e uuid, p_c uuid, p_d uuid)
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
     SELECT i.private_endpoint_map
     FROM execution.native_input_bindings i
-    JOIN execution.autonomous_runs x ON (x.e, x.c) = (i.e, i.c)
+    JOIN execution.autonomous_runs x ON x.run_id = (execution.find_decision_run(p_e, p_c, p_d)).run_id
     WHERE (i.e, i.c, i.d) = (p_e, p_c, p_d)
+      AND i.request_id = x.run_id
       AND (p_d IN (x.decision_one, x.decision_two) OR EXISTS (
           SELECT 1 FROM execution.https_loop_steps s WHERE s.run_id = x.run_id AND s.decision_id = p_d
       ))
@@ -630,9 +719,9 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog 
       AND pg_has_role(session_user, 'dw_m1_broker', 'MEMBER')
 $$;
 
-REVOKE ALL ON FUNCTION execution.bind_https_loop_input(uuid, uuid, uuid, uuid, text, text, jsonb),
+REVOKE ALL ON FUNCTION execution.bind_https_loop_input(uuid, uuid, uuid, uuid, text, text, jsonb, jsonb, text),
     execution.read_https_endpoint_map(uuid, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION execution.bind_https_loop_input(uuid, uuid, uuid, uuid, text, text, jsonb),
+GRANT EXECUTE ON FUNCTION execution.bind_https_loop_input(uuid, uuid, uuid, uuid, text, text, jsonb, jsonb, text),
     execution.read_https_endpoint_map(uuid, uuid, uuid) TO dw_m1_broker;
 
 -- 8. Protected next-decision capacity lifecycle (protect -> convert once -> release/unknown).
@@ -725,7 +814,13 @@ BEGIN
     IF x.writer_oid <> actor THEN RAISE EXCEPTION 'protected_capacity_unavailable'; END IF;
     PERFORM execution.run_current(s.run_id);
     IF NOT EXISTS (SELECT 1 FROM execution.autonomous_control ac WHERE ac.run_id = s.run_id AND ac.phase = next_s.decision_phase AND ac.claimed)
-       OR NOT EXISTS (SELECT 1 FROM execution.native_input_bindings i WHERE (i.e, i.c, i.d, i.writer_oid) = (e, c, d, actor) AND i.pack_digest IS NOT NULL) THEN
+       OR NOT EXISTS (
+           SELECT 1 FROM execution.native_input_bindings i
+           WHERE (i.e, i.c, i.d, i.writer_oid) = (e, c, d, actor)
+             AND i.pack_digest ~ '^[0-9a-f]{64}$' AND i.request_id = s.run_id
+             AND i.private_endpoint_map IS NOT NULL AND i.map_version = 'm1_https_endpoint_map_v1'
+             AND i.semantic_template IS NOT NULL AND i.template_digest ~ '^[0-9a-f]{64}$'
+       ) THEN
         RAISE EXCEPTION 'protected_capacity_unavailable';
     END IF;
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
@@ -738,7 +833,9 @@ END $$;
 CREATE OR REPLACE FUNCTION execution.release_protected_capacity(r uuid, step_idx integer, disposition text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
-DECLARE x execution.autonomous_runs; s execution.https_loop_steps; actor oid; n bigint;
+DECLARE
+    x execution.autonomous_runs; s execution.https_loop_steps; next_s execution.https_loop_steps;
+    ac execution.autonomous_control; actor oid; claimed uuid; n bigint;
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR disposition NOT IN ('released', 'unknown') THEN
         RAISE EXCEPTION 'protected_capacity_unavailable';
@@ -747,14 +844,29 @@ BEGIN
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     IF NOT FOUND OR x.writer_oid <> actor THEN RAISE EXCEPTION 'protected_capacity_unavailable'; END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text || ':' || x.c::text, 0));
-    UPDATE execution.session_fences SET epoch = epoch + 1 WHERE engagement_id = x.e AND campaign_id = x.c;
+    UPDATE execution.session_fences SET epoch = epoch + 1 WHERE engagement_id = x.e AND campaign_id = x.c
+    RETURNING operation_id INTO claimed;
+    SELECT * INTO ac FROM execution.autonomous_control WHERE run_id = r FOR UPDATE;
     SELECT * INTO s FROM execution.https_loop_steps st WHERE st.run_id = r AND st.step_index = step_idx FOR UPDATE;
     IF NOT FOUND OR s.protection_state IN ('none', 'released') THEN RETURN; END IF;
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     IF disposition = 'released' THEN
-        IF s.protection_state <> 'protected'
+        SELECT * INTO next_s FROM execution.https_loop_steps st WHERE st.run_id = r AND st.step_index = step_idx + 1;
+        IF s.protection_state <> 'protected' OR claimed IS NOT NULL
+           OR s.status NOT IN ('completed', 'terminal', 'stopped')
+           OR (s.dns_attempt_id IS NOT NULL AND s.dns_result_id IS NULL)
+           OR (s.refresh_attempt_id IS NOT NULL AND s.refresh_result_id IS NULL)
+           OR (s.head_attempt_id IS NOT NULL AND s.head_result_id IS NULL AND coalesce(s.head_outcome, '') <> 'blocked')
+           OR (ac.phase = s.acquisition_phase AND ac.claimed AND ac.status = 'running')
+           OR ac.status IN ('running', 'unknown', 'unknown_supervisor_lost')
+           OR (next_s.decision_phase IS NOT NULL AND ac.phase = next_s.decision_phase AND ac.claimed)
            OR EXISTS (SELECT 1 FROM execution.inference_reservations ir WHERE (ir.engagement_id, ir.campaign_id, ir.operation_id) = (x.e, x.c, s.next_decision_id))
-           OR EXISTS (SELECT 1 FROM execution.autonomous_phases ap WHERE ap.run_id = r AND ap.phase = (SELECT decision_phase FROM execution.https_loop_steps WHERE run_id = r AND step_index = step_idx + 1)) THEN
+           OR EXISTS (SELECT 1 FROM execution.inference_calls ic WHERE (ic.e, ic.c, ic.d) = (x.e, x.c, s.next_decision_id))
+           OR EXISTS (SELECT 1 FROM execution.inference_decision_windows dw WHERE (dw.e, dw.c, dw.d) = (x.e, x.c, s.next_decision_id))
+           OR EXISTS (SELECT 1 FROM execution.native_input_bindings nb WHERE (nb.e, nb.c, nb.d) = (x.e, x.c, s.next_decision_id))
+           OR EXISTS (SELECT 1 FROM cognition.reasoning_decisions rd WHERE (rd.e, rd.c, rd.d) = (x.e, x.c, s.next_decision_id))
+           OR EXISTS (SELECT 1 FROM cognition.reasoning_outbox ro JOIN cognition.reasoning_decisions rd ON rd.event = ro.event WHERE (rd.e, rd.c, rd.d) = (x.e, x.c, s.next_decision_id))
+           OR (next_s.decision_phase IS NOT NULL AND EXISTS (SELECT 1 FROM execution.autonomous_phases ap WHERE ap.run_id = r AND ap.phase = next_s.decision_phase)) THEN
             RAISE EXCEPTION 'protected_capacity_unavailable';
         END IF;
         UPDATE execution.https_loop_steps SET protection_state = 'released', updated_at_ms = n WHERE run_id = r AND step_index = step_idx;
@@ -774,14 +886,14 @@ GRANT EXECUTE ON FUNCTION execution.protect_next_decision_capacity(uuid, integer
 
 -- 9. Run lifecycle functions extended for `m1_https_loop_v1` indexed phases.
 CREATE OR REPLACE FUNCTION execution.run_current(r uuid) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; y execution.autonomous_control; s jsonb; p jsonb; n bigint;
 BEGIN
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     SELECT * INTO y FROM execution.autonomous_control WHERE run_id = r;
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
-    IF x.writer_oid IS DISTINCT FROM (SELECT oid FROM pg_roles WHERE rolname = session_user)
+    IF x.writer_oid IS DISTINCT FROM (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = session_user)
        OR NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR y.status IS DISTINCT FROM 'running'
        OR n >= least(x.deadline_at_ms, y.lease_until_ms) THEN
         RAISE EXCEPTION 'run_not_current';
@@ -880,13 +992,28 @@ BEGIN
     r := (q->>'run_id')::uuid; e := (q#>>'{context,mission,engagement_id}')::uuid; c := (q#>>'{context,mission,campaign_id}')::uuid;
     IF '00000000-0000-0000-0000-000000000000'::uuid IN (r, e, c) THEN RAISE EXCEPTION 'run_request_refused'; END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(e::text || ':' || c::text, 0));
-    SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r OR (autonomous_runs.e, autonomous_runs.c) = (e, c);
+    SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     IF FOUND THEN
-        IF x.run_id <> r OR x.request IS DISTINCT FROM q OR x.release_sha256 <> release
+        IF x.request IS DISTINCT FROM q OR x.release_sha256 <> release
            OR x.writer_oid <> (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = session_user) THEN
             RAISE EXCEPTION 'run_identity_conflict';
         END IF;
         RETURN false;
+    END IF;
+    IF hl THEN
+        IF EXISTS (
+            SELECT 1 FROM execution.autonomous_runs ar
+            WHERE (ar.e, ar.c) = (e, c) AND ar.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1'
+        ) OR EXISTS (
+            SELECT 1 FROM execution.autonomous_runs ar
+            LEFT JOIN execution.autonomous_control ac USING (run_id)
+            WHERE (ar.e, ar.c) = (e, c)
+              AND coalesce(ac.status, 'running') IN ('running', 'unknown', 'unknown_supervisor_lost')
+        ) THEN
+            RAISE EXCEPTION 'run_identity_conflict';
+        END IF;
+    ELSIF EXISTS (SELECT 1 FROM execution.autonomous_runs ar WHERE (ar.e, ar.c) = (e, c)) THEN
+        RAISE EXCEPTION 'run_identity_conflict';
     END IF;
     pro_v2 := q->>'version' IN ('m1_autonomous_run_request_v3','m1_autonomous_run_request_v4','m1_https_loop_v1')
         AND q->>'inference_profile' IN ('deepseek-genai-v4-pro-low-v2','fixture-genai-v4-pro-low-v2');
@@ -935,7 +1062,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_phase_start(r uuid, wanted text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE previous text; x execution.autonomous_runs; expected_prev text; hl boolean;
 BEGIN
     PERFORM execution.run_current(r);
@@ -965,7 +1092,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_phase_complete(r uuid, wanted text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; d uuid; st execution.https_loop_steps;
 BEGIN
@@ -1046,7 +1173,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_unknown(r uuid, wanted text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE x execution.autonomous_runs;
 BEGIN
     IF execution.run_record(r) IS NULL THEN RAISE EXCEPTION 'run_identity_unavailable'; END IF;
@@ -1064,7 +1191,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_stop(r uuid) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE x execution.autonomous_runs;
 BEGIN
     IF execution.run_record(r) IS NULL THEN RAISE EXCEPTION 'run_identity_unavailable'; END IF;
@@ -1224,61 +1351,13 @@ BEGIN
     RETURN least(CASE WHEN p->>'version' IN ('m1_inference_permission_v3', 'm1_inference_permission_v4', 'm1_inference_permission_v5', 'm1_inference_permission_v6', 'm1_https_loop_v1') THEN CASE WHEN pro_v2 THEN 244000 WHEN p->>'version' IN ('m1_inference_permission_v4', 'm1_inference_permission_v5', 'm1_inference_permission_v6', 'm1_https_loop_v1') THEN 124000 ELSE 40000 END ELSE 20000 END, (l->>'decision_wall_time_ms')::bigint, (s->'fields'->>'ends_at')::bigint * 1000 - n, (p->>'ends_at')::bigint * 1000 - n);
 END $$;
 
-CREATE OR REPLACE FUNCTION execution.genai_https_loop_schema(p jsonb) RETURNS jsonb
-LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog AS $$
-DECLARE
-    ids jsonb; refs jsonb; manifests jsonb; properties jsonb; variants jsonb := '[]';
-    fields jsonb; view_schema jsonb; required jsonb; category text; name text;
-    refresh_schema jsonb; manifest_schema jsonb;
-BEGIN
-    SELECT coalesce(jsonb_agg(v->'id' ORDER BY n), '[]') INTO ids
-    FROM jsonb_array_elements(p->'references') WITH ORDINALITY a(v, n);
-    refs := jsonb_build_object('type', 'array', 'items', CASE WHEN jsonb_array_length(ids) = 0
-        THEN '{"type":"string"}'::jsonb ELSE jsonb_build_object('type', 'string', 'enum', ids) END,
-        'maxItems', CASE WHEN jsonb_array_length(ids) = 0 THEN 0 ELSE 64 END);
-    SELECT coalesce(jsonb_agg(v->'reference' ORDER BY n), '[]') INTO manifests
-    FROM jsonb_array_elements(p->'manifests') WITH ORDINALITY a(v, n);
-    view_schema := jsonb_build_object('type', 'object', 'additionalProperties', false, 'required', jsonb_build_array('owner', 'selectors'),
-        'properties', jsonb_build_object('owner', '{"type":"string","enum":["cyber_terrain","foothold_graph","attack_path_view","objective_state","campaign_trajectory"]}'::jsonb, 'selectors', refs));
-    FOREACH category IN ARRAY ARRAY['validate', 'observe_more', 'synthesize_candidate_implementation', 'retain', 'defer', 'stop'] LOOP
-        refresh_schema := CASE WHEN category = 'validate'
-            THEN '{"type":"string","enum":["none","dns_once_if_stale"]}'::jsonb
-            ELSE '{"type":"string","enum":["none"]}'::jsonb END;
-        manifest_schema := CASE
-            WHEN category = 'validate' AND manifests @> '["https-head-v1"]'::jsonb
-                THEN '{"anyOf":[{"type":"null"},{"type":"string","enum":["https-head-v1"]}]}'::jsonb
-            WHEN category = 'observe_more' AND manifests @> '["dns_udp"]'::jsonb
-                THEN '{"anyOf":[{"type":"null"},{"type":"string","enum":["dns_udp"]}]}'::jsonb
-            ELSE '{"type":"null"}'::jsonb
-        END;
-        fields := jsonb_build_object(
-            'category', jsonb_build_object('type', 'string', 'enum', jsonb_build_array(category)),
-            'references', refs,
-            'manifest_reference', manifest_schema,
-            'dependency_refresh', refresh_schema
-        );
-        required := '["category","dependency_refresh","manifest_reference","references"]'::jsonb;
-        IF category = 'observe_more' THEN
-            fields := fields || jsonb_build_object('view_request', jsonb_build_object('anyOf', jsonb_build_array('{"type":"null"}'::jsonb, view_schema)));
-            required := '["category","dependency_refresh","manifest_reference","references","view_request"]'::jsonb;
-        END IF;
-        variants := variants || jsonb_build_array(jsonb_build_object('type', 'object', 'additionalProperties', false, 'required', required, 'properties', fields));
-    END LOOP;
-    properties := jsonb_build_object('version', '{"type":"string","enum":["m1_https_loop_v1"]}'::jsonb,
-        'references', refs, 'next_intent', jsonb_build_object('anyOf', variants));
-    FOREACH name IN ARRAY ARRAY['hypothesis', 'considered_alternative', 'expected_observation', 'falsifying_observation', 'uncertainty', 'rationale'] LOOP
-        properties := properties || jsonb_build_object(name, '{"type":"string","minLength":1,"maxLength":1024}'::jsonb);
-    END LOOP;
-    SELECT jsonb_agg(key ORDER BY key COLLATE "C") INTO required FROM jsonb_object_keys(properties) a(key);
-    RETURN jsonb_build_object('type', 'object', 'additionalProperties', false, 'required', required, 'properties', properties);
-END $$;
-
 CREATE OR REPLACE FUNCTION execution.genai_expected_intent(p jsonb, r execution.inference_reservations, k uuid, codes jsonb) RETURNS jsonb
-LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_variable
 DECLARE
     i jsonb; recipient text; pro_v2 boolean; out_tokens integer;
     soft_ms bigint; hard_ms bigint; shared_ms bigint; decision_ms bigint; phase_ms bigint;
-    https_loop boolean;
+    https_loop boolean; nb execution.native_input_bindings;
 BEGIN
     recipient := CASE p->>'inference_profile'
         WHEN 'fixture-genai-responses-v1' THEN 'http://127.0.0.1:18083/responses'
@@ -1308,6 +1387,19 @@ BEGIN
         RAISE EXCEPTION 'inference_intent_refused';
     END IF;
     https_loop := p->>'version' = 'm1_https_loop_v1';
+    IF https_loop THEN
+        SELECT * INTO nb FROM execution.native_input_bindings idx
+        WHERE (idx.e, idx.c, idx.d) = (r.engagement_id, r.campaign_id, r.operation_id);
+        IF NOT FOUND OR nb.writer_oid IS DISTINCT FROM r.writer_oid
+           OR nb.semantic_template IS NULL OR nb.template_digest !~ '^[0-9a-f]{64}$'
+           OR nb.semantic_template->>'template_version' IS DISTINCT FROM 'm1-https-loop-v1'
+           OR nb.semantic_template->>'schema_version' IS DISTINCT FROM 'm1_https_loop_v1'
+           OR jsonb_typeof(nb.semantic_template->'instructions') IS DISTINCT FROM 'string'
+           OR jsonb_typeof(nb.semantic_template->'schema') IS DISTINCT FROM 'object'
+           OR nb.template_digest IS DISTINCT FROM encode(sha256(convert_to(execution.genai_canonical(nb.semantic_template), 'UTF8')), 'hex') THEN
+            RAISE EXCEPTION 'inference_intent_refused';
+        END IF;
+    END IF;
     pro_v2 := p->>'inference_profile' IN ('deepseek-genai-v4-pro-low-v2', 'fixture-genai-v4-pro-low-v2');
     out_tokens := CASE WHEN pro_v2 THEN 8192 ELSE 4096 END;
     soft_ms := CASE WHEN pro_v2 THEN 120000 ELSE 60000 END;
@@ -1327,12 +1419,12 @@ BEGIN
         'profile', p->'inference_profile', 'recipient', recipient,
         'model', CASE WHEN p->>'inference_profile' IN ('deepseek-genai-v4-pro-low-v1', 'deepseek-genai-v4-pro-low-v2', 'fixture-genai-v4-pro-low-v2') THEN 'deepseek-v4-pro' ELSE 'deepseek-flash' END,
         'adapter_release', 'genai-a9504f1-dw1',
-        'template_version', CASE WHEN https_loop THEN 'm1-https-loop-v1' ELSE 'm1-autonomous-inference-v3' END,
-        'schema_version', CASE WHEN https_loop THEN 'm1_https_loop_v1' ELSE 'm1_inference_proposal_v1' END,
+        'template_version', CASE WHEN https_loop THEN nb.semantic_template->>'template_version' ELSE 'm1-autonomous-inference-v3' END,
+        'schema_version', CASE WHEN https_loop THEN nb.semantic_template->>'schema_version' ELSE 'm1_inference_proposal_v1' END,
         'timing_profile', CASE WHEN pro_v2 THEN 'reasoning-bounded-pro-v2' ELSE 'reasoning-bounded-v1' END,
-        'instructions', CASE WHEN https_loop THEN 'DuskWeave m1_https_loop_v1: propose one objective-led hypothesis, alternative, expected and falsifying observation, uncertainty, rationale and next intent over this immutable pack. APT41, Lazarus and Volt Typhoon are behavioral lenses, not permission. Use exact references[].id (asset_N, endpoint_N, terrain_N, previous_decision, mission) and qualified manifests[].reference (dns_udp, https-head-v1) values only. Never invent hostnames, IPv4s, paths, availability, access or scope. validate with https-head-v1 requires one asset_N and its issued endpoint_N, and may set dependency_refresh to none or dns_once_if_stale; all other categories must set dependency_refresh to none. Return concise safe explanation only; output grants no dispatch.'
+        'instructions', CASE WHEN https_loop THEN nb.semantic_template->>'instructions'
             ELSE 'DuskWeave autonomous inference v1: propose one objective-led hypothesis, alternative, expected and falsifying observation and next intent over this immutable pack. APT41, Lazarus and Volt Typhoon are behavioral lenses, not playbooks or permission. Operator seeds are premises, observations are not facts, and historical decisions do not grant current authority. Use exact references[].id and qualified manifests[].reference values only. observe_more with a DNS manifest proposes one observation for one seed; observe_more with view_request requests only an owner view. Do not combine them. Do not invent endpoints, references, availability, access or scope. Missing, stale, conflicted and fixture sources retain their limits. Explain uncertainty and any retention/revision from predecessor feedback. Retain, defer and stop are valid choices. Synthesis/unsupported effects are explanations of a capability gap, never permission to execute. Return concise safe explanation, never private reasoning or raw client content. Output grants no dispatch. Fixture results cannot establish live target facts.' END,
-        'schema', CASE WHEN https_loop THEN execution.genai_https_loop_schema(p) ELSE execution.genai_proposal_schema(p) END,
+        'schema', CASE WHEN https_loop THEN nb.semantic_template->'schema' ELSE execution.genai_proposal_schema(p) END,
         'repair_error_codes', codes,
         'settings', jsonb_build_object('reasoning_effort', 'low', 'max_output_tokens', out_tokens, 'stream', false, 'store', false, 'tools', '[]'::jsonb),
         'limits', jsonb_build_object(
@@ -1349,7 +1441,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.genai_binding_valid(e uuid, c uuid, d uuid, k uuid, p text, i text, b text, h text) RETURNS boolean
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE r execution.inference_reservations; ar execution.autonomous_runs; request jsonb; permission jsonb; expected jsonb;
 BEGIN
@@ -1378,6 +1470,16 @@ BEGIN
        OR octet_length(p) > 8192 OR octet_length(i) > 16384 OR b <> '' THEN
         RETURN false;
     END IF;
+    IF request->>'version' = 'm1_https_loop_v1' AND NOT EXISTS (
+        SELECT 1 FROM execution.native_input_bindings nb
+        WHERE (nb.e, nb.c, nb.d) = (e, c, d)
+          AND nb.writer_oid = r.writer_oid AND nb.request_id = ar.run_id
+          AND nb.pack_digest = encode(sha256(convert_to(p, 'UTF8')), 'hex')
+          AND nb.private_endpoint_map IS NOT NULL AND nb.map_version = 'm1_https_endpoint_map_v1'
+          AND nb.semantic_template IS NOT NULL AND nb.template_digest ~ '^[0-9a-f]{64}$'
+    ) THEN
+        RETURN false;
+    END IF;
     expected := execution.genai_expected_intent(p::jsonb, r, k, i::jsonb->'repair_error_codes');
     RETURN coalesce(i = execution.genai_canonical(expected) AND h = execution.genai_binding_digest(p, i), false);
 EXCEPTION WHEN OTHERS THEN
@@ -1385,7 +1487,7 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.assert_successor_pack(p jsonb, reg jsonb, request jsonb) RETURNS void
-LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     ref jsonb; candidate jsonb; original jsonb; expected jsonb; ordinal integer;
     https_loop boolean := request->>'version' = 'm1_https_loop_v1';
@@ -1602,7 +1704,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.assert_current_pack_terrain(e uuid, c uuid, d uuid, p jsonb) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     source jsonb; ref jsonb; v jsonb; claim jsonb; q jsonb;
     https_loop boolean := p->>'version' = 'm1_https_loop_v1';
@@ -1616,11 +1718,13 @@ BEGIN
             SELECT value INTO mat FROM jsonb_array_elements(mats) WHERE value->'claim_id' = ref->'entity';
             IF mat IS NULL OR mat->>'effective_status' IS DISTINCT FROM 'observed'
                OR mat->'conflicted' IS DISTINCT FROM 'false'::jsonb OR mat->'integrity_hold' IS DISTINCT FROM 'false'::jsonb
-               OR mat->'claim_revision' IS DISTINCT FROM ref->'parent_revision' THEN
+               OR mat->'claim_revision' IS DISTINCT FROM ref->'parent_revision'
+               OR (p->>'evaluated_at')::bigint < (mat->>'perceived_at')::bigint
+               OR (mat->>'valid_until')::bigint < (mat->>'perceived_at')::bigint THEN
                 RAISE EXCEPTION 'fixture_stale_premises';
             END IF;
             cap_until := least((mat->>'valid_until')::bigint, (mat->>'perceived_at')::bigint + least((mat->>'lowest_ttl_seconds')::bigint, 60));
-            exp_fresh := CASE WHEN (p->>'evaluated_at')::bigint < cap_until THEN 'fresh' ELSE 'expired' END;
+            exp_fresh := CASE WHEN (p->>'evaluated_at')::bigint >= (mat->>'perceived_at')::bigint AND (p->>'evaluated_at')::bigint < cap_until THEN 'fresh' ELSE 'expired' END;
             IF ref->'valid_until' IS DISTINCT FROM to_jsonb(cap_until) OR ref->>'freshness' IS DISTINCT FROM exp_fresh THEN
                 RAISE EXCEPTION 'fixture_stale_premises';
             END IF;
@@ -1629,6 +1733,7 @@ BEGIN
             SELECT value INTO hclaim FROM jsonb_array_elements(hview) WHERE value->'claim_id' = ref->'entity';
             IF hclaim IS NULL OR hclaim->'claim_revision' IS DISTINCT FROM ref->'revision'
                OR hclaim->>'claim_status' IS DISTINCT FROM 'observed'
+               OR (p->>'evaluated_at')::bigint < (hclaim->>'perceived_at')::bigint
                OR hclaim->>'outcome' IS DISTINCT FROM ref->>'outcome' THEN
                 RAISE EXCEPTION 'fixture_stale_premises';
             END IF;
@@ -1658,7 +1763,8 @@ BEGIN
                 RAISE EXCEPTION 'fixture_stale_premises';
             END IF;
             IF ref->>'freshness' = 'fresh' THEN
-                IF (claim->>'valid_until')::bigint <= (v->>'evaluated_at')::bigint THEN RAISE EXCEPTION 'fixture_stale_premises'; END IF;
+                IF (v->>'evaluated_at')::bigint < (claim->>'perceived_at')::bigint
+                   OR (claim->>'valid_until')::bigint <= (v->>'evaluated_at')::bigint THEN RAISE EXCEPTION 'fixture_stale_premises'; END IF;
             ELSIF https_loop AND ref->>'freshness' = 'expired' THEN
                 IF (claim->>'valid_until')::bigint > (v->>'evaluated_at')::bigint THEN RAISE EXCEPTION 'fixture_stale_premises'; END IF;
             ELSE
@@ -1693,7 +1799,9 @@ BEGIN
         ar := execution.find_decision_run(e, c, d);
         IF ar.run_id IS NULL OR nb.request_id IS DISTINCT FROM ar.run_id
            OR nb.private_endpoint_map IS NULL OR nb.map_version IS DISTINCT FROM 'm1_https_endpoint_map_v1'
-           OR nb.pack_digest IS DISTINCT FROM encode(sha256(convert_to(p, 'UTF8')), 'hex') THEN
+           OR nb.pack_digest IS DISTINCT FROM encode(sha256(convert_to(p, 'UTF8')), 'hex')
+           OR nb.semantic_template IS NULL OR nb.template_digest !~ '^[0-9a-f]{64}$'
+           OR nb.template_digest IS DISTINCT FROM encode(sha256(convert_to(execution.genai_canonical(nb.semantic_template), 'UTF8')), 'hex') THEN
             RAISE EXCEPTION 'inference_input_conflict';
         END IF;
     END IF;
@@ -1750,7 +1858,7 @@ END $$;
 
 -- 11. Cognition identity and publication validation across indexed steps.
 CREATE OR REPLACE FUNCTION cognition.successor_reasoning_identity(x jsonb) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
     SELECT coalesce(EXISTS (
         SELECT 1 FROM execution.autonomous_runs r JOIN mission.registration_outbox m ON (m.engagement_id, m.campaign_id) = (r.e, r.c)
         JOIN execution.native_input_bindings i ON (i.e, i.c, i.d) = ((x->>'engagement')::uuid, (x->>'campaign')::uuid, (x->>'decision')::uuid)
@@ -1787,7 +1895,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION cognition.reasoning_source_matches(k uuid, x jsonb) RETURNS boolean
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE existing jsonb; s jsonb; r execution.inference_reservations; e uuid; c uuid; d uuid;
 BEGIN
@@ -1887,7 +1995,7 @@ END $$;
 
 -- 12. Indexed HTTPS-loop step queries, intent/terminal persistence, refresh & effect execution ports, and summary.
 CREATE OR REPLACE FUNCTION execution.https_loop_step_record(r uuid, idx integer) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
     SELECT CASE WHEN execution.run_record(r) IS NULL THEN NULL ELSE (
         SELECT jsonb_build_object(
             'run_id', s.run_id, 'step_index', s.step_index, 'decision_id', s.decision_id,
@@ -1911,7 +2019,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION execution.https_loop_steps_for_run(r uuid) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
     SELECT CASE WHEN execution.run_record(r) IS NULL THEN '[]'::jsonb ELSE coalesce((
         SELECT jsonb_agg(execution.https_loop_step_record(r, s.step_index) ORDER BY s.step_index)
         FROM execution.https_loop_steps s WHERE s.run_id = r
@@ -1919,7 +2027,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION execution.https_loop_step_predecessor(r uuid, idx integer) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     x execution.autonomous_runs; prev execution.https_loop_steps;
     d jsonb; dns_t terrain.outbox; https_t terrain.https_outbox; prior jsonb;
@@ -1993,7 +2101,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.record_https_loop_dns_intent(r uuid, idx integer, asset uuid, hostname text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; st execution.https_loop_steps; actor oid;
 BEGIN
@@ -2009,6 +2117,14 @@ BEGIN
     END IF;
     SELECT * INTO st FROM execution.https_loop_steps s WHERE s.run_id = r AND s.step_index = idx FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'run_phase_refused'; END IF;
+    IF EXISTS (
+        SELECT 1 FROM execution.https_loop_steps p1
+        WHERE p1.run_id = r AND p1.step_index <> idx
+          AND (p1.dns_attempt_id IS NOT NULL OR p1.refresh_attempt_id IS NOT NULL OR p1.head_attempt_id IS NOT NULL)
+          AND (p1.resolved_asset_ref IS DISTINCT FROM asset OR p1.resolved_hostname IS DISTINCT FROM hostname)
+    ) THEN
+        RAISE EXCEPTION 'run_phase_refused';
+    END IF;
     IF st.next_intent_kind IS NOT NULL THEN
         IF st.next_intent_kind = 'dns_udp' AND st.resolved_asset_ref = asset AND st.resolved_hostname = hostname THEN RETURN; END IF;
         RAISE EXCEPTION 'run_phase_refused';
@@ -2022,7 +2138,7 @@ END $$;
 
 CREATE OR REPLACE FUNCTION execution.record_https_loop_head_intent(
     r uuid, idx integer, asset uuid, hostname text, ipv4 text, endpoint_ref text, approved_path text, claim_id uuid, claim_rev integer, refresh text
-) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; st execution.https_loop_steps; actor oid; mp jsonb;
 BEGIN
@@ -2037,6 +2153,14 @@ BEGIN
     PERFORM execution.run_current(r);
     SELECT * INTO st FROM execution.https_loop_steps s WHERE s.run_id = r AND s.step_index = idx FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'run_phase_refused'; END IF;
+    IF EXISTS (
+        SELECT 1 FROM execution.https_loop_steps p1
+        WHERE p1.run_id = r AND p1.step_index <> idx
+          AND (p1.dns_attempt_id IS NOT NULL OR p1.refresh_attempt_id IS NOT NULL OR p1.head_attempt_id IS NOT NULL)
+          AND (p1.resolved_asset_ref IS DISTINCT FROM asset OR p1.resolved_hostname IS DISTINCT FROM hostname)
+    ) THEN
+        RAISE EXCEPTION 'run_phase_refused';
+    END IF;
     SELECT nb.private_endpoint_map INTO mp FROM execution.native_input_bindings nb WHERE (nb.e, nb.c, nb.d) = (x.e, x.c, st.decision_id);
     IF mp IS NULL OR NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(mp->'bindings') b
@@ -2063,7 +2187,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.record_https_loop_d4_outcome(r uuid, intent_kind text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; st execution.https_loop_steps; actor oid;
 BEGIN
@@ -2084,7 +2208,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_https_loop_terminal(r uuid, idx integer, reason text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; st execution.https_loop_steps;
 BEGIN
@@ -2107,32 +2231,70 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.https_loop_refresh_check(r uuid, idx integer) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_variable
 DECLARE
     x execution.autonomous_runs; st execution.https_loop_steps;
-    s jsonb; lim jsonb; cc terrain.current_claims; ev terrain.evaluations;
-    now_s bigint; cap_until bigint; seed_idx integer; dns_used integer; ep_used integer;
+    s jsonb; pol jsonb; lim jsonb; cc terrain.current_claims; ev terrain.evaluations;
+    now_s bigint; cap_until bigint; seed_idx integer;
+    run_dns_used integer; camp_dns_used integer; ref_used integer; camp_ref_used integer;
+    run_ep_used integer; camp_ep_used integer;
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 THEN RAISE EXCEPTION 'fixture_release_refused'; END IF;
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     IF NOT FOUND OR x.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1' THEN RAISE EXCEPTION 'fixture_release_refused'; END IF;
     s := execution.run_current(r);
-    lim := s#>'{fields,m1_permission,campaign_limits}';
+    pol := s#>'{fields,m1_permission}';
+    lim := pol->'campaign_limits';
+    now_s := floor(extract(epoch FROM clock_timestamp()))::bigint;
     SELECT * INTO st FROM execution.https_loop_steps WHERE run_id = r AND step_index = idx;
     IF NOT FOUND OR st.next_intent_kind IS DISTINCT FROM 'https-head-v1' THEN RAISE EXCEPTION 'fixture_release_refused'; END IF;
+    IF pol IS NULL OR jsonb_typeof(pol) <> 'object' OR pol->>'policy_version' IS DISTINCT FROM '1'
+       OR now_s < (s->'fields'->>'starts_at')::bigint OR now_s >= (s->'fields'->>'ends_at')::bigint
+       OR now_s < (pol->>'starts_at')::bigint OR now_s >= (pol->>'ends_at')::bigint
+       OR NOT (s#>'{fields,included_assets}' @> jsonb_build_array(to_jsonb(st.resolved_asset_ref)))
+       OR (s#>'{fields,excluded_assets}' @> jsonb_build_array(to_jsonb(st.resolved_asset_ref)))
+       OR st.resolved_path IS DISTINCT FROM (pol->>'approved_path')
+       OR NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements(pol->'contact_rules') cr
+           WHERE (cr->>'asset_ref')::uuid = st.resolved_asset_ref
+             AND (cr->'rule'->>'exact' = st.resolved_hostname
+                  OR cr->'rule'->>'label_suffix' = st.resolved_hostname
+                  OR right(st.resolved_hostname, length(cr->'rule'->>'label_suffix') + 1) = '.' || (cr->'rule'->>'label_suffix'))
+       )
+       OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements(pol->'excluded_names') ex
+           WHERE ex->>'exact' = st.resolved_hostname
+              OR ex->>'label_suffix' = st.resolved_hostname
+              OR right(st.resolved_hostname, length(ex->>'label_suffix') + 1) = '.' || (ex->>'label_suffix')
+       ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_policy_denied';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM execution.https_loop_steps p1
+        WHERE p1.run_id = r AND p1.step_index <> idx
+          AND (p1.dns_attempt_id IS NOT NULL OR p1.refresh_attempt_id IS NOT NULL OR p1.head_attempt_id IS NOT NULL)
+          AND (p1.resolved_asset_ref IS DISTINCT FROM st.resolved_asset_ref OR p1.resolved_hostname IS DISTINCT FROM st.resolved_hostname)
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_hostname_mismatch';
+    END IF;
     SELECT * INTO cc FROM terrain.current_claims WHERE engagement_id = x.e AND campaign_id = x.c AND claim_id = st.parent_claim_id;
     IF NOT FOUND THEN RETURN '{"decision":"blocked","reason":"non_ttl_invalidity"}'::jsonb; END IF;
     SELECT * INTO ev FROM terrain.evaluations WHERE engagement_id = x.e AND campaign_id = x.c AND operation_id = cc.operation_id;
-    IF cc.claim_status <> 'observed' OR cc.conflicted
+    IF NOT FOUND OR cc.claim_status <> 'observed' OR cc.conflicted OR cc.corroborated
        OR cc.claim_revision IS DISTINCT FROM st.parent_claim_revision
+       OR cc.asset_ref IS DISTINCT FROM st.resolved_asset_ref
+       OR cc.subject_name IS DISTINCT FROM st.resolved_hostname
+       OR cc.vantage_ref IS DISTINCT FROM (pol->>'vantage_ref')::uuid
+       OR cc.resolver_ipv4 IS DISTINCT FROM (pol->>'resolver_ipv4')
        OR ev.outcome <> 'qualified_dns_claim' OR coalesce(ev.lowest_ttl_seconds, 0) <= 0
+       OR now_s < cc.perceived_at
        OR EXISTS (SELECT 1 FROM terrain.integrity_conflicts ic WHERE ic.engagement_id = x.e AND ic.campaign_id = x.c AND ic.claim_id = cc.claim_id AND ic.blocks_use) THEN
         RETURN '{"decision":"blocked","reason":"non_ttl_invalidity"}'::jsonb;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(cc.answers) a WHERE a->>'ipv4' = st.resolved_ipv4) THEN
         RETURN '{"decision":"blocked","reason":"ip_missing_from_claim"}'::jsonb;
     END IF;
-    now_s := floor(extract(epoch FROM clock_timestamp()))::bigint;
     cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
     IF now_s < cap_until THEN
         RETURN '{"decision":"not_needed"}'::jsonb;
@@ -2143,12 +2305,19 @@ BEGIN
     IF st.refresh_outcome = 'completed' AND st.refresh_result_id IS NOT NULL THEN
         RETURN '{"decision":"not_needed"}'::jsonb;
     END IF;
-    IF st.refresh_attempt_id IS NOT NULL THEN
+    SELECT count(*) INTO ref_used FROM execution.fixture_dns_attempts WHERE run_id = r AND run_kind = 'm1_https_loop_v1' AND attempt_kind = 'refresh';
+    IF st.refresh_attempt_id IS NOT NULL OR ref_used >= 1 THEN
         RETURN '{"decision":"blocked","reason":"refresh_already_attempted"}'::jsonb;
     END IF;
-    SELECT count(*) INTO dns_used FROM execution.fixture_dns_attempts WHERE run_id = r AND run_kind = 'm1_https_loop_v1';
-    SELECT count(*) INTO ep_used FROM execution.https_loop_steps WHERE run_id = r AND episode_index IS NOT NULL;
-    IF dns_used >= least(3, (lim->>'dns_questions')::int) OR (st.episode_index IS NULL AND ep_used >= 3) THEN
+    SELECT count(*) INTO run_dns_used FROM execution.fixture_dns_attempts WHERE run_id = r AND run_kind = 'm1_https_loop_v1';
+    SELECT count(*) INTO camp_dns_used FROM execution.fixture_dns_attempts fa JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c);
+    SELECT count(*) INTO camp_ref_used FROM execution.fixture_dns_attempts fa JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c) AND fa.attempt_kind = 'refresh';
+    SELECT count(*) INTO run_ep_used FROM execution.https_loop_steps WHERE run_id = r AND episode_index IS NOT NULL;
+    SELECT count(*) INTO camp_ep_used FROM execution.https_loop_steps WHERE (e, c) = (x.e, x.c) AND episode_index IS NOT NULL;
+    camp_ep_used := camp_ep_used + (SELECT count(*) FROM execution.fixture_dns_attempts fa JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c) AND fa.run_kind = 'legacy');
+    IF run_dns_used >= 3 OR camp_dns_used >= (lim->>'dns_questions')::int
+       OR camp_ref_used >= (lim->>'dns_followups')::int
+       OR (st.episode_index IS NULL AND (run_ep_used >= 3 OR camp_ep_used >= (lim->>'episodes')::int)) THEN
         RETURN '{"decision":"blocked","reason":"dns_budget_exhausted"}'::jsonb;
     END IF;
     SELECT (ord - 1)::integer INTO seed_idx FROM jsonb_array_elements(x.request->'seed_names') WITH ORDINALITY a(elem, ord)
@@ -2158,38 +2327,40 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.reserve_https_loop_dns(r uuid, idx integer, kind text, seed_idx integer) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE
     x execution.autonomous_runs; st execution.https_loop_steps; actor oid;
     s jsonb; pol jsonb; lim jsonb; seed jsonb; req jsonb;
-    attempt_id uuid; result_id uuid; cur_rev integer; n_ms bigint; ep_num integer;
-    dns_used integer; ep_used integer;
+    cc terrain.current_claims; ev terrain.evaluations;
+    attempt_id uuid; result_id uuid; cur_rev integer; n_ms bigint; now_s bigint; ep_num integer; cap_until bigint;
+    init_used integer; ref_used integer; run_dns_used integer; camp_dns_used integer; camp_ref_used integer;
+    run_ep_used integer; camp_ep_used integer;
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 OR kind NOT IN ('initial', 'refresh') THEN
-        RAISE EXCEPTION 'fixture_release_refused';
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
     END IF;
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     SELECT oid INTO actor FROM pg_catalog.pg_roles WHERE rolname = session_user;
     IF NOT FOUND OR x.writer_oid <> actor OR x.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1' THEN
-        RAISE EXCEPTION 'fixture_release_refused';
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
     END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text || ':' || x.c::text, 0));
     UPDATE execution.session_fences SET epoch = epoch + 1 WHERE engagement_id = x.e AND campaign_id = x.c;
     s := execution.run_current(r);
     pol := s#>'{fields,m1_permission}';
-    lim := s#>'{fields,m1_permission,campaign_limits}';
+    lim := pol->'campaign_limits';
     SELECT * INTO st FROM execution.https_loop_steps s1 WHERE s1.run_id = r AND s1.step_index = idx FOR UPDATE;
     IF NOT FOUND OR NOT EXISTS (SELECT 1 FROM execution.autonomous_control y WHERE y.run_id = r AND y.phase = st.acquisition_phase AND y.claimed) THEN
-        RAISE EXCEPTION 'fixture_release_refused';
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
     END IF;
-    IF kind = 'initial' AND st.next_intent_kind IS DISTINCT FROM 'dns_udp' THEN RAISE EXCEPTION 'fixture_release_refused'; END IF;
+    IF kind = 'initial' AND st.next_intent_kind IS DISTINCT FROM 'dns_udp' THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused'; END IF;
     IF kind = 'refresh' AND (st.next_intent_kind IS DISTINCT FROM 'https-head-v1' OR st.dependency_refresh IS DISTINCT FROM 'dns_once_if_stale') THEN
-        RAISE EXCEPTION 'fixture_release_refused';
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
     END IF;
     seed := x.request->'seed_names'->seed_idx;
     IF seed IS NULL OR (seed->>'asset_ref')::uuid IS DISTINCT FROM st.resolved_asset_ref OR seed->>'name' IS DISTINCT FROM st.resolved_hostname THEN
-        RAISE EXCEPTION 'fixture_release_refused';
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_scope_refused';
     END IF;
     IF kind = 'initial' AND st.dns_attempt_id IS NOT NULL THEN
         RETURN st.dns_request;
@@ -2197,19 +2368,91 @@ BEGIN
     IF kind = 'refresh' AND st.refresh_attempt_id IS NOT NULL THEN
         RETURN st.refresh_request;
     END IF;
-    SELECT count(*) INTO dns_used FROM execution.fixture_dns_attempts WHERE run_id = r AND run_kind = 'm1_https_loop_v1';
-    SELECT count(*) INTO ep_used FROM execution.https_loop_steps WHERE run_id = r AND episode_index IS NOT NULL;
-    n_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
-    IF dns_used >= least(3, (lim->>'dns_questions')::int) OR ep_used >= 3 OR (x.deadline_at_ms - n_ms) < 60000 THEN
-        RAISE EXCEPTION 'fixture_release_refused';
+    IF st.protection_state IS DISTINCT FROM 'protected' OR st.next_decision_id IS NULL OR st.protected_capacity IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
     END IF;
-    ep_num := coalesce(st.episode_index, ep_used + 1);
+    n_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+    now_s := n_ms / 1000;
+    IF pol IS NULL OR jsonb_typeof(pol) <> 'object' OR pol->>'policy_version' IS DISTINCT FROM '1'
+       OR now_s < (s->'fields'->>'starts_at')::bigint OR now_s >= (s->'fields'->>'ends_at')::bigint
+       OR now_s < (pol->>'starts_at')::bigint OR now_s >= (pol->>'ends_at')::bigint
+       OR NOT (s#>'{fields,included_assets}' @> jsonb_build_array(to_jsonb(st.resolved_asset_ref)))
+       OR (s#>'{fields,excluded_assets}' @> jsonb_build_array(to_jsonb(st.resolved_asset_ref)))
+       OR NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements(pol->'contact_rules') cr
+           WHERE (cr->>'asset_ref')::uuid = st.resolved_asset_ref
+             AND (cr->'rule'->>'exact' = st.resolved_hostname
+                  OR cr->'rule'->>'label_suffix' = st.resolved_hostname
+                  OR right(st.resolved_hostname, length(cr->'rule'->>'label_suffix') + 1) = '.' || (cr->'rule'->>'label_suffix'))
+       )
+       OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements(pol->'excluded_names') ex
+           WHERE ex->>'exact' = st.resolved_hostname
+              OR ex->>'label_suffix' = st.resolved_hostname
+              OR right(st.resolved_hostname, length(ex->>'label_suffix') + 1) = '.' || (ex->>'label_suffix')
+       ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_policy_denied';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM execution.https_loop_steps p1
+        WHERE p1.run_id = r AND p1.step_index <> idx
+          AND (p1.dns_attempt_id IS NOT NULL OR p1.refresh_attempt_id IS NOT NULL OR p1.head_attempt_id IS NOT NULL)
+          AND (p1.resolved_asset_ref IS DISTINCT FROM st.resolved_asset_ref OR p1.resolved_hostname IS DISTINCT FROM st.resolved_hostname)
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_hostname_mismatch';
+    END IF;
+    SELECT count(*) INTO init_used FROM execution.fixture_dns_attempts WHERE run_id = r AND run_kind = 'm1_https_loop_v1' AND attempt_kind = 'initial';
+    SELECT count(*) INTO ref_used FROM execution.fixture_dns_attempts WHERE run_id = r AND run_kind = 'm1_https_loop_v1' AND attempt_kind = 'refresh';
+    IF kind = 'initial' AND init_used >= 1 THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_dns_exhausted';
+    END IF;
+    SELECT count(*) INTO camp_ref_used FROM execution.fixture_dns_attempts fa JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c) AND fa.attempt_kind = 'refresh';
+    IF kind = 'refresh' AND (ref_used >= 1 OR camp_ref_used >= (lim->>'dns_followups')::int) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_refresh_exhausted';
+    END IF;
+    SELECT count(*) INTO run_dns_used FROM execution.fixture_dns_attempts WHERE run_id = r AND run_kind = 'm1_https_loop_v1';
+    SELECT count(*) INTO camp_dns_used FROM execution.fixture_dns_attempts fa JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c);
+    SELECT count(*) INTO run_ep_used FROM execution.https_loop_steps WHERE run_id = r AND episode_index IS NOT NULL;
+    SELECT count(*) INTO camp_ep_used FROM execution.https_loop_steps WHERE (e, c) = (x.e, x.c) AND episode_index IS NOT NULL;
+    camp_ep_used := camp_ep_used + (SELECT count(*) FROM execution.fixture_dns_attempts fa JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c) AND fa.run_kind = 'legacy');
+    IF run_dns_used >= 3 OR camp_dns_used >= (lim->>'dns_questions')::int
+       OR (st.episode_index IS NULL AND (run_ep_used >= 3 OR camp_ep_used >= (lim->>'episodes')::int)) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_budget_exhausted';
+    END IF;
+    IF kind = 'refresh' THEN
+        SELECT * INTO cc FROM terrain.current_claims WHERE engagement_id = x.e AND campaign_id = x.c AND claim_id = st.parent_claim_id;
+        IF NOT FOUND THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible'; END IF;
+        SELECT * INTO ev FROM terrain.evaluations WHERE engagement_id = x.e AND campaign_id = x.c AND operation_id = cc.operation_id;
+        IF NOT FOUND OR cc.claim_status <> 'observed' OR cc.conflicted OR cc.corroborated
+           OR cc.claim_revision IS DISTINCT FROM st.parent_claim_revision
+           OR cc.asset_ref IS DISTINCT FROM st.resolved_asset_ref
+           OR cc.subject_name IS DISTINCT FROM st.resolved_hostname
+           OR cc.vantage_ref IS DISTINCT FROM (pol->>'vantage_ref')::uuid
+           OR cc.resolver_ipv4 IS DISTINCT FROM (pol->>'resolver_ipv4')
+           OR ev.outcome <> 'qualified_dns_claim' OR coalesce(ev.lowest_ttl_seconds, 0) <= 0
+           OR now_s < cc.perceived_at
+           OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(cc.answers) a WHERE a->>'ipv4' = st.resolved_ipv4)
+           OR EXISTS (SELECT 1 FROM terrain.integrity_conflicts ic WHERE ic.engagement_id = x.e AND ic.campaign_id = x.c AND ic.claim_id = cc.claim_id AND ic.blocks_use) THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible';
+        END IF;
+        cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
+        IF now_s < cap_until THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible';
+        END IF;
+    END IF;
     IF st.episode_deadline_ms IS NULL THEN
+        IF (x.deadline_at_ms - n_ms) < 314000 THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_time_insufficient';
+        END IF;
+        ep_num := run_ep_used + 1;
         UPDATE execution.https_loop_steps
-        SET episode_index = ep_num, episode_deadline_ms = least(n_ms + 60000, x.deadline_at_ms)
+        SET episode_index = ep_num, episode_deadline_ms = least(n_ms + 60000, x.deadline_at_ms - 254000)
         WHERE run_id = r AND step_index = idx;
-    ELSIF n_ms >= st.episode_deadline_ms THEN
-        RAISE EXCEPTION 'episode_deadline_expired';
+    ELSE
+        ep_num := st.episode_index;
+        IF n_ms >= st.episode_deadline_ms OR (x.deadline_at_ms - n_ms) < 254000 THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_time_insufficient';
+        END IF;
     END IF;
     SELECT coalesce(max(cr.claim_revision), 0) INTO cur_rev FROM terrain.claim_revisions cr
     WHERE cr.engagement_id = x.e AND cr.campaign_id = x.c AND cr.subject_name = st.resolved_hostname
@@ -2255,13 +2498,15 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.commit_https_loop_dns(r uuid, idx integer, kind text, req jsonb) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE
     x execution.autonomous_runs; st execution.https_loop_steps; actor oid;
-    att execution.fixture_dns_attempts; base jsonb; n_ms bigint; res_id uuid;
+    att execution.fixture_dns_attempts; prev_res execution.fixture_dns_results;
+    base jsonb; n_ms bigint; res_id uuid;
 BEGIN
-    IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 OR kind NOT IN ('initial', 'refresh') THEN
+    IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 OR kind NOT IN ('initial', 'refresh')
+       OR req IS NULL OR jsonb_typeof(req) <> 'object' THEN
         RAISE EXCEPTION 'fixture_result_refused';
     END IF;
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
@@ -2276,10 +2521,30 @@ BEGIN
     base := CASE WHEN kind = 'initial' THEN st.dns_request ELSE st.refresh_request END;
     IF base IS NULL THEN RAISE EXCEPTION 'fixture_result_refused'; END IF;
     res_id := (base->>'correlation_id')::uuid;
-    IF (req - 'answers') IS DISTINCT FROM (base - 'answers') OR jsonb_typeof(req->'answers') IS DISTINCT FROM 'array' THEN
+    IF (req - 'answers') IS DISTINCT FROM (base - 'answers')
+       OR (SELECT count(*) FROM jsonb_object_keys(req)) <> (SELECT count(*) FROM jsonb_object_keys(base))
+       OR jsonb_typeof(req->'answers') IS DISTINCT FROM 'array'
+       OR jsonb_array_length(req->'answers') > 4
+       OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements(req->'answers') a
+           WHERE jsonb_typeof(a) IS DISTINCT FROM 'object'
+              OR a - ARRAY['ipv4','ttl_seconds'] <> '{}'::jsonb
+              OR (SELECT count(*) FROM jsonb_object_keys(a)) <> 2
+              OR jsonb_typeof(a->'ipv4') IS DISTINCT FROM 'string'
+              OR jsonb_typeof(a->'ttl_seconds') IS DISTINCT FROM 'number'
+              OR (a->>'ttl_seconds') !~ '^(0|[1-9][0-9]*)$'
+              OR (a->>'ttl_seconds')::bigint > 86400
+              OR family((a->>'ipv4')::inet) <> 4 OR host((a->>'ipv4')::inet) IS DISTINCT FROM (a->>'ipv4')
+              OR (a->>'ipv4')::inet << '0.0.0.0/8'::inet
+       )
+       OR (SELECT count(DISTINCT a->>'ipv4') FROM jsonb_array_elements(req->'answers') a) <> jsonb_array_length(req->'answers') THEN
         RAISE EXCEPTION 'fixture_result_refused';
     END IF;
-    IF EXISTS (SELECT 1 FROM execution.fixture_dns_results WHERE attempt = att.attempt) THEN RETURN; END IF;
+    SELECT * INTO prev_res FROM execution.fixture_dns_results r1 WHERE r1.attempt = att.attempt FOR UPDATE;
+    IF FOUND THEN
+        IF prev_res.result = res_id AND prev_res.request = req THEN RETURN; END IF;
+        RAISE EXCEPTION 'fixture_result_conflict';
+    END IF;
     n_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     INSERT INTO execution.fixture_dns_results
         (result, run_id, attempt, profile, mode, release_sha256, received_at_ms, publication_obligation, request, run_kind, step_index, attempt_kind)
@@ -2292,64 +2557,129 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.reserve_https_loop_head(r uuid, idx integer) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE
     x execution.autonomous_runs; st execution.https_loop_steps; actor oid;
     s jsonb; pol jsonb; lim jsonb; cc terrain.current_claims; ev terrain.evaluations;
     n_ms bigint; now_s bigint; cap_until bigint;
-    attempt_id uuid; req jsonb; head_used integer; ep_used integer; ep_num integer;
+    attempt_id uuid; req jsonb;
+    run_head_used integer; camp_head_used integer; run_ep_used integer; camp_ep_used integer; ep_num integer;
 BEGIN
-    IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 THEN RAISE EXCEPTION 'fixture_release_refused'; END IF;
+    IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
+    END IF;
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     SELECT oid INTO actor FROM pg_catalog.pg_roles WHERE rolname = session_user;
-    IF NOT FOUND OR x.writer_oid <> actor OR x.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1' THEN RAISE EXCEPTION 'fixture_release_refused'; END IF;
+    IF NOT FOUND OR x.writer_oid <> actor OR x.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1' THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
+    END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text || ':' || x.c::text, 0));
     UPDATE execution.session_fences SET epoch = epoch + 1 WHERE engagement_id = x.e AND campaign_id = x.c;
     s := execution.run_current(r);
     pol := s#>'{fields,m1_permission}';
-    lim := s#>'{fields,m1_permission,campaign_limits}';
+    lim := pol->'campaign_limits';
     SELECT * INTO st FROM execution.https_loop_steps s1 WHERE s1.run_id = r AND s1.step_index = idx FOR UPDATE;
     IF NOT FOUND OR st.next_intent_kind IS DISTINCT FROM 'https-head-v1'
        OR NOT EXISTS (SELECT 1 FROM execution.autonomous_control y WHERE y.run_id = r AND y.phase = st.acquisition_phase AND y.claimed) THEN
-        RAISE EXCEPTION 'fixture_release_refused';
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
     END IF;
     IF st.head_attempt_id IS NOT NULL THEN
         SELECT a.request INTO req FROM execution.fixture_https_attempts a WHERE a.attempt = st.head_attempt_id;
         RETURN req;
     END IF;
-    SELECT count(*) INTO head_used FROM execution.fixture_https_attempts WHERE run_id = r;
-    SELECT count(*) INTO ep_used FROM execution.https_loop_steps WHERE run_id = r AND episode_index IS NOT NULL;
-    IF head_used >= least(2, (lim->>'head_requests')::int, (lim->>'tcp_connections')::int)
-       OR (st.episode_index IS NULL AND ep_used >= 3) THEN
-        RAISE EXCEPTION 'head_budget_exhausted';
+    IF st.protection_state IS DISTINCT FROM 'protected' OR st.next_decision_id IS NULL OR st.protected_capacity IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_release_refused';
     END IF;
     n_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     now_s := n_ms / 1000;
-    IF st.episode_deadline_ms IS NOT NULL AND n_ms >= st.episode_deadline_ms THEN RAISE EXCEPTION 'episode_deadline_expired'; END IF;
-    IF st.episode_index IS NULL AND (x.deadline_at_ms - n_ms) < 60000 THEN RAISE EXCEPTION 'run_remaining_time_insufficient'; END IF;
-    SELECT * INTO cc FROM terrain.current_claims
-    WHERE engagement_id = x.e AND campaign_id = x.c AND subject_name = st.resolved_hostname
-      AND vantage_ref = (pol->>'vantage_ref')::uuid AND resolver_ipv4 = pol->>'resolver_ipv4'
-    ORDER BY claim_revision DESC LIMIT 1;
-    IF NOT FOUND OR cc.claim_status <> 'observed' OR cc.conflicted THEN RAISE EXCEPTION 'head_premise_invalid'; END IF;
-    SELECT * INTO ev FROM terrain.evaluations WHERE engagement_id = x.e AND campaign_id = x.c AND operation_id = cc.operation_id;
-    IF NOT FOUND OR ev.outcome <> 'qualified_dns_claim' OR coalesce(ev.lowest_ttl_seconds, 0) <= 0
-       OR EXISTS (SELECT 1 FROM terrain.integrity_conflicts ic WHERE ic.engagement_id = x.e AND ic.campaign_id = x.c AND ic.claim_id = cc.claim_id AND ic.blocks_use) THEN
-        RAISE EXCEPTION 'head_premise_invalid';
+    IF pol IS NULL OR jsonb_typeof(pol) <> 'object' OR pol->>'policy_version' IS DISTINCT FROM '1'
+       OR now_s < (s->'fields'->>'starts_at')::bigint OR now_s >= (s->'fields'->>'ends_at')::bigint
+       OR now_s < (pol->>'starts_at')::bigint OR now_s >= (pol->>'ends_at')::bigint
+       OR NOT (s#>'{fields,included_assets}' @> jsonb_build_array(to_jsonb(st.resolved_asset_ref)))
+       OR (s#>'{fields,excluded_assets}' @> jsonb_build_array(to_jsonb(st.resolved_asset_ref)))
+       OR st.resolved_path IS DISTINCT FROM (pol->>'approved_path')
+       OR NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements(pol->'contact_rules') cr
+           WHERE (cr->>'asset_ref')::uuid = st.resolved_asset_ref
+             AND (cr->'rule'->>'exact' = st.resolved_hostname
+                  OR cr->'rule'->>'label_suffix' = st.resolved_hostname
+                  OR right(st.resolved_hostname, length(cr->'rule'->>'label_suffix') + 1) = '.' || (cr->'rule'->>'label_suffix'))
+       )
+       OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements(pol->'excluded_names') ex
+           WHERE ex->>'exact' = st.resolved_hostname
+              OR ex->>'label_suffix' = st.resolved_hostname
+              OR right(st.resolved_hostname, length(ex->>'label_suffix') + 1) = '.' || (ex->>'label_suffix')
+       ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_policy_denied';
     END IF;
-    IF st.refresh_result_id IS NULL THEN
-        IF cc.claim_id IS DISTINCT FROM st.parent_claim_id OR cc.claim_revision IS DISTINCT FROM st.parent_claim_revision THEN
-            RAISE EXCEPTION 'head_claim_superseded';
+    IF EXISTS (
+        SELECT 1 FROM execution.https_loop_steps p1
+        WHERE p1.run_id = r AND p1.step_index <> idx
+          AND (p1.dns_attempt_id IS NOT NULL OR p1.refresh_attempt_id IS NOT NULL OR p1.head_attempt_id IS NOT NULL)
+          AND (p1.resolved_asset_ref IS DISTINCT FROM st.resolved_asset_ref OR p1.resolved_hostname IS DISTINCT FROM st.resolved_hostname)
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_hostname_mismatch';
+    END IF;
+    SELECT count(*) INTO run_head_used FROM execution.fixture_https_attempts WHERE run_id = r;
+    SELECT count(*) INTO camp_head_used FROM execution.fixture_https_attempts ha JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c);
+    IF run_head_used >= 2 OR camp_head_used >= least((lim->>'head_requests')::int, (lim->>'tcp_connections')::int) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_head_exhausted';
+    END IF;
+    SELECT count(*) INTO run_ep_used FROM execution.https_loop_steps WHERE run_id = r AND episode_index IS NOT NULL;
+    SELECT count(*) INTO camp_ep_used FROM execution.https_loop_steps WHERE (e, c) = (x.e, x.c) AND episode_index IS NOT NULL;
+    camp_ep_used := camp_ep_used + (SELECT count(*) FROM execution.fixture_dns_attempts fa JOIN execution.autonomous_runs ar USING (run_id) WHERE (ar.e, ar.c) = (x.e, x.c) AND fa.run_kind = 'legacy');
+    IF st.episode_index IS NULL AND (run_ep_used >= 3 OR camp_ep_used >= (lim->>'episodes')::int) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_budget_exhausted';
+    END IF;
+    IF st.episode_deadline_ms IS NULL THEN
+        IF (x.deadline_at_ms - n_ms) < 314000 THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_time_insufficient';
+        END IF;
+        ep_num := run_ep_used + 1;
+    ELSE
+        ep_num := st.episode_index;
+        IF n_ms >= st.episode_deadline_ms OR (x.deadline_at_ms - n_ms) < 254000 OR (x.deadline_at_ms - st.episode_deadline_ms) < 254000 THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_time_insufficient';
         END IF;
     END IF;
-    cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
-    IF now_s >= cap_until THEN RAISE EXCEPTION 'head_dns_stale'; END IF;
-    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(cc.answers) a WHERE a->>'ipv4' = st.resolved_ipv4) THEN
-        RAISE EXCEPTION 'head_ip_missing_from_claim';
+    IF st.refresh_result_id IS NULL THEN
+        SELECT * INTO cc FROM terrain.current_claims WHERE engagement_id = x.e AND campaign_id = x.c AND claim_id = st.parent_claim_id;
+        IF NOT FOUND OR cc.claim_revision IS DISTINCT FROM st.parent_claim_revision THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible';
+        END IF;
+        SELECT * INTO ev FROM terrain.evaluations WHERE engagement_id = x.e AND campaign_id = x.c AND operation_id = cc.operation_id;
+        IF NOT FOUND THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible'; END IF;
+    ELSE
+        SELECT cc1.* INTO cc
+        FROM terrain.observations ob1
+        JOIN terrain.evaluations ev1 ON (ev1.engagement_id, ev1.campaign_id, ev1.operation_id, ev1.observation_id) = (ob1.engagement_id, ob1.campaign_id, ob1.operation_id, ob1.observation_id)
+        JOIN terrain.current_claims cc1 ON (cc1.engagement_id, cc1.campaign_id, cc1.operation_id, cc1.claim_id) = (ev1.engagement_id, ev1.campaign_id, ev1.operation_id, ev1.claim_id)
+        WHERE ob1.engagement_id = x.e AND ob1.campaign_id = x.c
+          AND ob1.operation_id = st.terrain_operation_id
+          AND ob1.correlation_id = st.refresh_result_id
+          AND ob1.source_kind = 'fixture_dns_acquisition';
+        IF NOT FOUND OR cc.claim_revision <= st.parent_claim_revision THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible';
+        END IF;
+        SELECT * INTO ev FROM terrain.evaluations WHERE engagement_id = x.e AND campaign_id = x.c AND operation_id = cc.operation_id;
+        IF NOT FOUND THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible'; END IF;
     END IF;
+    IF cc.claim_status <> 'observed' OR cc.conflicted OR cc.corroborated
+       OR cc.asset_ref IS DISTINCT FROM st.resolved_asset_ref
+       OR cc.subject_name IS DISTINCT FROM st.resolved_hostname
+       OR cc.vantage_ref IS DISTINCT FROM (pol->>'vantage_ref')::uuid
+       OR cc.resolver_ipv4 IS DISTINCT FROM (pol->>'resolver_ipv4')
+       OR ev.outcome <> 'qualified_dns_claim' OR coalesce(ev.lowest_ttl_seconds, 0) <= 0
+       OR now_s < cc.perceived_at
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(cc.answers) a WHERE a->>'ipv4' = st.resolved_ipv4)
+       OR EXISTS (SELECT 1 FROM terrain.integrity_conflicts ic WHERE ic.engagement_id = x.e AND ic.campaign_id = x.c AND ic.claim_id = cc.claim_id AND ic.blocks_use) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible';
+    END IF;
+    cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
+    IF now_s >= cap_until THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'fixture_premise_ineligible'; END IF;
     attempt_id := gen_random_uuid();
-    ep_num := coalesce(st.episode_index, ep_used + 1);
     req := jsonb_build_object(
         'version', 'm1_https_head_request_v1',
         'engagement_id', x.e, 'campaign_id', x.c, 'run_id', r, 'decision_id', st.decision_id,
@@ -2359,7 +2689,7 @@ BEGIN
         'approved_path', st.resolved_path, 'method', 'HEAD',
         'resolver_ipv4', pol->'resolver_ipv4', 'vantage_ref', pol->'vantage_ref',
         'dependency_refresh', st.dependency_refresh,
-        'deadline_at_ms', coalesce(st.episode_deadline_ms, least(n_ms + 60000, x.deadline_at_ms))
+        'deadline_at_ms', coalesce(st.episode_deadline_ms, least(n_ms + 60000, x.deadline_at_ms - 254000))
     );
     INSERT INTO execution.fixture_https_attempts
         (attempt, run_id, step_index, session_generation, decision, asset_ref, endpoint_ref, hostname, ipv4, approved_path,
@@ -2369,7 +2699,7 @@ BEGIN
         x.release_sha256, n_ms, req);
     UPDATE execution.https_loop_steps
     SET episode_index = ep_num,
-        episode_deadline_ms = coalesce(episode_deadline_ms, least(n_ms + 60000, x.deadline_at_ms)),
+        episode_deadline_ms = coalesce(episode_deadline_ms, least(n_ms + 60000, x.deadline_at_ms - 254000)),
         head_attempt_id = attempt_id, head_terrain_operation_id = coalesce(head_terrain_operation_id, gen_random_uuid()),
         status = 'acquisition_running', updated_at_ms = n_ms
     WHERE run_id = r AND step_index = idx;
@@ -2377,26 +2707,70 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.commit_https_loop_head(r uuid, idx integer, res jsonb) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
-DECLARE x execution.autonomous_runs; st execution.https_loop_steps; att execution.fixture_https_attempts; actor oid; n_ms bigint; res_id uuid;
+DECLARE
+    x execution.autonomous_runs; st execution.https_loop_steps; att execution.fixture_https_attempts;
+    prev_hr execution.fixture_https_results; actor oid; n_ms bigint; res_id uuid;
 BEGIN
-    IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 THEN RAISE EXCEPTION 'fixture_result_refused'; END IF;
+    IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3
+       OR res IS NULL OR jsonb_typeof(res) <> 'object' THEN
+        RAISE EXCEPTION 'fixture_result_refused';
+    END IF;
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     SELECT oid INTO actor FROM pg_catalog.pg_roles WHERE rolname = session_user;
-    IF NOT FOUND OR x.writer_oid <> actor OR x.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1' THEN RAISE EXCEPTION 'fixture_result_refused'; END IF;
+    IF NOT FOUND OR x.writer_oid <> actor OR x.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1' THEN
+        RAISE EXCEPTION 'fixture_result_refused';
+    END IF;
+    IF (SELECT count(*) FROM jsonb_object_keys(res)) <> 23
+       OR res - ARRAY['version','engagement_id','campaign_id','run_id','decision_id','attempt_id','result_id',
+           'asset_ref','endpoint_ref','hostname','ipv4','port','approved_path','method',
+           'parent_claim_id','parent_claim_revision','perceived_at','uncertainty_seconds',
+           'outcome','status_code','redirect','source_kind','limitations'] <> '{}'::jsonb THEN
+        RAISE EXCEPTION 'fixture_result_refused';
+    END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text || ':' || x.c::text, 0));
     SELECT * INTO st FROM execution.https_loop_steps s1 WHERE s1.run_id = r AND s1.step_index = idx FOR UPDATE;
     SELECT * INTO att FROM execution.fixture_https_attempts a WHERE a.run_id = r AND a.step_index = idx FOR UPDATE;
-    IF NOT FOUND OR (res->>'attempt_id')::uuid IS DISTINCT FROM att.attempt
+    IF NOT FOUND
+       OR res->>'version' IS DISTINCT FROM 'm1_https_head_result_v1'
+       OR (res->>'attempt_id')::uuid IS DISTINCT FROM att.attempt
        OR (res->>'engagement_id')::uuid IS DISTINCT FROM x.e OR (res->>'campaign_id')::uuid IS DISTINCT FROM x.c
        OR (res->>'run_id')::uuid IS DISTINCT FROM r OR (res->>'decision_id')::uuid IS DISTINCT FROM att.decision
+       OR (res->>'asset_ref')::uuid IS DISTINCT FROM att.asset_ref
+       OR res->>'endpoint_ref' IS DISTINCT FROM att.endpoint_ref
        OR res->>'hostname' IS DISTINCT FROM att.hostname OR res->>'ipv4' IS DISTINCT FROM att.ipv4
-       OR res->>'approved_path' IS DISTINCT FROM att.approved_path THEN
+       OR jsonb_typeof(res->'port') IS DISTINCT FROM 'number' OR res->>'port' IS DISTINCT FROM '443'
+       OR res->>'approved_path' IS DISTINCT FROM att.approved_path
+       OR res->>'method' IS DISTINCT FROM 'HEAD'
+       OR (res->>'parent_claim_id')::uuid IS DISTINCT FROM att.parent_claim_id
+       OR jsonb_typeof(res->'parent_claim_revision') IS DISTINCT FROM 'number'
+       OR (res->>'parent_claim_revision')::int IS DISTINCT FROM att.parent_claim_revision
+       OR jsonb_typeof(res->'perceived_at') IS DISTINCT FROM 'number' OR (res->>'perceived_at') !~ '^[1-9][0-9]*$'
+       OR jsonb_typeof(res->'uncertainty_seconds') IS DISTINCT FROM 'number' OR (res->>'uncertainty_seconds') !~ '^(0|[1-9][0-9]*)$'
+       OR coalesce(res->>'outcome', '') NOT IN ('head_response','connection_failed','tls_failed','timed_out','execution_refused')
+       OR (CASE WHEN res->>'outcome' = 'head_response'
+            THEN jsonb_typeof(res->'status_code') IS DISTINCT FROM 'number' OR (res->>'status_code') !~ '^[1-9][0-9]*$' OR (res->>'status_code')::int NOT BETWEEN 100 AND 599
+            ELSE res->'status_code' IS DISTINCT FROM 'null'::jsonb END)
+       OR coalesce(res->>'redirect', '') NOT IN ('none','refused_redirect')
+       OR res->>'source_kind' IS DISTINCT FROM 'fixture_https_acquisition'
+       OR jsonb_typeof(res->'limitations') IS DISTINCT FROM 'array'
+       OR jsonb_array_length(res->'limitations') NOT BETWEEN 1 AND 8
+       OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements(res->'limitations') l
+           WHERE jsonb_typeof(l) IS DISTINCT FROM 'string' OR length(l#>>'{}') NOT BETWEEN 1 AND 96
+              OR position('://' in (l#>>'{}')) > 0 OR position(chr(10) in (l#>>'{}')) > 0
+       )
+       OR jsonb_typeof(res->'result_id') IS DISTINCT FROM 'string'
+       OR (res->>'result_id')::uuid = '00000000-0000-0000-0000-000000000000'::uuid THEN
         RAISE EXCEPTION 'fixture_result_refused';
     END IF;
     res_id := (res->>'result_id')::uuid;
-    IF EXISTS (SELECT 1 FROM execution.fixture_https_results hr WHERE hr.run_id = r AND hr.step_index = idx) THEN RETURN; END IF;
+    SELECT * INTO prev_hr FROM execution.fixture_https_results hr WHERE hr.run_id = r AND hr.step_index = idx FOR UPDATE;
+    IF FOUND THEN
+        IF prev_hr.result = res_id AND prev_hr.attempt = att.attempt AND prev_hr.result_payload = res THEN RETURN; END IF;
+        RAISE EXCEPTION 'fixture_result_conflict';
+    END IF;
     n_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     INSERT INTO execution.fixture_https_results
         (result, run_id, step_index, attempt, request, result_payload, profile, mode, release_sha256, received_at_ms, publication_obligation)
@@ -2407,7 +2781,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.block_https_loop_head(r uuid, idx integer, reason text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; st execution.https_loop_steps; actor oid;
 BEGIN
@@ -2424,7 +2798,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.mark_https_loop_effect_unknown(r uuid, idx integer, effect_kind text, reason text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs; st execution.https_loop_steps; actor oid;
 BEGIN
@@ -2446,7 +2820,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.close_https_loop_effect_session(r uuid, disposition text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE x execution.autonomous_runs;
 BEGIN
@@ -2458,7 +2832,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_terminal(r uuid, reason text) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE x execution.autonomous_runs; p jsonb; expected text;
 BEGIN
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
@@ -2484,7 +2858,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_summary_without_diagnostics(r uuid) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     x execution.autonomous_runs; y execution.autonomous_control; status text; summary jsonb;
     n bigint := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
@@ -2584,39 +2958,133 @@ TO dw_m1_broker;
 
 -- 13. Terrain functions for HTTPS observations, endpoint material, HTTPS context view, and multi-step DNS issuance.
 CREATE OR REPLACE FUNCTION terrain.accept_https_observation(req jsonb, req_hash text, payload jsonb, reg_op uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE
     v_e uuid; v_c uuid; v_op uuid; existing terrain.https_outbox;
     ev_id uuid; obs_id uuid; mat_id uuid; eval_id uuid; clm_id uuid;
     reg mission.registration_outbox; clm jsonb; evl jsonb; max_rev integer;
     res_rec execution.fixture_https_results;
+    tag text; digest bytea; ids jsonb := '{}'::jsonb;
+    pol jsonb; scope_ok boolean; name_ok boolean; exp_ev_outcome text; exp_usable boolean;
+    exp_reach_eval jsonb; exp_status text; exp_reach_clm boolean;
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_terrain', 'MEMBER')
-       OR EXISTS (SELECT 1 FROM unnest(ARRAY['dw_runtime','dw_m1_broker','dw_m1_cognition','dw_m1_trajectory']) g WHERE pg_has_role(session_user, g, 'MEMBER')) THEN
+       OR EXISTS (SELECT 1 FROM unnest(ARRAY['dw_runtime','dw_m1_broker','dw_m1_cognition','dw_m1_trajectory']) g WHERE pg_has_role(session_user, g, 'MEMBER'))
+       OR EXISTS (SELECT 1 FROM pg_catalog.pg_roles p WHERE pg_has_role(session_user, p.oid, 'SET') AND (p.rolsuper OR p.rolbypassrls OR p.rolcreatedb OR p.rolcreaterole)) THEN
         RAISE EXCEPTION 'unqualified_terrain_writer' USING ERRCODE = '42501';
     END IF;
     IF current_setting('transaction_isolation') <> 'serializable' OR current_setting('synchronous_commit') <> 'on' THEN
         RAISE EXCEPTION 'terrain_transaction_refused';
     END IF;
+    IF jsonb_typeof(req) <> 'object' OR jsonb_typeof(payload) <> 'object'
+       OR req_hash IS NULL OR req_hash !~ '^[0-9a-f]{64}$'
+       OR req_hash IS DISTINCT FROM encode(sha256(convert_to(execution.genai_canonical(req), 'UTF8')), 'hex') THEN
+        RAISE EXCEPTION 'terrain_request_refused';
+    END IF;
     v_e := (payload->>'engagement_id')::uuid;
     v_c := (payload->>'campaign_id')::uuid;
     v_op := (payload->>'operation_id')::uuid;
+    IF (req->>'engagement_id')::uuid IS DISTINCT FROM v_e
+       OR (req->>'campaign_id')::uuid IS DISTINCT FROM v_c
+       OR payload->>'kind' IS DISTINCT FROM 'terrain_changed'
+       OR payload->>'publication_obligation' IS DISTINCT FROM 'trajectory.terrain_history.v1' THEN
+        RAISE EXCEPTION 'terrain_request_refused';
+    END IF;
     SELECT * INTO reg FROM mission.registration_outbox WHERE engagement_id = v_e AND campaign_id = v_c AND operation_id = reg_op;
-    IF NOT FOUND THEN RAISE EXCEPTION 'terrain_authority_unavailable'; END IF;
+    IF NOT FOUND OR (reg.contract->>'engagement_id')::uuid IS DISTINCT FROM v_e OR (reg.contract->>'campaign_id')::uuid IS DISTINCT FROM v_c THEN
+        RAISE EXCEPTION 'terrain_authority_unavailable';
+    END IF;
     SELECT * INTO res_rec FROM execution.fixture_https_results hr WHERE hr.result = (req->>'result_id')::uuid;
-    IF NOT FOUND OR res_rec.result_payload IS DISTINCT FROM req THEN RAISE EXCEPTION 'issued_result_unavailable'; END IF;
+    IF NOT FOUND OR res_rec.result_payload IS DISTINCT FROM req
+       OR (res_rec.result_payload->>'engagement_id')::uuid IS DISTINCT FROM v_e
+       OR (res_rec.result_payload->>'campaign_id')::uuid IS DISTINCT FROM v_c THEN
+        RAISE EXCEPTION 'issued_result_unavailable';
+    END IF;
     SELECT * INTO existing FROM terrain.https_outbox WHERE engagement_id = v_e AND campaign_id = v_c AND operation_id = v_op FOR UPDATE;
     IF FOUND THEN
         IF existing.request_hash = req_hash AND existing.contract = payload THEN RETURN existing.contract; END IF;
         RAISE EXCEPTION 'terrain_identity_conflict';
     END IF;
+    FOREACH tag IN ARRAY ARRAY['observation','material','evaluation','claim','event'] LOOP
+        digest := substring(sha256(convert_to('dw-terrain-id-v1','UTF8')||decode('00','hex')||uuid_send(v_e)||uuid_send(v_c)||uuid_send(v_op)||convert_to(tag,'UTF8')) FROM 1 FOR 16);
+        digest := set_byte(digest, 6, (get_byte(digest, 6) & 15) | 64);
+        digest := set_byte(digest, 8, (get_byte(digest, 8) & 63) | 128);
+        ids := ids || jsonb_build_object(tag, encode(digest, 'hex')::uuid);
+    END LOOP;
+    ev_id := (ids->>'event')::uuid;
+    obs_id := (ids->>'observation')::uuid;
+    mat_id := (ids->>'material')::uuid;
+    eval_id := (ids->>'evaluation')::uuid;
+    clm_id := (ids->>'claim')::uuid;
     clm := payload->'claim'; evl := payload->'evaluation';
-    ev_id := (payload->>'event_id')::uuid;
-    obs_id := (evl->>'observation_id')::uuid;
-    mat_id := (evl->>'material_id')::uuid;
-    eval_id := (evl->>'evaluation_id')::uuid;
-    clm_id := (evl->>'claim_id')::uuid;
+    IF jsonb_typeof(clm) <> 'object' OR jsonb_typeof(evl) <> 'object'
+       OR (payload->>'event_id')::uuid IS DISTINCT FROM ev_id
+       OR (evl->>'observation_id')::uuid IS DISTINCT FROM obs_id
+       OR (evl->>'material_id')::uuid IS DISTINCT FROM mat_id
+       OR (evl->>'evaluation_id')::uuid IS DISTINCT FROM eval_id
+       OR (evl->>'claim_id')::uuid IS DISTINCT FROM clm_id
+       OR (clm->>'claim_id')::uuid IS DISTINCT FROM clm_id
+       OR (clm->>'evaluation_id')::uuid IS DISTINCT FROM eval_id
+       OR (clm->>'observation_id')::uuid IS DISTINCT FROM obs_id
+       OR (clm->>'material_id')::uuid IS DISTINCT FROM mat_id
+       OR clm->'asset_ref' IS DISTINCT FROM req->'asset_ref'
+       OR clm->>'hostname' IS DISTINCT FROM req->>'hostname'
+       OR clm->>'ipv4' IS DISTINCT FROM req->>'ipv4'
+       OR clm->'port' IS DISTINCT FROM req->'port'
+       OR clm->>'approved_path' IS DISTINCT FROM req->>'approved_path'
+       OR clm->>'method' IS DISTINCT FROM req->>'method'
+       OR clm->'parent_claim_id' IS DISTINCT FROM req->'parent_claim_id'
+       OR clm->'parent_claim_revision' IS DISTINCT FROM req->'parent_claim_revision'
+       OR clm->>'claim_kind' IS DISTINCT FROM 'https_endpoint_head_observation'
+       OR clm->>'source_kind' IS DISTINCT FROM req->>'source_kind'
+       OR clm->>'trust_tier' IS DISTINCT FROM 'tier_1'
+       OR clm->>'outcome' IS DISTINCT FROM req->>'outcome'
+       OR clm->'status_code' IS DISTINCT FROM req->'status_code'
+       OR clm->>'redirect' IS DISTINCT FROM req->>'redirect'
+       OR clm->'perceived_at' IS DISTINCT FROM req->'perceived_at'
+       OR (clm->>'evaluated_at')::bigint < (req->>'perceived_at')::bigint
+       OR clm->'uncertainty_seconds' IS DISTINCT FROM req->'uncertainty_seconds'
+       OR clm->'temporal_frontier' IS DISTINCT FROM req->'perceived_at'
+       OR clm->'limitations' IS DISTINCT FROM req->'limitations' THEN
+        RAISE EXCEPTION 'terrain_event_refused';
+    END IF;
+    pol := reg.contract#>'{fields,m1_permission}';
+    IF pol IS NULL THEN RAISE EXCEPTION 'terrain_authority_unavailable'; END IF;
+    scope_ok := (reg.contract#>'{fields,included_assets}' @> jsonb_build_array(req->'asset_ref'))
+        AND NOT (reg.contract#>'{fields,excluded_assets}' @> jsonb_build_array(req->'asset_ref'));
+    name_ok := (req->>'perceived_at')::bigint >= (pol->>'starts_at')::bigint
+        AND (req->>'perceived_at')::bigint < (pol->>'ends_at')::bigint
+        AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(pol->'contact_rules') cr
+            WHERE (cr->>'asset_ref')::uuid = (req->>'asset_ref')::uuid
+              AND (cr->'rule'->>'exact' = req->>'hostname'
+                   OR cr->'rule'->>'label_suffix' = req->>'hostname'
+                   OR right(req->>'hostname', length(cr->'rule'->>'label_suffix') + 1) = '.' || (cr->'rule'->>'label_suffix'))
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements(pol->'excluded_names') ex
+            WHERE ex->>'exact' = req->>'hostname'
+               OR ex->>'label_suffix' = req->>'hostname'
+               OR right(req->>'hostname', length(ex->>'label_suffix') + 1) = '.' || (ex->>'label_suffix')
+        );
+    exp_reach_clm := (req->>'outcome' = 'head_response');
+    IF req->>'outcome' = 'execution_refused' THEN
+        exp_ev_outcome := 'execution_refused'; exp_usable := false; exp_reach_eval := 'null'::jsonb; exp_status := 'withheld';
+    ELSIF scope_ok AND name_ok THEN
+        exp_ev_outcome := 'qualified_https_observation'; exp_usable := true; exp_reach_eval := to_jsonb(exp_reach_clm); exp_status := 'observed';
+    ELSE
+        exp_ev_outcome := 'scope_or_policy_withheld'; exp_usable := false; exp_reach_eval := 'null'::jsonb; exp_status := 'withheld';
+    END IF;
+    IF evl->>'outcome' IS DISTINCT FROM exp_ev_outcome
+       OR evl->'usable_endpoint_premise' IS DISTINCT FROM to_jsonb(exp_usable)
+       OR evl->'endpoint_reachable' IS DISTINCT FROM exp_reach_eval
+       OR clm->>'claim_status' IS DISTINCT FROM exp_status
+       OR clm->'endpoint_reachable' IS DISTINCT FROM to_jsonb(exp_reach_clm)
+       OR clm->'whole_host_proven' IS DISTINCT FROM 'false'::jsonb
+       OR clm->'objective_completed' IS DISTINCT FROM 'false'::jsonb THEN
+        RAISE EXCEPTION 'terrain_event_refused';
+    END IF;
     SELECT coalesce(max(claim_revision), 0) INTO max_rev FROM terrain.https_observations
     WHERE engagement_id = v_e AND campaign_id = v_c AND asset_ref = (req->>'asset_ref')::uuid
       AND hostname = req->>'hostname' AND ipv4 = req->>'ipv4' AND approved_path = req->>'approved_path';
@@ -2631,7 +3099,7 @@ BEGIN
         (req->>'asset_ref')::uuid, req->>'hostname', req->>'ipv4', (req->>'port')::int, req->>'approved_path',
         (req->>'parent_claim_id')::uuid, (req->>'parent_claim_revision')::int, req->>'source_kind', req->>'outcome',
         CASE WHEN req->'status_code' = 'null'::jsonb THEN NULL ELSE (req->>'status_code')::int END,
-        req->>'redirect', (clm->>'endpoint_reachable')::boolean, false, false,
+        req->>'redirect', exp_reach_clm, false, false,
         (req->>'perceived_at')::bigint, (clm->>'evaluated_at')::bigint, req_hash, payload
     );
     INSERT INTO terrain.https_outbox (
@@ -2645,7 +3113,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION terrain.current_dns_endpoint_material(e uuid, c uuid, assets uuid[])
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') THEN
@@ -2671,14 +3139,14 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION terrain.current_https_context_view(e uuid, c uuid, assets uuid[], eval_at bigint)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') THEN
         RAISE EXCEPTION 'unqualified_terrain_reader' USING ERRCODE = '42501';
     END IF;
     RETURN coalesce((
-        SELECT jsonb_agg(jsonb_set(o.payload->'claim', '{evaluated_at}', to_jsonb(greatest(o.perceived_at, eval_at)))
+        SELECT jsonb_agg(jsonb_set(o.payload->'claim', '{evaluated_at}', to_jsonb(eval_at))
             ORDER BY o.perceived_at, o.claim_id)
         FROM terrain.https_observations o
         WHERE o.engagement_id = e AND o.campaign_id = c AND o.asset_ref = ANY(assets)
@@ -2692,7 +3160,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION terrain.issued_dns_request(q jsonb) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_variable
 DECLARE raw jsonb; e uuid; c uuid; result_id uuid;
 BEGIN
@@ -2750,7 +3218,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION terrain.admit_dns_request(p_request jsonb)
-RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     r jsonb; k text; a jsonb; label text; rule jsonb; rules jsonb;
     m mission.missions%ROWTYPE; reg mission.registration_outbox%ROWTYPE;
@@ -2760,7 +3228,7 @@ DECLARE
 BEGIN
     IF NOT pg_has_role(session_user, 'dw_m1_terrain', 'MEMBER')
        OR EXISTS (SELECT 1 FROM unnest(ARRAY['dw_runtime','dw_m1_broker','dw_m1_cognition','dw_m1_trajectory']) g WHERE pg_has_role(session_user, g, 'MEMBER'))
-       OR EXISTS (SELECT 1 FROM pg_roles p WHERE pg_has_role(session_user, p.oid, 'SET') AND (p.rolsuper OR p.rolbypassrls OR p.rolcreatedb OR p.rolcreaterole)) THEN
+       OR EXISTS (SELECT 1 FROM pg_catalog.pg_roles p WHERE pg_has_role(session_user, p.oid, 'SET') AND (p.rolsuper OR p.rolbypassrls OR p.rolcreatedb OR p.rolcreaterole)) THEN
         RAISE EXCEPTION 'unqualified_terrain_writer' USING ERRCODE = '42501';
     END IF;
     IF current_setting('transaction_isolation') <> 'serializable' OR current_setting('synchronous_commit') <> 'on' THEN
@@ -2936,7 +3404,7 @@ TO dw_m1_broker;
 
 -- 14. Trajectory terrain history support for typed HTTPS endpoint observations.
 CREATE OR REPLACE FUNCTION trajectory.record_terrain_history(p_event jsonb)
-RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     v_e uuid; v_c uuid; v_op uuid;
     v_source terrain.outbox%ROWTYPE; v_https terrain.https_outbox%ROWTYPE;

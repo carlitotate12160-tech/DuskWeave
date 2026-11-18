@@ -234,4 +234,32 @@ mod tests {
         );
         assert!(classify_next_step(&bad, 1, Some(&map)).is_err());
     }
+
+    #[test]
+    fn legacy_next_step_rejects_https_loop_endpoint_and_https_refs() {
+        for bad_ref in ["endpoint_0", "https_0"] {
+            let mut p: Proposal = serde_json::from_value(serde_json::json!({
+                "version": "m1_inference_proposal_v1",
+                "hypothesis": "h",
+                "considered_alternative": "a",
+                "references": ["asset_0"],
+                "expected_observation": "e",
+                "falsifying_observation": "f",
+                "uncertainty": "u",
+                "rationale": "r",
+                "next_intent": {
+                    "category": "observe_more",
+                    "references": ["asset_0", bad_ref],
+                    "manifest_reference": "dns_udp"
+                }
+            }))
+            .unwrap();
+            assert_eq!(
+                super::super::next_step(&p, 1),
+                Err(Fail::State("effect_seed_ineligible")),
+                "legacy selector must reject {bad_ref}"
+            );
+            p.references.push(bad_ref.into());
+        }
+    }
 }

@@ -49,7 +49,13 @@ fn prepare_and_bind(
         run_id,
         a,
     )?;
-    bind_and_convert(q, decision, run_id, &prep.endpoint_map)?;
+    bind_and_convert(
+        q,
+        decision,
+        run_id,
+        &prep.endpoint_map,
+        prep.prepared.utf8().as_bytes(),
+    )?;
     Ok(prep.prepared)
 }
 
@@ -58,6 +64,7 @@ fn bind_and_convert(
     decision: Uuid,
     run_id: Uuid,
     endpoint_map: &duskweave::m1_https::DecisionEndpointMap,
+    pack_utf8: &[u8],
 ) -> Res<()> {
     let input_hash = identity(q)?;
     let mut run_store = PgRunStore::new(broker_connection()?);
@@ -68,6 +75,7 @@ fn bind_and_convert(
         run_id,
         &input_hash,
         endpoint_map,
+        pack_utf8,
     )?;
     run_store.convert_protected_capacity(
         q.mission.engagement_id.0,

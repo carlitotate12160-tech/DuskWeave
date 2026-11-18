@@ -258,14 +258,17 @@ pub fn seed_dns_claim(slot_seed: u128, q: &Value, answers: Vec<(&str, u32)>) {
 }
 
 pub fn seed_dns_claim_age(slot_seed: u128, q: &Value, answers: Vec<(&str, u32)>, age_s: i64) {
-    use duskweave::m1_terrain_input::parse_terrain_dns_request;
+    use duskweave::m1_terrain_issued::IssuedDnsReference;
+    use duskweave::mission::{CampaignId, EngagementId};
     use duskweave::postgres_m1_terrain::PgTerrainStore;
     use duskweave::postgres_mission::PgMissionStore;
     use duskweave::postgres_terrain_history::record_terrain_history;
     use duskweave::trajectory::HistoryStatus;
 
+    let _ = slot_seed;
     let tr = native::client("DW_TERRAIN_DATABASE_URL");
     let mut ms = PgMissionStore::new(native::client("DW_TEST_DATABASE_URL"));
+    let mut broker = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
     let mut admin = native::admin();
     let m = &q["context"]["mission"];
     let e = Uuid::parse_str(m["engagement_id"].as_str().unwrap()).unwrap();
@@ -281,21 +284,51 @@ pub fn seed_dns_claim_age(slot_seed: u128, q: &Value, answers: Vec<(&str, u32)>,
     let now_s: i64 = row.get(0);
     let pol: Value = row.get(1);
     let seed = &q["seed_names"][0];
+    let host = seed["name"].as_str().unwrap();
+    let asset = Uuid::parse_str(seed["asset_ref"].as_str().unwrap()).unwrap();
+    let vantage = Uuid::parse_str(pol["vantage_ref"].as_str().unwrap()).unwrap();
+    let resolver = pol["resolver_ipv4"].as_str().unwrap();
+    let cur_rev: i32 = admin
+        .query_one(
+            "SELECT coalesce(max(claim_revision), 0)::int FROM terrain.current_claims \
+             WHERE engagement_id=$1 AND campaign_id=$2 AND subject_name=$3 \
+               AND vantage_ref=$4 AND resolver_ipv4=$5",
+            &[&e, &c, &host, &vantage, &resolver],
+        )
+        .unwrap()
+        .get(0);
+    let broker_oid: u32 = broker
+        .query_one(
+            "SELECT oid FROM pg_catalog.pg_roles WHERE rolname = session_user",
+            &[],
+        )
+        .unwrap()
+        .get(0);
+    let prior_run_id = Uuid::new_v4();
+    let dec1 = Uuid::new_v4();
+    let dec2 = Uuid::new_v4();
+    let att_id = Uuid::new_v4();
+    let res_id = Uuid::new_v4();
+    let op_id = Uuid::new_v4();
+    let rel = "a".repeat(64);
+    let mut prior_req = q.clone();
+    prior_req["run_id"] = json!(prior_run_id);
+    let perceived_ms = (now_s - age_s) * 1000;
     let dns_json = json!({
-        "version": "m1_terrain_dns_observation_v1",
+        "version": "m1_terrain_dns_issued_observation_v1",
         "engagement_id": m["engagement_id"],
         "campaign_id": m["campaign_id"],
         "operator_ref": m["operator_ref"],
         "expected_mission_revision": 1,
         "goal_ref": m["goal_ref"],
         "exercise_mode": m["exercise_mode"],
-        "correlation_id": Uuid::from_u128(slot_seed + 0x77),
-        "source_kind": "operator_reviewed_dns",
+        "correlation_id": res_id,
+        "source_kind": "fixture_dns_acquisition",
         "vantage_ref": pol["vantage_ref"],
         "resolver_ipv4": pol["resolver_ipv4"],
-        "subject_name": seed["name"],
+        "subject_name": host,
         "asset_ref": seed["asset_ref"],
-        "expected_claim_revision": 0,
+        "expected_claim_revision": cur_rev,
         "perceived_at": now_s - age_s,
         "uncertainty_seconds": 0,
         "transport": "udp",
@@ -307,10 +340,72 @@ pub fn seed_dns_claim_age(slot_seed: u128, q: &Value, answers: Vec<(&str, u32)>,
         "limitations": ["single_vantage_only"],
         "answers": answers.into_iter().map(|(ip, ttl)| json!({"ipv4": ip, "ttl_seconds": ttl})).collect::<Vec<_>>()
     });
-    let dns = parse_terrain_dns_request(&serde_json::to_vec(&dns_json).unwrap()).unwrap();
+    admin
+        .execute(
+            "INSERT INTO execution.autonomous_runs \
+             (run_id, e, c, writer_oid, request, decision_one, decision_two, attempt, result, \
+              terrain_operation, release_sha256, qualification_ref, deadline_at_ms) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+            &[
+                &prior_run_id,
+                &e,
+                &c,
+                &broker_oid,
+                &prior_req,
+                &dec1,
+                &dec2,
+                &att_id,
+                &res_id,
+                &op_id,
+                &rel,
+                &Uuid::new_v4(),
+                &((now_s + 300) * 1000),
+            ],
+        )
+        .unwrap();
+    admin
+        .execute(
+            "INSERT INTO execution.autonomous_control (run_id, lease_until_ms, status, phase, claimed) \
+             VALUES ($1,0,'completed','decision_four',false)",
+            &[&prior_run_id],
+        )
+        .unwrap();
+    admin
+        .execute(
+            "INSERT INTO execution.https_loop_steps \
+             (run_id, e, c, step_index, decision_id, decision_phase, acquisition_phase, status, \
+              protection_state, next_intent_kind, resolved_asset_ref, resolved_hostname, episode_index, \
+              dns_attempt_id, dns_result_id, terrain_operation_id, updated_at_ms) \
+             VALUES ($1,$2,$3,1,$4,'decision_one','acquisition_one','completed','none','dns_udp',$5,$6,1,$7,$8,$9,$10)",
+            &[
+                &prior_run_id, &e, &c, &dec1, &asset, &host, &att_id, &res_id, &op_id,
+                &(now_s * 1000),
+            ],
+        )
+        .unwrap();
+    admin
+        .execute(
+            "INSERT INTO execution.fixture_dns_attempts \
+             (attempt, run_id, decision, seed_index, profile, mode, release_sha256, session_generation, \
+              reserved_at_ms, episode_count, dns_questions, run_kind, step_index, attempt_kind) \
+             VALUES ($1,$2,$3,0,'dns-routing-fixture-v1','controlled_fixture',$4,1,$5,1,1,'m1_https_loop_v1',1,'initial')",
+            &[&att_id, &prior_run_id, &dec1, &rel, &perceived_ms],
+        )
+        .unwrap();
+    admin
+        .execute(
+            "INSERT INTO execution.fixture_dns_results \
+             (result, run_id, attempt, profile, mode, release_sha256, received_at_ms, publication_obligation, \
+              request, run_kind, step_index, attempt_kind) \
+             VALUES ($1,$2,$3,'dns-routing-fixture-v1','controlled_fixture',$4,$5,'terrain.issued_dns.v1',$6,'m1_https_loop_v1',1,'initial')",
+            &[&res_id, &prior_run_id, &att_id, &rel, &perceived_ms, &dns_json],
+        )
+        .unwrap();
+    let reference =
+        IssuedDnsReference::controlled_fixture(EngagementId(e), CampaignId(c), res_id, RUN_PROFILE)
+            .unwrap();
     let mut store = PgTerrainStore::new(tr);
-    let op = duskweave::mission::OperationId(Uuid::new_v4());
-    let (event, _, _, _) = store.record_dns(&mut ms, &dns, op).unwrap().unwrap();
+    let (event, _, _, _) = store.record_issued(&mut ms, &reference).unwrap().unwrap();
     let mut tj = native::client("DW_TRAJECTORY_DATABASE_URL");
     assert_eq!(
         record_terrain_history(&mut tj, &event).unwrap(),

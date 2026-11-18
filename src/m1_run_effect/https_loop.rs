@@ -62,13 +62,31 @@ fn acquire_initial_dns(
 ) -> Res<()> {
     let seed_idx = seed_index_for_step(run, step)?;
     let seed_name = &run.request.seed_names[seed_idx].name;
-    let issued = broker.reserve_https_dns(run.request.run_id, step_idx, "initial", seed_idx)?;
+    let issued =
+        reserve_dns_or_mark_unknown(broker, run.request.run_id, step_idx, "initial", seed_idx)?;
     let acquired = duskweave::m1_fixture_dns::acquire_with_answers(
         issued,
         fixture_dns_answers(seed_name, "initial"),
     )?;
     broker.commit_https_dns(run.request.run_id, step_idx, "initial", &acquired)?;
     deliver_initial_dns_and_close(broker, run, step_idx)
+}
+
+fn reserve_dns_or_mark_unknown(
+    broker: &mut PgRunStore,
+    run_id: Uuid,
+    step_idx: usize,
+    kind: &str,
+    seed_idx: usize,
+) -> Res<TerrainDnsRequest> {
+    match broker.reserve_https_dns(run_id, step_idx, kind, seed_idx) {
+        Ok(issued) => Ok(issued),
+        Err(Fail::State(code)) => Err(Fail::State(code)),
+        Err(other) => {
+            let _ = broker.mark_https_effect_unknown(run_id, step_idx, kind, "dns_reserve_unknown");
+            Err(other)
+        }
+    }
 }
 
 fn deliver_initial_dns_and_close(
@@ -85,15 +103,28 @@ fn deliver_initial_dns_and_close(
 }
 
 fn prepare_head_refresh(broker: &mut PgRunStore, run: &RunRecord, step_idx: usize) -> Res<bool> {
-    match broker.https_refresh_decision(run.request.run_id, step_idx)? {
-        RefreshDecision::Blocked(reason) => {
+    match broker.https_refresh_decision(run.request.run_id, step_idx) {
+        Ok(RefreshDecision::Blocked(reason)) => {
             broker.block_https_head(run.request.run_id, step_idx, &reason)?;
             Ok(false)
         }
-        RefreshDecision::NeedRefresh { seed_index } => {
+        Ok(RefreshDecision::NeedRefresh { seed_index }) => {
             run_refresh(broker, run, step_idx, seed_index)
         }
-        RefreshDecision::NotNeeded => Ok(true),
+        Ok(RefreshDecision::NotNeeded) => Ok(true),
+        Err(Fail::State(reason)) => {
+            broker.block_https_head(run.request.run_id, step_idx, reason)?;
+            Ok(false)
+        }
+        Err(other) => {
+            let _ = broker.mark_https_effect_unknown(
+                run.request.run_id,
+                step_idx,
+                "refresh",
+                "refresh_check_unknown",
+            );
+            Err(other)
+        }
     }
 }
 
@@ -106,8 +137,20 @@ fn acquire_head_chain(
     if !prepare_head_refresh(broker, run, step_idx)? {
         return Ok(());
     }
-    let Ok(admitted) = broker.reserve_https_head(run.request.run_id, step_idx) else {
-        return broker.block_https_head(run.request.run_id, step_idx, "head_admission_refused");
+    let admitted = match broker.reserve_https_head(run.request.run_id, step_idx) {
+        Ok(admitted) => admitted,
+        Err(Fail::State(reason)) => {
+            return broker.block_https_head(run.request.run_id, step_idx, reason);
+        }
+        Err(other) => {
+            let _ = broker.mark_https_effect_unknown(
+                run.request.run_id,
+                step_idx,
+                "head",
+                "head_reserve_unknown",
+            );
+            return Err(other);
+        }
     };
     let head_result = fixture_head_result(&admitted);
     broker.commit_https_head(run.request.run_id, step_idx, &head_result)?;
@@ -122,14 +165,19 @@ fn run_refresh(
     seed_index: usize,
 ) -> Res<bool> {
     let seed_name = &run.request.seed_names[seed_index].name;
-    let Ok(issued) = broker.reserve_https_dns(run.request.run_id, step_idx, "refresh", seed_index)
-    else {
-        broker.block_https_head(
-            run.request.run_id,
-            step_idx,
-            "refresh_budget_or_authority_refused",
-        )?;
-        return Ok(false);
+    let issued = match reserve_dns_or_mark_unknown(
+        broker,
+        run.request.run_id,
+        step_idx,
+        "refresh",
+        seed_index,
+    ) {
+        Ok(issued) => issued,
+        Err(Fail::State(reason)) => {
+            broker.block_https_head(run.request.run_id, step_idx, reason)?;
+            return Ok(false);
+        }
+        Err(other) => return Err(other),
     };
     if seed_name == "refreshfail.example.invalid" {
         broker.mark_https_effect_unknown(
@@ -231,7 +279,7 @@ fn publish_dns_history(event: &duskweave::m1_terrain::TerrainAcceptedEvent) -> R
 fn deliver_https_step(broker: &mut PgRunStore, run: &RunRecord, step_idx: usize) -> Res<()> {
     let step = broker.https_step(run.request.run_id, step_idx)?;
     let Some(result) = broker.read_committed_https_result(run.request.run_id, step_idx)? else {
-        return Ok(());
+        return Err(Fail::Unresolved("run_terrain_history_pending"));
     };
     let op = OperationId(
         step.head_terrain_operation_id

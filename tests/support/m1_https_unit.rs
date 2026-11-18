@@ -86,12 +86,43 @@ fn resolve_head_requires_single_matching_asset_and_endpoint() {
 fn ttl_cap_limits_freshness_to_sixty_seconds() {
     let ep = sample_binding(0, "198.51.100.10", 10);
     assert_eq!(ep.effective_valid_until(), Some(1_700_000_060));
+    assert!(!ep.is_fresh_at(1_699_999_999));
+    assert!(ep.is_fresh_at(1_700_000_000));
     assert!(ep.is_fresh_at(1_700_000_059));
     assert!(!ep.is_fresh_at(1_700_000_060));
     assert_eq!(
         ttl_capped_valid_until(1000, Some(0), Some(2000)),
         Some(1000)
     );
+}
+
+#[test]
+fn semantic_template_varies_only_with_immutable_context_pack() {
+    let pack = serde_json::json!({
+        "version": VERSION_HTTPS_LOOP,
+        "run_profile": VERSION_HTTPS_LOOP,
+        "execution_mode": "controlled_fixture",
+        "inference_profile": "fixture-genai-v4-pro-low-v2",
+        "mission_revision": 1,
+        "engagement_id": id(1),
+        "campaign_id": id(2),
+        "decision_id": id(3),
+        "permission_id": id(4),
+        "question": "Select next action.",
+        "references": [{"id": "asset_0", "owner": "mission"}, {"id": "endpoint_0", "owner": "cyber_terrain"}],
+        "manifests": [
+            {"reference": "dns_udp", "availability": "qualified"},
+            {"reference": "https-head-v1", "availability": "qualified"}
+        ]
+    });
+    let bytes = serde_json::to_vec(&pack).unwrap();
+    let (t1, v1, d1) = crate::m1_reasoning::inference_intent::semantic_template(&bytes).unwrap();
+    let (t2, v2, d2) = crate::m1_reasoning::inference_intent::semantic_template(&bytes).unwrap();
+    assert_eq!(t1, t2);
+    assert_eq!(v1, v2);
+    assert_eq!(d1, d2);
+    assert_eq!(t1.template_version, "m1-https-loop-v1");
+    assert_eq!(t1.schema_version, VERSION_HTTPS_LOOP);
 }
 
 #[test]

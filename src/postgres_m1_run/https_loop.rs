@@ -117,6 +117,10 @@ impl PgRunStore {
         Ok(if raw.is_null() { None } else { Some(raw) })
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "exact transactional input+template binding signature"
+    )]
     pub fn bind_https_input(
         &mut self,
         e: Uuid,
@@ -125,12 +129,19 @@ impl PgRunStore {
         run_id: Uuid,
         input_hash: &str,
         map: &DecisionEndpointMap,
+        pack_utf8: &[u8],
     ) -> Res<()> {
         map.validate()?;
+        if map.pack_digest != crate::m1_https::sha256_hex(pack_utf8) {
+            return Err(Fail::Input("inference_input_conflict"));
+        }
+        let (_, template_json, template_digest) =
+            crate::m1_reasoning::inference_intent::semantic_template(pack_utf8)
+                .map_err(|_| Fail::State("inference_input_conflict"))?;
         let map_json = serde_json::to_value(map).map_err(|_| Fail::Store("run_decode"))?;
         self.client
             .execute(
-                "SELECT execution.bind_https_loop_input($1,$2,$3,$4,$5,$6,$7)",
+                "SELECT execution.bind_https_loop_input($1,$2,$3,$4,$5,$6,$7,$8,$9)",
                 &[
                     &e,
                     &c,
@@ -139,6 +150,8 @@ impl PgRunStore {
                     &input_hash,
                     &map.pack_digest,
                     &map_json,
+                    &template_json,
+                    &template_digest,
                 ],
             )
             .map_err(|_| Fail::State("inference_input_conflict"))?;

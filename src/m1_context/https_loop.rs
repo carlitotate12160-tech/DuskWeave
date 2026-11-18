@@ -1,4 +1,5 @@
 //! Successor HTTPS-loop ContextPack composition and opaque `endpoint_N` projection.
+mod packing;
 use super::terrain_projection::{
     append_https_dns_references, attach_candidate_refs, endpoint_ref_json, https_ref_json,
 };
@@ -79,10 +80,10 @@ pub fn prepare(
     check_autonomous_basis(&ctx.basis, a)?;
     let disclosure = check_basis(&ctx.basis, q)?;
     let terrain = resolve_terrain(&ctx.basis, &disclosure, q)?;
-    fit_https_pack(&ctx, &disclosure, q, op, &terrain, a)
+    packing::fit_https_pack(&ctx, &disclosure, q, op, &terrain, a)
 }
 
-fn build_endpoint_map(
+pub(super) fn build_endpoint_map(
     ctx: &HttpsContextBasis,
     op: OperationId,
     assets: Vec<IssuedAssetBinding>,
@@ -104,131 +105,35 @@ fn build_endpoint_map(
     Ok(map)
 }
 
-fn fit_https_pack(
-    ctx: &HttpsContextBasis,
-    d: &ContextDisclosure,
-    q: &ContextRequest,
-    op: OperationId,
+pub(super) fn endpoint_parent_dependencies(
     terrain: &TerrainContextState,
-    a: &AutonomousContext,
-) -> Res<PreparedHttpsLoop> {
-    let mut cands = q.candidates[..q.candidates.len().min(d.candidates)].to_vec();
-    let total_cands = cands.len();
-    loop {
-        if let Ok(built) =
-            try_https_pack(ctx, d, q, op, terrain, a, &cands, total_cands - cands.len())
-        {
-            return Ok(built);
-        }
-        drop_optional_candidate(&mut cands, ctx, terrain)
-            .ok_or(Fail::State("context_bytes_insufficient"))?;
-    }
-}
-
-fn drop_optional_candidate(
-    cands: &mut Vec<Candidate>,
-    ctx: &HttpsContextBasis,
-    terrain: &TerrainContextState,
-) -> Option<()> {
-    let idx = cands
-        .iter()
-        .enumerate()
-        .skip(1)
-        .rev()
-        .find(|(_, c)| {
-            !ctx.dns_material.iter().any(|m| m.asset_ref == c.asset_ref)
-                && !ctx.https_claims.iter().any(|h| h.asset_ref == c.asset_ref)
-                && loop_dns_claims(terrain, std::slice::from_ref(c)).is_empty()
-        })?
-        .0;
-    cands.remove(idx);
-    Some(())
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "local assembly helper keeps fit_https_pack shallow"
-)]
-fn try_https_pack(
-    ctx: &HttpsContextBasis,
-    d: &ContextDisclosure,
-    q: &ContextRequest,
-    op: OperationId,
-    terrain: &TerrainContextState,
-    a: &AutonomousContext,
-    cands: &[Candidate],
-    omitted_cands: usize,
-) -> Res<PreparedHttpsLoop> {
-    let dns_claims = loop_dns_claims(terrain, cands);
-    let (endpoints, omitted_eps, total_eps) = select_endpoints(ctx, cands)?;
-    let https_shown = filter_https_claims(&ctx.https_claims, cands);
-    let (utf8, deps) = build_https_utf8(
-        ctx,
-        d,
-        q,
-        op,
-        terrain,
-        a,
-        cands,
-        &dns_claims,
-        &endpoints,
-        &https_shown,
-        omitted_eps,
-        total_eps,
-        omitted_cands,
-    )?;
-    let endpoint_map =
-        build_endpoint_map(ctx, op, issued_assets(cands), endpoints, utf8.as_bytes())?;
-    Ok(PreparedHttpsLoop {
-        prepared: PreparedContext::prepared(op, utf8, deps),
-        endpoint_map,
-    })
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "local projection writer keeps try_https_pack under McCabe cap"
-)]
-fn build_https_utf8(
-    ctx: &HttpsContextBasis,
-    d: &ContextDisclosure,
-    q: &ContextRequest,
-    op: OperationId,
-    terrain: &TerrainContextState,
-    a: &AutonomousContext,
-    cands: &[Candidate],
-    dns_claims: &[TerrainClaimSummary],
     endpoints: &[EndpointBinding],
-    https_shown: &[&TerrainHttpsClaimView],
-    omitted_eps: usize,
-    total_eps: usize,
-    omitted_cands: usize,
-) -> Res<(String, Vec<TerrainDependency>)> {
-    let (mut raw, _) = pack(&ctx.basis, d, q, op, cands, terrain, &[], 0)?;
-    let deps = append_https_dns_references(&mut raw, dns_claims)?;
-    apply_https_extensions(
-        &mut raw,
-        ctx,
-        a,
-        endpoints,
-        &deps,
-        https_shown,
-        omitted_eps,
-        total_eps,
-        omitted_cands,
-    )?;
-    a.extend_https(&mut raw, d.context_bytes, d.configuration_bytes)?;
-    Ok((encode_bounded_pack(&raw, d)?, deps))
+) -> Res<Vec<TerrainDependency>> {
+    if endpoints.is_empty() {
+        return Ok(Vec::new());
+    }
+    let TerrainContextState::Available(view) = terrain else {
+        return Err(Fail::State("context_basis_mismatch"));
+    };
+    let mut deps = Vec::with_capacity(endpoints.len());
+    for ep in endpoints {
+        let claim = view
+            .claims
+            .iter()
+            .find(|c| c.claim_id == ep.parent_claim_id)
+            .ok_or(Fail::State("context_basis_mismatch"))?;
+        deps.push(TerrainDependency::from_endpoint_parent(
+            ep.local_id.clone(),
+            claim,
+        )?);
+    }
+    Ok(deps)
 }
 
-fn encode_bounded_pack(raw: &Value, d: &ContextDisclosure) -> Res<String> {
-    let utf8 = serde_json::to_string(raw).map_err(|_| Fail::Store("context_encode"))?;
-    wire_fits(&utf8, d, true)
-        .then_some(utf8)
-        .ok_or(Fail::State("context_bytes_insufficient"))
-}
-
-fn loop_dns_claims(terrain: &TerrainContextState, cands: &[Candidate]) -> Vec<TerrainClaimSummary> {
+pub(super) fn loop_dns_claims(
+    terrain: &TerrainContextState,
+    cands: &[Candidate],
+) -> Vec<TerrainClaimSummary> {
     let TerrainContextState::Available(view) = terrain else {
         return Vec::new();
     };
@@ -245,7 +150,7 @@ fn loop_dns_claims(terrain: &TerrainContextState, cands: &[Candidate]) -> Vec<Te
         .collect()
 }
 
-fn select_endpoints(
+pub(super) fn select_endpoints(
     ctx: &HttpsContextBasis,
     cands: &[Candidate],
 ) -> Res<(Vec<EndpointBinding>, usize, usize)> {
@@ -258,7 +163,7 @@ fn select_endpoints(
     for mat in ctx
         .dns_material
         .iter()
-        .filter(|m| material_eligible(m, cands))
+        .filter(|m| material_eligible(m, cands, ctx.basis.evaluated_at))
     {
         let Some(path) = matching_contact_path(perm, mat, &mut chosen_host) else {
             continue;
@@ -318,16 +223,18 @@ pub(super) fn append_material_bindings(
     }
 }
 
-fn material_eligible(mat: &DnsEndpointMaterial, cands: &[Candidate]) -> bool {
+fn material_eligible(mat: &DnsEndpointMaterial, cands: &[Candidate], evaluated_at: i64) -> bool {
     cands.iter().any(|c| c.asset_ref == mat.asset_ref)
         && mat.effective_status == "observed"
         && !mat.conflicted
         && !mat.integrity_hold
         && mat.lowest_ttl_seconds.is_some_and(|t| t > 0)
         && mat.claim_revision >= 1
+        && evaluated_at >= mat.perceived_at
+        && mat.valid_until >= mat.perceived_at
 }
 
-fn filter_https_claims<'a>(
+pub(super) fn filter_https_claims<'a>(
     claims: &'a [TerrainHttpsClaimView],
     cands: &[Candidate],
 ) -> Vec<&'a TerrainHttpsClaimView> {
@@ -337,7 +244,7 @@ fn filter_https_claims<'a>(
         .collect()
 }
 
-fn issued_assets(cands: &[Candidate]) -> Vec<IssuedAssetBinding> {
+pub(super) fn issued_assets(cands: &[Candidate]) -> Vec<IssuedAssetBinding> {
     cands
         .iter()
         .enumerate()
@@ -352,7 +259,7 @@ fn issued_assets(cands: &[Candidate]) -> Vec<IssuedAssetBinding> {
     clippy::too_many_arguments,
     reason = "local projection writer keeps extension assembly shallow"
 )]
-fn apply_https_extensions(
+pub(super) fn apply_https_extensions(
     raw: &mut Value,
     ctx: &HttpsContextBasis,
     _a: &AutonomousContext,

@@ -383,7 +383,8 @@ fn selected_dns_seeds(refs: &[String], candidate_count: usize) -> Res<Vec<usize>
     Ok(seeds)
 }
 fn is_context_only_ref(r: &str) -> bool {
-    https_loop::is_context_only_ref(r)
+    matches!(r, "mission" | "previous_decision")
+        || https_loop::canonical_index(r, "terrain_").is_some()
 }
 fn reference_target(r: &str, candidate_count: usize) -> Res<Option<usize>> {
     if is_context_only_ref(r) {

@@ -63,14 +63,31 @@ fn endpoint_disclosure_rebind_and_cognition_privileges_hold() {
     )
     .unwrap();
     let mut map = prep.endpoint_map.clone();
+    let pack_bytes = prep.prepared.utf8().as_bytes();
     broker
-        .bind_https_input(eng, cmp, step1.decision_id, run_id, &"b".repeat(64), &map)
+        .bind_https_input(
+            eng,
+            cmp,
+            step1.decision_id,
+            run_id,
+            &"b".repeat(64),
+            &map,
+            pack_bytes,
+        )
         .unwrap();
     // Conflicting rebind fails while persisted map survives in DB across new broker connections.
     map.pack_digest = "c".repeat(64);
     assert!(
         broker
-            .bind_https_input(eng, cmp, step1.decision_id, run_id, &"b".repeat(64), &map)
+            .bind_https_input(
+                eng,
+                cmp,
+                step1.decision_id,
+                run_id,
+                &"b".repeat(64),
+                &map,
+                pack_bytes,
+            )
             .is_err()
     );
     let mut fresh_broker = PgRunStore::new(native::client("DW_INFERENCE_BROKER_DATABASE_URL"));
@@ -246,6 +263,110 @@ fn utf8_byte_measurements_and_oversize_pack_refusal_verified() {
         inference_intent::preflight(&huge, 8192, 16384),
         Err("request_size")
     );
-    // Verify Scope compiles / unused warning avoided cleanly.
-    let _ = std::mem::size_of::<Scope>();
+
+    // G: Semantic template and digest persisted write-once, unreadable to Cognition, reject tampering & legacy hash-only row.
+    let mut admin = native::admin();
+    let mut cog = native::client("DW_COGNITION_DATABASE_URL");
+    let tpl_row = admin
+        .query_one(
+            "SELECT nb.semantic_template, nb.template_digest, \
+                    encode(sha256(convert_to(execution.genai_canonical(nb.semantic_template), 'UTF8')), 'hex') \
+             FROM execution.native_input_bindings nb JOIN execution.https_loop_steps s ON s.decision_id=nb.d \
+             WHERE s.run_id=$1 AND s.step_index=1",
+            &[&run_id],
+        )
+        .unwrap();
+    let tpl_val: serde_json::Value = tpl_row.get(0);
+    let tpl_dig: String = tpl_row.get(1);
+    let sql_dig: String = tpl_row.get(2);
+    assert_eq!(tpl_dig, sql_dig);
+    assert_eq!(tpl_val["template_version"], "m1-https-loop-v1");
+    assert_eq!(tpl_val["schema_version"], "m1_https_loop_v1");
+    assert!(
+        cog.query_one(
+            "SELECT semantic_template FROM execution.native_input_bindings LIMIT 1",
+            &[]
+        )
+        .is_err(),
+        "Cognition must not SELECT semantic_template directly"
+    );
+    let d1_row = admin
+        .query_one(
+            "SELECT nb.e, nb.c, nb.d, ic.call, ic.p, ic.configuration, ic.body, ic.binding \
+             FROM execution.https_loop_steps s \
+             JOIN execution.native_input_bindings nb ON (nb.e, nb.c, nb.d) = (s.e, s.c, s.decision_id) \
+             JOIN execution.inference_calls ic ON (ic.e, ic.c, ic.d) = (nb.e, nb.c, nb.d) \
+             WHERE s.run_id=$1 AND s.step_index=1 LIMIT 1",
+            &[&run_id],
+        )
+        .unwrap();
+    let (de, dc, dd, dc_id): (Uuid, Uuid, Uuid, Uuid) =
+        (d1_row.get(0), d1_row.get(1), d1_row.get(2), d1_row.get(3));
+    let (dp, dcfg, db, dh): (String, String, String, String) =
+        (d1_row.get(4), d1_row.get(5), d1_row.get(6), d1_row.get(7));
+    assert!(
+        admin
+            .query_one(
+                "SELECT execution.genai_binding_valid($1,$2,$3,$4,$5,$6,$7,$8)",
+                &[&de, &dc, &dd, &dc_id, &dp, &dcfg, &db, &dh]
+            )
+            .unwrap()
+            .get::<_, bool>(0)
+    );
+    admin.execute(
+        "UPDATE execution.native_input_bindings SET template_digest=$4 WHERE e=$1 AND c=$2 AND d=$3",
+        &[&de, &dc, &dd, &"f".repeat(64)],
+    ).unwrap();
+    assert!(
+        !admin
+            .query_one(
+                "SELECT execution.genai_binding_valid($1,$2,$3,$4,$5,$6,$7,$8)",
+                &[&de, &dc, &dd, &dc_id, &dp, &dcfg, &db, &dh]
+            )
+            .unwrap()
+            .get::<_, bool>(0)
+    );
+    // Legacy hash-only native_input_bindings row refuses m1_https_loop_v1 reservation.
+    let mut q_leg_row = https_support::registered_with(0xb207, |_| {});
+    let r_lr = Uuid::parse_str(q_leg_row["run_id"].as_str().unwrap()).unwrap();
+    let lm = &q_leg_row["context"]["mission"];
+    let (le, lc, lp): (Uuid, Uuid, Uuid) = (
+        Uuid::parse_str(lm["engagement_id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(lm["campaign_id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(lm["permission_id"].as_str().unwrap()).unwrap(),
+    );
+    let mut broker = native::client("DW_INFERENCE_BROKER_DATABASE_URL");
+    broker
+        .execute(
+            "SELECT execution.run_start($1,$2)",
+            &[&q_leg_row, &"a".repeat(64)],
+        )
+        .unwrap();
+    let ld1: Uuid = admin
+        .query_one(
+            "SELECT decision_one FROM execution.autonomous_runs WHERE run_id=$1",
+            &[&r_lr],
+        )
+        .unwrap()
+        .get(0);
+    broker
+        .execute(
+            "SELECT execution.bind_inference_input($1,$2,$3,$4)",
+            &[&le, &lc, &ld1, &"b".repeat(64)],
+        )
+        .unwrap();
+    let lreq = json!({
+        "version": "m1_inference_reservation_request_v1",
+        "engagement_id": le, "campaign_id": lc,
+        "operator_ref": lm["operator_ref"], "expected_mission_revision": 1,
+        "permission_id": lp, "goal_ref": lm["goal_ref"], "exercise_mode": lm["exercise_mode"]
+    });
+    assert!(
+        broker.query_one(
+            "SELECT execution.inference_reservation('reserve',$1,$2,mission.current_inference_publication($3,$4,$1))",
+            &[&ld1, &lreq, &le, &lc],
+        ).is_err(),
+        "legacy hash-only input binding row must be rejected for m1_https_loop_v1"
+    );
+    let _ = (&mut q_leg_row, std::mem::size_of::<Scope>());
 }

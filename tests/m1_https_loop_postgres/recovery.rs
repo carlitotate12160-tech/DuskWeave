@@ -59,7 +59,7 @@ fn ttl30_and_60s_cap_expiry_trigger_refresh_and_head_while_bad_refreshes_block()
         assert_eq!(receipt["recorded_decisions"][0]["version"], 2);
         assert_eq!(
             receipt["recorded_decisions"][0]["disposition"],
-            "validated_proposal"
+            "recorded_stale_premises"
         );
         if expect_head {
             assert_eq!(receipt["head_effect_count"], 1, "host={host}");
@@ -68,6 +68,80 @@ fn ttl30_and_60s_cap_expiry_trigger_refresh_and_head_while_bad_refreshes_block()
             assert_eq!(receipt["head_effect_count"], 0, "host={host}");
             assert_eq!(receipt["steps"][0]["head_outcome"], "blocked");
         }
+    }
+
+    // Expiry during generation/repair still records 'recorded_stale_premises' and proceeds on admissible refresh.
+    let q_mid = https_support::registered_with(0xb408, |_| {});
+    https_support::seed_dns_claim_age(0xb408, &q_mid, vec![("198.51.100.10", 3)], 1);
+    {
+        let mut count = 0usize;
+        let (_s_mid, _) = https_support::start_server(move |_pack| {
+            count += 1;
+            if count == 1 {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                return https_support::proposal_json(
+                    "Expires mid-inference before HEAD dispatch.",
+                    json!(["asset_0", "endpoint_0"]),
+                    "validate",
+                    json!(["asset_0", "endpoint_0"]),
+                    Some("https-head-v1"),
+                    "dns_once_if_stale",
+                );
+            }
+            https_support::proposal_json(
+                "Finish cleanly after refreshed HEAD.",
+                json!(["asset_0", "previous_decision"]),
+                "defer",
+                json!(["asset_0"]),
+                None,
+                "none",
+            )
+        });
+        let (ok_m, r_m) = https_support::run_cli(&q_mid);
+        assert!(ok_m, "{r_m}");
+        assert_eq!(
+            r_m["recorded_decisions"][0]["disposition"],
+            "recorded_stale_premises"
+        );
+        assert_eq!(r_m["head_effect_count"], 1);
+    }
+
+    // Non-TTL integrity hold on retained DNS parent during inference remains a refusal, never recorded_stale_premises.
+    let q_hold = https_support::registered_with(0xb409, |_| {});
+    https_support::seed_dns_claim_age(0xb409, &q_hold, vec![("198.51.100.10", 60)], 10);
+    let m_hold = &q_hold["context"]["mission"];
+    let e_hold = Uuid::parse_str(m_hold["engagement_id"].as_str().unwrap()).unwrap();
+    let c_hold = Uuid::parse_str(m_hold["campaign_id"].as_str().unwrap()).unwrap();
+    {
+        let (_s_hold, reqs_hold) = https_support::start_server(move |_pack| {
+            native::admin()
+                .execute(
+                    "INSERT INTO terrain.integrity_conflicts \
+                     SELECT engagement_id,campaign_id,operation_id,claim_id,perceived_at,true,'input_mismatch' \
+                     FROM terrain.current_claims WHERE engagement_id=$1 AND campaign_id=$2 \
+                     ON CONFLICT DO NOTHING",
+                    &[&e_hold, &c_hold],
+                )
+                .unwrap();
+            https_support::proposal_json(
+                "Attempt validate after non-TTL integrity hold.",
+                json!(["asset_0", "endpoint_0"]),
+                "validate",
+                json!(["asset_0", "endpoint_0"]),
+                Some("https-head-v1"),
+                "none",
+            )
+        });
+        let (ok_h, r_h) = https_support::run_cli(&q_hold);
+        assert!(!ok_h, "integrity hold must refuse, not record stale: {r_h}");
+        assert_eq!(r_h["head_effect_count"], 0);
+        assert_eq!(
+            r_h["recorded_decisions"][0]["disposition"],
+            "reference_ineligible"
+        );
+        assert!(r_h["recorded_decisions"][0]["proposal"].is_null());
+        assert_eq!(r_h["recorded_decisions"][0]["dispatch_granted"], false);
+        assert_eq!(reqs_hold.lock().unwrap().len(), 1);
     }
 
     // Unknown refresh failure keeps protection_state = 'unknown' and status = 'unknown',

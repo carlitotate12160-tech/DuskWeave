@@ -5,6 +5,8 @@ use crate::m1_inference_profile::{self as profiles, Backend, Protocol};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+mod https_loop_template;
+pub use https_loop_template::{HttpsLoopSemanticTemplate, semantic_template};
 type Res<T> = Result<T, &'static str>;
 const VERSION: &str = "dw-inference-intent-v1";
 
@@ -136,7 +138,24 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
         return Err("repair_code_ineligible");
     }
     super::request::validate_repair_codes(codes.unwrap_or_default())?;
-    let (instructions, schema) = super::request::semantic_material(pack)?;
+    let https_loop = p["version"] == crate::m1_https::VERSION_HTTPS_LOOP;
+    let (instructions, schema, schema_version, template_version) = if https_loop {
+        let (tpl, _, _) = https_loop_template::semantic_template(pack)?;
+        (
+            tpl.instructions,
+            tpl.schema,
+            tpl.schema_version,
+            tpl.template_version,
+        )
+    } else {
+        let (inst, sch) = super::request::semantic_material(pack)?;
+        (
+            inst,
+            sch,
+            "m1_inference_proposal_v1".into(),
+            "m1-autonomous-inference-v3".into(),
+        )
+    };
     let t = profile.timing;
     let limits = json!({"request_bytes":16384,"response_bytes":65536,"context_bytes":8192,
             "configuration_bytes":16384,"connect_time_ms":t.connect_ms,"soft_completion_ms":t.soft_ms,
@@ -144,8 +163,6 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
             "decision_wall_time_ms":t.decision_ms,"phase_wall_time_ms":t.phase_ms,
             "cancel_grace_ms":t.stop_ms,"accounting_window_ms":t.accounting_ms,
             "output_tokens_per_call":profile.settings.output_tokens,"calls_per_decision":2,"concurrency":1});
-    let https_loop = p["version"] == crate::m1_https::VERSION_HTTPS_LOOP;
-    let (schema_version, template_version) = version_pair(https_loop);
     let mut intent = json!({"version":VERSION,"permission_version":versions.permission,
         "run_version":versions.run,"engagement_id":p["engagement_id"],
         "campaign_id":p["campaign_id"],"decision_id":p["decision_id"],
@@ -162,13 +179,6 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
         intent["qualification_purpose"] = p["qualification_purpose"].clone();
     }
     Ok(intent)
-}
-fn version_pair(https_loop: bool) -> (&'static str, &'static str) {
-    if https_loop {
-        (crate::m1_https::VERSION_HTTPS_LOOP, "m1-https-loop-v1")
-    } else {
-        ("m1_inference_proposal_v1", "m1-autonomous-inference-v3")
-    }
 }
 fn sdk_binding(p: &Value) -> Res<(profiles::Profile, profiles::SdkVersions, &'static str)> {
     let profile = profiles::lookup(p["inference_profile"].as_str().ok_or("request_encode")?)

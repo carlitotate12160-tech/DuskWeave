@@ -13,8 +13,14 @@ mod terrain;
 
 #[path = "m1_https_loop_postgres/admission.rs"]
 mod admission;
+#[path = "m1_https_loop_postgres/authority.rs"]
+mod authority;
 #[path = "m1_https_loop_postgres/capacity.rs"]
 mod capacity;
+#[path = "m1_https_loop_postgres/compatibility.rs"]
+mod compatibility;
+#[path = "m1_https_loop_postgres/publication.rs"]
+mod publication;
 #[path = "m1_https_loop_postgres/recovery.rs"]
 mod recovery;
 

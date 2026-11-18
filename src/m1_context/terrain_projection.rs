@@ -145,39 +145,6 @@ pub(super) fn build_candidates(cands: &[Candidate], deps: &[TerrainDependency]) 
         .collect()
 }
 
-pub(super) fn stale_tolerant_dependency(
-    local_id: String,
-    c: &TerrainClaimSummary,
-) -> Res<TerrainDependency> {
-    if let Ok(dep) = TerrainDependency::from_claim(local_id.clone(), c) {
-        return Ok(dep);
-    }
-    let valid_until = c
-        .valid_until
-        .filter(|_| {
-            c.effective_status == EffectiveClaimStatus::Observed
-                && !c.conflicted
-                && !c.integrity_hold
-                && !c.corroborated
-        })
-        .ok_or(Fail::Input("forged_terrain_summary"))?;
-    Ok(TerrainDependency {
-        local_id,
-        asset_ref: c.asset_ref,
-        claim_id: c.claim_id,
-        claim_revision: c.claim_revision,
-        material_id: c.material_id,
-        evaluation_id: c.evaluation_id,
-        observation_id: c.observation_id,
-        event_id: c.event_id,
-        operation_id: c.operation_id,
-        temporal_frontier: c.temporal_frontier,
-        valid_until,
-        source_kind: c.source_kind,
-        perceived_at: c.perceived_at,
-    })
-}
-
 pub(super) fn append_https_dns_references(
     raw: &mut Value,
     claims: &[TerrainClaimSummary],
@@ -188,7 +155,7 @@ pub(super) fn append_https_dns_references(
         .ok_or(Fail::Store("context_encode"))?;
     for (i, c) in claims.iter().enumerate() {
         let local_id = format!("terrain_{i}");
-        deps.push(stale_tolerant_dependency(local_id.clone(), c)?);
+        deps.push(TerrainDependency::from_claim(local_id.clone(), c)?);
         refs.push(terrain_reference_json(&local_id, c));
     }
     if let Some(view) = raw["owner_views"]
@@ -202,12 +169,8 @@ pub(super) fn append_https_dns_references(
 }
 
 pub(super) fn endpoint_ref_json(ep: &crate::m1_https::EndpointBinding, evaluated_at: i64) -> Value {
-    let cap_until = crate::m1_https::ttl_capped_valid_until(
-        ep.perceived_at,
-        ep.lowest_ttl_seconds,
-        Some(ep.valid_until),
-    );
-    let fresh = cap_until.is_some_and(|u| evaluated_at < u);
+    let cap_until = ep.effective_valid_until();
+    let fresh = ep.is_fresh_at(evaluated_at);
     json!({
         "id": ep.local_id, "owner": "cyber_terrain", "source": "issued_endpoint_binding",
         "entity": ep.parent_claim_id, "asset_ref": ep.asset_ref, "parent_revision": ep.parent_claim_revision,

@@ -23,7 +23,7 @@ impl PgRunStore {
                 "SELECT execution.reserve_https_loop_dns($1,$2,$3,$4)",
                 &[&run_id, &idx, &attempt_kind, &seed],
             )
-            .map_err(|_| Fail::State("fixture_release_refused"))?
+            .map_err(classify_reserve_error)?
             .try_get(0)
             .map_err(|_| Fail::Store("run_decode"))?;
         serde_json::from_value(raw).map_err(|_| Fail::Store("run_decode"))
@@ -63,7 +63,7 @@ impl PgRunStore {
                 "SELECT execution.reserve_https_loop_head($1,$2)",
                 &[&run_id, &idx],
             )
-            .map_err(|_| Fail::State("fixture_release_refused"))?
+            .map_err(classify_reserve_error)?
             .try_get(0)
             .map_err(|_| Fail::Store("run_decode"))?;
         serde_json::from_value(raw).map_err(|_| Fail::Store("run_decode"))
@@ -140,7 +140,7 @@ impl PgRunStore {
                 "SELECT execution.https_loop_refresh_check($1,$2)",
                 &[&run_id, &idx],
             )
-            .map_err(|_| Fail::State("fixture_release_refused"))?
+            .map_err(classify_reserve_error)?
             .try_get(0)
             .map_err(|_| Fail::Store("run_decode"))?;
         decode_refresh_decision(&raw)
@@ -152,18 +152,48 @@ impl PgRunStore {
         step_index: usize,
     ) -> Res<Option<HttpsHeadResult>> {
         let idx = i32::try_from(step_index).map_err(|_| Fail::Input("https_loop_step_invalid"))?;
-        let raw: Option<Value> = self
+        let Some(row) = self
             .client
-            .query_one(
+            .query_opt(
                 "SELECT r.result_payload FROM execution.fixture_https_results r \
                  WHERE r.run_id=$1 AND r.step_index=$2",
                 &[&run_id, &idx],
             )
-            .ok()
-            .and_then(|row| row.try_get(0).ok());
-        raw.map(|v| serde_json::from_value(v).map_err(|_| Fail::Store("run_decode")))
-            .transpose()
+            .map_err(|_| Fail::Store("run_inspect_unknown"))?
+        else {
+            return Ok(None);
+        };
+        let raw: Value = row.try_get(0).map_err(|_| Fail::Store("run_decode"))?;
+        let result: HttpsHeadResult =
+            serde_json::from_value(raw).map_err(|_| Fail::Store("run_decode"))?;
+        result.validate().map_err(|_| Fail::Store("run_decode"))?;
+        Ok(Some(result))
     }
+}
+
+const KNOWN_RESERVE_REFUSALS: &[(&str, &str)] = &[
+    ("fixture_policy_denied", "fixture_policy_denied"),
+    ("fixture_budget_exhausted", "fixture_budget_exhausted"),
+    ("fixture_time_insufficient", "fixture_time_insufficient"),
+    ("fixture_premise_ineligible", "fixture_premise_ineligible"),
+    ("fixture_refresh_exhausted", "fixture_refresh_exhausted"),
+    ("fixture_head_exhausted", "fixture_head_exhausted"),
+    ("fixture_dns_exhausted", "fixture_dns_exhausted"),
+    ("fixture_hostname_mismatch", "fixture_hostname_mismatch"),
+    ("fixture_release_refused", "fixture_release_refused"),
+    ("fixture_scope_refused", "fixture_scope_refused"),
+    ("fixture_source_refused", "fixture_source_refused"),
+    ("https_loop_step_not_found", "https_loop_step_not_found"),
+];
+
+fn classify_reserve_error(err: postgres::Error) -> Fail {
+    let Some(db) = err.as_db_error().filter(|d| d.code().code() == "P0001") else {
+        return Fail::Store("fixture_reserve_unknown");
+    };
+    KNOWN_RESERVE_REFUSALS
+        .iter()
+        .find_map(|(k, v)| (*k == db.message()).then_some(Fail::State(v)))
+        .unwrap_or(Fail::Store("fixture_reserve_unknown"))
 }
 
 fn decode_refresh_decision(raw: &Value) -> Res<RefreshDecision> {
