@@ -55,13 +55,15 @@ pub fn run_fixture_wrapper() {
     let output = command.output().expect("bootstrap supervisor spawn");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let log_result = std::fs::read_to_string(report.join("qualification.log"));
     assert!(
         output.status.success(),
-        "dedicated schema-0036 fixture failed; report {}: {stdout}\n{stderr}",
-        report.display()
+        "dedicated schema-0036 fixture failed ({}); report {}: {stdout}\n{stderr}\nqualification.log:\n{}",
+        output.status,
+        report.display(),
+        format_log_result(&log_result)
     );
-    let log = std::fs::read_to_string(report.join("qualification.log"))
-        .expect("complete sanitized worker log");
+    let log = log_result.expect("complete sanitized worker log");
     let passed = log
         .split("test result: ok. ")
         .nth(1)
@@ -99,4 +101,11 @@ pub fn run_fixture_wrapper() {
         "schema0036_sql_group passed={passed} report={}",
         report.display()
     );
+}
+
+fn format_log_result(result: &std::io::Result<String>) -> String {
+    match result {
+        Ok(content) => content.clone(),
+        Err(err) => format!("qualification.log unreadable: {err}"),
+    }
 }
