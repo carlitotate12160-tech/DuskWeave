@@ -5,6 +5,8 @@ use crate::m1_inference_profile::{self as profiles, Backend, Protocol};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+mod https_loop_template;
+pub use https_loop_template::{HttpsLoopSemanticTemplate, semantic_template};
 type Res<T> = Result<T, &'static str>;
 const VERSION: &str = "dw-inference-intent-v1";
 
@@ -47,7 +49,11 @@ pub fn sdk_pack(pack: &[u8]) -> bool {
     serde_json::from_slice::<Value>(pack).is_ok_and(|p| {
         matches!(
             p["version"].as_str(),
-            Some("m1_context_pack_autonomous_v3" | "m1_context_pack_autonomous_v4")
+            Some(
+                "m1_context_pack_autonomous_v3"
+                    | "m1_context_pack_autonomous_v4"
+                    | crate::m1_https::VERSION_HTTPS_LOOP
+            )
         )
     })
 }
@@ -73,24 +79,32 @@ fn parsed_pack(pack: &[u8]) -> Res<Value> {
     Ok(p)
 }
 fn pack_binding(p: &Value) -> bool {
-    if p["version"] == "m1_context_pack_autonomous_v4" {
-        return profiles::live_binding(
-            p["run_profile"].as_str().unwrap_or_default(),
-            p["execution_mode"].as_str().unwrap_or_default(),
-            p["inference_profile"].as_str().unwrap_or_default(),
-        ) && serde_json::from_value::<crate::m1_inference_permission::LiveBinding>(
-            p["live_binding"].clone(),
-        )
-        .is_ok_and(|binding| {
-            binding
-                .validate_for(p["run_profile"].as_str().unwrap_or_default())
-                .is_ok()
-        }) && profiles::sdk_versions(p["run_profile"].as_str().unwrap_or_default())
-            .is_ok_and(|v| p["qualification_purpose"].as_str() == v.qualification_purpose);
+    match p["version"].as_str() {
+        Some(crate::m1_https::VERSION_HTTPS_LOOP) => [
+            p["run_profile"] == profiles::HTTPS_LOOP_RUN_PROFILE,
+            p["execution_mode"] == "controlled_fixture",
+            p["inference_profile"] == profiles::FIXTURE_PRO_V2_PROFILE,
+        ]
+        .into_iter()
+        .all(|v| v),
+        Some("m1_context_pack_autonomous_v4") => live_pack_binding(p),
+        Some("m1_context_pack_autonomous_v3") => {
+            p["run_profile"] == profiles::RUN_PROFILE && p["execution_mode"] == "controlled_fixture"
+        }
+        _ => false,
     }
-    p["version"] == "m1_context_pack_autonomous_v3"
-        && p["run_profile"] == profiles::RUN_PROFILE
-        && p["execution_mode"] == "controlled_fixture"
+}
+fn live_pack_binding(p: &Value) -> bool {
+    let run = p["run_profile"].as_str().unwrap_or_default();
+    let mode = p["execution_mode"].as_str().unwrap_or_default();
+    let inf = p["inference_profile"].as_str().unwrap_or_default();
+    let binding_ok = serde_json::from_value::<crate::m1_inference_permission::LiveBinding>(
+        p["live_binding"].clone(),
+    )
+    .is_ok_and(|binding| binding.validate_for(run).is_ok());
+    let purpose_ok = profiles::sdk_versions(run)
+        .is_ok_and(|v| p["qualification_purpose"].as_str() == v.qualification_purpose);
+    profiles::live_binding(run, mode, inf) && binding_ok && purpose_ok
 }
 fn scope_matches(p: &Value, s: &Scope) -> bool {
     p["engagement_id"] == json!(s.engagement)
@@ -117,14 +131,38 @@ pub fn digest(pack: &[u8], intent: &[u8]) -> String {
     }
     hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
-fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
-    let p = parsed_pack(pack)?;
-    let (profile, versions, protocol) = sdk_binding(&p)?;
+fn validate_repair_codes_opt(codes: Option<&[&str]>) -> Res<()> {
     if codes.is_some_and(<[_]>::is_empty) {
         return Err("repair_code_ineligible");
     }
-    super::request::validate_repair_codes(codes.unwrap_or_default())?;
-    let (instructions, schema) = super::request::semantic_material(pack)?;
+    super::request::validate_repair_codes(codes.unwrap_or_default())
+}
+
+fn semantic_material_parts(pack: &[u8], version: &Value) -> Res<(String, Value, String, String)> {
+    if *version == crate::m1_https::VERSION_HTTPS_LOOP {
+        let (tpl, _, _) = https_loop_template::semantic_template(pack)?;
+        return Ok((
+            tpl.instructions,
+            tpl.schema,
+            tpl.schema_version,
+            tpl.template_version,
+        ));
+    }
+    let (inst, sch) = super::request::semantic_material(pack)?;
+    Ok((
+        inst,
+        sch,
+        "m1_inference_proposal_v1".into(),
+        "m1-autonomous-inference-v3".into(),
+    ))
+}
+
+fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
+    let p = parsed_pack(pack)?;
+    let (profile, versions, protocol) = sdk_binding(&p)?;
+    validate_repair_codes_opt(codes)?;
+    let (instructions, schema, schema_version, template_version) =
+        semantic_material_parts(pack, &p["version"])?;
     let t = profile.timing;
     let limits = json!({"request_bytes":16384,"response_bytes":65536,"context_bytes":8192,
             "configuration_bytes":16384,"connect_time_ms":t.connect_ms,"soft_completion_ms":t.soft_ms,
@@ -139,7 +177,7 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
         "run_profile":p["run_profile"],"execution_mode":p["execution_mode"],
         "protocol":protocol,"profile":profile.name,"recipient":profile.connection.recipient,
         "model":profile.settings.model,"adapter_release":"genai-a9504f1-dw1",
-        "template_version":"m1-autonomous-inference-v3","schema_version":"m1_inference_proposal_v1",
+        "template_version":template_version,"schema_version":schema_version,
         "instructions":instructions,"schema":schema,"timing_profile":t.name,
         "settings":{"reasoning_effort":profile.settings.reasoning_effort,"max_output_tokens":profile.settings.output_tokens,"stream":profile.settings.stream,"store":false,"tools":[]},
         "repair_error_codes":codes.unwrap_or_default(),"limits":limits});

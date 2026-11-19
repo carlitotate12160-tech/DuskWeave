@@ -15,8 +15,9 @@ fn ready_control(
         return Ok((None, None));
     }
     let control = Some(Binding::qualify(&run.request)?);
-    let readiness =
-        (phase != RunPhase::Acquisition).then(|| ready_frame(run.request.run_id, phase.name()));
+    let readiness = phase
+        .is_decision()
+        .then(|| ready_frame(run.request.run_id, phase.name()));
     Ok((control, readiness))
 }
 
@@ -50,7 +51,7 @@ pub(super) fn install_provider_environment(c: &mut Command, phase: RunPhase, run
     if let Some(root) = std::env::var_os("DW_M1_RUN_CONTROL_ROOT") {
         c.env("DW_M1_RUN_CONTROL_ROOT", root);
     }
-    if phase != RunPhase::Acquisition {
+    if phase.is_decision() {
         c.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .env(PROVIDER_HINT, "1");
@@ -97,11 +98,7 @@ pub(super) fn install_launch_environment(c: &mut Command, run: &RunRecord) -> Re
 }
 
 pub(super) fn phase_deadline(run: Instant, phase: RunPhase) -> Instant {
-    let ceiling = if phase == RunPhase::Acquisition {
-        60000
-    } else {
-        50000
-    };
+    let ceiling = if phase.is_acquisition() { 60000 } else { 50000 };
     run.min(Instant::now() + Duration::from_millis(ceiling))
 }
 
@@ -111,7 +108,7 @@ pub(crate) fn selected_phase_deadline(
     timing: Option<&Timing>,
 ) -> Instant {
     if let Some(t) = timing
-        && phase != RunPhase::Acquisition
+        && phase.is_decision()
     {
         return run.min(Instant::now() + Duration::from_millis(t.phase_ms));
     }

@@ -1,4 +1,6 @@
 //! Restricted application bookkeeping adapter; operational owners retain their own writes.
+pub mod https_loop;
+mod https_loop_effects;
 use crate::m1_reasoning::proposal::Proposal;
 use crate::m1_run::{RunPhase, RunRecord, RunRequest};
 use crate::{Fail, Res};

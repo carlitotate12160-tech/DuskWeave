@@ -16,7 +16,7 @@ from urllib.parse import quote
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 NAMESPACE = "dw_native_"
 KINDS = ("fixture", "live")
-SCHEMA_REVISIONS = ("0020", "0021", "0022", "0030", "0031", "0032", "0033", "0034", "0035", "0036")
+SCHEMA_REVISIONS = ("0020", "0021", "0022", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037")
 LIVE_CONTAINER = "dw-live-dns-20261030-pg"
 LIVE_IMAGE = "postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d"
 ROOT = Path(__file__).resolve().parents[2]

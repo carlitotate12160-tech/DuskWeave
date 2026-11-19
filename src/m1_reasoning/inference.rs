@@ -183,6 +183,7 @@ pub fn infer(
                 "m1_context_pack_autonomous_v2"
                     | "m1_context_pack_autonomous_v3"
                     | "m1_context_pack_autonomous_v4"
+                    | "m1_https_loop_v1"
             )
         )
     });

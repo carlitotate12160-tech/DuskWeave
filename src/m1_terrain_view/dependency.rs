@@ -25,7 +25,35 @@ impl TerrainDependency {
             .valid_until
             .filter(|_| claim.routing_usable)
             .ok_or(Fail::Input("forged_terrain_summary"))?;
-        Ok(Self {
+        Ok(Self::build(local_id, claim, valid_until))
+    }
+
+    /// Retains an issued endpoint's DNS parent when its authority is intact even after TTL expiry.
+    pub fn endpoint_parent_eligible(claim: &TerrainClaimSummary) -> bool {
+        [
+            claim.claim_status == TerrainClaimStatus::Observed,
+            observed_coherence(claim),
+            !claim.corroborated,
+            !claim.conflicted,
+            !claim.integrity_hold,
+            claim.hold_frontier.is_none(),
+            claim.evaluated_at >= claim.perceived_at,
+            claim.valid_until.is_some_and(|u| u >= claim.perceived_at),
+        ]
+        .into_iter()
+        .all(|b| b)
+    }
+
+    pub fn from_endpoint_parent(local_id: String, claim: &TerrainClaimSummary) -> Res<Self> {
+        let valid_until = claim
+            .valid_until
+            .filter(|_| Self::endpoint_parent_eligible(claim))
+            .ok_or(Fail::Input("forged_terrain_summary"))?;
+        Ok(Self::build(local_id, claim, valid_until))
+    }
+
+    fn build(local_id: String, claim: &TerrainClaimSummary, valid_until: i64) -> Self {
+        Self {
             local_id,
             asset_ref: claim.asset_ref,
             claim_id: claim.claim_id,
@@ -39,7 +67,7 @@ impl TerrainDependency {
             valid_until,
             source_kind: claim.source_kind,
             perceived_at: claim.perceived_at,
-        })
+        }
     }
 
     pub fn matches_current(&self, claim: &TerrainClaimSummary) -> bool {
@@ -47,6 +75,21 @@ impl TerrainDependency {
             claim.routing_usable,
             claim.effective_status == EffectiveClaimStatus::Observed,
             claim.freshness == ClaimFreshness::Fresh,
+            claim.evaluated_at >= claim.perceived_at,
+            self.matches_lineage(claim),
+        ]
+        .into_iter()
+        .all(|b| b)
+    }
+
+    /// TTL may expire after release; identity, source and original validity may not change.
+    pub fn matches_integrity_current(&self, claim: &TerrainClaimSummary) -> bool {
+        Self::endpoint_parent_eligible(claim) && self.matches_lineage(claim)
+    }
+
+    fn matches_lineage(&self, claim: &TerrainClaimSummary) -> bool {
+        [
+            !claim.corroborated,
             !claim.conflicted,
             !claim.integrity_hold,
             claim.hold_frontier.is_none(),
@@ -65,30 +108,6 @@ impl TerrainDependency {
         ]
         .into_iter()
         .all(|b| b)
-    }
-
-    /// TTL may expire after release; identity, source and original validity may not change.
-    pub fn matches_integrity_current(&self, claim: &TerrainClaimSummary) -> bool {
-        let intact = [
-            claim.claim_status == TerrainClaimStatus::Observed,
-            observed_coherence(claim),
-            !claim.conflicted,
-            !claim.integrity_hold,
-            claim.hold_frontier.is_none(),
-            claim.asset_ref == self.asset_ref,
-            claim.claim_id == self.claim_id,
-            claim.claim_revision == self.claim_revision,
-            claim.material_id == self.material_id,
-            claim.evaluation_id == self.evaluation_id,
-            claim.observation_id == self.observation_id,
-            claim.event_id == self.event_id,
-            claim.operation_id == self.operation_id,
-            claim.temporal_frontier == self.temporal_frontier,
-            claim.valid_until == Some(self.valid_until),
-            claim.source_kind == self.source_kind,
-            claim.perceived_at == self.perceived_at,
-        ];
-        intact.into_iter().all(|v| v)
     }
 }
 

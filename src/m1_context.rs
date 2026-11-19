@@ -9,10 +9,11 @@ use crate::mission::{AssetRef, MissionRegistered, OperationId};
 use crate::{Fail, Res};
 use serde_json::{Value, json};
 
+pub mod https_loop;
 mod live;
 mod terrain_projection;
 use live::check_autonomous_basis;
-use terrain_projection::{terrain_owner_view, terrain_reference_json};
+use terrain_projection::{build_candidates, build_references, terrain_owner_view};
 
 pub const QUESTION: &str = "Which already-authorized, mission-relevant HTTPS candidate is the best next subject for access-validation planning within the permitted contact envelope, and which routing or response premise still needs observation, a different candidate, or deferral?";
 
@@ -41,6 +42,17 @@ pub struct PreparedContext {
     terrain_dependencies: Vec<TerrainDependency>,
 }
 impl PreparedContext {
+    pub(super) fn prepared(
+        decision_id: OperationId,
+        utf8: String,
+        terrain_dependencies: Vec<TerrainDependency>,
+    ) -> Self {
+        Self {
+            decision_id,
+            utf8,
+            terrain_dependencies,
+        }
+    }
     pub fn utf8(&self) -> &str {
         &self.utf8
     }
@@ -61,7 +73,7 @@ pub fn prepare(
     fit_pack(&basis, &disclosure, q, op, &terrain, None)
 }
 
-fn resolve_terrain(
+pub(super) fn resolve_terrain(
     b: &ContextBasis,
     d: &ContextDisclosure,
     q: &ContextRequest,
@@ -187,7 +199,7 @@ fn fit_pack(
     }
 }
 
-fn check_basis(b: &ContextBasis, q: &ContextRequest) -> Res<ContextDisclosure> {
+pub(super) fn check_basis(b: &ContextBasis, q: &ContextRequest) -> Res<ContextDisclosure> {
     let m = &b.mission;
     let f = &m.fields;
     let p = f
@@ -239,75 +251,8 @@ fn check_candidates(q: &ContextRequest, m: &MissionRegistered, allowed: bool) ->
     Ok(())
 }
 
-fn build_references(
-    b: &ContextBasis,
-    cands: &[Candidate],
-    kept: &[TerrainClaimSummary],
-) -> Res<(Vec<Value>, Vec<TerrainDependency>)> {
-    let m = &b.mission;
-    let mut refs = vec![json!({
-        "id": "mission",
-        "owner": "mission",
-        "entity": m.campaign_id,
-        "revision": m.owner_revision,
-        "lineage": [m.event_id, m.operation_id],
-        "perceived_at": m.occurred_at,
-        "time_uncertainty": "unspecified_by_owner",
-        "status": "owner_published",
-        "tier": null,
-        "freshness": "as_of_snapshot",
-        "completeness": "scope_reference"
-    })];
-    refs.extend(cands.iter().enumerate().map(|(i, c)| {
-        json!({
-            "id": format!("asset_{i}"),
-            "owner": "operator",
-            "entity": c.asset_ref,
-            "revision": null,
-            "lineage": [],
-            "source": "caller_declared_premise",
-            "perceived_at": null,
-            "time_uncertainty": "unknown",
-            "status": "premise",
-            "tier": null,
-            "freshness": "unknown",
-            "completeness": "declared_only"
-        })
-    }));
-    let mut deps = Vec::with_capacity(kept.len());
-    for (i, c) in kept.iter().enumerate() {
-        let local_id = format!("terrain_{i}");
-        deps.push(TerrainDependency::from_claim(local_id.clone(), c)?);
-        refs.push(terrain_reference_json(&local_id, c));
-    }
-    Ok((refs, deps))
-}
-
-fn build_candidates(cands: &[Candidate], deps: &[TerrainDependency]) -> Vec<Value> {
-    cands
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let t_refs: Vec<&str> = deps
-                .iter()
-                .filter(|d| d.asset_ref == c.asset_ref)
-                .map(|d| d.local_id.as_str())
-                .collect();
-            let mut obj = json!({
-                "reference": format!("asset_{i}"),
-                "priority": c.priority,
-                "status": "operator_premise"
-            });
-            if !t_refs.is_empty() {
-                obj["terrain_references"] = json!(t_refs);
-            }
-            obj
-        })
-        .collect()
-}
-
 #[allow(clippy::too_many_arguments)]
-fn pack(
+pub(super) fn pack(
     b: &ContextBasis,
     d: &ContextDisclosure,
     q: &ContextRequest,
@@ -424,7 +369,7 @@ fn can_shrink(
 ) -> bool {
     !autonomous || cands.len() > 1 || count > minimum || !kept.is_empty()
 }
-fn wire_fits(utf8: &str, d: &ContextDisclosure, autonomous: bool) -> bool {
+pub(super) fn wire_fits(utf8: &str, d: &ContextDisclosure, autonomous: bool) -> bool {
     if utf8.len() > d.context_bytes {
         return false;
     }

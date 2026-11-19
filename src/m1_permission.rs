@@ -151,6 +151,25 @@ impl M1Permission {
         (self.vantage_ref, self.resolver_ipv4)
     }
 
+    pub(crate) fn https_contact_tuple(
+        &self,
+        asset_ref: AssetRef,
+        name: &str,
+        evaluated_at: i64,
+    ) -> Option<(&str, Uuid, Ipv4Addr)> {
+        let purpose = crate::m1_policy::NamePurpose::Contact {
+            name: name.to_string(),
+            asset_ref,
+        };
+        (self.query_reason(&purpose, evaluated_at)
+            == crate::m1_policy::PolicyReason::MatchesNamePolicy)
+            .then_some((
+                self.approved_path.as_str(),
+                self.vantage_ref,
+                self.resolver_ipv4,
+            ))
+    }
+
     pub(crate) fn query_reason(
         &self,
         purpose: &crate::m1_policy::NamePurpose,

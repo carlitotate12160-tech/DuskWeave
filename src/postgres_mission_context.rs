@@ -1,7 +1,9 @@
 //! Mission-owned publication qualification, composed with Broker's public read port.
 use super::{REGISTRATION_READ, decode_registration, store_err};
+use crate::m1_context::https_loop::{DnsEndpointMaterial, HttpsContextBasis, HttpsContextReader};
 use crate::m1_context::{ContextBasis, ContextReader, TerrainContextState};
 use crate::m1_context_input::ContextRequest;
+use crate::m1_https_terrain::TerrainHttpsClaimView;
 use crate::mission::{AssetRef, MissionRegistered, OperationId};
 use crate::{Fail, Res};
 use postgres::{Client, IsolationLevel};
@@ -66,6 +68,85 @@ impl ContextReader for PgContextReader {
             terrain,
         })
     }
+}
+
+impl HttpsContextReader for PgContextReader {
+    fn read_https_loop(
+        &mut self,
+        q: &ContextRequest,
+        op: OperationId,
+        run_id: Uuid,
+    ) -> Res<HttpsContextBasis> {
+        let mut tx = self
+            .client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .map_err(|e| store_err(&e))?;
+        let row = tx
+            .query_one(
+                "SELECT mission.current_inference_publication($1,$2,$3), \
+                execution.inference_capacity_snapshot($1,$2,$3), \
+                floor(extract(epoch FROM transaction_timestamp()))::bigint",
+                &[&q.mission.engagement_id.0, &q.mission.campaign_id.0, &op.0],
+            )
+            .map_err(|e| store_err(&e))?;
+        build_https_basis(tx, &row, q, run_id)
+    }
+}
+
+fn build_https_basis(
+    mut tx: postgres::Transaction<'_>,
+    row: &postgres::Row,
+    q: &ContextRequest,
+    run_id: Uuid,
+) -> Res<HttpsContextBasis> {
+    let mission = qualify_publication(&mut tx, row, q)?;
+    let (capacity, evaluated_at) = decode_snapshot(row)?;
+    let terrain = read_terrain(&mut tx, &mission, q, evaluated_at)?;
+    let (dns_material, https_claims) = read_https_materials(&mut tx, &mission, q, evaluated_at)?;
+    tx.commit()
+        .map_err(|_| Fail::Unresolved("context_snapshot_unknown"))?;
+    Ok(HttpsContextBasis {
+        basis: ContextBasis {
+            mission,
+            capacity,
+            evaluated_at,
+            terrain,
+        },
+        request_id: run_id,
+        dns_material,
+        https_claims,
+    })
+}
+
+fn read_https_materials(
+    tx: &mut postgres::Transaction<'_>,
+    mission: &MissionRegistered,
+    q: &ContextRequest,
+    evaluated_at: i64,
+) -> Res<(Vec<DnsEndpointMaterial>, Vec<TerrainHttpsClaimView>)> {
+    let assets: Vec<Uuid> = q.candidates.iter().map(|c| c.asset_ref.0).collect();
+    if assets.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let e = mission.engagement_id.0;
+    let c = mission.campaign_id.0;
+    let row = tx
+        .query_one(
+            "SELECT terrain.current_dns_endpoint_material($1,$2,$3), \
+             terrain.current_https_context_view($1,$2,$3,$4)",
+            &[&e, &c, &assets, &evaluated_at],
+        )
+        .map_err(|e| store_err(&e))?;
+    let dns_raw: Value = row.try_get(0).map_err(|_| Fail::Store("contract_decode"))?;
+    let https_raw: Value = row.try_get(1).map_err(|_| Fail::Store("contract_decode"))?;
+    let dns_material =
+        serde_json::from_value(dns_raw).map_err(|_| Fail::Store("contract_decode"))?;
+    let https_claims =
+        serde_json::from_value(https_raw).map_err(|_| Fail::Store("contract_decode"))?;
+    Ok((dns_material, https_claims))
 }
 
 fn read_terrain(

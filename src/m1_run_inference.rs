@@ -12,6 +12,7 @@ struct RunBasis {
     run: Uuid,
     local: Option<super::m1_run_control::Binding>,
     successor: bool,
+    expected_version: &'static str,
 }
 impl RunBasis {
     fn current_run(&mut self) -> Result<(), &'static str> {
@@ -31,6 +32,8 @@ impl ProposalBasis for RunBasis {
     }
     fn manifest_eligible(&self, r: &str) -> bool {
         r == "dns_udp"
+            || (self.expected_version == duskweave::m1_https::VERSION_HTTPS_LOOP
+                && r == duskweave::m1_https::INTENT_HTTPS_HEAD_V1)
     }
     fn safe_explanation(&self, s: &str) -> bool {
         self.terrain.safe_explanation(s)
@@ -41,6 +44,9 @@ impl ProposalBasis for RunBasis {
     }
     fn before_provider_release(&mut self) -> Result<(), &'static str> {
         self.current_run()?;
+        if self.expected_version == duskweave::m1_https::VERSION_HTTPS_LOOP {
+            return self.terrain.recording_integrity().map(|_| ());
+        }
         self.terrain.before_provider_release()
     }
     fn current_authority_for_references(&mut self, refs: &[String]) -> Result<(), &'static str> {
@@ -56,6 +62,17 @@ impl ProposalBasis for RunBasis {
         self.current_run()?;
         self.terrain.recording_integrity()
     }
+    fn expected_proposal_version(&self) -> &'static str {
+        self.expected_version
+    }
+}
+
+fn expected_proposal_version(run: &RunRecord) -> &'static str {
+    if run.request.https_loop() {
+        duskweave::m1_https::VERSION_HTTPS_LOOP
+    } else {
+        "m1_inference_proposal_v1"
+    }
 }
 
 pub(super) fn decide(
@@ -63,19 +80,21 @@ pub(super) fn decide(
     phase: RunPhase,
     preparation: Option<super::m1_run_control::Preparation>,
 ) -> Res<()> {
-    let local = if run.request.supervised_inference() {
-        Some(super::m1_run_control::Binding::qualify(&run.request)?)
-    } else {
-        None
-    };
+    let local = run
+        .request
+        .supervised_inference()
+        .then(|| super::m1_run_control::Binding::qualify(&run.request))
+        .transpose()?;
     let (a, control, decision) = decision_context(run, phase)?;
     let basis_binding = local.clone();
+    let expected_version = expected_proposal_version(run);
     let basis = |terrain| RunBasis {
         terrain,
         control,
         run: run.request.run_id,
         local: basis_binding,
         successor: run.request.successor(),
+        expected_version,
     };
     if run.request.successor() {
         return successor_decision(run, phase, preparation, local, a, decision, basis);
@@ -192,57 +211,67 @@ fn successor_decision<B: ProposalBasis>(
     )?;
     super::m1_run_control::install_reporter()?;
     let binding = local.ok_or(Fail::Config("run_control_unqualified"))?;
+    let build_provider = |_s: &reasoning::inference::Scope,
+                          _p: &duskweave::m1_context::PreparedContext,
+                          end: Instant| {
+        let coordinator = super::m1_inference_control::Coordinator::start(
+            super::m1_reasoning_cli::prepared_basis(_s, _p, end)?,
+            binding.clone(),
+            run.request.run_id,
+            end,
+            envelope_end(end, run)?,
+        )?;
+        let provider = if profile.backend == duskweave::m1_inference_profile::Backend::Genai {
+            SelectedProvider::Sdk(
+                reasoning::sdk_transport::SdkProvider::new(coordinator.permit.clone(), move || {
+                    binding
+                        .current()
+                        .map_err(|_| "current_authority_unavailable")
+                })
+                .with_reporter(super::m1_run_control::reporter()),
+            )
+        } else if profile.connection.credential_environment.is_some() {
+            SelectedProvider::Network(
+                reasoning::transport::AutonomousProvider::new(
+                    coordinator.permit.clone(),
+                    move || {
+                        binding
+                            .current()
+                            .map_err(|_| "current_authority_unavailable")
+                    },
+                )
+                .with_reporter(super::m1_run_control::reporter()),
+            )
+        } else {
+            local_provider(
+                profile,
+                coordinator.permit.clone(),
+                super::m1_run_control::reporter(),
+            )?
+        };
+        println!(
+            "{}",
+            super::m1_run_control::ready_frame(run.request.run_id, phase.name())
+        );
+        drop(preparation);
+        Ok((provider, coordinator))
+    };
+    if run.request.https_loop() {
+        return super::m1_reasoning_cli::https_loop::infer(
+            &run.request.context,
+            decision,
+            run.request.run_id,
+            &a,
+            basis,
+            build_provider,
+        );
+    }
     super::m1_reasoning_cli::autonomous_inference(
         &run.request.context,
         decision,
         &a,
         basis,
-        |s, p, end| {
-            let coordinator = super::m1_inference_control::Coordinator::start(
-                super::m1_reasoning_cli::prepared_basis(s, p, end)?,
-                binding.clone(),
-                run.request.run_id,
-                end,
-                envelope_end(end, run)?,
-            )?;
-            let provider = if profile.backend == duskweave::m1_inference_profile::Backend::Genai {
-                SelectedProvider::Sdk(
-                    reasoning::sdk_transport::SdkProvider::new(
-                        coordinator.permit.clone(),
-                        move || {
-                            binding
-                                .current()
-                                .map_err(|_| "current_authority_unavailable")
-                        },
-                    )
-                    .with_reporter(super::m1_run_control::reporter()),
-                )
-            } else if profile.connection.credential_environment.is_some() {
-                SelectedProvider::Network(
-                    reasoning::transport::AutonomousProvider::new(
-                        coordinator.permit.clone(),
-                        move || {
-                            binding
-                                .current()
-                                .map_err(|_| "current_authority_unavailable")
-                        },
-                    )
-                    .with_reporter(super::m1_run_control::reporter()),
-                )
-            } else {
-                local_provider(
-                    profile,
-                    coordinator.permit.clone(),
-                    super::m1_run_control::reporter(),
-                )?
-            };
-            println!(
-                "{}",
-                super::m1_run_control::ready_frame(run.request.run_id, phase.name())
-            );
-            drop(preparation);
-            Ok((provider, coordinator))
-        },
+        build_provider,
     )
 }
 fn local_provider(
@@ -272,6 +301,30 @@ fn envelope_end(active: Instant, run: &RunRecord) -> Res<Instant> {
         .min(Instant::now() + Duration::from_millis(remain as u64)))
 }
 
+fn legacy_decision_and_predecessor(
+    control: &mut PgRunStore,
+    run: &RunRecord,
+    phase: RunPhase,
+) -> Res<(Uuid, Option<serde_json::Value>)> {
+    if phase == RunPhase::DecisionOne {
+        return Ok((run.decision_one, None));
+    }
+    Ok((
+        run.decision_two,
+        Some(control.predecessor(run.request.run_id)?),
+    ))
+}
+
+fn https_decision_and_predecessor(
+    control: &mut PgRunStore,
+    run: &RunRecord,
+    phase: RunPhase,
+) -> Res<(Uuid, Option<serde_json::Value>)> {
+    let step = control.https_step_for_phase(run.request.run_id, phase)?;
+    let pred = control.https_predecessor(run.request.run_id, step.step_index as usize)?;
+    Ok((step.decision_id, pred))
+}
+
 fn decision_context(
     run: &RunRecord,
     phase: RunPhase,
@@ -280,16 +333,11 @@ fn decision_context(
     PgRunStore,
     Uuid,
 )> {
-    let decision = if phase == RunPhase::DecisionOne {
-        run.decision_one
-    } else {
-        run.decision_two
-    };
     let mut control = PgRunStore::new(super::m1_reasoning_cli::broker_connection()?);
-    let predecessor = if phase == RunPhase::DecisionTwo {
-        Some(control.predecessor(run.request.run_id)?)
+    let (decision, predecessor) = if run.request.https_loop() {
+        https_decision_and_predecessor(&mut control, run, phase)?
     } else {
-        None
+        legacy_decision_and_predecessor(&mut control, run, phase)?
     };
     let binding = duskweave::m1_autonomous_context::RunContextBinding {
         engagement_id: run.request.context.mission.engagement_id,
@@ -311,10 +359,24 @@ fn decision_context(
 }
 
 pub(super) fn recover(run: &RunRecord) -> Res<()> {
-    for decision in [run.decision_one, run.decision_two] {
+    let ids = recovery_decision_ids(run)?;
+    for decision in ids {
         super::m1_reasoning_cli::autonomous_recover(&run.request.context, decision)?;
     }
     Ok(())
+}
+
+fn recovery_decision_ids(run: &RunRecord) -> Res<Vec<Uuid>> {
+    if !run.request.https_loop() {
+        return Ok(vec![run.decision_one, run.decision_two]);
+    }
+    let mut control = PgRunStore::new(super::m1_reasoning_cli::broker_connection()?);
+    let steps = control.https_steps(run.request.run_id)?;
+    Ok(steps
+        .into_iter()
+        .filter(|s| s.status != "pending")
+        .map(|s| s.decision_id)
+        .collect())
 }
 
 #[cfg(test)]

@@ -74,9 +74,18 @@ impl InferencePermission {
         }
         match self.version.as_str() {
             "m1_inference_permission_v6" => self.check_live(),
-            "m1_inference_permission_v4" | "m1_inference_permission_v5" => self.check_successor(),
+            "m1_inference_permission_v4" | "m1_inference_permission_v5" | "m1_https_loop_v1" => {
+                self.check_v4_or_loop()
+            }
             "m1_inference_permission_v3" => self.check_autonomous(),
             _ => self.check_initial_profile(),
+        }
+    }
+    fn check_v4_or_loop(&self) -> Res<()> {
+        if self.version == crate::m1_https::VERSION_HTTPS_LOOP {
+            self.check_https_loop()
+        } else {
+            self.check_successor()
         }
     }
 

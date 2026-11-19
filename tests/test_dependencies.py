@@ -26,6 +26,9 @@ class Direction(unittest.TestCase):
             'use crate::m1_run::RunRecord;',
         ):
             self.assertTrue(check.violations('m1_context.rs', source), source)
+        for source in ('use reqwest::Client;', 'use crate::postgres_m1_terrain::https;', 'use curl::easy::Easy;', 'use std::process::Command;'):
+            self.assertTrue(check.violations('m1_https.rs', source), source)
+            self.assertTrue(check.violations('m1_https_terrain.rs', source), source)
         self.assertTrue(check.violations('m1_reasoning/inference.rs', 'use super::{transport as p};'))
 
     def test_comments_strings_and_typed_contracts_are_not_imports(self):
@@ -61,5 +64,13 @@ class SdkBoundary(unittest.TestCase):
                     self.assertTrue(check.violations(name, source))
         for name in ('mission.rs', 'm1_reasoning/inference_intent.rs'):
             self.assertTrue(check.violations(name, 'use crate::m1_reasoning::sdk_transport as infrastructure;'))
+        for name, bad in (
+            ('m1_https/result.rs', 'use postgres::Client;'),
+            ('m1_https/result.rs', 'use crate::m1_run::RunRecord;'),
+            ('m1_reasoning/inference_intent/https_loop_template.rs', 'use crate::m1_reasoning::transport;'),
+            ('m1_reasoning/inference_intent/https_loop_template.rs', 'use postgres::Client;'),
+        ):
+            with self.subTest(name=name, source=bad):
+                self.assertTrue(check.violations(name, bad))
         self.assertEqual(check.violations('m1_run_inference.rs', 'use crate::m1_reasoning::sdk_transport::SdkProvider;'), [])
         self.assertEqual(check.violations('m1_reasoning/sdk_transport.rs', 'use genai::Client;'), [])

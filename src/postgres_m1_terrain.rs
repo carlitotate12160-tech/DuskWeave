@@ -1,4 +1,5 @@
 //! PostgreSQL adapter and Mission permission verification for M1 Terrain DNS.
+pub mod https;
 use crate::m1_policy::M1PolicyReader;
 use crate::m1_terrain::verify_mission_permission;
 use crate::m1_terrain::{

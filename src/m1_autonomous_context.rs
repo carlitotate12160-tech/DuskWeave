@@ -45,13 +45,45 @@ impl AutonomousContext {
         }
         let caps = if matches!(
             pack["version"].as_str(),
-            Some("m1_context_pack_autonomous_v3" | "m1_context_pack_autonomous_v4")
+            Some(
+                "m1_context_pack_autonomous_v3"
+                    | "m1_context_pack_autonomous_v4"
+                    | crate::m1_https::VERSION_HTTPS_LOOP
+            )
         ) {
             (context_cap, configuration_cap)
         } else {
             (8192, 16384)
         };
         self.attach_feedback(pack, caps)
+    }
+
+    pub(crate) fn extend_https(
+        &self,
+        pack: &mut Value,
+        context_cap: usize,
+        configuration_cap: usize,
+    ) -> Res<()> {
+        self.binding.validate()?;
+        pack["inference_profile"] = json!(
+            self.binding
+                .inference_profile
+                .as_deref()
+                .ok_or(Fail::State("context_basis_mismatch"))?
+        );
+        pack["execution_mode"] = json!(self.binding.execution_mode);
+        pack["run_profile"] = json!(self.binding.run_profile);
+        pack["pending_unknown"] = json!(["unloaded_owner_views_not_loaded_by_profile"]);
+        pack["omissions"]["manifests"] = json!("qualified_profiles_only");
+        let refs = pack["references"]
+            .as_array_mut()
+            .ok_or(Fail::Store("context_encode"))?;
+        for reference in refs {
+            if reference["source"] == "caller_declared_premise" {
+                reference["source"] = json!("admitted_operator_seed");
+            }
+        }
+        self.attach_feedback(pack, (context_cap, configuration_cap))
     }
     fn attach_feedback(&self, pack: &mut Value, caps: (usize, usize)) -> Res<()> {
         let Some(prior) = &self.predecessor else {
@@ -77,6 +109,7 @@ fn fit_optional_summary(pack: &mut Value, caps: (usize, usize)) -> Res<()> {
             "m1_context_pack_autonomous_v2"
                 | "m1_context_pack_autonomous_v3"
                 | "m1_context_pack_autonomous_v4"
+                | crate::m1_https::VERSION_HTTPS_LOOP
         )
     ) || pack["predecessor"].get("hypothesis_summary").is_none()
     {
@@ -181,7 +214,10 @@ impl RunContextBinding {
             return true;
         }
         let valid = [
-            self.run_profile == crate::m1_inference_profile::RUN_PROFILE,
+            matches!(
+                self.run_profile.as_str(),
+                crate::m1_inference_profile::RUN_PROFILE | crate::m1_https::VERSION_HTTPS_LOOP
+            ),
             self.execution_mode == "controlled_fixture",
             crate::m1_inference_profile::lookup(name).is_ok(),
         ];

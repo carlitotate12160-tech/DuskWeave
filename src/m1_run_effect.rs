@@ -1,4 +1,5 @@
 //! Broker effect acquisition, independent Terrain acceptance, and required Trajectory delivery.
+pub(super) mod https_loop;
 mod live;
 use duskweave::m1_run::{NextStep, RunRecord};
 use duskweave::postgres_m1_run::PgRunStore;
@@ -56,6 +57,9 @@ fn accept_issued(run: &RunRecord) -> Res<duskweave::m1_terrain::TerrainAcceptedE
     Ok(event)
 }
 pub(super) fn deliver(run: &RunRecord) -> Res<()> {
+    if run.request.https_loop() {
+        return https_loop::deliver(run);
+    }
     let event = accept_issued(run)?;
     let history =
         record_terrain_history(&mut super::m1_terrain_cli::trajectory_connection()?, &event)?;

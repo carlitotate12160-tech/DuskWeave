@@ -3,7 +3,7 @@ use super::inference::{Provider, ProviderReport, Received};
 use super::inference_intent;
 use super::proposal::ProposalBasis;
 use super::provider_diagnostic::ProviderDiagnostic;
-use super::request::BoundCall;
+use super::request::{BoundCall, ScreenedBasis, check_screened};
 use super::transport_control::{CallClock, Permit, ReportedGuard, TransportGuard};
 use crate::m1_inference_profile::{self as profiles, Backend, Protocol};
 use genai::adapter::AdapterKind;
@@ -110,6 +110,26 @@ fn service_target(profile: profiles::Profile, key: &str) -> Res<ServiceTarget> {
         model: ModelIden::new(AdapterKind::OpenAIResp, profile.settings.model),
     })
 }
+fn chat_options(intent: &Value, profile: profiles::Profile) -> Res<ChatOptions> {
+    let name = intent["schema_version"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .ok_or("request_encode")?;
+    let effort = match profile.settings.reasoning_effort {
+        Some("low") => ReasoningEffort::Low,
+        _ => return Err("inference_unsupported_profile"),
+    };
+    Ok(ChatOptions {
+        reasoning_effort: Some(effort),
+        max_tokens: Some(profile.settings.output_tokens),
+        response_format: Some(ChatResponseFormat::JsonSpec(JsonSpec::new(
+            name,
+            intent["schema"].clone(),
+        ))),
+        capture_raw_body: Some(false),
+        ..Default::default()
+    })
+}
 fn chat_input(
     bound: &BoundCall,
     intent: &Value,
@@ -125,20 +145,7 @@ fn chat_input(
             serde_json::to_string(&repair).map_err(|_| "repair_encode")?,
         ));
     }
-    let options = ChatOptions {
-        reasoning_effort: Some(match profile.settings.reasoning_effort {
-            Some("low") => ReasoningEffort::Low,
-            _ => return Err("inference_unsupported_profile"),
-        }),
-        max_tokens: Some(profile.settings.output_tokens),
-        response_format: Some(ChatResponseFormat::JsonSpec(JsonSpec::new(
-            "m1_inference_proposal_v1",
-            intent["schema"].clone(),
-        ))),
-        capture_raw_body: Some(false),
-        ..Default::default()
-    };
-    Ok((request, options))
+    Ok((request, chat_options(intent, profile)?))
 }
 fn prepare_call(bound: &BoundCall, intent: &Value, left: Duration) -> Res<Prepared> {
     let profile = profiles::lookup(intent["profile"].as_str().ok_or("request_encode")?)
@@ -306,17 +313,21 @@ impl SdkProvider {
         {
             return Err("request_size");
         }
-        super::response::screened(key, basis, &mut self.diagnostic, |screened, diagnostic| {
-            super::response::admit_sdk(
-                raw,
-                content,
-                decoded,
-                requested_model,
-                elapsed,
-                screened,
-                diagnostic,
-            )
-        })
+        let mut sb = ScreenedBasis {
+            owner: basis,
+            key,
+            reflected: std::cell::Cell::new(false),
+        };
+        let res = super::response::admit_sdk(
+            raw,
+            content,
+            decoded,
+            requested_model,
+            elapsed,
+            &mut sb,
+            &mut self.diagnostic,
+        );
+        check_screened(res, sb.reflected.get(), key, &mut self.diagnostic)
     }
 }
 fn classify_error(error: &genai::Error) -> &'static str {

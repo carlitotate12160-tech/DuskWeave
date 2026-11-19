@@ -25,6 +25,8 @@ pub struct Intent {
     pub manifest_reference: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub view_request: Option<ViewRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_refresh: Option<crate::m1_https::DependencyRefresh>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,19 +114,43 @@ pub trait ProposalBasis: Send {
         self.current_authority_and_premises()?;
         Ok(RecordingPremises::Fresh)
     }
+    fn expected_proposal_version(&self) -> &'static str {
+        "m1_inference_proposal_v1"
+    }
+}
+
+fn https_refresh_valid(p: &Proposal) -> bool {
+    let Some(refresh) = p.next_intent.dependency_refresh else {
+        return false;
+    };
+    refresh == crate::m1_https::DependencyRefresh::None
+        || (p.next_intent.category == Category::Validate
+            && p.next_intent.manifest_reference.as_deref()
+                == Some(crate::m1_https::INTENT_HTTPS_HEAD_V1))
+}
+
+fn check_version_shape(p: &Proposal, has_refresh: bool) -> Result<(), Admission> {
+    match p.version.as_str() {
+        "m1_inference_proposal_v1" => (!has_refresh && p.next_intent.dependency_refresh.is_none())
+            .then_some(())
+            .ok_or_else(|| Admission::Repairable(vec!["proposal_shape"])),
+        crate::m1_https::VERSION_HTTPS_LOOP => https_refresh_valid(p)
+            .then_some(())
+            .ok_or_else(|| Admission::Repairable(vec!["proposal_shape"])),
+        _ => Err(Admission::Repairable(vec!["proposal_version"])),
+    }
 }
 
 fn structural(value: Value) -> Result<Proposal, Admission> {
-    if value["next_intent"]["category"] != "observe_more"
-        && value["next_intent"].get("view_request").is_some()
-    {
+    let unexpected_view = value["next_intent"]["category"] != "observe_more"
+        && value["next_intent"].get("view_request").is_some();
+    if unexpected_view {
         return Err(Admission::Repairable(vec!["unexpected_view_request"]));
     }
+    let has_refresh = value["next_intent"].get("dependency_refresh").is_some();
     let p: Proposal = serde_json::from_value(value)
         .map_err(|error| Admission::Structural(ShapeDiagnostic::from_serde(&error)))?;
-    if p.version != "m1_inference_proposal_v1" {
-        return Err(Admission::Repairable(vec!["proposal_version"]));
-    }
+    check_version_shape(&p, has_refresh)?;
     if texts(&p)
         .iter()
         .any(|s| s.trim().is_empty() || s.len() > 1024)
@@ -201,6 +227,9 @@ pub fn admit(raw: &[u8], basis: &mut dyn ProposalBasis) -> Admission {
         Ok(p) => p,
         Err(admission) => return admission,
     };
+    if p.version != basis.expected_proposal_version() {
+        return Admission::Repairable(vec!["proposal_version"]);
+    }
     if !texts(&p).into_iter().all(|s| basis.safe_explanation(s)) {
         return Admission::Rejected("unsafe_explanation");
     }

@@ -5,6 +5,7 @@ use crate::mission::AssetRef;
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+pub mod https_loop;
 mod live;
 
 pub const FIXTURE_PROFILE: &str = "autonomous-dns-fixture-v1";
@@ -16,6 +17,7 @@ pub fn controlled_fixture_profile(profile: &str) -> bool {
         FIXTURE_PROFILE,
         PROVIDER_FIXTURE_PROFILE,
         crate::m1_inference_profile::RUN_PROFILE,
+        crate::m1_https::VERSION_HTTPS_LOOP,
     ]
     .contains(&profile)
 }
@@ -97,7 +99,12 @@ impl RunRequest {
             "m1_autonomous_run_request_v2"
                 | "m1_autonomous_run_request_v3"
                 | "m1_autonomous_run_request_v4"
+                | crate::m1_https::VERSION_HTTPS_LOOP
         )
+    }
+
+    pub fn https_loop(&self) -> bool {
+        self.version == crate::m1_https::VERSION_HTTPS_LOOP
     }
 
     pub fn supervised_inference(&self) -> bool {
@@ -118,20 +125,27 @@ impl RunRequest {
     fn valid_version_profile(&self) -> bool {
         match (self.version.as_str(), self.inference_profile.as_deref()) {
             ("m1_autonomous_run_request_v1", None) => {
-                self.run_profile != crate::m1_inference_profile::RUN_PROFILE
+                matches!(
+                    self.run_profile.as_str(),
+                    FIXTURE_PROFILE | PROVIDER_FIXTURE_PROFILE
+                )
             }
-            ("m1_autonomous_run_request_v2", Some(name)) => {
-                self.run_profile == crate::m1_inference_profile::RUN_PROFILE
-                    && crate::m1_inference_profile::lookup(name)
-                        .is_ok_and(|p| p.backend == crate::m1_inference_profile::Backend::Legacy)
+            ("m1_autonomous_run_request_v2", Some(n)) => {
+                self.backend_match(n, crate::m1_inference_profile::Backend::Legacy)
             }
-            ("m1_autonomous_run_request_v3", Some(name)) => {
-                self.run_profile == crate::m1_inference_profile::RUN_PROFILE
-                    && crate::m1_inference_profile::lookup(name)
-                        .is_ok_and(|p| p.backend == crate::m1_inference_profile::Backend::Genai)
+            ("m1_autonomous_run_request_v3", Some(n)) => {
+                self.backend_match(n, crate::m1_inference_profile::Backend::Genai)
+            }
+            (crate::m1_https::VERSION_HTTPS_LOOP, Some(n)) => {
+                self.run_profile == crate::m1_https::VERSION_HTTPS_LOOP
+                    && n == crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE
             }
             _ => false,
         }
+    }
+    fn backend_match(&self, name: &str, expected: crate::m1_inference_profile::Backend) -> bool {
+        self.run_profile == crate::m1_inference_profile::RUN_PROFILE
+            && crate::m1_inference_profile::lookup(name).is_ok_and(|p| p.backend == expected)
     }
 }
 
@@ -150,23 +164,46 @@ pub enum RunPhase {
     DecisionOne,
     Acquisition,
     DecisionTwo,
+    AcquisitionOne,
+    AcquisitionTwo,
+    DecisionThree,
+    AcquisitionThree,
+    DecisionFour,
 }
+const PHASE_NAMES: &[(&str, RunPhase)] = &[
+    ("decision_one", RunPhase::DecisionOne),
+    ("acquisition", RunPhase::Acquisition),
+    ("decision_two", RunPhase::DecisionTwo),
+    ("acquisition_one", RunPhase::AcquisitionOne),
+    ("acquisition_two", RunPhase::AcquisitionTwo),
+    ("decision_three", RunPhase::DecisionThree),
+    ("acquisition_three", RunPhase::AcquisitionThree),
+    ("decision_four", RunPhase::DecisionFour),
+];
 impl RunPhase {
     pub fn parse(raw: &str) -> Res<Self> {
-        match raw {
-            "decision_one" => Ok(Self::DecisionOne),
-            "acquisition" => Ok(Self::Acquisition),
-            "decision_two" => Ok(Self::DecisionTwo),
-            _ => Err(Fail::Input("invalid_args")),
-        }
+        PHASE_NAMES
+            .iter()
+            .find_map(|(n, p)| (*n == raw).then_some(*p))
+            .ok_or(Fail::Input("invalid_args"))
     }
-
     pub fn name(self) -> &'static str {
-        match self {
-            Self::DecisionOne => "decision_one",
-            Self::Acquisition => "acquisition",
-            Self::DecisionTwo => "decision_two",
-        }
+        PHASE_NAMES
+            .iter()
+            .find_map(|(n, p)| (*p == self).then_some(*n))
+            .unwrap_or("decision_one")
+    }
+    pub fn is_acquisition(self) -> bool {
+        matches!(
+            self,
+            Self::Acquisition
+                | Self::AcquisitionOne
+                | Self::AcquisitionTwo
+                | Self::AcquisitionThree
+        )
+    }
+    pub fn is_decision(self) -> bool {
+        !self.is_acquisition()
     }
 }
 #[derive(Deserialize, Serialize)]
@@ -348,16 +385,16 @@ fn selected_dns_seeds(refs: &[String], candidate_count: usize) -> Res<Vec<usize>
     }
     Ok(seeds)
 }
+fn is_context_only_ref(r: &str) -> bool {
+    matches!(r, "mission" | "previous_decision")
+        || https_loop::canonical_index(r, "terrain_").is_some()
+}
 fn reference_target(r: &str, candidate_count: usize) -> Res<Option<usize>> {
-    if matches!(r, "mission" | "previous_decision") || canonical_index(r, "terrain_").is_some() {
+    if is_context_only_ref(r) {
         return Ok(None);
     }
-    canonical_index(r, "asset_")
+    https_loop::canonical_index(r, "asset_")
         .filter(|i| *i < candidate_count)
         .map(Some)
         .ok_or(Fail::State("effect_seed_ineligible"))
-}
-fn canonical_index(r: &str, prefix: &str) -> Option<usize> {
-    let index = r.strip_prefix(prefix)?.parse::<usize>().ok()?;
-    (format!("{prefix}{index}") == r).then_some(index)
 }

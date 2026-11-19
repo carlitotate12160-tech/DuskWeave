@@ -69,6 +69,7 @@ impl Authority {
                 "m1_inference_permission_v4"
                     | "m1_inference_permission_v5"
                     | "m1_inference_permission_v6"
+                    | "m1_https_loop_v1"
             )
         ) {
             self.terrain.recording_integrity().map_err(Fail::State)?;

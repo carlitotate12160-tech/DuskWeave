@@ -8,6 +8,7 @@ impl InferencePermission {
             "m1_inference_permission_v4"
                 | "m1_inference_permission_v5"
                 | "m1_inference_permission_v6"
+                | "m1_https_loop_v1"
         ) {
             return self.check_successor_limits();
         }
@@ -30,6 +31,30 @@ impl InferencePermission {
                 == (profile.backend == crate::m1_inference_profile::Backend::Genai),
             self.recipient == profile.connection.recipient,
             self.run_profile.as_deref() == Some(crate::m1_inference_profile::RUN_PROFILE),
+            self.execution_mode.as_deref() == Some("controlled_fixture"),
+            self.provider_terms_approved,
+            !self.permission_id.is_nil(),
+            !self.provider_terms_ref.is_nil(),
+            self.field_classes
+                .contains(&SafeFieldClass::AdmittedCampaignDecisionFeedback),
+        ];
+        if !valid.into_iter().all(|v| v) {
+            return Err(Fail::Input("inference_unsupported_profile"));
+        }
+        self.check_field_classes()?;
+        self.validate_native_profile()
+    }
+
+    pub(super) fn check_https_loop(&self) -> Res<()> {
+        let profile = crate::m1_inference_profile::lookup(
+            crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE,
+        )?;
+        let valid = [
+            self.profile == profile.name,
+            self.operation_limits.request_bytes == 16384,
+            self.recipient == profile.connection.recipient,
+            self.run_profile.as_deref()
+                == Some(crate::m1_inference_profile::HTTPS_LOOP_RUN_PROFILE),
             self.execution_mode.as_deref() == Some("controlled_fixture"),
             self.provider_terms_approved,
             !self.permission_id.is_nil(),

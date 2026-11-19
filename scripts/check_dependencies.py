@@ -16,9 +16,10 @@ PROTECTED = (
     'm1_run.rs', 'm1_reasoning/inference.rs', 'm1_reasoning/decision_attempt.rs',
     'm1_reasoning/proposal.rs', 'm1_reasoning/request.rs', 'm1_reasoning/request_autonomous.rs',
     'm1_reasoning/bounded_json.rs', 'm1_reasoning/response.rs', 'm1_reasoning/inference_intent.rs',
-    'm1_dns.rs', 'm1_effect_session.rs', 'm1_inference_profile.rs',
+    'm1_dns.rs', 'm1_https.rs', 'm1_https_terrain.rs', 'm1_effect_session.rs', 'm1_inference_profile.rs',
 )
-PROTECTED_OWNERS = ('m1_dns/', 'm1_run/', 'm1_context/', 'm1_inference_permission/',
+PROTECTED_OWNERS = ('m1_dns/', 'm1_run/', 'm1_context/', 'm1_https/',
+                    'm1_inference_permission/', 'm1_reasoning/inference_intent/',
                     'm1_terrain_input/', 'm1_terrain_view/')
 
 
