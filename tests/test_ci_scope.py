@@ -354,7 +354,10 @@ class WorkflowWiring(unittest.TestCase):
             r"- name: Download worker 1 evidence and raw profiles\n"
             r"(.*?)- name:", rust, re.S).group(1)
         self.assertIn(pin, worker1)
-        self.assertIn("rust_workers == '2'", worker1)
+        self.assertIn(
+            "needs.changes.outputs.rust_workers == '2' || needs.changes.outputs.rust_workers == '4'",
+            worker1,
+        )
         self.assertIn("artifact-ids: ${{ steps.select.outputs.worker_1_id }}",
                       worker1)
         self.assertIn("/dw-evidence/dw-rust-worker-1", worker1)

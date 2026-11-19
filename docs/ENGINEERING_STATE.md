@@ -101,17 +101,28 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-M1-HTTPS-LOOP-SKELETON-R1` implements the accepted
-[DW-HTTPS-LOOP-SLIM-DESIGN-R1](adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17)
-four-decision bounded HTTPS-loop walking skeleton (`m1_https_loop_v1`) over
-schema `0037` (`migrations/0037_https_loop.sql`), `duskweave m1-run`, SDK
-fixture transport (`127.0.0.1:18083`), and deterministic DNS/HEAD fixtures. No
-execution permission, seal, or timer change. Design authorities:
+**Active work:** `DW-CI-FOUR-WORKER-REBALANCE-R1` rebalances the required Rust
+CI pipeline under
+[roadmap §1.4](MVP_AND_DEFERRED_SCOPE.md#14-delivery-performance-and-debt-closure-owner-direction-2026-10-19)
+to four default isolated hosted `rust-tests` workers while retaining explicit
+one- and two-worker modes, a pure extracted planner with a `380s` worker-0
+designated-work allowance, explicit artifact-ID custody, one shared instrumented
+build, and the unchanged `90%`/`80%` coverage floors. CI tooling only — no
+execution permission, seal, or timer change. Delivery status lives on GitHub.
+
+**Delivered fixture orchestration:** `DW-M1-HTTPS-LOOP-SKELETON-R1` (merged via
+PR #159 at `4b0bba6c956c3e853f248ff25759d9f5bc408f74`) delivered the bounded
+four-decision HTTPS-loop walking skeleton (`m1_https_loop_v1`) over schema
+`0037` (`migrations/0037_https_loop.sql`), `duskweave m1-run`, SDK fixture
+transport (`127.0.0.1:18083`), and deterministic DNS/HEAD fixtures under the
+accepted
 [ADR-013 refresh exception](adr/ADR-013-capability-contract.md#candidate-https-loop-dns-refresh-2026-11-17),
 [ADR-016 run](adr/ADR-016-execution-broker.md#4c-candidate-https-loop-run-2026-11-17),
-[enabling contract](contracts/M1-enabling-architecture.md#9-candidate-https-loop-successor-2026-11-17)
-and the [orientation consistency note](contracts/M1-external-orientation-decision-loop.md#candidate-https-loop-consistency-2026-11-17).
-Delivery status lives on GitHub.
+[enabling contract](contracts/M1-enabling-architecture.md#9-candidate-https-loop-successor-2026-11-17),
+and
+[orientation consistency note](contracts/M1-external-orientation-decision-loop.md#candidate-https-loop-consistency-2026-11-17).
+Fixture orchestration only: no live HTTPS readiness, execution permission, or
+M1 seal is claimed.
 
 **Latest completed product evidence (bounded historical observation):**
 On 2026-11-16 the explicitly authorized Oracle ARM64 episode
@@ -134,7 +145,8 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** HTTPS runtime implementation stays unauthorized. Fresh
+**Next product action:** Next product integration stays separately assigned after
+CI delivery. HTTPS runtime / live execution stays unauthorized: fresh
 disclosure and a qualified live boundary remain prerequisites for any later
 HTTPS execution; fixture or expired consent cannot satisfy them. The accepted
 amendment grants no execution permission or seal.

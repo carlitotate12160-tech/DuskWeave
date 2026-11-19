@@ -9,13 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       rust_workers:
-        # Two workers is the normal fan-out. One worker is the explicit
-        # serial reference qualification on the same instrumented build.
-        description: "Rust suite fan-out: 2 (default) or 1 (serial reference)"
+        # Four workers is the normal fan-out. Two workers is the fallback
+        # and one worker is the explicit serial reference qualification on
+        # the same instrumented build.
+        description: "Rust suite fan-out: 4 (default), 2 (fallback) or 1 (serial reference)"
         required: false
-        default: "2"
+        default: "4"
         type: choice
-        options: ["2", "1"]
+        options: ["4", "2", "1"]
 
 permissions:
   contents: read
@@ -43,11 +44,15 @@ jobs:
       - name: Rust worker fan-out
         id: fanout
         env:
-          REQUESTED: ${{ github.event.inputs.rust_workers || '2' }}
+          REQUESTED: ${{ github.event.inputs.rust_workers || '4' }}
         run: |
           set -e
-          case "$REQUESTED" in 1|2) ;; *) echo "unsupported rust_workers=$REQUESTED"; exit 1;; esac
-          if [ "$REQUESTED" = 1 ]; then echo 'matrix=[0]' >> "$GITHUB_OUTPUT"; else echo 'matrix=[0,1]' >> "$GITHUB_OUTPUT"; fi
+          case "$REQUESTED" in
+            1) echo 'matrix=[0]' >> "$GITHUB_OUTPUT" ;;
+            2) echo 'matrix=[0,1]' >> "$GITHUB_OUTPUT" ;;
+            4) echo 'matrix=[0,1,2,3]' >> "$GITHUB_OUTPUT" ;;
+            *) echo "unsupported rust_workers=$REQUESTED"; exit 1 ;;
+          esac
           echo "count=$REQUESTED" >> "$GITHUB_OUTPUT"
 
   links:
@@ -673,11 +678,25 @@ jobs:
           path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-0
 
       - name: Download worker 1 evidence and raw profiles
-        if: needs.changes.outputs.rust_workers == '2'
+        if: needs.changes.outputs.rust_workers == '2' || needs.changes.outputs.rust_workers == '4'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ steps.select.outputs.worker_1_id }}
           path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-1
+
+      - name: Download worker 2 evidence and raw profiles
+        if: needs.changes.outputs.rust_workers == '4'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.select.outputs.worker_2_id }}
+          path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-2
+
+      - name: Download worker 3 evidence and raw profiles
+        if: needs.changes.outputs.rust_workers == '4'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.select.outputs.worker_3_id }}
+          path: ${{ runner.temp }}/dw-evidence/dw-rust-worker-3
 
       - name: Verify candidate, tools and object set
         run: |

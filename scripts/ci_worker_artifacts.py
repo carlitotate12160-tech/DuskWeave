@@ -22,7 +22,7 @@ from pathlib import Path
 FAMILY = "dw-rust-worker-"
 NAME_RE = re.compile(r"^dw-rust-worker-(\d+)-([0-9a-f]{40})-(\d+)-(\d+)$")
 SHA_RE = re.compile(r"[0-9a-f]{40}")
-WORKER_COUNTS = (1, 2)
+WORKER_COUNTS = (1, 2, 4)
 
 
 class SelectionError(Exception):
@@ -156,7 +156,7 @@ def main(argv=None):
     sel.add_argument("--sha", required=True, help="actual checkout SHA")
     sel.add_argument("--run-id", required=True, help="workflow run id")
     sel.add_argument("--attempt", required=True, help="current run attempt")
-    sel.add_argument("--workers", required=True, help="worker count (1 or 2)")
+    sel.add_argument("--workers", required=True, help="worker count (1, 2, or 4)")
     sel.add_argument("--output", help="append worker_N_id lines to this file")
     sel.set_defaults(func=cmd_select)
     args = parser.parse_args(argv)
