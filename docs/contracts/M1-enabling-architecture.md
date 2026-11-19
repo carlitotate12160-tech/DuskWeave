@@ -16,7 +16,7 @@
 | rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
 | Lease coordination amendment | [Section 7 lease coordination](#lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); positive renewal is not authority mutation; authority fence, timers and seals unchanged |
 | HTTPS-loop successor | [Section 9](#9-candidate-https-loop-successor-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; historical proposal and run shapes unchanged; no execution permission or seal |
-| HTTPS LAB binding | [Proposed isolated LAB binding](#proposed-isolated-https-lab-binding-2026-11-19) is DRAFT, not accepted; extends only the explicitly named successor pairing; no execution permission, qualification or seal |
+| HTTPS LAB binding | [Proposed isolated LAB binding](#proposed-isolated-https-lab-binding-2026-11-19) ACCEPTED by the product owner on 2026-11-19 (Asia/Jakarta), by conversation approval of `20ecbcedc569fbac3caffd4bb53762652eecc15b` together with the ADR-016 scoped exception; an assigned implementation packet may rely on it; no episode, host qualification, public LIVE, or seal |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: each rule now lives in its one owning document — field/contract semantics, profile/version pairing and sequencing here; admission, accounting, cancellation, recovery, inference clocks and resource tuples in [ADR-016](../adr/ADR-016-execution-broker.md); acquisition limits in [ADR-013](../adr/ADR-013-capability-contract.md); isolation and egress-lease controls in [ADR-015](../adr/ADR-015-execution-boundary.md); wire framing in [ADR-017](../adr/ADR-017-cross-process-contract.md). Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md). No new acceptance, permission or seal |
 
 ## 1. Outcome and decision boundary
@@ -1472,7 +1472,7 @@ These transitions are future runtime assertions. They do not claim that a test h
 
 ### Proposed isolated HTTPS LAB binding (2026-11-19)
 
-**Status: DRAFT — not accepted.** This subsection is a proposed extension to the accepted HTTPS-loop successor. Until the product owner accepts its exact text, existing admission remains unchanged. Acceptance would permit bounded implementation under an assigned packet; it would not authorize an episode, qualify a deployment or seal M1.
+**Status: ACCEPTED — product owner, 2026-11-19 (Asia/Jakarta), by conversation approval of the amendment text at `20ecbcedc569fbac3caffd4bb53762652eecc15b`, together with the ADR-016 scoped exception.** This status record adds no rule. A separately assigned implementation packet may rely on this text. It grants no episode execution, host qualification, public or client LIVE, or M1 seal.
 
 #### Purpose and selected boundary
 

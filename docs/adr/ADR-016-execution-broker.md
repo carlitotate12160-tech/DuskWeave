@@ -15,7 +15,7 @@
 | rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, timers, consent and seals unchanged |
 | Lease coordination amendment | [Section 4a lease coordination](#positive-run-lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); liveness renewal is not authority mutation; authority fence, timers and seals unchanged |
 | HTTPS-loop run | [Section 4c](#4c-candidate-https-loop-run-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; Pro-v2 clocks and historical run shapes unchanged; no execution permission or seal |
-| HTTPS LAB inference exception | [Proposed scoped exception](#proposed-https-lab-inference-exception-2026-11-19) is DRAFT, not accepted; historical profile restrictions, resource tuples and seals remain unchanged |
+| HTTPS LAB inference exception | [Proposed scoped exception](#proposed-https-lab-inference-exception-2026-11-19) ACCEPTED by the product owner on 2026-11-19 (Asia/Jakarta), by conversation approval of `20ecbcedc569fbac3caffd4bb53762652eecc15b` together with the closed HTTPS LAB binding; historical profile restrictions, resource tuples and seals remain unchanged; no episode, host qualification, public LIVE, or seal |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: admission, accounting, cancellation, recovery, inference clocks and resource tuples stay owned here; repeated inventories and measured anecdotes now reference the canonical tables. Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/adr/ADR-016-execution-broker.md). No new acceptance, permission or seal |
 
 ## 1. Context and problem statement
@@ -813,7 +813,7 @@ obligation stays visible.
 
 ### Proposed HTTPS LAB inference exception (2026-11-19)
 
-**Status: DRAFT — not accepted.** This proposed exception becomes available only with product-owner acceptance of its exact text and the [closed HTTPS LAB binding](../contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19). It grants no episode execution, deployment qualification or seal.
+**Status: ACCEPTED — product owner, 2026-11-19 (Asia/Jakarta), by conversation approval of the amendment text at `20ecbcedc569fbac3caffd4bb53762652eecc15b`, together with the [closed HTTPS LAB binding](../contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19).** This status record adds no rule. It grants no episode execution, host qualification, public or client LIVE, or M1 seal.
 
 The sole new inference pairing is the `m1_https_loop_v1` successor with run profile `autonomous-https-genai-lab-v1`, execution mode `live`, qualification purpose `HTTPS_LOOP_LAB`, and `fixture-genai-v4-pro-low-v2`. Its exact recipient, scope, trust and provenance are owned by the enabling contract. This is deterministic loopback SDK inference accompanying actual synthetic LAB effects; no real-provider connection or credential is admitted.
 

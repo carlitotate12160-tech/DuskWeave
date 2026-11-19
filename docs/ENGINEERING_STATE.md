@@ -15,8 +15,12 @@ entries below keep only outcome, tested-source identity, limits and owners.
 - **Current phase**: M1 is unsealed. The HTTPS-loop successor amendment
   (DW-HTTPS-LOOP-SLIM-DESIGN-R1) is ACCEPTED by the product owner on
   2026-11-17 (Asia/Jakarta), by conversation approval of the amendment text at
-  `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`. The status lines add no rule.
-  Delivery status lives on GitHub. No execution permission or seal.
+  `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`. The isolated HTTPS LAB binding
+  and its ADR-016 inference exception are ACCEPTED on 2026-11-19
+  (Asia/Jakarta), by conversation approval of the amendment text at
+  `20ecbcedc569fbac3caffd4bb53762652eecc15b`. The status lines add no rule.
+  Delivery status lives on GitHub. No episode, host qualification, public
+  LIVE, or seal.
 - **Active seals**: `DW-FOUNDATION-001` and `DW-M0-001`; evidence in section 5
   is unchanged.
 - **Platform direction**: per the owner direction recorded in
@@ -101,7 +105,7 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` proposes one isolated actual-network HTTPS LAB binding for the existing successor. The [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) are DRAFT, not accepted. No implementation, host qualification, episode permission or seal is claimed. PR/candidate/CI delivery state remains on GitHub; the completed four-worker CI assignment is not active product work.
+**Active work:** `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` is ACCEPTED as the basis for a later LAB implementation. The [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) were accepted together on 2026-11-19 at `20ecbcedc569fbac3caffd4bb53762652eecc15b`. No implementation packet is assigned. No host qualification, episode permission, public LIVE, or seal is claimed. PR/candidate/CI delivery state remains on GitHub; the completed four-worker CI assignment is not active product work.
 
 **Delivered fixture orchestration:** `DW-M1-HTTPS-LOOP-SKELETON-R1` (merged via
 PR #159 at `4b0bba6c956c3e853f248ff25759d9f5bc408f74`) delivered the bounded
@@ -138,7 +142,7 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** Review the exact HTTPS LAB amendment text and record product-owner disposition. Only after acceptance may a separately assigned implementation packet rely on it, with actual environment, artifact identities and qualification checks resolved before execution. Public/client HTTPS LIVE and real-provider cognition remain separately assigned and unauthorized by this draft; fresh authority and qualified boundaries remain prerequisites. M1 stays unsealed.
+**Next product action:** Assign one bounded LAB implementation packet that relies on the accepted text at `20ecbcedc569fbac3caffd4bb53762652eecc15b`. Before any qualification execution, that packet resolves the actual environment, artifact identities, synthetic certificate bytes, and disposable database. This acceptance authorizes no episode, host qualification, public/client HTTPS LIVE, or real-provider cognition. Fresh authority and qualified boundaries remain prerequisites. M1 stays unsealed.
 
 ## 7. Unresolved constraints
 
