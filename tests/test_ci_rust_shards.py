@@ -365,10 +365,10 @@ class ReceiptAggregateTest(unittest.TestCase):
         self.assertNotEqual(self.receipt(1).returncode, 0)
 
     def test_action_failures_and_incomplete_capture_fail_receipt(self):
-        ws = self.ws
-        ws.evidence(0, self.assign[0])
-        ev = ws.root / "evidence-w0" / "suite"
-        label = action_label(0, self.assign[0][0])
+        worker = next(w for w, ids in self.assign.items() if ids)
+        self.ws.evidence(worker, self.assign[worker])
+        ev = self.ws.root / f"evidence-w{worker}" / "suite"
+        label = action_label(0, self.assign[worker][0])
 
         cases = [
             ({"exit": 1, "status": "action_failed"}, "nonzero exit"),
@@ -379,19 +379,16 @@ class ReceiptAggregateTest(unittest.TestCase):
             with self.subTest(name=name):
                 good = result_json()
                 good.update(patch)
-                if "exit" in patch:
-                    good["exit"] = patch["exit"]
-                    good["status"] = patch["status"]
                 (ev / f"{label}.result.json").write_text(json.dumps(good))
-                self.assertNotEqual(self.receipt(0).returncode, 0)
+                self.assertNotEqual(self.receipt(worker).returncode, 0)
                 (ev / f"{label}.result.json").write_text(json.dumps(result_json()))
 
     def test_wrong_execution_failed_and_ignored_mismatch_fail(self):
-        ws = self.ws
-        tid = self.assign[0][0]
-        names, ignored = ws.TARGET_TESTS[tid]
-        ws.evidence(0, self.assign[0])
-        log = ws.root / "evidence-w0" / "suite" / f"{action_label(0, tid)}.log"
+        worker = next(w for w, ids in self.assign.items() if ids)
+        tid = self.assign[worker][0]
+        names, ignored = self.ws.TARGET_TESTS[tid]
+        self.ws.evidence(worker, self.assign[worker])
+        log = self.ws.root / f"evidence-w{worker}" / "suite" / f"{action_label(0, tid)}.log"
 
         extra_ignored = ignored + [n for n in names if n not in ignored][:1]
         variants = [
@@ -408,13 +405,13 @@ class ReceiptAggregateTest(unittest.TestCase):
         # target declares ignored tests; the filtered run is always invalid.
         for body, fail in zip(variants, expect_fail):
             log.write_text(body)
-            r = self.receipt(0)
+            r = self.receipt(worker)
             self.assertEqual(r.returncode != 0, fail, msg=body[:60])
             if fail:
                 continue
         # extra executed test (duplicated coverage of another shard's target)
         log.write_text(test_log(names + ["surprise_test"], ignored))
-        self.assertNotEqual(self.receipt(0).returncode, 0)
+        self.assertNotEqual(self.receipt(worker).returncode, 0)
 
     def test_should_panic_result_line_is_recognized(self):
         import importlib.util
@@ -522,7 +519,8 @@ class ReceiptAggregateTest(unittest.TestCase):
     def test_aggregate_rejects_evidence_mismatch(self):
         self.make_workers()
         # tamper evidence vs receipt: change a receipt after the fact
-        rec_path = self.ws.root / "evidence-w0" / "receipt.json"
+        worker = next(w for w, ids in self.assign.items() if ids)
+        rec_path = self.ws.root / f"evidence-w{worker}" / "receipt.json"
         rec = read_json(rec_path)
         rec["targets"][0]["exit"] = 1
         rec_path.write_text(json.dumps(rec))
