@@ -16,6 +16,7 @@
 | rust-genai amendment | [Section 8](#8-candidate-rust-genai-sdk-adapter-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, consent and seals unchanged |
 | Lease coordination amendment | [Section 7 lease coordination](#lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); positive renewal is not authority mutation; authority fence, timers and seals unchanged |
 | HTTPS-loop successor | [Section 9](#9-candidate-https-loop-successor-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; historical proposal and run shapes unchanged; no execution permission or seal |
+| HTTPS LAB binding | [Proposed isolated LAB binding](#proposed-isolated-https-lab-binding-2026-11-19) ACCEPTED by the product owner on 2026-11-19 (Asia/Jakarta), by conversation approval of `20ecbcedc569fbac3caffd4bb53762652eecc15b` together with the ADR-016 scoped exception; an assigned implementation packet may rely on it; no episode, host qualification, public LIVE, or seal |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: each rule now lives in its one owning document — field/contract semantics, profile/version pairing and sequencing here; admission, accounting, cancellation, recovery, inference clocks and resource tuples in [ADR-016](../adr/ADR-016-execution-broker.md); acquisition limits in [ADR-013](../adr/ADR-013-capability-contract.md); isolation and egress-lease controls in [ADR-015](../adr/ADR-015-execution-boundary.md); wire framing in [ADR-017](../adr/ADR-017-cross-process-contract.md). Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/contracts/M1-enabling-architecture.md). No new acceptance, permission or seal |
 
 ## 1. Outcome and decision boundary
@@ -1468,3 +1469,76 @@ Rust, persistence, logs or reasoning. Framing and launcher mechanics stay the ac
 ones. A new binary family or directory layout is not required.
 
 These transitions are future runtime assertions. They do not claim that a test has run.
+
+### Proposed isolated HTTPS LAB binding (2026-11-19)
+
+**Status: ACCEPTED — product owner, 2026-11-19 (Asia/Jakarta), by conversation approval of the amendment text at `20ecbcedc569fbac3caffd4bb53762652eecc15b`, together with the ADR-016 scoped exception.** This status record adds no rule. A separately assigned implementation packet may rely on this text. It grants no episode execution, host qualification, public or client LIVE, or M1 seal.
+
+#### Purpose and selected boundary
+
+The outcome is one autonomous `m1-run` episode using deterministic SDK inference and actual DNS/TLS/HEAD I/O against synthetic services in an isolated LAB: proposal -> current admission -> admitted acquisition -> trusted safe result -> Terrain reconciliation -> next ContextPack and decision -> durable history/inspect. This demonstrates active validation and evidence-led adaptation plumbing. It proves neither real-provider cognition, client observations, access nor objective completion.
+
+Preserve PRD-000's objective-led adversary-emulation intent. APT41 informs continuity and evidence-led adaptation, Lazarus context-dependent composition, and Volt Typhoon situational awareness and controlled footprint. These remain design lenses, not actor-equivalence claims, runtime playbooks or execution authority. No-action, defer, stop and capability-gap decisions remain valid; the LAB witness is not a mandatory campaign sequence.
+
+This subsection owns the closed binding, endpoint exception, trust and provenance contract. [ADR-016's scoped LAB exception](../adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) owns inference pairing and lifecycle/accounting. ADR-013 owns capability limits and freshness; ADR-015 owns isolation and host egress/STOP; ADR-017 owns framing and fixed operation permits. No new supervisor, execution service, state ledger or operational model is introduced.
+
+#### Closed pairing and exact synthetic scope
+
+| Boundary | Admitted value after acceptance and implementation |
+| --- | --- |
+| Run, permission, ContextPack and proposal semantic family | `m1_https_loop_v1` |
+| LAB run profile | `autonomous-https-genai-lab-v1` |
+| Execution mode | `live`, recording actual network I/O; this string alone grants no authority and does not mean public/client LIVE qualification |
+| Deployment qualification purpose | `HTTPS_LOOP_LAB` |
+| Inference profile | `fixture-genai-v4-pro-low-v2` |
+| Inference recipient | `http://127.0.0.1:18083/responses`, deterministic SDK fixture, no credential or external provider request |
+| Authorized subject | Exactly `head.duskweave.test`; one admitted seed/asset |
+| Resolver endpoint | Exactly `192.0.2.53`, UDP port 53 |
+| HEAD endpoint | Exactly `198.51.100.10`, TCP port 443; original hostname/SNI `head.duskweave.test`, approved path `/`, HTTP/1.1 HEAD |
+| Effect profiles | Existing `dns-routing-v2` and `https-head-v1` |
+
+The endpoint exception applies only to this complete pairing and purpose. The addresses name synthetic services inside a separately established isolated LAB topology. The core inference loopback and scoped database/host control channels are not target-effect endpoints. Capture egress remains limited per attempt: the resolver for DNS, or the selected target for HEAD. Exporter has no network. There is no public/client route, proxy, ambient DNS, IPv6, alternate-port or subnet-wide special-use exception. An unavailable LAB returns an honest failure; it does not select another endpoint.
+
+Mission authorization must explicitly bind this LAB profile, exact discovery/disclosure/contact scope, exercise mode, resolver/vantage, approved path, finite window and positive finite budgets. A new run requires its own current admission. Existing consent, credentials, fixture success or historical DNS LAB qualification cannot supply it. Client scopes cannot inherit the LAB address or trust exception.
+
+The new pairing requires the existing closed `live_binding` fields in both the successor permission and run request: `qualification_ref`, `release_sha256` and `resolver_ipv4`. Their values must agree with each other and the trusted current deployment qualification. The permission's `profile` and run's `inference_profile` must select the exact inference row above. Native input binding and ContextPack composition preserve the same run profile, execution mode, permission and deployment lineage; a pack or result cannot independently assert qualification.
+
+Keep the historical successor fixture tuple `m1_https_loop_v1` / `controlled_fixture` / `fixture-genai-v4-pro-low-v2` strict, including its absence of `live_binding`. All legacy permission/run/pack tuples and the existing DNS LAB/LIVE combinations retain their meanings. Missing, unknown or mixed tuples reject without fallback. The new run-profile discriminator separates deployment/source semantics; it does not create a capability version or a profile for each numeric limit. Older binaries may reject the new tuple and must never reinterpret it as their fixture path.
+
+#### LAB trust and release identity
+
+Use a distinct trusted LAB worker release/image containing a synthetic test CA certificate. Normal certificate-chain, validity and hostname verification applies to `head.duskweave.test`; TLS policy remains `https-head-v1`. No insecure mode, verification suppression or campaign-supplied trust path is admitted.
+
+The trusted LAB build/installation owns the CA certificate and records its version and SHA-256 together with the worker image digest, capture/exporter/launcher identities and `HTTPS_LOOP_LAB` qualification. The root is read-only inside the released image. The certificate-signing private key is confined to synthetic LAB service setup; it is not delivered to capture, exporter, core, ordinary state or reasoning. Campaign parameters and ambient environment cannot add roots, alter the expected root digest or choose another image/trust store.
+
+Before release, the trusted deployment path verifies the root/image/release identities, qualification purpose and finite validity, supported host/boot identity and existing ADR-015 containment. A declaration or digest alone is not qualification. Missing or mismatched trust material, incompatible purpose, expired qualification or unqualified containment prevents release. No runtime pull, install or trust repair is allowed.
+
+This is the sole proposed test-root exception for actual HTTPS LAB I/O. The earlier section 9 prohibition continues for public/client LIVE: a LAB image, test root or `HTTPS_LOOP_LAB` qualification cannot satisfy that lane. Public/client LIVE still requires its separately pinned public-root bundle and qualified boundary. This amendment adds no public LIVE or real-provider binding.
+
+The implementation packet must bind concrete synthetic certificate bytes, certificate version/digest and release artifacts, and inspect the actual owned Linux host, isolated service topology and disposable test database before qualification execution. Those observations are not supplied by this design. Acceptance cannot waive an unavailable or incompatible execution environment.
+
+#### Producer, safe result and consumer
+
+Reuse the existing application supervisor, Mission/SQL authority, Broker, launcher, attempt-scoped capture/exporter pair, Terrain and Trajectory. PostgreSQL owns current permission, scope, premise revision/freshness, fencing, transitions and atomic capacity. Rust owns composition and typed serialization. Go capture owns the admitted pinned TCP/TLS/HEAD operation. No network HTTP/TLS implementation is moved into ordinary Rust core.
+
+Connect, TLS and HEAD use ADR-017's fixed parent-origin phase permissions, bound to one issued attempt and original deadline. A capture process cannot grant itself a later phase. Current admission/accounting precedes each released operation; host egress-lease renewal neither substitutes for a phase permit nor extends its authority. Request, controls and results must fit the existing frame, byte and phase bounds. No hidden reconnect, retry, automatic alternate address, redirect follow or reused connection is permitted.
+
+The independently trusted exporter reconstructs ADR-011's closed HTTPS projection from independently issued context and untrusted capture candidates before ordinary receipt. Raw headers, Location URLs, certificate fields, bodies, cookies/auth challenges and peer-error text remain inside the sensitive boundary. Only admitted endpoint references, closed transport/TLS categories, status/redirect disposition, safe timing/counters and bounded limitations may exit. Ordinary core validation is defense in depth, not the first sanitization boundary.
+
+The immutable request/attempt/result lineage binds engagement/campaign/run, decision/step, selected endpoint and original DNS premise, execution mode, LAB run profile, qualification purpose/reference and release identity. A safe result marked `issued_https_acquisition` is insufficient without that independently verified lineage. Terrain accepts the narrow actual acquisition only in its synthetic LAB scope; claims, next-pack summaries, Trajectory and inspect preserve that scope. It is neither a fabricated `https-head-fixture-v1` result nor client evidence. Deterministic inference remains separately labeled even when the effect is actual LAB I/O.
+
+Persist and redeliver only the admitted safe result through existing publication and owner-reconciliation contracts. A reserved identity is not an initiated effect; an admitted intent is not a completed observation. Refusal, possibly-started effect, committed result, pending Terrain/history and final disposition remain distinguishable. Historical `0037` fixture rows are not reclassified. Later persistence changes use a forward migration and preserve historical decoders; no DDL or table design is introduced here.
+
+#### Failure, observation and qualification boundary
+
+Retain ADR-013's selected-IP refresh rule and ADR-016 section 4c's ceilings, protected feedback capacity and clocks. Refresh is an independently admitted DNS attempt inside the original HEAD episode; it may support only the originally selected address. It grants no extra episode, deadline or authority. A changed/missing binding, zero TTL, refresh failure/UNKNOWN, expired authority, incompatible revision, integrity hold or insufficient capacity blocks HEAD as applicable and returns an honest disposition to reasoning.
+
+TLS validation failure, clear connection failure, timeout, unsupported response, malformed/unsafe candidate egress, STOP/control loss and publication uncertainty retain their owning closed dispositions. Failure of one endpoint does not prove hostname-wide absence. UNKNOWN remains charged and is never replayed. Recovery and inspect stay database-only; neither regenerates proposals nor starts network work. Qualification cannot claim raw disposal or termination success when the pair/transport remains unresolved.
+
+The minimum positive qualification evidence must include at least one completed `m1-run` episode that performs an initial actual LAB DNS acquisition and then actual TLS/HEAD in that same episode through the real restricted SQL and launcher/capture/exporter boundaries. Terrain must reconcile that DNS result, a subsequent ContextPack and deterministic decision must select the issued endpoint supported by that result, and a later deterministic decision must consume the owner-qualified HEAD outcome before durable history/inspect completion. The same-run evidence must link admission, attempts/results, DNS/TCP/HEAD counts and source provenance across the complete path. Direct-HEAD episodes using an eligible current DNS binding remain valid behavior, but do not replace this required DNS-to-HEAD qualification witness. Conditional refresh remains covered by its applicable scenarios and existing limits. This is a qualification witness requirement, not a mandatory strategy for every episode; no-action, defer, stop and capability-gap remain valid. All existing run-time admission checks, protected feedback capacity, deadlines and honest partial/deferred outcomes remain unchanged.
+
+Failure qualification must cover wrong or missing root/hostname, purpose/profile/release substitution, out-of-scope endpoint, stale/refused start and conditional-refresh limits, bounded response handling, forged/raw candidate egress, STOP or control loss, and possibly-started effects followed by database-only recovery with zero replay. Preserve the delivered fixture regression. Tests use synthetic data only; no paid provider or public/client target is implied.
+
+Retain the completed episode's sanitized `m1-run-inspect` stdout with its evaluated source SHA and run/artifact identity. It must expose the last recorded decision/disposition, DNS/HEAD counts or outcomes and final status; record a termination reason when one exists. A completed episode may have no separate stop reason. Bind recovery observations to the same run and distinguish pending obligations from completed work. This is a new future witness, not retroactive proof for missing historical receipts.
+
+Passing LAB qualification would establish only its tested source/release, host/configuration, synthetic scope and finite window. It would not qualify public HTTPS, real-provider cognition, native Windows, the wider cognitive MVP or an M1 seal. Existing TTL-repair and historical receipt evidence gaps are not resolved by acceptance of this amendment.
