@@ -101,14 +101,7 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-CI-FOUR-WORKER-REBALANCE-R1` rebalances the required Rust
-CI pipeline under
-[roadmap §1.4](MVP_AND_DEFERRED_SCOPE.md#14-delivery-performance-and-debt-closure-owner-direction-2026-10-19)
-to four default isolated hosted `rust-tests` workers while retaining explicit
-one- and two-worker modes, a pure extracted planner with a `380s` worker-0
-designated-work allowance, explicit artifact-ID custody, one shared instrumented
-build, and the unchanged `90%`/`80%` coverage floors. CI tooling only — no
-execution permission, seal, or timer change. Delivery status lives on GitHub.
+**Active work:** `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` proposes one isolated actual-network HTTPS LAB binding for the existing successor. The [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) are DRAFT, not accepted. No implementation, host qualification, episode permission or seal is claimed. PR/candidate/CI delivery state remains on GitHub; the completed four-worker CI assignment is not active product work.
 
 **Delivered fixture orchestration:** `DW-M1-HTTPS-LOOP-SKELETON-R1` (merged via
 PR #159 at `4b0bba6c956c3e853f248ff25759d9f5bc408f74`) delivered the bounded
@@ -145,11 +138,7 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** Next product integration stays separately assigned after
-CI delivery. HTTPS runtime / live execution stays unauthorized: fresh
-disclosure and a qualified live boundary remain prerequisites for any later
-HTTPS execution; fixture or expired consent cannot satisfy them. The accepted
-amendment grants no execution permission or seal.
+**Next product action:** Review the exact HTTPS LAB amendment text and record product-owner disposition. Only after acceptance may a separately assigned implementation packet rely on it, with actual environment, artifact identities and qualification checks resolved before execution. Public/client HTTPS LIVE and real-provider cognition remain separately assigned and unauthorized by this draft; fresh authority and qualified boundaries remain prerequisites. M1 stays unsealed.
 
 ## 7. Unresolved constraints
 

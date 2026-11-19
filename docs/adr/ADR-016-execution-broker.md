@@ -15,6 +15,7 @@
 | rust-genai amendment | [Section 4b](#4b-candidate-rust-genai-sdk-transport-amendment-2026-10-28) ACCEPTED by the product owner on 2026-10-28 (conversation approval); applies through a versioned successor permission/profile after qualified implementation; accepted text, timers, consent and seals unchanged |
 | Lease coordination amendment | [Section 4a lease coordination](#positive-run-lease-coordination-amendment-2026-11-13) ACCEPTED by the product owner on 2026-11-13 (conversation approval); liveness renewal is not authority mutation; authority fence, timers and seals unchanged |
 | HTTPS-loop run | [Section 4c](#4c-candidate-https-loop-run-2026-11-17) ACCEPTED by the product owner on 2026-11-17 (Asia/Jakarta), by conversation approval of `0c2bbac4fa96f61504b66840a30b056c2fd1b8b2`; Pro-v2 clocks and historical run shapes unchanged; no execution permission or seal |
+| HTTPS LAB inference exception | [Proposed scoped exception](#proposed-https-lab-inference-exception-2026-11-19) is DRAFT, not accepted; historical profile restrictions, resource tuples and seals remain unchanged |
 | Single-owner consolidation | Editorial consolidation under DW-M1-CONTRACT-SINGLE-OWNER-R1: admission, accounting, cancellation, recovery, inference clocks and resource tuples stay owned here; repeated inventories and measured anecdotes now reference the canonical tables. Semantics are preserved; edited text is not byte-identical to the accepted originals — the pre-consolidation text remains at [verified base 9766311](https://github.com/carlitotate12160-tech/DuskWeave/blob/976631173976bf65bd212a18aac15e858a96dad9/docs/adr/ADR-016-execution-broker.md). No new acceptance, permission or seal |
 
 ## 1. Context and problem statement
@@ -809,6 +810,20 @@ cancellation rules. UNKNOWN, a refresh that may have started, and a HEAD that ma
 started stay charged and are not replayed. Recovery stays database-only: it reconciles
 durable state, regenerates no proposal, and issues no network attempt. An unresolved
 obligation stays visible.
+
+### Proposed HTTPS LAB inference exception (2026-11-19)
+
+**Status: DRAFT — not accepted.** This proposed exception becomes available only with product-owner acceptance of its exact text and the [closed HTTPS LAB binding](../contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19). It grants no episode execution, deployment qualification or seal.
+
+The sole new inference pairing is the `m1_https_loop_v1` successor with run profile `autonomous-https-genai-lab-v1`, execution mode `live`, qualification purpose `HTTPS_LOOP_LAB`, and `fixture-genai-v4-pro-low-v2`. Its exact recipient, scope, trust and provenance are owned by the enabling contract. This is deterministic loopback SDK inference accompanying actual synthetic LAB effects; no real-provider connection or credential is admitted.
+
+For this tuple only, the scoped exception permits the existing companion fixture Pro-v2 profile with the qualified LAB effect boundary. The earlier prohibition on that companion profile for the existing DNS LAB and public/client LIVE bindings remains in force. The delivered successor's controlled-fixture tuple is unchanged. An omitted, mixed, substituted or unknown binding rejects; there is no profile fallback or inference-endpoint override.
+
+Use the existing Pro-v2 full decision allocation, including generation and conditional repair, without changing its calls/bytes/tokens/timers. Before each acquisition chain, protect the next complete feedback allocation under section 4c's campaign fence and remaining run time. Those held units are unavailable to every competing reservation path and convert once after the real next ContextPack and eligible claim exist. The hold is neither an inference session nor send authority. Acquisition/setup time does not refill or reset decision, episode or run clocks.
+
+Reserve a TCP connection before its connect release and a HEAD request before its HEAD release; TLS on that connection does not create a second connection count. Charge DNS/refresh separately, preserving attempt and phase identities. Proven never-released capacity may be released only through existing fenced disposition; possibly-started/UNKNOWN consumption remains charged. No double charge, reset by restart or refund by recovery is introduced.
+
+All section 4c ceilings and remaining-time checks remain authoritative, including its policy-sum limitations. A short deterministic LAB witness does not establish real-provider latency or make every full-ceiling trace fit. STOP, withdrawal, authority/premise expiry, host/control loss, reconciliation and pending obligations retain their accepted owners. Recovery stays database-only and effect-free; a new attempt needs current admission and remaining capacity. No automatic continuation is added.
 
 ## 5. Consequences
 
