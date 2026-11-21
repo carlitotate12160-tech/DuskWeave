@@ -112,24 +112,29 @@ def _validate_member_entry(entry: object) -> tuple[str, int, str]:
     return path, size, digest
 
 
-def _validate_descriptor_metadata(obj: dict, allow_synthetic: bool) -> None:
-    if obj["schema_version"] != 2 or obj["schema_revision"] != SCHEMA_REVISION or obj["platform"] != PLATFORM:
+def _validate_descriptor_metadata(obj: dict, allow_synthetic: bool, schema_revision: str = SCHEMA_REVISION,
+                                 baseline_commit: str = RELEASE_BASELINE_COMMIT,
+                                 baseline_tree: str = RELEASE_BASELINE_TREE) -> None:
+    if obj["schema_version"] != 2 or obj["schema_revision"] != schema_revision or obj["platform"] != PLATFORM:
         raise ReleaseError("descriptor_schema_or_platform_refused")
-    if obj["release_baseline_commit"] != RELEASE_BASELINE_COMMIT or obj["release_baseline_tree"] != RELEASE_BASELINE_TREE:
+    if obj["release_baseline_commit"] != baseline_commit or obj["release_baseline_tree"] != baseline_tree:
         raise ReleaseError("descriptor_baseline_refused")
-    checks = (
+    for field, pattern in (
         ("build_source_commit", HEX40_RE), ("build_source_tree", HEX40_RE),
         ("driver_commit", HEX40_RE), ("driver_tree", HEX40_RE),
         ("image_ref", IMAGE_REF_RE), ("image_digest", IMAGE_DIGEST_RE),
-    )
-    for field, pattern in checks:
+    ):
         if not isinstance(obj[field], str) or not pattern.fullmatch(obj[field]):
             raise ReleaseError(f"descriptor_field_invalid:{field}")
     if type(obj["synthetic_fixture"]) is not bool or (obj["synthetic_fixture"] and not allow_synthetic):
         raise ReleaseError("descriptor_synthetic_refused")
 
 
-def parse_descriptor_bytes(raw: bytes, *, allow_synthetic: bool = True) -> dict:
+def parse_descriptor_bytes(raw: bytes, *, allow_synthetic: bool = True,
+                           schema_revision: str = SCHEMA_REVISION,
+                           expected_members: tuple[str, ...] = FIXED_MEMBERS,
+                           release_baseline_commit: str = RELEASE_BASELINE_COMMIT,
+                           release_baseline_tree: str = RELEASE_BASELINE_TREE) -> dict:
     """Strictly decode release-descriptor.json rejecting duplicates and unknown keys."""
     try:
         obj = json.loads(raw.decode("utf-8"), object_pairs_hook=_no_dup_pairs_hook)
@@ -137,11 +142,11 @@ def parse_descriptor_bytes(raw: bytes, *, allow_synthetic: bool = True) -> dict:
         raise ReleaseError("descriptor_json_malformed") from exc
     if not isinstance(obj, dict) or set(obj.keys()) != ALLOWED_DESCRIPTOR_KEYS:
         raise ReleaseError("descriptor_keys_refused")
-    _validate_descriptor_metadata(obj, allow_synthetic)
+    _validate_descriptor_metadata(obj, allow_synthetic, schema_revision, release_baseline_commit, release_baseline_tree)
     members = obj["members"]
-    if not isinstance(members, list) or len(members) != len(FIXED_MEMBERS):
+    if not isinstance(members, list) or len(members) != len(expected_members):
         raise ReleaseError("descriptor_member_count_invalid")
-    if tuple(_validate_member_entry(m)[0] for m in members) != FIXED_MEMBERS:
+    if tuple(_validate_member_entry(m)[0] for m in members) != expected_members:
         raise ReleaseError("descriptor_member_inventory_mismatch")
     return obj
 
@@ -247,36 +252,43 @@ def _walk_package_files(package_dir: Path, expected_uids: tuple[int, ...], stop_
     return files
 
 
-def _verify_package_members(package_dir: Path, members: list[dict], uids: tuple[int, ...], anchor: Path) -> None:
+def _verify_package_members(package_dir: Path, members: list[dict], uids: tuple[int, ...], anchor: Path,
+                            binary_members: tuple[str, ...] = BINARY_MEMBERS) -> None:
     for member in members:
         mpath = package_dir / member["path"]
         size, digest = _sha256_file(mpath, expected_uids=uids, stop_at=anchor)
         if size != member["size"] or digest != member["sha256"]:
             raise ReleaseError(f"member_digest_mismatch:{member['path']}")
-        if member["path"] in BINARY_MEMBERS:
+        if member["path"] in binary_members:
             verify_elf64_aarch64(mpath, expected_uids=uids, stop_at=anchor)
 
 
 def verify_descriptor(package_dir: Path, expected_descriptor_sha256: str, *, allow_synthetic: bool = False,
-                      expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None) -> dict:
+                      expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None,
+                      schema_revision: str = SCHEMA_REVISION, expected_members: tuple[str, ...] = FIXED_MEMBERS,
+                      binary_members: tuple[str, ...] = BINARY_MEMBERS,
+                      release_baseline_commit: str = RELEASE_BASELINE_COMMIT,
+                      release_baseline_tree: str = RELEASE_BASELINE_TREE) -> dict:
     """Verify closed package inventory, external descriptor hash, member hashes, and ELF headers."""
     if not HEX64_RE.fullmatch(expected_descriptor_sha256):
         raise ReleaseError("expected_descriptor_sha256_invalid")
     uids = expected_uids if expected_uids is not None else (0, os.geteuid())
     anchor = stop_at or (Path("/") if os.geteuid() == 0 else package_dir)
-    if _walk_package_files(package_dir, uids, anchor) != (set(FIXED_MEMBERS) | {"release-descriptor.json"}):
+    if _walk_package_files(package_dir, uids, anchor) != (set(expected_members) | {"release-descriptor.json"}):
         raise ReleaseError("package_inventory_mismatch")
     try:
         desc_bytes = read_protected_bytes(
             package_dir / "release-descriptor.json", expected_uids=uids,
-            allowed_modes=(0o444, 0o400), stop_at=anchor, status_on_error="REFUSED",
-        )
+            allowed_modes=(0o444, 0o400), stop_at=anchor, status_on_error="REFUSED")
     except FileCustodyError as exc:
         raise ReleaseError(exc.reason) from exc
     if hashlib.sha256(desc_bytes).hexdigest() != expected_descriptor_sha256:
         raise ReleaseError("descriptor_sha256_mismatch")
-    desc = parse_descriptor_bytes(desc_bytes, allow_synthetic=allow_synthetic)
-    _verify_package_members(package_dir, desc["members"], uids, anchor)
+    desc = parse_descriptor_bytes(
+        desc_bytes, allow_synthetic=allow_synthetic, schema_revision=schema_revision,
+        expected_members=expected_members, release_baseline_commit=release_baseline_commit,
+        release_baseline_tree=release_baseline_tree)
+    _verify_package_members(package_dir, desc["members"], uids, anchor, binary_members)
     return desc
 
 
@@ -295,8 +307,7 @@ def package_release(*, package_dir: Path, source_root: Path, artifact_dir: Path,
     if verify_git_baseline:
         verify_release_source(
             source_root, expected_commit=build_source_commit, expected_tree=build_source_tree,
-            expected_driver_commit=driver_commit, expected_driver_tree=driver_tree, check_clean_git=True,
-        )
+            expected_driver_commit=driver_commit, expected_driver_tree=driver_tree, check_clean_git=True)
     try:
         create_exclusive_dir(package_dir, mode=0o755, expected_uids=uids, stop_at=pkg_anchor)
         create_exclusive_dir(package_dir / "third_party", mode=0o755, expected_uids=uids, stop_at=pkg_anchor)
@@ -310,13 +321,11 @@ def package_release(*, package_dir: Path, source_root: Path, artifact_dir: Path,
         "driver_commit": driver_commit, "driver_tree": driver_tree,
         "release_baseline_commit": RELEASE_BASELINE_COMMIT, "release_baseline_tree": RELEASE_BASELINE_TREE,
         "image_ref": image_ref, "image_digest": image_digest,
-        "synthetic_fixture": synthetic_fixture, "members": members,
-    }
+        "synthetic_fixture": synthetic_fixture, "members": members}
     desc_bytes = (json.dumps(descriptor, sort_keys=True, indent=2) + "\n").encode("utf-8")
     try:
         desc_sha = write_exclusive_verified(
-            package_dir / "release-descriptor.json", desc_bytes, mode=0o444, expected_uids=uids, stop_at=pkg_anchor,
-        )
+            package_dir / "release-descriptor.json", desc_bytes, mode=0o444, expected_uids=uids, stop_at=pkg_anchor)
         fsync_dir(package_dir / "third_party/genai")
         fsync_dir(package_dir)
     except FileCustodyError as exc:

@@ -1,6 +1,7 @@
 //! Owner-local regression tests.
 use super::*;
 use reasoning::inference::Provider;
+use std::time::Duration;
 struct ReportedProvider {
     digest: &'static str,
     report: reasoning::inference::ProviderReport,

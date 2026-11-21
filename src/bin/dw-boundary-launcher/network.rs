@@ -79,7 +79,13 @@ fn qualify_capture(pid: u32, resolver: &str) -> Res<()> {
     Ok(())
 }
 pub(super) fn create(attempt: Uuid, pid: u32, resolver: &str, end: Instant) -> Res<()> {
-    qualify_capture(pid, resolver)?;
+    create_target(attempt, pid, resolver, false, end)
+}
+pub(super) fn create_https(attempt: Uuid, pid: u32, ipv4: &str, end: Instant) -> Res<()> {
+    create_target(attempt, pid, ipv4, true, end)
+}
+fn create_target(attempt: Uuid, pid: u32, dest: &str, https: bool, end: Instant) -> Res<()> {
+    qualify_capture(pid, dest)?;
     let n = names(attempt);
     if std::path::Path::new(&netns_path(attempt)).exists()
         || std::path::Path::new(&format!("/sys/class/net/{}", n.host)).exists()
@@ -87,19 +93,29 @@ pub(super) fn create(attempt: Uuid, pid: u32, resolver: &str, end: Instant) -> R
         return Err(Fail::Config("live_network_collision"));
     }
     acquire_slot(&n, attempt)?;
-    let outcome = namespace::prepare(&n, pid, resolver, end);
+    let outcome = if https {
+        namespace::prepare_https(&n, pid, dest, end)
+    } else {
+        namespace::prepare(&n, pid, dest, end)
+    };
     if outcome.is_err() {
         let _ = destroy(attempt, Instant::now() + Duration::from_millis(1000));
     }
     outcome
 }
 pub(super) fn grant(attempt: Uuid, deadline: i64) -> Res<()> {
+    grant_until(attempt, deadline, 2000)
+}
+pub(super) fn grant_https(attempt: Uuid, deadline: i64) -> Res<()> {
+    grant_until(attempt, deadline, 5000)
+}
+fn grant_until(attempt: Uuid, deadline: i64, max_lease_ms: i64) -> Res<()> {
     let n = names(attempt);
     if std::fs::read_to_string(slot(&n)).ok().as_deref() != Some(&attempt.to_string()) {
         return Err(Fail::Config("live_host_unqualified"));
     }
     let now = super::qualification::now_ms()?;
-    let lease = (deadline - now).min(2000);
+    let lease = (deadline - now).min(max_lease_ms);
     if lease <= 0 {
         return Err(Fail::State("live_effect_deadline"));
     }

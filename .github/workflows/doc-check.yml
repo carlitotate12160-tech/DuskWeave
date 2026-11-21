@@ -290,6 +290,8 @@ jobs:
               CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/$command-linux-$arch" "./cmd/$command"
               sha256sum "$RUNNER_TEMP/$command-linux-$arch"
             done
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/httpslab-linux-$arch" ./qualify/httpslab
+            sha256sum "$RUNNER_TEMP/httpslab-linux-$arch"
           done
 
   rust-build:
@@ -557,6 +559,39 @@ jobs:
             --schema-revision 0037 --database-name "$HTTPS_DB" --role-prefix "$HTTPS_PX" \
             --report "$RUNNER_TEMP/dw-evidence/https-loop" \
             -- "$HTTPS_EXE" --ignored --test-threads=1
+
+      - name: HTTPS LAB PostgreSQL 0038 + upgrade matrix (designated worker)
+        if: matrix.worker == 0
+        env:
+          DW_TEST_ADMIN_DATABASE_URL: postgres://postgres:${{ env.ADMIN_PW }}@127.0.0.1:5432/dw_test
+          DW_TEST_FIXTURE_SUPERVISOR: ${{ github.workspace }}/ci-shards/dw-fixture-supervisor
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/target/llvm-cov-target/w${{ matrix.worker }}-%p-%12m.profraw
+        run: |
+          set -euo pipefail
+          DW_BIN="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/duskweave"
+          HLAB_EXE="$GITHUB_WORKSPACE/$(python3 -c 'import json; m=json.load(open("ci-shards/manifest.json")); print([t["exe"] for t in m["targets"] if t["id"]=="tests/m1_https_lab_postgres.rs"][0])')"
+          MAIN_EXE="$GITHUB_WORKSPACE/$(python3 -c 'import json; m=json.load(open("ci-shards/manifest.json")); print([t["exe"] for t in m["targets"] if t["id"]=="src/main.rs"][0])')"
+          [ -x "$DW_BIN" ] || { echo "missing duskweave binary"; exit 1; }
+          [ -x "$HLAB_EXE" ] || { echo "missing m1_https_lab_postgres binary"; exit 1; }
+          [ -x "$MAIN_EXE" ] || { echo "missing duskweave test binary"; exit 1; }
+          [ -x "$DW_TEST_FIXTURE_SUPERVISOR" ] || { echo "missing supervisor binary"; exit 1; }
+          [ "$(docker inspect --format '{{.State.Running}}' dwpg)" = "true" ] || { echo "dwpg not running"; exit 1; }
+          RID="${GITHUB_RUN_ID}a${GITHUB_RUN_ATTEMPT}"
+          HLAB_DB="dw_native_hb${RID}"
+          HLAB_PX="dw_hb${RID}"
+          [[ "$HLAB_DB" =~ ^dw_native_[a-z0-9_]+$ && ${#HLAB_DB} -le 63 ]] || { echo "db identifier out of bounds: $HLAB_DB"; exit 1; }
+          full="${HLAB_PX}_000000000000_terrainsetonly"
+          [[ "$HLAB_PX" =~ ^dw_[a-z0-9_]+$ && ${#full} -le 63 ]] || { echo "prefix identifier out of bounds: $HLAB_PX"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/dw-evidence/https-lab"
+          {
+            printf '{"label":"https-lab","args":["%s","--ignored","--test-threads=1"]}\n' "$HLAB_EXE"
+            printf '{"label":"https-loop-live-unit","args":["%s","m1_run_effect::https_loop::live::tests","--ignored","--test-threads=1"]}\n' "$MAIN_EXE"
+            printf '{"exit":true}\n'
+          } | DW_TEST_RUN_BINARY="$DW_BIN" \
+          python3 tests/support/m1_native_bootstrap.py --container dwpg --ci \
+            --schema-revision 0038 --database-name "$HLAB_DB" --role-prefix "$HLAB_PX" \
+            --report "$RUNNER_TEMP/dw-evidence/https-lab" --session
+          python3 -c 'import json,pathlib,sys; r=pathlib.Path(sys.argv[1]); bad=[l for l in ("https-lab","https-loop-live-unit") if (lambda d: d.get("status")!="completed" or d.get("exit")!=0 or d.get("child_exit")!=0)(json.loads((r/f"{l}.result.json").read_text()))]; assert not bad, f"https-lab failed: {bad}"' "$RUNNER_TEMP/dw-evidence/https-lab"
 
       - name: Worker execution receipt (any gap fails the worker)
         if: always()

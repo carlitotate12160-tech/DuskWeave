@@ -12,11 +12,12 @@ import sys
 import threading
 import time
 from urllib.parse import quote
+from m1_native_migrations import SCHEMA_REVISIONS, apply_migrations
 
 IMAGE = "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 NAMESPACE = "dw_native_"
 KINDS = ("fixture", "live")
-SCHEMA_REVISIONS = ("0020", "0021", "0022", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037")
+LIVE_SCHEMA_REVISIONS = ("0021", "0038")
 LIVE_CONTAINER = "dw-live-dns-20261030-pg"
 LIVE_IMAGE = "postgres@sha256:ac359420747e1f5f8ac4d23f40d7ce022c0a39090ed6cdd8dde5f596affbe41d"
 ROOT = Path(__file__).resolve().parents[2]
@@ -215,7 +216,7 @@ def _validate_custody_options(custody_callback, negative_controls):
 def _validate_fixture_options(container, kind, ci, schema_revision, role_prefix,
                               custody_callback, negative_controls):
     _validate_custody_options(custody_callback, negative_controls)
-    if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision != "0021"):
+    if schema_revision not in SCHEMA_REVISIONS or (kind == "live" and schema_revision not in LIVE_SCHEMA_REVISIONS):
         raise RuntimeError("native_schema_revision_refused")
     if container not in ("dwpg-r3", "dwpg") and not (schema_revision >= "0030" and container == LIVE_CONTAINER):
         raise RuntimeError("native_service_unqualified")
@@ -362,29 +363,7 @@ class Fixture:
                             "-d", database or self.database, "-v", "ON_ERROR_STOP=1", "-At"], statement)
 
     def migrate(self, initial=False):
-        numbers = (1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22) if initial else (12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
-        if self.schema_revision >= "0030":
-            numbers += tuple(range(23, int(self.schema_revision) + 1))
-        for number in numbers:
-            if number > int(self.schema_revision):
-                continue
-            source = next((ROOT / "migrations").glob(f"{number:04d}_*.sql")).read_text(encoding="utf-8")
-            if not initial:
-                source = re.sub(r"CREATE SCHEMA (?!IF NOT EXISTS )", "CREATE SCHEMA IF NOT EXISTS ", source)
-                source = re.sub(r"CREATE TABLE (?!IF NOT EXISTS )", "CREATE TABLE IF NOT EXISTS ", source)
-                source = re.sub(r"CREATE UNIQUE INDEX (?!IF NOT EXISTS )", "CREATE UNIQUE INDEX IF NOT EXISTS ", source)
-                source = source.replace("CREATE FUNCTION ", "CREATE OR REPLACE FUNCTION ")
-                source = source.replace("CREATE VIEW ", "CREATE OR REPLACE VIEW ")
-                # Dynamic CREATE TRIGGER inside EXECUTE format literals (0024)
-                # stays a string; OR REPLACE keeps the DO replay idempotent.
-                source = source.replace("format('CREATE TRIGGER ", "format('CREATE OR REPLACE TRIGGER ")
-                source = re.sub(r"(?m)^[ \t]*CREATE TRIGGER\s+(\w+)\s+(.*?);", lambda m:
-                                "DO $refresh$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='" + m[1] +
-                                "') THEN " + m[0] + " END IF; END $refresh$;", source, flags=re.S)
-            try:
-                self.sql(f"SET ROLE {self.migration_actor};\n" + source)
-            except RuntimeError:
-                raise RuntimeError(f"native_migration_{number:04d}_failed") from None
+        apply_migrations(ROOT, self.schema_revision, self.migration_actor, self.sql, initial=initial)
 
     def run(self, label, args, report, max_duration_seconds=None):
         """Delegate action execution to the development supervisor selected by
@@ -473,7 +452,7 @@ def main():
     parser.add_argument("--session", action="store_true")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     options = parser.parse_args()
-    if options.database == "live" and options.schema_revision != "0021":
+    if options.database == "live" and options.schema_revision not in LIVE_SCHEMA_REVISIONS:
         raise RuntimeError("native_schema_revision_refused")
     if not options.session and (options.report / "qualification.log").exists():
         raise RuntimeError("native_report_collision")

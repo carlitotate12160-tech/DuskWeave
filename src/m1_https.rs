@@ -1,13 +1,20 @@
 //! Typed HTTPS request/result and Broker-private endpoint binding contracts. No HTTP client.
+pub mod codec;
+pub mod ipc;
 pub mod result;
 use crate::mission::{AssetRef, CampaignId, EngagementId, OperationId};
 use crate::{Fail, Res};
+pub use ipc::{
+    HTTPS_IPC_MAX_CONTROL, HTTPS_IPC_MAX_FRAME, HTTPS_IPC_MAX_FRAMES, HttpsAck, HttpsIpcRequest,
+    HttpsLimits, HttpsOutcome, HttpsPhase, HttpsPhaseReady, HttpsPhaseStart, HttpsSafeResult,
+};
 pub use result::{HttpsHeadResult, HttpsOutcomeKind, HttpsSourceKind, RedirectDisposition};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::net::Ipv4Addr;
 use uuid::Uuid;
 
+pub const VERSION_HTTPS_IPC: &str = "m1_https_ipc_v1";
 pub const VERSION_HTTPS_LOOP: &str = "m1_https_loop_v1";
 pub const VERSION_ENDPOINT_MAP: &str = "m1_https_endpoint_map_v1";
 pub const VERSION_HEAD_REQUEST: &str = "m1_https_head_request_v1";

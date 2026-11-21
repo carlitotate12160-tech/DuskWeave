@@ -45,6 +45,20 @@ impl InferencePermission {
         self.validate_native_profile()
     }
 
+    fn valid_https_loop_mode(&self) -> bool {
+        let fixture = self.live_binding.is_none()
+            && self.run_profile.as_deref()
+                == Some(crate::m1_inference_profile::HTTPS_LOOP_RUN_PROFILE)
+            && self.execution_mode.as_deref() == Some("controlled_fixture");
+        let lab = self.https_lab_binding_allowed()
+            && self.live_binding.as_ref().is_some_and(|binding| {
+                binding
+                    .validate_for(crate::m1_inference_profile::HTTPS_LAB_RUN_PROFILE)
+                    .is_ok()
+            });
+        fixture || lab
+    }
+
     pub(super) fn check_https_loop(&self) -> Res<()> {
         let profile = crate::m1_inference_profile::lookup(
             crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE,
@@ -53,9 +67,7 @@ impl InferencePermission {
             self.profile == profile.name,
             self.operation_limits.request_bytes == 16384,
             self.recipient == profile.connection.recipient,
-            self.run_profile.as_deref()
-                == Some(crate::m1_inference_profile::HTTPS_LOOP_RUN_PROFILE),
-            self.execution_mode.as_deref() == Some("controlled_fixture"),
+            self.valid_https_loop_mode(),
             self.provider_terms_approved,
             !self.permission_id.is_nil(),
             !self.provider_terms_ref.is_nil(),

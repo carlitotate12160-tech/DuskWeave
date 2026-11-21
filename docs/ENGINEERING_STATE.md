@@ -105,7 +105,7 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` is ACCEPTED as the basis for a later LAB implementation. The [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) were accepted together on 2026-11-19 at `20ecbcedc569fbac3caffd4bb53762652eecc15b`. No implementation packet is assigned. No host qualification, episode permission, public LIVE, or seal is claimed. PR/candidate/CI delivery state remains on GitHub; the completed four-worker CI assignment is not active product work.
+**Active work:** `DW-M1-HTTPS-LAB-IMPLEMENT-R1` (`FIX1`, continuing from accepted `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) at `20ecbcedc569fbac3caffd4bb53762652eecc15b`) implements the schema-`0038` closed HTTPS LAB lane (`migrations/0038_https_lab.sql`), Rust/Go protocol and worker boundaries, launcher relay, and offline release/binding tooling. Current delivery status is **`NATIVE_UNVERIFIED`**: schema `0038`/`0037`/`0036` PostgreSQL suites and offline Rust/Go/Python checks are exercised locally, while protected ARM64 host installation, image build, and a live native episode on `pica-arm-01` remain unexecuted pending exact-candidate review. No public LIVE permission, paid-provider consent, or M1 seal is claimed; PR/candidate/CI delivery state remains on GitHub.
 
 **Delivered fixture orchestration:** `DW-M1-HTTPS-LOOP-SKELETON-R1` (merged via
 PR #159 at `4b0bba6c956c3e853f248ff25759d9f5bc408f74`) delivered the bounded
@@ -142,7 +142,7 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** Assign one bounded LAB implementation packet that relies on the accepted text at `20ecbcedc569fbac3caffd4bb53762652eecc15b`. Before any qualification execution, that packet resolves the actual environment, artifact identities, synthetic certificate bytes, and disposable database. This acceptance authorizes no episode, host qualification, public/client HTTPS LIVE, or real-provider cognition. Fresh authority and qualified boundaries remain prerequisites. M1 stays unsealed.
+**Next product action:** Complete review of the draft PR candidate for `DW-M1-HTTPS-LAB-IMPLEMENT-R1` (`NATIVE_UNVERIFIED`) before any protected ARM64 host installation, database provisioning, binding, or live synthetic HTTPS LAB episode on `pica-arm-01`. Fresh authority and qualified boundaries remain prerequisites; M1 stays unsealed.
 
 ## 7. Unresolved constraints
 

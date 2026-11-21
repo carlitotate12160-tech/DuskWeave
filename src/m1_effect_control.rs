@@ -6,12 +6,14 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use uuid::Uuid;
 pub mod authority;
+pub mod https;
 #[cfg(target_os = "linux")]
 mod session;
 mod socket;
 use crate::m1_dns::DnsBoundary;
 use crate::m1_effect_session::{EffectSession, EffectStore};
-pub use socket::LiveBoundary;
+use crate::m1_https::ipc::{HttpsIpcRequest, HttpsPhase, HttpsSafeResult};
+pub use socket::{LiveBoundary, LiveHttpsBoundary};
 use std::time::{Duration, Instant};
 
 pub const LAUNCHER: &str = "/usr/local/libexec/duskweave/dw-boundary-launcher";
@@ -43,6 +45,25 @@ pub enum HostCommand {
         attempt: Uuid,
         generation: u64,
     },
+    OpenHttps {
+        run_id: Uuid,
+        request: Box<HttpsIpcRequest>,
+    },
+    StartPhase {
+        attempt: Uuid,
+        generation: u64,
+        phase: HttpsPhase,
+        deadline_at_ms: i64,
+    },
+    RenewHttps {
+        attempt: Uuid,
+        generation: u64,
+        deadline_at_ms: i64,
+    },
+    AckHttps {
+        attempt: Uuid,
+        generation: u64,
+    },
     StopRun {
         run_id: Uuid,
     },
@@ -69,8 +90,16 @@ pub enum HostReply {
         attempt: Uuid,
         generation: u64,
     },
+    ReadyPhase {
+        attempt: Uuid,
+        generation: u64,
+        phase: HttpsPhase,
+    },
     Result {
         result: DnsResult,
+    },
+    ResultHttps {
+        result: HttpsSafeResult,
     },
     Stopped {
         disposal_confirmed: bool,

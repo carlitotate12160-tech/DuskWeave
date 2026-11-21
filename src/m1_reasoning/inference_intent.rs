@@ -78,21 +78,30 @@ fn parsed_pack(pack: &[u8]) -> Res<Value> {
     }
     Ok(p)
 }
+fn https_pack_binding(p: &Value) -> bool {
+    fixture_https_pack(p)
+        || (p["run_profile"] == profiles::HTTPS_LAB_RUN_PROFILE && live_pack_binding(p))
+}
 fn pack_binding(p: &Value) -> bool {
     match p["version"].as_str() {
-        Some(crate::m1_https::VERSION_HTTPS_LOOP) => [
-            p["run_profile"] == profiles::HTTPS_LOOP_RUN_PROFILE,
-            p["execution_mode"] == "controlled_fixture",
-            p["inference_profile"] == profiles::FIXTURE_PRO_V2_PROFILE,
-        ]
-        .into_iter()
-        .all(|v| v),
+        Some(crate::m1_https::VERSION_HTTPS_LOOP) => https_pack_binding(p),
         Some("m1_context_pack_autonomous_v4") => live_pack_binding(p),
         Some("m1_context_pack_autonomous_v3") => {
             p["run_profile"] == profiles::RUN_PROFILE && p["execution_mode"] == "controlled_fixture"
         }
         _ => false,
     }
+}
+fn fixture_https_pack(p: &Value) -> bool {
+    [
+        p["run_profile"] == profiles::HTTPS_LOOP_RUN_PROFILE,
+        p["execution_mode"] == "controlled_fixture",
+        p["inference_profile"] == profiles::FIXTURE_PRO_V2_PROFILE,
+        p.get("live_binding").is_none(),
+        p.get("qualification_purpose").is_none(),
+    ]
+    .into_iter()
+    .all(|v| v)
 }
 fn live_pack_binding(p: &Value) -> bool {
     let run = p["run_profile"].as_str().unwrap_or_default();
@@ -102,9 +111,11 @@ fn live_pack_binding(p: &Value) -> bool {
         p["live_binding"].clone(),
     )
     .is_ok_and(|binding| binding.validate_for(run).is_ok());
-    let purpose_ok = profiles::sdk_versions(run)
-        .is_ok_and(|v| p["qualification_purpose"].as_str() == v.qualification_purpose);
-    profiles::live_binding(run, mode, inf) && binding_ok && purpose_ok
+    let version_purpose_ok = profiles::sdk_versions(run).is_ok_and(|v| {
+        p["version"].as_str() == Some(v.pack)
+            && p["qualification_purpose"].as_str() == v.qualification_purpose
+    });
+    profiles::live_binding(run, mode, inf) && binding_ok && version_purpose_ok
 }
 fn scope_matches(p: &Value, s: &Scope) -> bool {
     p["engagement_id"] == json!(s.engagement)
@@ -181,7 +192,7 @@ fn material(pack: &[u8], codes: Option<&[&str]>) -> Res<Value> {
         "instructions":instructions,"schema":schema,"timing_profile":t.name,
         "settings":{"reasoning_effort":profile.settings.reasoning_effort,"max_output_tokens":profile.settings.output_tokens,"stream":profile.settings.stream,"store":false,"tools":[]},
         "repair_error_codes":codes.unwrap_or_default(),"limits":limits});
-    if p["version"] == "m1_context_pack_autonomous_v4" {
+    if p["execution_mode"] == "live" {
         intent["live_binding"] = p["live_binding"].clone();
         intent["qualification_purpose"] = p["qualification_purpose"].clone();
     }

@@ -336,8 +336,9 @@ DRIVER_QUALIFY_FILES = (
 )
 
 
-def verify_driver_custody(
-    qualify_dir: Path,
+def verify_file_list_custody(
+    repo_root: Path,
+    tracked: list[Path],
     expected_commit: str,
     expected_tree: str,
     *,
@@ -345,13 +346,9 @@ def verify_driver_custody(
     stop_at: Path = Path("/"),
     git_runner=subprocess.run,
 ) -> None:
-    """Validate driver files under protected custody and clean pinned Git commit/tree."""
+    """Validate explicit file list under protected custody and clean pinned Git commit/tree."""
     if not HEX40_RE.fullmatch(expected_commit) or not HEX40_RE.fullmatch(expected_tree):
         raise FileCustodyError("REFUSED", "driver_pin_malformed")
-    repo_root = qualify_dir.parents[1]
-    tracked = [qualify_dir / name for name in DRIVER_QUALIFY_FILES] + [
-        repo_root / "tests" / "support" / "m1_native_bootstrap.py"
-    ]
     for item in tracked:
         read_protected_bytes(item, expected_uids=expected_uids, stop_at=stop_at)
     clean_git_env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
@@ -373,3 +370,23 @@ def verify_driver_custody(
         raise FileCustodyError("REFUSED", "driver_git_pin_mismatch")
     if status.stdout.strip() or (repo_root / ".cargo").exists() or (repo_root / ".cargo").is_symlink():
         raise FileCustodyError("REFUSED", "driver_worktree_unclean_or_cargo_present")
+
+
+def verify_driver_custody(
+    qualify_dir: Path,
+    expected_commit: str,
+    expected_tree: str,
+    *,
+    expected_uids: tuple[int, ...] = (0,),
+    stop_at: Path = Path("/"),
+    git_runner=subprocess.run,
+) -> None:
+    """Validate driver files under protected custody and clean pinned Git commit/tree."""
+    repo_root = qualify_dir.parents[1]
+    tracked = [qualify_dir / name for name in DRIVER_QUALIFY_FILES] + [
+        repo_root / "tests" / "support" / "m1_native_bootstrap.py"
+    ]
+    verify_file_list_custody(
+        repo_root, tracked, expected_commit, expected_tree,
+        expected_uids=expected_uids, stop_at=stop_at, git_runner=git_runner,
+    )

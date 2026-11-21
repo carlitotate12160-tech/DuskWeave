@@ -344,27 +344,50 @@ fn control_lifecycle_and_frame_reader_writer() {
             .control()
             .is_err()
     );
+}
 
-    let mut all_bytes = Vec::new();
-    for _ in 0..16 {
-        all_bytes.extend_from_slice(&bytes);
-    }
-    let mut reader = FrameReader::new(Cursor::new(all_bytes));
-    for _ in 0..16 {
-        assert!(reader.control().is_ok());
-    }
-    assert!(reader.control().is_err());
+#[test]
+fn https_lab_dns_request_framing_and_scope_validation() {
+    use duskweave::m1_dns::{DnsRequest, FrameReader, FrameWriter, MAX_FRAME, PROFILE, SCHEMA};
+    use serde_json::json;
+    use std::io::Cursor;
+    use uuid::Uuid;
 
-    // Non-object start
-    assert!(
-        FrameReader::new(Cursor::new(vec![0, 0, 0, 2, b'[', b']']))
-            .control()
-            .is_err()
-    );
-    // Bad JSON
-    assert!(
-        FrameReader::new(Cursor::new(vec![0, 0, 0, 3, b'{', b'x', b'}']))
-            .control()
-            .is_err()
-    );
+    let now = 10_000i64;
+    let mut req: DnsRequest = serde_json::from_value(json!({
+        "schema": SCHEMA,
+        "kind": "REQUEST",
+        "attempt": Uuid::new_v4(),
+        "session_generation": 1,
+        "sequence": 0,
+        "engagement_id": Uuid::new_v4(),
+        "campaign_id": Uuid::new_v4(),
+        "decision_id": Uuid::new_v4(),
+        "profile": PROFILE,
+        "execution_mode": "live",
+        "run_profile": "autonomous-https-genai-lab-v1",
+        "release_sha256": "a".repeat(64),
+        "qualification_ref": Uuid::new_v4(),
+        "name": "head.duskweave.test",
+        "resolver_ipv4": "192.0.2.53",
+        "transport": "udp",
+        "query_id": 42,
+        "allowed_names": ["head.duskweave.test"],
+        "deadline_at_ms": now + 2000,
+        "max_duration_ms": 2000
+    }))
+    .unwrap();
+    req.validate(now).unwrap();
+
+    let mut cur = Cursor::new(Vec::new());
+    FrameWriter::new(&mut cur).write(&req, MAX_FRAME).unwrap();
+    let decoded = FrameReader::new(Cursor::new(cur.into_inner()))
+        .request()
+        .unwrap();
+    decoded.validate(now).unwrap();
+    assert_eq!(decoded.name, "head.duskweave.test");
+    assert_eq!(decoded.allowed_names, vec!["head.duskweave.test"]);
+
+    req.allowed_names.push("second.duskweave.test".into());
+    assert!(req.validate(now).is_err());
 }

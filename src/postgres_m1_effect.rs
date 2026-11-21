@@ -1,4 +1,5 @@
 //! Restricted Broker bookkeeping and Mission stop-only SQL adapters.
+pub mod https_loop;
 use crate::m1_dns::DnsResult;
 use crate::m1_effect_session::{EffectSession, EffectStore};
 use crate::mission::OperationId;

@@ -1,4 +1,5 @@
 //! Raw-facing TCB: Docker capture stdout reaches only the isolated exporter input.
+pub(super) mod https;
 use super::attempt::Session;
 use super::docker::Attach;
 use duskweave::m1_dns::{

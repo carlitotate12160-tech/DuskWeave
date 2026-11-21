@@ -12,10 +12,19 @@ import (
 
 func Run(control io.Reader, raw io.Writer) error {
 	r, w := frame.Reader{Source: control}, frame.Writer{Sink: raw}
-	var q frame.Request
-	if r.Read(&q, frame.Limit) != nil || dns.Validate(q, time.Now()) != nil {
+	payload, err := r.Take(frame.Limit)
+	if err != nil {
 		return frame.ErrFrame
 	}
+	if schema, serr := frame.Field(payload, "schema"); serr == nil && schema == frame.HttpsSchema {
+		r.Count++
+		return runHTTPS(&r, &w, payload)
+	}
+	var q frame.Request
+	if frame.Decode(payload, &q) != nil || dns.Validate(q, time.Now()) != nil {
+		return frame.ErrFrame
+	}
+	r.Count++
 	readyAt := time.Now()
 	ready := frame.Control{Identity: frame.Bound(q, "READY", 1), Deadline: q.Deadline}
 	if w.Write(ready, frame.ControlLimit) != nil {

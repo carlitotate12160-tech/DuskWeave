@@ -94,12 +94,20 @@ pub(super) struct Ingress {
 }
 impl Ingress {
     pub(super) fn start(run: Uuid, q: &DnsRequest) -> Res<Self> {
+        Self::start_binding(run, q.engagement_id, q.campaign_id, q.session_generation)
+    }
+    pub(super) fn start_binding(
+        run: Uuid,
+        engagement: Uuid,
+        campaign: Uuid,
+        generation: u64,
+    ) -> Res<Self> {
         root()?;
         let binding = Binding {
             run,
-            engagement: q.engagement_id,
-            campaign: q.campaign_id,
-            generation: q.session_generation,
+            engagement,
+            campaign,
+            generation,
         };
         let listener = bind(&binding)?;
         let done = Arc::new(AtomicBool::new(false));

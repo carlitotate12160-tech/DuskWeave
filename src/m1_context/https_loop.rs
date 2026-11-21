@@ -63,7 +63,11 @@ fn check_loop_request(
     a: &AutonomousContext,
 ) -> Res<()> {
     q.validate(op)?;
-    (!run_id.is_nil() && a.binding.run_profile == VERSION_HTTPS_LOOP)
+    let fixture = a.binding.run_profile == VERSION_HTTPS_LOOP
+        && a.binding.execution_mode == "controlled_fixture";
+    let lab = a.binding.run_profile == crate::m1_inference_profile::HTTPS_LAB_RUN_PROFILE
+        && a.binding.execution_mode == "live";
+    (!run_id.is_nil() && (fixture || lab))
         .then_some(())
         .ok_or(Fail::State("context_basis_mismatch"))
 }
@@ -266,7 +270,7 @@ pub(super) fn issued_assets(cands: &[Candidate]) -> Vec<IssuedAssetBinding> {
 pub(super) fn apply_https_extensions(
     raw: &mut Value,
     ctx: &HttpsContextBasis,
-    _a: &AutonomousContext,
+    a: &AutonomousContext,
     endpoints: &[EndpointBinding],
     deps: &[TerrainDependency],
     https_claims: &[&TerrainHttpsClaimView],
@@ -276,13 +280,7 @@ pub(super) fn apply_https_extensions(
 ) -> Res<()> {
     raw["version"] = json!(VERSION_HTTPS_LOOP);
     raw["question"] = json!(HTTPS_LOOP_QUESTION);
-    raw["manifests"] = json!([
-        {"availability":"qualified","execution_mode":"controlled_fixture","profile":"dns-routing-fixture-v1",
-         "reference":INTENT_DNS_UDP,"schema":"m1_dns_ipc_v1","transport":"udp"},
-        {"availability":if endpoints.is_empty() {"requires_dns_premise"} else {"qualified"},
-         "execution_mode":"controlled_fixture","profile":"https-head-fixture-v1",
-         "reference":INTENT_HTTPS_HEAD_V1,"schema":"m1_https_head_request_v1","transport":"tcp_tls_http11_head"}
-    ]);
+    raw["manifests"] = manifests_for_binding(a, endpoints);
     let refs = raw["references"]
         .as_array_mut()
         .ok_or(Fail::Store("context_encode"))?;
@@ -307,4 +305,43 @@ pub(super) fn apply_https_extensions(
         raw["omissions"]["candidates_omitted_by_byte_bound"] = json!(omitted_cands);
     }
     attach_candidate_refs(raw, endpoints, deps, https_claims)
+}
+
+fn manifests_for_binding(a: &AutonomousContext, endpoints: &[EndpointBinding]) -> Value {
+    let head_avail = if endpoints.is_empty() {
+        "requires_dns_premise"
+    } else {
+        "qualified"
+    };
+    if a.binding.execution_mode == "live" {
+        return json!([
+            {
+                "availability": "qualified",
+                "execution_mode": "live",
+                "profile": crate::m1_dns::PROFILE,
+                "qualification_ref": a.binding.qualification_ref,
+                "reference": INTENT_DNS_UDP,
+                "release_sha256": a.binding.release_sha256,
+                "schema": crate::m1_dns::SCHEMA,
+                "transport": "udp"
+            },
+            {
+                "availability": head_avail,
+                "execution_mode": "live",
+                "profile": crate::m1_inference_profile::HTTPS_HEAD_PROFILE,
+                "qualification_ref": a.binding.qualification_ref,
+                "reference": INTENT_HTTPS_HEAD_V1,
+                "release_sha256": a.binding.release_sha256,
+                "schema": crate::m1_https::VERSION_HTTPS_IPC,
+                "transport": "tcp_tls_http11_head"
+            }
+        ]);
+    }
+    json!([
+        {"availability":"qualified","execution_mode":"controlled_fixture","profile":"dns-routing-fixture-v1",
+         "reference":INTENT_DNS_UDP,"schema":"m1_dns_ipc_v1","transport":"udp"},
+        {"availability":head_avail,
+         "execution_mode":"controlled_fixture","profile":"https-head-fixture-v1",
+         "reference":INTENT_HTTPS_HEAD_V1,"schema":"m1_https_head_request_v1","transport":"tcp_tls_http11_head"}
+    ])
 }

@@ -82,21 +82,36 @@ type Writer struct {
 }
 
 func (r *Reader) Read(dst any, limit uint32) error {
-	if r.Count >= MaxFrames || limit == 0 || limit > Limit {
+	data, err := r.Take(limit)
+	if err != nil || Decode(data, dst) != nil {
 		return ErrFrame
+	}
+	r.Count++
+	return nil
+}
+
+// Take returns one frame payload without counting it. The caller counts a frame
+// only after accepting it, matching Read.
+func (r *Reader) Take(limit uint32) ([]byte, error) {
+	if r.Count >= MaxFrames || limit == 0 || limit > Limit {
+		return nil, ErrFrame
 	}
 	var header [4]byte
 	if _, err := io.ReadFull(r.Source, header[:]); err != nil {
-		return ErrFrame
+		return nil, ErrFrame
 	}
 	n := binary.BigEndian.Uint32(header[:])
 	if n == 0 || n > limit {
-		return ErrFrame
+		return nil, ErrFrame
 	}
 	data := make([]byte, int(n))
 	if _, err := io.ReadFull(r.Source, data); err != nil {
-		return ErrFrame
+		return nil, ErrFrame
 	}
+	return data, nil
+}
+
+func Decode(data []byte, dst any) error {
 	if !utf8.Valid(data) || validate(data) != nil {
 		return ErrFrame
 	}
@@ -104,13 +119,31 @@ func (r *Reader) Read(dst any, limit uint32) error {
 	if json.Unmarshal(data, &fields) != nil || !closed(reflect.TypeOf(dst), fields) {
 		return ErrFrame
 	}
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-	if err := d.Decode(dst); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
 		return ErrFrame
 	}
-	r.Count++
 	return nil
+}
+
+func Field(data []byte, name string) (string, error) {
+	if !utf8.Valid(data) || validate(data) != nil {
+		return "", ErrFrame
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil {
+		return "", ErrFrame
+	}
+	raw, ok := fields[name]
+	if !ok {
+		return "", ErrFrame
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil || value == "" {
+		return "", ErrFrame
+	}
+	return value, nil
 }
 
 // Every field in this closed protocol is required, including legal zero
