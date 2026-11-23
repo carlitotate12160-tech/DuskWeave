@@ -11,6 +11,8 @@ pub mod terrain;
 
 #[path = "m1_https_lab_postgres/admission.rs"]
 mod admission;
+#[path = "m1_https_lab_postgres/denied_release.rs"]
+mod denied_release;
 #[path = "m1_https_lab_postgres/episode.rs"]
 mod episode;
 #[path = "m1_https_lab_postgres/lineage.rs"]

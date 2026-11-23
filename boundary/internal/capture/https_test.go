@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -42,66 +43,120 @@ func TestPinnedRootDigest(t *testing.T) {
 	}
 }
 
-type stubDeadlineErrConn struct {
+type memConn struct {
 	net.Conn
+	data        []byte
+	reads       int
+	deadlineErr error
 }
 
-func (s *stubDeadlineErrConn) Read([]byte) (int, error)         { return 0, io.EOF }
-func (s *stubDeadlineErrConn) Write(b []byte) (int, error)      { return len(b), nil }
-func (s *stubDeadlineErrConn) Close() error                     { return nil }
-func (s *stubDeadlineErrConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
-func (s *stubDeadlineErrConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
-func (s *stubDeadlineErrConn) SetDeadline(time.Time) error      { return errors.New("deadline error") }
-func (s *stubDeadlineErrConn) SetReadDeadline(time.Time) error  { return nil }
-func (s *stubDeadlineErrConn) SetWriteDeadline(time.Time) error { return nil }
+func (m *memConn) Read(p []byte) (int, error) {
+	m.reads++
+	if len(m.data) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, m.data)
+	m.data = m.data[n:]
+	if len(m.data) == 0 {
+		return n, io.EOF
+	}
+	return n, nil
+}
+func (m *memConn) Write(b []byte) (int, error)      { return len(b), nil }
+func (m *memConn) Close() error                     { return nil }
+func (m *memConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (m *memConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (m *memConn) SetDeadline(time.Time) error      { return m.deadlineErr }
+func (m *memConn) SetReadDeadline(time.Time) error  { return nil }
+func (m *memConn) SetWriteDeadline(time.Time) error { return nil }
+
+type spyCapConn struct {
+	net.Conn
+	mu                            sync.Mutex
+	reads, bytesRead, writes, wdl int
+	writeTimes                    []time.Time
+	closed, afterHead             bool
+}
+
+func (s *spyCapConn) Read(p []byte) (int, error) {
+	n, err := s.Conn.Read(p)
+	s.mu.Lock()
+	s.reads++
+	s.bytesRead += n
+	s.mu.Unlock()
+	return n, err
+}
+func (s *spyCapConn) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	if s.afterHead {
+		s.writes++
+		s.writeTimes = append(s.writeTimes, time.Now())
+	}
+	s.mu.Unlock()
+	return s.Conn.Write(p)
+}
+func (s *spyCapConn) Close() error {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	return s.Conn.Close()
+}
+func (s *spyCapConn) SetWriteDeadline(t time.Time) error {
+	s.mu.Lock()
+	if s.afterHead {
+		s.wdl++
+	}
+	s.mu.Unlock()
+	return s.Conn.SetWriteDeadline(t)
+}
 
 func TestCapConnAndWriteHeadDeadlineBoundary(t *testing.T) {
 	c1, c2 := net.Pipe()
 	defer c1.Close()
-	go func() {
-		_, _ = c2.Write(bytes.Repeat([]byte{'a'}, 65536))
-		_ = c2.Close()
-	}()
-	cc := &capConn{Conn: c1, left: 65536}
+	go func() { _, _ = c2.Write(bytes.Repeat([]byte{'a'}, 65536)); _ = c2.Close() }()
+	spyExact := &spyCapConn{Conn: c1}
+	cc := &capConn{Conn: spyExact, left: 65536}
 	var total int
 	buf := make([]byte, 4096)
-	for {
+	for cc.left > 0 {
 		n, err := cc.Read(buf)
 		total += n
+		if errors.Is(err, errNetCap) {
+			t.Fatalf("exact 65536 bytes tripped errNetCap at total=%d", total)
+		}
 		if err != nil {
-			if errors.Is(err, errNetCap) {
-				t.Fatalf("exact 65536 bytes tripped errNetCap at total=%d", total)
-			}
 			break
 		}
 	}
-	if total != 65536 {
-		t.Fatalf("unexpected total read: %d", total)
+	if total != 65536 || cc.used != 65536 || spyExact.bytesRead != 65536 {
+		t.Fatalf("unexpected total read: total=%d used=%d raw=%d", total, cc.used, spyExact.bytesRead)
 	}
-
+	exactHdr := []byte("HTTP/1.1 200 OK\r\nX-Cap: 1\r\n\r\n")
+	rawExact := &memConn{data: exactHdr}
+	hdr, st := readHeader(&capConn{Conn: rawExact, left: len(exactHdr)}, len(exactHdr), time.Now().Add(time.Second))
+	if st != "" || string(hdr) != string(exactHdr) || rawExact.reads != len(exactHdr) {
+		t.Fatalf("F5: exact ceiling header failed: status=%q reads=%d/%d hdr=%q", st, rawExact.reads, len(exactHdr), string(hdr))
+	}
 	d1, d2 := net.Pipe()
 	defer d1.Close()
 	go func() {
-		_, _ = d2.Write(bytes.Repeat([]byte{'b'}, 65537))
+		_, _ = d2.Write(bytes.Repeat([]byte{'b'}, 65536))
+		_, _ = d2.Write([]byte{'x'})
 		_ = d2.Close()
 	}()
-	ccOver := &capConn{Conn: d1, left: 65536}
-	var tripped bool
-	for {
-		_, err := ccOver.Read(buf)
-		if errors.Is(err, errNetCap) {
-			tripped = true
-			break
-		}
-		if err != nil {
-			break
+	spyOver := &spyCapConn{Conn: d1}
+	ccOver := &capConn{Conn: spyOver, left: 65536}
+	for ccOver.left > 0 {
+		if _, err := ccOver.Read(buf); err != nil {
+			t.Fatalf("unexpected read err: %v", err)
 		}
 	}
-	if !tripped {
-		t.Fatal("65537th byte did not trip network_limit")
+	readsAtCap := spyOver.reads
+	_, err := ccOver.Read(make([]byte, 16))
+	if !errors.Is(err, errNetCap) || !ccOver.tripped || spyOver.reads != readsAtCap || spyOver.bytesRead != 65536 {
+		t.Fatalf("F5: read past 65536 cap: err=%v tripped=%v reads=%d->%d rawBytes=%d", err, ccOver.tripped, readsAtCap, spyOver.reads, spyOver.bytesRead)
 	}
-
-	err := writeHead(&stubDeadlineErrConn{}, "head.duskweave.test", time.Now().Add(time.Second))
+	err = writeHead(&memConn{deadlineErr: errors.New("deadline error")}, "head.duskweave.test", time.Now().Add(time.Second))
 	if err == nil || errors.Is(err, errNetCap) || ioStatus(err) == "network_limit" {
 		t.Fatalf("writeHead SetDeadline failure mapped to network_limit: err=%v status=%s", err, ioStatus(err))
 	}
@@ -162,10 +217,7 @@ func TestCaptureRejectsInferenceProfileInCapabilityFieldF1(t *testing.T) {
 	}
 }
 
-func testLeafTLS(t *testing.T, nextProtos []string) (*x509.CertPool, *tls.Config) {
-	t.Helper()
-	seed := sha256.Sum256([]byte("duskweave-https-lab-v1-public-synthetic-ca-key"))
-	caPriv := ed25519.NewKeyFromSeed(seed[:])
+func readCAAndPool(t *testing.T) ([]byte, *x509.CertPool) {
 	stored, err := os.ReadFile("../../fixtures/https-lab-root-v1.pem")
 	if err != nil {
 		t.Fatal(err)
@@ -174,32 +226,33 @@ func testLeafTLS(t *testing.T, nextProtos []string) (*x509.CertPool, *tls.Config
 	if err != nil {
 		t.Fatal(err)
 	}
+	return stored, pool
+}
+
+func testLeafTLS(t *testing.T, nextProtos []string) (*x509.CertPool, *tls.Config) {
+	t.Helper()
+	seed := sha256.Sum256([]byte("duskweave-https-lab-v1-public-synthetic-ca-key"))
+	caPriv := ed25519.NewKeyFromSeed(seed[:])
+	stored, pool := readCAAndPool(t)
 	block, _ := pem.Decode(stored)
 	caCert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, leafPriv, err := ed25519.GenerateKey(rand.Reader)
+	pub, leafPriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: frame.LabHost},
-		DNSNames:     []string{frame.LabHost},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: frame.LabHost}, DNSNames: []string{frame.LabHost},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, leafPriv.Public(), caPriv)
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, pub, caPriv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return pool, &tls.Config{
-		Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: leafPriv}},
-		NextProtos:   nextProtos,
-	}
+	return pool, &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: leafPriv}}, NextProtos: nextProtos}
 }
 
 func runCaptureAndExporterPair(t *testing.T, q frame.HttpsRequest, deps httpsDeps) frame.SafeResult {
@@ -208,27 +261,19 @@ func runCaptureAndExporterPair(t *testing.T, q frame.HttpsRequest, deps httpsDep
 	rawR, rawW := io.Pipe()
 	expInR, expInW := io.Pipe()
 	safeR, safeW := io.Pipe()
-	capDone := make(chan error, 1)
-	expDone := make(chan error, 1)
+	capDone, expDone := make(chan error, 1), make(chan error, 1)
 	go func() {
 		r, w := frame.Reader{Source: capCtrlR}, frame.Writer{Sink: rawW}
-		p, err := r.Take(frame.Limit)
-		if err != nil {
+		if p, err := r.Take(frame.Limit); err != nil {
 			capDone <- err
-			return
+		} else {
+			r.Count++
+			capDone <- runHTTPSWithDeps(&r, &w, p, deps)
 		}
-		r.Count++
-		capDone <- runHTTPSWithDeps(&r, &w, p, deps)
 		_ = rawW.Close()
 	}()
-	go func() {
-		expDone <- export.Run(expInR, safeW)
-		_ = safeW.Close()
-	}()
-	cc := frame.Writer{Sink: capCtrlW}
-	cr := frame.Reader{Source: rawR}
-	ec := frame.Writer{Sink: expInW}
-	sr := frame.Reader{Source: safeR}
+	go func() { expDone <- export.Run(expInR, safeW); _ = safeW.Close() }()
+	cc, cr, ec, sr := frame.Writer{Sink: capCtrlW}, frame.Reader{Source: rawR}, frame.Writer{Sink: expInW}, frame.Reader{Source: safeR}
 	if cc.Write(q, frame.Limit) != nil || ec.Write(q, frame.Limit) != nil {
 		t.Fatal("request write")
 	}
@@ -240,25 +285,17 @@ func runCaptureAndExporterPair(t *testing.T, q frame.HttpsRequest, deps httpsDep
 			t.Fatal(err)
 		}
 		cr.Count++
-		kind, _ := frame.Field(p, "kind")
-		if kind == "READY" {
-			var er frame.PhaseReady
-			var rdy frame.PhaseReady
-			if frame.Decode(p, &rdy) != nil {
-				t.Fatal("capture READY decode")
-			}
-			if rdy.Phase == "connect" {
-				if sr.Read(&er, frame.ControlLimit) != nil {
-					t.Fatal("exporter READY decode")
-				}
+		if kind, _ := frame.Field(p, "kind"); kind == "READY" {
+			var er, rdy frame.PhaseReady
+			if frame.Decode(p, &rdy) != nil || (rdy.Phase == "connect" && sr.Read(&er, frame.ControlLimit) != nil) {
+				t.Fatal("READY decode")
 			}
 			st := frame.PhaseStart{Identity: frame.HttpsID(q.Identity, "START", seqMap[rdy.Phase]), Phase: rdy.Phase, Deadline: q.Deadline}
 			if ec.Write(st, frame.ControlLimit) != nil || cc.Write(st, frame.ControlLimit) != nil {
 				t.Fatal("START write")
 			}
 			continue
-		}
-		if kind != "RESULT" {
+		} else if kind != "RESULT" {
 			t.Fatalf("unexpected raw kind %s", kind)
 		}
 		var priv frame.PrivateResult
@@ -282,33 +319,34 @@ func runCaptureAndExporterPair(t *testing.T, q frame.HttpsRequest, deps httpsDep
 	return res
 }
 
+func tlsDialPair(cfg *tls.Config, onHead func(*spyCapConn)) (func(string, uint16, time.Time) (net.Conn, error), **spyCapConn) {
+	var spy *spyCapConn
+	return func(string, uint16, time.Time) (net.Conn, error) {
+		c, s := net.Pipe()
+		spy = &spyCapConn{Conn: c}
+		go func() {
+			ts := tls.Server(s, cfg)
+			defer ts.Close()
+			if ts.Handshake() == nil {
+				_, _ = ts.Read(make([]byte, 256))
+				onHead(spy)
+			}
+		}()
+		return spy, nil
+	}, &spy
+}
+
 func TestCaptureToExporterHeadCloseAndPostDeadlineTimeoutF3F4(t *testing.T) {
 	now := time.Now()
 	q := sampleCaptureReq(now, frame.LabProfile)
 	pool, tlsCfg := testLeafTLS(t, []string{"http/1.1"})
-
-	// F3 E2E: server accepts TLS, then closes right after receiving HEAD request.
+	dialClose, _ := tlsDialPair(tlsCfg, func(*spyCapConn) {})
 	resConnFail := runCaptureAndExporterPair(t, q, httpsDeps{
-		now:      time.Now,
-		loadPool: func() (*x509.CertPool, error) { return pool, nil },
-		dial: func(string, uint16, time.Time) (net.Conn, error) {
-			c, s := net.Pipe()
-			go func() {
-				ts := tls.Server(s, tlsCfg)
-				defer ts.Close()
-				if ts.Handshake() == nil {
-					buf := make([]byte, 256)
-					_, _ = ts.Read(buf)
-				}
-			}()
-			return c, nil
-		},
+		now: time.Now, loadPool: func() (*x509.CertPool, error) { return pool, nil }, dial: dialClose,
 	})
 	if resConnFail.Outcome != "connection_failed" {
 		t.Fatalf("F3 E2E: expected connection_failed, got %+v", resConnFail)
 	}
-
-	// F4: capture clock passes deadline+200ms while reading HEAD timeout -> emits timed_out with exact observed time and survives exporter.
 	base := time.Now()
 	qTimeout := sampleCaptureReq(base, frame.LabProfile)
 	afterDeadline := time.UnixMilli(qTimeout.Deadline).Add(200 * time.Millisecond)
@@ -323,5 +361,38 @@ func TestCaptureToExporterHeadCloseAndPostDeadlineTimeoutF3F4(t *testing.T) {
 	}
 	if priv.Status != "timed_out" || priv.Observed != afterDeadline.UnixMilli() || priv.Header != "" {
 		t.Fatalf("F4: expected clean post-deadline timed_out with preserved observed time, got %+v", priv)
+	}
+}
+
+func TestCaptureTimeoutClosesDirectlyWithoutCloseNotifyF7(t *testing.T) {
+	now := time.Now()
+	q := sampleCaptureReq(now, frame.LabProfile)
+	q.Duration = 120
+	q.Deadline = now.Add(120 * time.Millisecond).UnixMilli()
+	cutoff := time.UnixMilli(q.Deadline)
+	pool, tlsCfg := testLeafTLS(t, []string{"http/1.1"})
+	dialStall, spyPtr := tlsDialPair(tlsCfg, func(s *spyCapConn) {
+		s.mu.Lock()
+		s.afterHead = true
+		s.mu.Unlock()
+		time.Sleep(350 * time.Millisecond)
+	})
+	start := time.Now()
+	res := runCaptureAndExporterPair(t, q, httpsDeps{
+		now: time.Now, loadPool: func() (*x509.CertPool, error) { return pool, nil }, dial: dialStall,
+	})
+	if elapsed := time.Since(start); res.Outcome != "timed_out" || res.Observed < q.Deadline || res.Observed > q.Deadline+1000 || elapsed > 700*time.Millisecond {
+		t.Fatalf("F7 E2E: outcome=%s obs=%d elapsed=%v", res.Outcome, res.Observed, elapsed)
+	}
+	spy := *spyPtr
+	spy.mu.Lock()
+	defer spy.mu.Unlock()
+	if !spy.closed || spy.writes != 0 || spy.wdl != 0 {
+		t.Fatalf("F7: expected direct Close without close_notify/writeDeadline (closed=%v writes=%d wdl=%d)", spy.closed, spy.writes, spy.wdl)
+	}
+	for _, wt := range spy.writeTimes {
+		if wt.After(cutoff) {
+			t.Fatalf("F7: post-cutoff write at %v > %v", wt, cutoff)
+		}
 	}
 }

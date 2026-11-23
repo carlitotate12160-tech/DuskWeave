@@ -8,8 +8,8 @@ HTTPS_LAB_REPORT_ROOT=/srv/duskweave/reports/https-lab-r1
 HTTPS_LAB_BUNDLE_DIR=$HTTPS_LAB_REPORT_ROOT/bundle
 HTTPS_LAB_IMAGE_REF=dw-https-lab:r1
 HTTPS_LAB_CONTAINER=dw-live-dns-20261030-pg
-HTTPS_LAB_DB=dw_native_https_lab_r1
-HTTPS_LAB_ROLE_PREFIX=dw_hlr1
+HTTPS_LAB_DB=dw_native_https_lab_r1_20261119
+HTTPS_LAB_ROLE_PREFIX=dw_hlab_r1
 HTTPS_LAB_CFG=/etc/duskweave/m1/https-lab-r1
 HTTPS_LAB_ROOT_PEM_DST=/etc/duskweave/https-lab-root-v1.pem
 HTTPS_LAB_ROOT_PEM_SHA256=af8714b55edd3a0a47cf24a1b24a6e99d9026ed4dd074b5a972a60618103d1dc
@@ -47,7 +47,7 @@ https_lab_require_host() {
     [[ $(uname -s) == Linux && $(uname -m) == aarch64 ]] || https_lab_refuse host_architecture_refused
     (( EUID == 0 )) || https_lab_refuse root_privilege_required
     [[ $HTTPS_LAB_QUALIFY_DIR == "$HTTPS_LAB_FIXED_SOURCE/boundary/qualify" ]] || https_lab_refuse privileged_driver_outside_fixed_source
-    local owner=/etc/duskweave/m1/.live-dns-owne
+    local owner=/etc/duskweave/m1/.live-dns-owner
     [[ -f $owner && ! -L $owner && $(cat "$owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || https_lab_refuse deployment_owner_refused
 }
 
@@ -102,7 +102,7 @@ https_lab_build() {
         cd "$src/boundary"
         for arch in arm64 amd64; do
             CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/dw-dns-capture-$arch" ./cmd/dw-dns-capture
-            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/dw-dns-exporter-$arch" ./cmd/dw-dns-exporte
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/dw-dns-exporter-$arch" ./cmd/dw-dns-exporter
             CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$output/httpslab-$arch" ./qualify/httpslab
         done
     )
@@ -117,7 +117,10 @@ https_lab_build() {
     cp "$br/normal/release/dw-boundary-launcher" "$artifact_dir/dw-boundary-launcher"
     cp "$output/dw-dns-capture-arm64" "$artifact_dir/dw-dns-capture"
     cp "$output/dw-dns-exporter-arm64" "$artifact_dir/dw-dns-exporter"
-    cp "$output/httpslab-arm64" "$artifact_dir/httpslab"
+    chmod 0555 "$output/httpslab-arm64"
+    python3 -B "$HTTPS_LAB_QUALIFY_DIR/https_lab_release.py" record-responder \
+        --binary-path "$output/httpslab-arm64" --provenance-path "$output/httpslab-arm64.provenance.json" \
+        --build-source-commit "$ec" --build-source-tree "$et" --driver-commit "$ec" --driver-tree "$et"
     python3 -B "$HTTPS_LAB_QUALIFY_DIR/https_lab_release.py" package \
         --package-dir "$bdir" --source-root "$src" --artifact-dir "$artifact_dir" \
         --image-ref "$img" --image-digest "$digest" \
@@ -125,15 +128,11 @@ https_lab_build() {
 }
 
 https_lab_provision_db() {
-    python3 -B "$HTTPS_LAB_QUALIFY_DIR/candidate_database.py" \
-        --container "$HTTPS_LAB_CONTAINER" --database "$HTTPS_LAB_DB" --role-prefix "$HTTPS_LAB_ROLE_PREFIX" \
-        --config-root "$HTTPS_LAB_CFG" --schema-revision 0038 "$@"
+    python3 -B "$HTTPS_LAB_QUALIFY_DIR/https_lab_host.py" provision-db "$@"
 }
 
 https_lab_install() {
-    install -m 0444 "$HTTPS_LAB_BUNDLE_DIR/https-lab-root-v1.pem" "$HTTPS_LAB_ROOT_PEM_DST"
-    [[ $(sha256sum "$HTTPS_LAB_ROOT_PEM_DST" | awk '{print $1}') == "$HTTPS_LAB_ROOT_PEM_SHA256" ]] || https_lab_refuse https_lab_root_pem_mismatch
-    python3 -B "$HTTPS_LAB_QUALIFY_DIR/candidate_install.py" install "$@"
+    python3 -B "$HTTPS_LAB_QUALIFY_DIR/https_lab_host.py" install "$@"
 }
 
 https_lab_main() {
@@ -141,7 +140,7 @@ https_lab_main() {
     local subcmd=$1
     shift
     case "$subcmd" in
-        package|verify-descriptor|verify-source)
+        package|verify-descriptor|verify-source|record-responder|verify-responder)
             https_lab_require_offline_env
             python3 -B "$HTTPS_LAB_QUALIFY_DIR/https_lab_release.py" "$subcmd" "$@"
             ;;

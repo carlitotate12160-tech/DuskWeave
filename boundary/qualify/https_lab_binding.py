@@ -289,6 +289,8 @@ def _observe_lab_context(kw: dict, *, require_match: bool) -> tuple[dict, str, d
         custody = json.loads(read_protected_bytes(kw.get("custody_file") or Path(HTTPS_LAB_SCOPE["owner_custody_path"]), expected_uids=uids, allowed_modes=(0o400,), stop_at=stop, status_on_error="REFUSED").decode("utf-8"))
         if desc["driver_commit"] != kw["expected_driver_commit"] or desc["driver_tree"] != kw["expected_driver_tree"]:
             raise BindingError("descriptor_driver_pin_mismatch")
+        if desc.get("schema_version") != https_lab_release.SCHEMA_VERSION or desc.get("purpose") != PURPOSE_HTTPS_LAB:
+            raise BindingError("descriptor_schema_or_purpose_mismatch")
         img, facts = (kw.get("image_extractor") or extract_https_lab_image_digests)(desc["image_digest"]), h_obs()
         d_ver(cnt, dbn, custody["roles"], custody["dsns"], kw.get("migration_path") or Path(HTTPS_LAB_SCOPE["source_dir"]) / "migrations" / "0038_https_lab.sql", rpx)
         q_chk(custody["dsns"]["admin"])

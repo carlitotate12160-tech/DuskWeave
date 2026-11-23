@@ -2443,7 +2443,8 @@ DECLARE s execution.live_effect_sessions; x execution.live_effect_control; bound
 BEGIN
     SELECT * INTO s FROM execution.live_effect_sessions WHERE run_id = r AND run_kind = 'legacy';
     IF g IS NULL OR s.generation IS DISTINCT FROM g THEN RAISE EXCEPTION 'live_effect_identity_refused'; END IF;
-    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = s.attempt;
+    PERFORM pg_advisory_xact_lock(hashtextextended(s.e::text || ':' || s.c::text, 0));
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = s.attempt FOR UPDATE;
     bound := execution.private_live_deadline(r);
     IF x.phase NOT IN ('reserved', 'may_start') OR x.disposal_confirmed
        OR (x.phase = 'may_start' AND floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint >= x.attempt_deadline_at_ms) THEN
@@ -2454,10 +2455,13 @@ END $$;
 
 CREATE OR REPLACE FUNCTION execution.live_effect_may_start(r uuid, g bigint) RETURNS bigint
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE bound bigint; n bigint; att uuid;
+DECLARE s execution.live_effect_sessions; bound bigint; n bigint; att uuid;
 BEGIN
+    SELECT * INTO s FROM execution.live_effect_sessions WHERE run_id = r AND run_kind = 'legacy';
+    IF g IS NULL OR s.generation IS DISTINCT FROM g THEN RAISE EXCEPTION 'live_effect_identity_refused'; END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(s.e::text || ':' || s.c::text, 0));
     bound := execution.live_effect_current(r, g);
-    SELECT attempt INTO att FROM execution.live_effect_sessions WHERE run_id = r AND run_kind = 'legacy';
+    att := s.attempt;
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     UPDATE execution.live_effect_control
     SET phase = 'may_start', possibly_started = true, attempt_deadline_at_ms = least(n + 2000, bound)
@@ -2483,7 +2487,7 @@ BEGIN
         IF b.projection IS DISTINCT FROM v THEN RAISE EXCEPTION 'live_result_conflict'; END IF;
         RETURN;
     END IF;
-    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = s.attempt;
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = s.attempt FOR UPDATE;
     SELECT occurred_at_ms INTO started FROM execution.live_effect_events WHERE attempt = s.attempt AND phase = 'may_start';
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     IF x.phase NOT IN ('may_start', 'stopped') OR NOT x.possibly_started OR x.disposal_confirmed OR started IS NULL
@@ -2507,7 +2511,7 @@ BEGIN
         RAISE EXCEPTION 'live_stop_refused';
     END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(s.e::text || ':' || s.c::text, 0));
-    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = s.attempt;
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = s.attempt FOR UPDATE;
     IF x.phase = 'closed' THEN RETURN; END IF;
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     target := CASE WHEN disposed THEN 'closed' ELSE 'stopped' END;
@@ -2520,7 +2524,9 @@ CREATE FUNCTION execution.private_live_attempt_bound(s execution.live_effect_ses
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     a execution.autonomous_runs; q execution.live_qualifications; reg jsonb; p jsonb; st execution.https_loop_steps;
-    n bigint; bound bigint;
+    cc terrain.current_claims; ev terrain.evaluations;
+    n bigint; now_s bigint; bound bigint; cap_until bigint;
+    bound_claim_id uuid; bound_claim_rev integer; bound_claim_until_s bigint;
 BEGIN
     IF NOT execution.private_live_actor('dw_m1_broker') OR s.attempt IS NULL THEN
         RAISE EXCEPTION 'live_effect_refused';
@@ -2530,6 +2536,7 @@ BEGIN
     reg := execution.run_current(s.run_id); p := reg->'fields'->'m1_permission';
     SELECT * INTO st FROM execution.https_loop_steps WHERE run_id = s.run_id AND step_index = s.step_index;
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+    now_s := n / 1000;
     IF q.qualification_ref IS NULL OR n < q.valid_from_ms OR n >= q.valid_until_ms
        OR q.run_profile IS DISTINCT FROM 'autonomous-https-genai-lab-v1'
        OR q.purpose IS DISTINCT FROM 'HTTPS_LOOP_LAB'
@@ -2541,7 +2548,90 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM execution.autonomous_control y WHERE y.run_id = s.run_id AND y.phase = st.acquisition_phase AND y.claimed) THEN
         RAISE EXCEPTION 'live_effect_refused';
     END IF;
-    bound := least(a.deadline_at_ms, q.valid_until_ms, (reg->'fields'->>'ends_at')::bigint * 1000, (p->>'ends_at')::bigint * 1000, st.episode_deadline_ms);
+    bound := least(
+        a.deadline_at_ms,
+        q.valid_until_ms,
+        (reg->'fields'->>'ends_at')::bigint * 1000,
+        (p->>'ends_at')::bigint * 1000,
+        (reg#>>'{fields,m1_inference_permission,ends_at}')::bigint * 1000,
+        st.episode_deadline_ms
+    );
+    IF s.attempt_kind = 'dns_refresh' THEN
+        SELECT * INTO cc FROM terrain.current_claims
+        WHERE engagement_id = a.e AND campaign_id = a.c AND claim_id = st.parent_claim_id;
+        IF NOT FOUND THEN RAISE EXCEPTION 'live_premise_ineligible'; END IF;
+        SELECT * INTO ev FROM terrain.evaluations
+        WHERE engagement_id = a.e AND campaign_id = a.c AND operation_id = cc.operation_id;
+        IF NOT FOUND OR cc.claim_status <> 'observed' OR cc.conflicted OR cc.corroborated
+           OR cc.claim_revision IS DISTINCT FROM st.parent_claim_revision
+           OR cc.asset_ref IS DISTINCT FROM st.resolved_asset_ref
+           OR cc.subject_name IS DISTINCT FROM st.resolved_hostname
+           OR cc.vantage_ref IS DISTINCT FROM (p->>'vantage_ref')::uuid
+           OR cc.resolver_ipv4 IS DISTINCT FROM (p->>'resolver_ipv4')
+           OR ev.outcome <> 'qualified_dns_claim' OR coalesce(ev.lowest_ttl_seconds, 0) <= 0
+           OR now_s < cc.perceived_at
+           OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(cc.answers) ans WHERE ans->>'ipv4' = st.resolved_ipv4)
+           OR EXISTS (SELECT 1 FROM terrain.integrity_conflicts ic WHERE ic.engagement_id = a.e AND ic.campaign_id = a.c AND ic.claim_id = cc.claim_id AND ic.blocks_use) THEN
+            RAISE EXCEPTION 'live_premise_ineligible';
+        END IF;
+        cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
+        IF now_s < cap_until THEN RAISE EXCEPTION 'live_premise_ineligible'; END IF;
+    ELSIF s.attempt_kind = 'head' THEN
+        bound_claim_id := (s.request->>'parent_claim_id')::uuid;
+        bound_claim_rev := (s.request->>'parent_claim_revision')::integer;
+        bound_claim_until_s := (s.request->>'claim_valid_until_s')::bigint;
+        IF bound_claim_id IS NULL OR bound_claim_rev IS DISTINCT FROM s.expected_claim_revision THEN
+            RAISE EXCEPTION 'live_premise_ineligible';
+        END IF;
+        IF st.refresh_result_id IS NULL THEN
+            IF bound_claim_id IS DISTINCT FROM st.parent_claim_id
+               OR bound_claim_rev IS DISTINCT FROM st.parent_claim_revision THEN
+                RAISE EXCEPTION 'live_premise_ineligible';
+            END IF;
+            SELECT * INTO cc FROM terrain.current_claims
+            WHERE engagement_id = a.e AND campaign_id = a.c AND claim_id = st.parent_claim_id;
+            IF NOT FOUND THEN RAISE EXCEPTION 'live_premise_ineligible'; END IF;
+        ELSE
+            SELECT cc1.* INTO cc
+            FROM terrain.observations ob1
+            JOIN terrain.evaluations ev1
+              ON (ev1.engagement_id, ev1.campaign_id, ev1.operation_id, ev1.observation_id)
+               = (ob1.engagement_id, ob1.campaign_id, ob1.operation_id, ob1.observation_id)
+            JOIN terrain.current_claims cc1
+              ON (cc1.engagement_id, cc1.campaign_id, cc1.operation_id, cc1.claim_id)
+               = (ev1.engagement_id, ev1.campaign_id, ev1.operation_id, ev1.claim_id)
+            WHERE ob1.engagement_id = a.e AND ob1.campaign_id = a.c
+              AND ob1.operation_id = st.terrain_operation_id
+              AND ob1.correlation_id = st.refresh_result_id
+              AND ob1.source_kind = 'issued_dns_acquisition';
+            IF NOT FOUND OR cc.claim_revision <= st.parent_claim_revision THEN
+                RAISE EXCEPTION 'live_premise_ineligible';
+            END IF;
+        END IF;
+        IF cc.claim_id IS DISTINCT FROM bound_claim_id
+           OR cc.claim_revision IS DISTINCT FROM bound_claim_rev THEN
+            RAISE EXCEPTION 'live_premise_ineligible';
+        END IF;
+        SELECT * INTO ev FROM terrain.evaluations
+        WHERE engagement_id = a.e AND campaign_id = a.c AND operation_id = cc.operation_id;
+        IF NOT FOUND OR cc.claim_status <> 'observed' OR cc.conflicted OR cc.corroborated
+           OR cc.asset_ref IS DISTINCT FROM st.resolved_asset_ref
+           OR cc.subject_name IS DISTINCT FROM st.resolved_hostname
+           OR cc.vantage_ref IS DISTINCT FROM (p->>'vantage_ref')::uuid
+           OR cc.resolver_ipv4 IS DISTINCT FROM (p->>'resolver_ipv4')
+           OR ev.outcome <> 'qualified_dns_claim' OR coalesce(ev.lowest_ttl_seconds, 0) <= 0
+           OR now_s < cc.perceived_at
+           OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(cc.answers) ans WHERE ans->>'ipv4' = st.resolved_ipv4)
+           OR EXISTS (SELECT 1 FROM terrain.integrity_conflicts ic WHERE ic.engagement_id = a.e AND ic.campaign_id = a.c AND ic.claim_id = cc.claim_id AND ic.blocks_use) THEN
+            RAISE EXCEPTION 'live_premise_ineligible';
+        END IF;
+        cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
+        cap_until := least(cap_until, bound_claim_until_s);
+        IF n >= cap_until * 1000 THEN
+            RAISE EXCEPTION 'live_premise_ineligible';
+        END IF;
+        bound := least(bound, cap_until * 1000);
+    END IF;
     IF bound IS NULL OR bound <= n THEN RAISE EXCEPTION 'live_effect_expired'; END IF;
     RETURN bound;
 END $$;
@@ -2800,7 +2890,7 @@ BEGIN
         cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
         IF now_s < cap_until THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_premise_ineligible'; END IF;
     END IF;
-    bound := least(a.deadline_at_ms, q.valid_until_ms, (f->>'ends_at')::bigint * 1000, (p->>'ends_at')::bigint * 1000);
+    bound := least(a.deadline_at_ms, q.valid_until_ms, (f->>'ends_at')::bigint * 1000, (p->>'ends_at')::bigint * 1000, (f#>>'{m1_inference_permission,ends_at}')::bigint * 1000);
     IF bound <= n_ms THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_effect_expired'; END IF;
     IF st.episode_deadline_ms IS NULL THEN
         IF (bound - n_ms) < 314000 THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_time_insufficient'; END IF;
@@ -2959,7 +3049,7 @@ BEGIN
     IF st.episode_index IS NULL AND (run_ep_used >= 3 OR camp_ep_used >= (lim->>'episodes')::int) THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_budget_exhausted';
     END IF;
-    bound := least(a.deadline_at_ms, q.valid_until_ms, (f->>'ends_at')::bigint * 1000, (p->>'ends_at')::bigint * 1000);
+    bound := least(a.deadline_at_ms, q.valid_until_ms, (f->>'ends_at')::bigint * 1000, (p->>'ends_at')::bigint * 1000, (f#>>'{m1_inference_permission,ends_at}')::bigint * 1000);
     IF bound <= n_ms THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_effect_expired'; END IF;
     IF st.episode_deadline_ms IS NULL THEN
         IF (bound - n_ms) < 314000 THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_time_insufficient'; END IF;
@@ -3001,10 +3091,10 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_premise_ineligible';
     END IF;
     cap_until := least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60));
-    IF now_s >= cap_until THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_premise_ineligible'; END IF;
-    avail := least(5000, ep_dl - n_ms);
+    IF n_ms >= cap_until * 1000 THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_premise_ineligible'; END IF;
+    dl_ms := least(n_ms + 5000, ep_dl, bound, cap_until * 1000);
+    avail := dl_ms - n_ms;
     IF avail <= 0 THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'live_time_insufficient'; END IF;
-    dl_ms := n_ms + avail;
     UPDATE execution.session_fences SET generation = generation + 1, epoch = epoch + 1
     WHERE engagement_id = a.e AND campaign_id = a.c AND operation_id IS NULL AND phase = 'idle'
     RETURNING generation INTO g;
@@ -3047,34 +3137,44 @@ END $$;
 
 CREATE OR REPLACE FUNCTION execution.live_attempt_current(att uuid, g bigint) RETURNS bigint
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE s execution.live_effect_sessions; x execution.live_effect_control; bound bigint; n_ms bigint;
+DECLARE s execution.live_effect_sessions; x execution.live_effect_control; bound bigint; n_ms bigint; eff bigint;
 BEGIN
     SELECT * INTO s FROM execution.live_effect_sessions WHERE attempt = att AND run_kind = 'm1_https_loop_v1';
-    IF g IS NULL OR s.generation IS DISTINCT FROM g
+    IF NOT execution.private_live_actor('dw_m1_broker') OR g IS NULL OR s.generation IS DISTINCT FROM g
        OR s.writer_oid IS DISTINCT FROM (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = session_user) THEN
         RAISE EXCEPTION 'live_effect_identity_refused';
     END IF;
-    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att;
+    PERFORM pg_advisory_xact_lock(hashtextextended(s.e::text || ':' || s.c::text, 0));
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att FOR UPDATE;
     bound := execution.private_live_attempt_bound(s);
     n_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     IF x.phase NOT IN ('reserved', 'may_start') OR x.disposal_confirmed
-       OR (s.attempt_kind = 'head' AND (n_ms >= x.attempt_deadline_at_ms OR x.attempt_deadline_at_ms > bound
-           OR x.attempt_deadline_at_ms IS DISTINCT FROM (s.request->>'deadline_at_ms')::bigint))
-       OR (s.attempt_kind <> 'head' AND x.phase = 'may_start' AND n_ms >= x.attempt_deadline_at_ms) THEN
+       OR (s.attempt_kind = 'head' AND x.attempt_deadline_at_ms IS DISTINCT FROM (s.request->>'deadline_at_ms')::bigint) THEN
         RAISE EXCEPTION 'live_effect_stopped';
     END IF;
     IF s.attempt_kind = 'head' THEN
-        RETURN x.attempt_deadline_at_ms;
+        eff := least(bound, x.attempt_deadline_at_ms);
+        IF n_ms >= eff THEN RAISE EXCEPTION 'live_effect_stopped'; END IF;
+        RETURN eff;
+    END IF;
+    IF x.phase = 'may_start' AND n_ms >= x.attempt_deadline_at_ms THEN
+        RAISE EXCEPTION 'live_effect_stopped';
     END IF;
     RETURN CASE WHEN x.phase = 'may_start' THEN least(bound, x.attempt_deadline_at_ms) ELSE bound END;
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.live_attempt_may_start(att uuid, g bigint) RETURNS bigint
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE s execution.live_effect_sessions; bound bigint; n_ms bigint;
+DECLARE s execution.live_effect_sessions; x execution.live_effect_control; bound bigint; n_ms bigint;
 BEGIN
+    SELECT * INTO s FROM execution.live_effect_sessions WHERE attempt = att AND run_kind = 'm1_https_loop_v1';
+    IF NOT execution.private_live_actor('dw_m1_broker') OR g IS NULL OR s.generation IS DISTINCT FROM g
+       OR s.writer_oid IS DISTINCT FROM (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = session_user) THEN
+        RAISE EXCEPTION 'live_effect_identity_refused';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(s.e::text || ':' || s.c::text, 0));
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att FOR UPDATE;
     bound := execution.live_attempt_current(att, g);
-    SELECT * INTO s FROM execution.live_effect_sessions WHERE attempt = att;
     n_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     IF s.attempt_kind = 'head' THEN
         UPDATE execution.live_effect_control
@@ -3088,7 +3188,8 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'live_effect_already_charged'; END IF;
     INSERT INTO execution.live_effect_events (run_id, generation, phase, occurred_at_ms, attempt)
     VALUES (s.run_id, g, 'may_start', n_ms, att);
-    RETURN (SELECT attempt_deadline_at_ms FROM execution.live_effect_control WHERE attempt = att);
+    RETURN CASE WHEN s.attempt_kind = 'head' THEN bound
+        ELSE (SELECT attempt_deadline_at_ms FROM execution.live_effect_control WHERE attempt = att) END;
 END $$;
 
 CREATE OR REPLACE FUNCTION execution.live_attempt_head_phase(att uuid, g bigint, wanted text) RETURNS bigint
@@ -3096,11 +3197,14 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE s execution.live_effect_sessions; x execution.live_effect_control; dl bigint; n_ms bigint;
 BEGIN
     SELECT * INTO s FROM execution.live_effect_sessions WHERE attempt = att AND run_kind = 'm1_https_loop_v1' AND attempt_kind = 'head';
-    IF NOT FOUND OR wanted NOT IN ('tls', 'head') OR NOT execution.private_live_actor('dw_m1_broker') THEN
+    IF NOT FOUND OR wanted NOT IN ('tls', 'head') OR NOT execution.private_live_actor('dw_m1_broker')
+       OR g IS NULL OR s.generation IS DISTINCT FROM g
+       OR s.writer_oid IS DISTINCT FROM (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = session_user) THEN
         RAISE EXCEPTION 'live_effect_refused';
     END IF;
-    dl := execution.live_attempt_current(att, g);
+    PERFORM pg_advisory_xact_lock(hashtextextended(s.e::text || ':' || s.c::text, 0));
     SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att FOR UPDATE;
+    dl := execution.live_attempt_current(att, g);
     IF x.phase <> 'may_start' OR NOT x.possibly_started OR x.disposal_confirmed
        OR NOT ((x.granted_phase = 'connect' AND wanted = 'tls') OR (x.granted_phase = 'tls' AND wanted = 'head')) THEN
         RAISE EXCEPTION 'live_effect_refused';
@@ -3127,7 +3231,7 @@ BEGIN
         IF b.projection IS DISTINCT FROM v THEN RAISE EXCEPTION 'live_result_conflict'; END IF;
         RETURN;
     END IF;
-    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att;
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att FOR UPDATE;
     SELECT occurred_at_ms INTO started FROM execution.live_effect_events WHERE attempt = att AND phase = 'may_start';
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     IF x.phase NOT IN ('may_start', 'stopped') OR NOT x.possibly_started OR x.disposal_confirmed OR started IS NULL
@@ -3165,7 +3269,7 @@ BEGIN
         END IF;
         RETURN;
     END IF;
-    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att;
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att FOR UPDATE;
     SELECT occurred_at_ms INTO started FROM execution.live_effect_events WHERE attempt = att AND phase = 'may_start';
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     IF x.phase NOT IN ('may_start', 'stopped') OR NOT x.possibly_started OR x.disposal_confirmed OR started IS NULL
@@ -3220,7 +3324,7 @@ BEGIN
         RAISE EXCEPTION 'live_stop_refused';
     END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(s.e::text || ':' || s.c::text, 0));
-    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att;
+    SELECT * INTO x FROM execution.live_effect_control WHERE attempt = att FOR UPDATE;
     IF x.phase = 'closed' THEN RETURN; END IF;
     n := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
     target := CASE WHEN disposed THEN 'closed' ELSE 'stopped' END;

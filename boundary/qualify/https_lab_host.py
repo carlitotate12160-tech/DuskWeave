@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -45,9 +47,9 @@ HTTPS_LAB_SCOPE = {
     "manifest_path": "/etc/duskweave/m1/deployment.json",
     "root_pem_path": "/etc/duskweave/https-lab-root-v1.pem",
     "install_bin_dir": "/usr/local/libexec/duskweave",
-    "database": "dw_native_https_lab_r1",
+    "database": "dw_native_https_lab_r1_20261119",
     "pg_container": "dw-live-dns-20261030-pg",
-    "role_prefix": "dw_hlr1",
+    "role_prefix": "dw_hlab_r1",
     "core_uid_path": "/srv/duskweave/.core-account-uid",
     "sudoers_path": "/etc/sudoers.d/duskweave-m1-launcher",
     "control_root": "/run/duskweave/m1",
@@ -63,6 +65,7 @@ HTTPS_LAB_DRIVER_FILES = (
     "candidate_host.py",
     "candidate_image.py",
     "candidate_install.py",
+    "candidate_install_files.py",
     "candidate_postgres.py",
     "deployment_custody.sh",
     "https_lab.sh",
@@ -257,3 +260,104 @@ def check_https_lab_quiescence(*, extra_dbs: tuple[str, ...] = (), **kw) -> dict
     """Verify host, container, netns, launcher, and 0038 live_effect_control quiescence."""
     _ = RETAINED_QUIESCENCE_DBS
     return check_quiescence(extra_dbs=extra_dbs, **kw)
+
+
+def provision_https_lab_database(
+    *,
+    container: str | None = None,
+    database: str | None = None,
+    role_prefix: str | None = None,
+    config_root: Path | None = None,
+    custody_file: Path | None = None,
+    migration_0038_path: Path | None = None,
+    env: dict[str, str] | None = None,
+    expected_uids: tuple[int, ...] = (0,),
+    stop_at: Path = Path("/"),
+    core_account: dict[str, int | str] | None = None,
+    core_resolver=None,
+    fixture_factory=None,
+    verifier=None,
+    sql_runner=None,
+    writer=os.write,
+    fsync_fn=os.fsync,
+) -> dict:
+    """Provision fresh schema-0038 HTTPS_LOOP_LAB DB via internal parameterized candidate_database."""
+    import candidate_database
+
+    sc = HTTPS_LAB_SCOPE
+    cnt = container or sc["pg_container"]
+    dbn = database or sc["database"]
+    rpx = role_prefix or sc["role_prefix"]
+    cfg = Path(config_root) if config_root is not None else Path(sc["config_dir"])
+    cst = Path(custody_file) if custody_file is not None else Path(sc["owner_custody_path"])
+    m0038 = migration_0038_path or (Path(sc["source_dir"]) / "migrations" / "0038_https_lab.sql")
+
+    def _verify_0038(inst) -> dict:
+        plan = json.loads(
+            read_protected_bytes(cst, expected_uids=expected_uids, allowed_modes=(0o400,), stop_at=stop_at, status_on_error="INCOMPLETE").decode("utf-8")
+        )
+        try:
+            return verify_https_lab_schema_and_identities(
+                cnt, inst.database, plan["roles"], plan["dsns"],
+                migration_0038_path=m0038, role_prefix=rpx, sql_runner=sql_runner,
+            )
+        except PostgresError as exc:
+            raise candidate_database.CandidateDatabaseError(exc.status, exc.reason) from exc
+
+    return candidate_database.provision_database(
+        container=cnt, database=dbn, role_prefix=rpx, config_root=cfg, custody_file=cst,
+        schema_revision="0038", env=env, expected_uids=expected_uids, stop_at=stop_at,
+        core_account=core_account, core_resolver=core_resolver, migration_path=m0038,
+        fixture_factory=fixture_factory, verifier=verifier or _verify_0038, writer=writer, fsync_fn=fsync_fn,
+    )
+
+
+def install_https_lab(**kw) -> dict:
+    """Execute privileged HTTPS_LOOP_LAB installation via candidate_install.run_https_lab_install."""
+    import candidate_install
+
+    return candidate_install.run_https_lab_install(**kw)
+
+
+def main(argv: list[str] | None = None, *, driver_verifier=verify_https_lab_driver_custody) -> int:
+    parser = argparse.ArgumentParser(description="Fixed-scope HTTPS LAB host provisioning and installation")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    p_prov = sub.add_parser("provision-db")
+    for flag in ("--expected-driver-commit", "--expected-driver-tree"):
+        p_prov.add_argument(flag, required=True)
+    p_ins = sub.add_parser("install")
+    for flag in ("--expected-driver-commit", "--expected-driver-tree", "--expected-descriptor-sha256"):
+        p_ins.add_argument(flag, required=True)
+    for flag in ("--expected-build-commit", "--expected-build-tree"):
+        p_ins.add_argument(flag, required=False)
+    args = parser.parse_args(argv)
+    drv_dir = Path(__file__).resolve().parent
+    expected_drv = Path(HTTPS_LAB_SCOPE["source_dir"]) / "boundary" / "qualify"
+    try:
+        if drv_dir != expected_drv:
+            raise HostObservationError("REFUSED", "privileged_driver_outside_fixed_source")
+        hex40 = re.compile(r"^[0-9a-f]{40}$")
+        if not (hex40.fullmatch(args.expected_driver_commit) and hex40.fullmatch(args.expected_driver_tree)):
+            raise HostObservationError("REFUSED", "expected_driver_pin_invalid")
+        driver_verifier(drv_dir, args.expected_driver_commit, args.expected_driver_tree, expected_uids=(0,))
+        if args.cmd == "provision-db":
+            receipt = provision_https_lab_database()
+        else:
+            receipt = install_https_lab(
+                expected_driver_commit=args.expected_driver_commit,
+                expected_driver_tree=args.expected_driver_tree,
+                expected_descriptor_sha256=args.expected_descriptor_sha256,
+                expected_build_commit=args.expected_build_commit,
+                expected_build_tree=args.expected_build_tree,
+            )
+    except Exception as exc:
+        status = getattr(exc, "status", "REFUSED")
+        reason = getattr(exc, "reason", str(exc) or type(exc).__name__)
+        print(json.dumps({"status": status, "reason": reason}, sort_keys=True))
+        return 1
+    print(json.dumps(receipt, sort_keys=True))
+    return 0 if receipt.get("status") == "SUCCESS" else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

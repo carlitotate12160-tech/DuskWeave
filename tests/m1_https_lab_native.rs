@@ -1,5 +1,4 @@
 //! Privileged Linux ARM64 native HTTPS LAB qualification harness (`#[ignore]` until reviewed install).
-#![cfg(target_os = "linux")]
 
 #[path = "support/m1_https_lab.rs"]
 mod lab_support;
@@ -10,3 +9,5 @@ mod sdk_fixture;
 mod episode;
 #[path = "m1_https_lab_native/failure.rs"]
 mod failure;
+#[path = "m1_https_lab_native/support.rs"]
+mod support;

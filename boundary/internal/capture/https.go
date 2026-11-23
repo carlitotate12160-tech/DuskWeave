@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"duskweave/boundary/internal/frame"
@@ -89,7 +90,13 @@ func runHTTPSWithDeps(control *frame.Reader, raw *frame.Writer, payload []byte, 
 	if err != nil {
 		return writePrivate(raw, q, "connect", dialStatus(err), "none", 0, "", deps.now)
 	}
-	defer conn.Close()
+	var closeOnce sync.Once
+	closeConn := func() {
+		closeOnce.Do(func() {
+			_ = conn.Close()
+		})
+	}
+	defer closeConn()
 	capped := &capConn{Conn: conn, left: int(q.Limits.NetworkInboundBytes)}
 	readyAt = deps.now()
 	if raw.Write(frame.PhaseReady{Identity: frame.HttpsID(q.Identity, "READY", 3), Phase: "tls"}, frame.ControlLimit) != nil {
@@ -100,13 +107,14 @@ func runHTTPSWithDeps(control *frame.Reader, raw *frame.Writer, payload []byte, 
 	}
 	pool, err := deps.loadPool()
 	if err != nil {
+		closeConn()
 		return writePrivate(raw, q, "tls", "execution_refused", "none", uint32(capped.used), "", deps.now)
 	}
 	tlsConn, status, category := handshake(capped, pool, q.Hostname, deadline)
 	if status != "" {
+		closeConn()
 		return writePrivate(raw, q, "tls", status, category, uint32(capped.used), "", deps.now)
 	}
-	defer tlsConn.Close()
 	readyAt = deps.now()
 	if raw.Write(frame.PhaseReady{Identity: frame.HttpsID(q.Identity, "READY", 5), Phase: "head"}, frame.ControlLimit) != nil {
 		return frame.ErrFrame
@@ -115,10 +123,12 @@ func runHTTPSWithDeps(control *frame.Reader, raw *frame.Writer, payload []byte, 
 		return frame.ErrFrame
 	}
 	if err = writeHead(tlsConn, q.Hostname, deadline); err != nil {
+		closeConn()
 		return writePrivate(raw, q, "head", ioStatus(err), "none", uint32(capped.used), "", deps.now)
 	}
 	header, status := readHeader(tlsConn, int(q.Limits.HeaderBytes), deadline)
 	if status != "" {
+		closeConn()
 		return writePrivate(raw, q, "head", status, "none", uint32(capped.used), "", deps.now)
 	}
 	_, _, status = classifyHeader(header)
@@ -126,6 +136,7 @@ func runHTTPSWithDeps(control *frame.Reader, raw *frame.Writer, payload []byte, 
 	if status == "received" {
 		encoded = base64.StdEncoding.EncodeToString(header)
 	}
+	closeConn()
 	return writePrivate(raw, q, "head", status, "none", uint32(capped.used), encoded, deps.now)
 }
 

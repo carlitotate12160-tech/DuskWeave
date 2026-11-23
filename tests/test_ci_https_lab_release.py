@@ -42,6 +42,8 @@ class HttpsLabReleaseTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(pem).hexdigest(), https_lab_release.ROOT_CA_SHA256)
 
     def test_package_and_verify_https_lab_round_trip_and_tamper_refusals(self) -> None:
+        self.assertEqual(len(https_lab_release.FIXED_MEMBERS), 8)
+        self.assertNotIn("httpslab", https_lab_release.BINARY_MEMBERS)
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             src, art, head, tree = self._populate(base)
@@ -55,19 +57,36 @@ class HttpsLabReleaseTests(unittest.TestCase):
             )
             self.assertEqual(res["status"], "SUCCESS")
             desc = https_lab_release.verify_https_lab_descriptor(pkg, res["descriptor_sha256"], allow_synthetic=True)
+            self.assertEqual(desc["schema_version"], 3)
+            self.assertEqual(desc["purpose"], "HTTPS_LOOP_LAB")
             self.assertEqual(desc["schema_revision"], "0038")
-            self.assertEqual(len(desc["members"]), 9)
+            self.assertEqual(desc["release_baseline_commit"], https_lab_release.RELEASE_BASELINE_COMMIT)
+            self.assertEqual(desc["release_baseline_tree"], https_lab_release.RELEASE_BASELINE_TREE)
+            self.assertEqual(len(desc["members"]), 8)
             self.assertEqual(desc["https_lab_root_version"], https_lab_release.ROOT_CA_VERSION)
             self.assertEqual(desc["https_lab_root_sha256"], https_lab_release.ROOT_CA_SHA256)
 
             for field, val in (
+                ("schema_version", 2),
+                ("purpose", "LIVE"),
                 ("schema_revision", "0036"),
+                ("release_baseline_commit", "0" * 40),
+                ("release_baseline_tree", "0" * 40),
+                ("build_source_commit", https_lab_release.RELEASE_BASELINE_COMMIT),
+                ("build_source_tree", https_lab_release.RELEASE_BASELINE_TREE),
+                ("driver_commit", tree),
+                ("driver_tree", head),
                 ("https_lab_root_version", "wrong-root"),
                 ("https_lab_root_sha256", "b" * 64),
             ):
                 bad = {**desc, field: val}
                 with self.assertRaises(https_lab_release.ReleaseError):
                     https_lab_release.parse_https_lab_descriptor_bytes(json.dumps(bad).encode())
+
+            missing_purpose = dict(desc)
+            missing_purpose.pop("purpose")
+            with self.assertRaises(https_lab_release.ReleaseError):
+                https_lab_release.parse_https_lab_descriptor_bytes(json.dumps(missing_purpose).encode())
 
             with self.assertRaises(https_lab_release.ReleaseError):
                 https_lab_release.verify_https_lab_descriptor(pkg, res["descriptor_sha256"], allow_synthetic=False)
@@ -87,6 +106,38 @@ class HttpsLabReleaseTests(unittest.TestCase):
                     build_source_commit=b_head, build_source_tree=b_tree,
                     driver_commit=b_head, driver_tree=b_tree,
                 )
+
+    def test_responder_provenance_record_verify_and_tamper_rejection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _, _, head, tree = self._populate(base)
+            rsp_bin = base / "httpslab-arm64"
+            rsp_prov = base / "httpslab-arm64.provenance.json"
+            rsp_bin.write_bytes(make_synthetic_elf_aarch64(b"httpslab-arm64"))
+            os.chmod(rsp_bin, 0o555)
+            rec = https_lab_release.record_responder_provenance(
+                binary_path=rsp_bin, provenance_path=rsp_prov,
+                build_source_commit=head, build_source_tree=tree,
+                driver_commit=head, driver_tree=tree,
+            )
+            self.assertEqual(rec["status"], "SUCCESS")
+            ver = https_lab_release.verify_responder_provenance(
+                binary_path=rsp_bin, provenance_path=rsp_prov,
+                expected_build_commit=head, expected_build_tree=tree,
+                expected_driver_commit=head, expected_driver_tree=tree,
+            )
+            self.assertEqual(ver["status"], "SUCCESS")
+            self.assertEqual(ver["provenance"]["purpose"], "HTTPS_LOOP_LAB")
+            with self.assertRaises(https_lab_release.ReleaseError):
+                https_lab_release.verify_responder_provenance(
+                    binary_path=rsp_bin, provenance_path=rsp_prov,
+                    expected_build_commit="0" * 40,
+                )
+            os.chmod(rsp_bin, 0o755)
+            rsp_bin.write_bytes(make_synthetic_elf_aarch64(b"tampered-rsp"))
+            os.chmod(rsp_bin, 0o555)
+            with self.assertRaises(https_lab_release.ReleaseError):
+                https_lab_release.verify_responder_provenance(binary_path=rsp_bin, provenance_path=rsp_prov)
 
     def test_verify_descriptor_cli_refuses_tampered_hash_safely(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

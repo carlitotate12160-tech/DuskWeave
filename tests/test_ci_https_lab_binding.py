@@ -146,6 +146,30 @@ class HttpsLabBindingTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertEqual(json.loads(proc.stdout)["reason"], "privileged_driver_outside_fixed_source")
 
+    def test_observe_lab_context_rejects_non_schema3_or_wrong_purpose_descriptor(self) -> None:
+        from unittest import mock
+        uid = os.geteuid()
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            os.chmod(base, 0o755)
+            cst = base / "owner-custody.json"
+            cst.write_text('{"roles":{},"dsns":{"admin":"postgresql://a"}}', encoding="utf-8")
+            os.chmod(cst, 0o400)
+            for bad_desc in (
+                {"schema_version": 2, "purpose": "HTTPS_LOOP_LAB", "driver_commit": "a" * 40, "driver_tree": "b" * 40,
+                 "image_digest": "sha256:" + ("c" * 64), "members": []},
+                {"schema_version": 3, "purpose": "LIVE", "driver_commit": "a" * 40, "driver_tree": "b" * 40,
+                 "image_digest": "sha256:" + ("c" * 64), "members": []},
+            ):
+                with mock.patch.object(https_lab_binding, "verify_https_lab_driver_custody"), \
+                     mock.patch.object(https_lab_binding.https_lab_release, "verify_https_lab_descriptor", return_value=bad_desc), \
+                     self.assertRaisesRegex(https_lab_binding.BindingError, "^descriptor_schema_or_purpose_mismatch$"):
+                    https_lab_binding._observe_lab_context({
+                        "expected_driver_commit": "a" * 40, "expected_driver_tree": "b" * 40,
+                        "expected_descriptor_sha256": "d" * 64, "custody_file": cst,
+                        "expected_uids": (uid,), "stop_at": base,
+                    }, require_match=True)
+
 
 if __name__ == "__main__":
     unittest.main()

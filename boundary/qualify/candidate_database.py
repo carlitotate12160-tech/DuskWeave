@@ -35,6 +35,7 @@ ENV_FILE_MAP = {
     "stop": "DW_STOP_WRITER_DATABASE_URL_FILE",
 }
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
+SCHEMA_REVISIONS = ("0036", "0038")
 DEFAULT_MIGRATION = Path(__file__).resolve().parents[2] / "migrations" / "0035_pro_budget_c_v2.sql"
 
 
@@ -156,7 +157,8 @@ def _resolve_account_for_provision(core_account: dict[str, int | str] | None, co
 def _run_provision_sequence(*, container: str, database: str, role_prefix: str, cfg_root: Path,
                             custody_path: Path, expected_uids: tuple[int, ...], stop_at: Path,
                             core_uid: int, core_gid: int, clean_env: dict[str, str],
-                            migration_path: Path, fixture_factory, verifier, writer, fsync_fn) -> dict:
+                            schema_revision: str, migration_path: Path, fixture_factory,
+                            verifier, writer, fsync_fn) -> dict:
     captured_plan: dict = {}
     custody_written = False
 
@@ -173,7 +175,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
         os.environ.clear()
         os.environ.update(clean_env)
         fx = factory(
-            container=container, kind="fixture", ci=False, database=database, schema_revision="0036",
+            container=container, kind="fixture", ci=False, database=database, schema_revision=schema_revision,
             role_prefix=role_prefix, custody_callback=custody_cb, negative_controls=False,
         )
         write_runtime_config(
@@ -188,7 +190,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
             raise
         return {
             "status": exc.status if (custody_written or exc.status == "INCOMPLETE") else "REFUSED",
-            "database": database, "role_prefix": role_prefix, "schema_revision": "0036",
+            "database": database, "role_prefix": role_prefix, "schema_revision": schema_revision,
             "custody_preserved": custody_written, "reason": exc.reason,
         }
     except Exception as exc:
@@ -196,7 +198,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
             raise CandidateDatabaseError("REFUSED", type(exc).__name__) from exc
         return {
             "status": "INCOMPLETE", "database": database, "role_prefix": role_prefix,
-            "schema_revision": "0036", "custody_preserved": True, "reason": type(exc).__name__,
+            "schema_revision": schema_revision, "custody_preserved": True, "reason": type(exc).__name__,
         }
     finally:
         os.environ.clear()
@@ -204,7 +206,7 @@ def _run_provision_sequence(*, container: str, database: str, role_prefix: str, 
 
     return {
         "status": "SUCCESS", "database": fx.database, "role_prefix": role_prefix,
-        "schema_revision": "0036", "custody_preserved": True, "config_root": str(cfg_root),
+        "schema_revision": schema_revision, "custody_preserved": True, "config_root": str(cfg_root),
         "custody_file": str(custody_path), "core_uid": core_uid, "core_gid": core_gid,
         "roles": dict(captured_plan["roles"]), "verification": facts,
     }
@@ -217,6 +219,7 @@ def provision_database(
     role_prefix: str,
     config_root: Path,
     custody_file: Path,
+    schema_revision: str = "0036",
     env: dict[str, str] | None = None,
     expected_uids: tuple[int, ...] = (0,),
     stop_at: Path = Path("/"),
@@ -228,7 +231,11 @@ def provision_database(
     writer=os.write,
     fsync_fn=os.fsync,
 ) -> dict:
-    """Provision fresh schema-0036 DB with pre-create custody, core-0400 configs, and exact catalog check."""
+    """Provision fresh schema DB with pre-create custody, core-0400 configs, and exact catalog check."""
+    if schema_revision not in SCHEMA_REVISIONS:
+        raise CandidateDatabaseError("REFUSED", "schema_revision_refused")
+    if schema_revision != "0036" and verifier is None:
+        raise CandidateDatabaseError("REFUSED", "schema_verifier_required")
     clean_env = sanitize_env(env)
     account = _resolve_account_for_provision(core_account, core_resolver)
     cfg_root = Path(config_root)
@@ -240,8 +247,8 @@ def provision_database(
         container=container, database=database, role_prefix=role_prefix,
         cfg_root=cfg_root, custody_path=custody_path, expected_uids=expected_uids,
         stop_at=stop_at, core_uid=int(account["uid"]), core_gid=int(account["gid"]),
-        clean_env=clean_env, migration_path=migration_path, fixture_factory=fixture_factory,
-        verifier=verifier, writer=writer, fsync_fn=fsync_fn,
+        clean_env=clean_env, schema_revision=schema_revision, migration_path=migration_path,
+        fixture_factory=fixture_factory, verifier=verifier, writer=writer, fsync_fn=fsync_fn,
     )
 
 

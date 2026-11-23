@@ -1,10 +1,16 @@
 //! Broker-owned phased HTTPS control loop (`connect` -> `tls` -> `head`) over single attempt budget.
 use crate::m1_effect_session::attempt::{HttpsAttemptSession, HttpsAttemptStore};
 use crate::m1_https::HttpsHeadResult;
-use crate::m1_https::ipc::{HttpsIpcRequest, HttpsPhase, HttpsSafeResult};
+use crate::m1_https::ipc::{HttpsIpcRequest, HttpsOutcome, HttpsPhase, HttpsSafeResult};
 use crate::{Fail, Res};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+#[derive(Clone, Copy)]
+struct AttemptWindows {
+    io_cutoff: Instant,
+    handle_end: Instant,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HttpsEvent {
@@ -96,14 +102,21 @@ fn attempt_windows(
     session: &HttpsAttemptSession,
     marker_origin: Instant,
     now_fn: &mut dyn FnMut() -> Res<i64>,
-) -> Res<(Instant, Instant)> {
+) -> Res<AttemptWindows> {
     let wall_now = now_fn()?;
+    let mono_now = Instant::now();
+    let max_ms = i64::from(session.request.max_duration_ms);
     let remaining_ms = session
         .attempt_deadline_at_ms
         .saturating_sub(wall_now)
-        .clamp(0, i64::from(session.request.max_duration_ms)) as u64;
-    let attempt_end = marker_origin + Duration::from_millis(remaining_ms);
-    Ok((attempt_end, attempt_end + Duration::from_millis(1000)))
+        .clamp(0, max_ms) as u64;
+    let wall_bound = mono_now + Duration::from_millis(remaining_ms);
+    let marker_bound = marker_origin + Duration::from_millis(max_ms as u64);
+    let io_cutoff = wall_bound.min(marker_bound);
+    Ok(AttemptWindows {
+        io_cutoff,
+        handle_end: io_cutoff + Duration::from_millis(1000),
+    })
 }
 
 fn poll_terminal_event(
@@ -111,7 +124,7 @@ fn poll_terminal_event(
     boundary: &mut dyn HttpsBoundary,
     session: &HttpsAttemptSession,
     granted_phase: &mut HttpsPhase,
-    attempt_end: Instant,
+    windows: AttemptWindows,
     now_fn: &mut dyn FnMut() -> Res<i64>,
 ) -> Res<Option<(HttpsSafeResult, HttpsHeadResult)>> {
     let Some(event) = boundary.poll()? else {
@@ -122,7 +135,7 @@ fn poll_terminal_event(
         boundary,
         session,
         granted_phase,
-        attempt_end,
+        windows,
         event,
         now_fn,
     )
@@ -136,11 +149,11 @@ fn receive_step(
     granted_phase: &mut HttpsPhase,
     renewal: &mut Instant,
     renewal_count: &mut u8,
-    attempt_end: Instant,
+    windows: AttemptWindows,
     now_fn: &mut dyn FnMut() -> Res<i64>,
 ) -> Res<Option<(HttpsSafeResult, HttpsHeadResult)>> {
     if let Some(terminal) =
-        poll_terminal_event(store, boundary, session, granted_phase, attempt_end, now_fn)?
+        poll_terminal_event(store, boundary, session, granted_phase, windows, now_fn)?
     {
         return Ok(Some(terminal));
     }
@@ -150,7 +163,7 @@ fn receive_step(
         session,
         renewal,
         renewal_count,
-        attempt_end,
+        windows.io_cutoff,
     )?;
     std::thread::sleep(Duration::from_millis(5));
     Ok(None)
@@ -166,9 +179,9 @@ fn receive_result(
     let mut granted_phase = HttpsPhase::Connect;
     let mut renewal = marker_origin + Duration::from_millis(500);
     let mut renewal_count = 0u8;
-    let (attempt_end, handle_end) = attempt_windows(session, marker_origin, now_fn)?;
+    let windows = attempt_windows(session, marker_origin, now_fn)?;
     loop {
-        if Instant::now() >= handle_end {
+        if Instant::now() >= windows.handle_end {
             return Err(Fail::State("live_effect_deadline"));
         }
         if let Some(terminal) = receive_step(
@@ -178,7 +191,7 @@ fn receive_result(
             &mut granted_phase,
             &mut renewal,
             &mut renewal_count,
-            attempt_end,
+            windows,
             now_fn,
         )? {
             return Ok(terminal);
@@ -186,12 +199,33 @@ fn receive_result(
     }
 }
 
+fn admit_result(
+    session: &HttpsAttemptSession,
+    granted: HttpsPhase,
+    windows: AttemptWindows,
+    safe: HttpsSafeResult,
+    now_fn: &mut dyn FnMut() -> Res<i64>,
+) -> Res<(HttpsSafeResult, HttpsHeadResult)> {
+    let mono_now = Instant::now();
+    let wall_now = now_fn()?;
+    if mono_now >= windows.handle_end {
+        return Err(Fail::State("live_effect_deadline"));
+    }
+    let past_cutoff = mono_now >= windows.io_cutoff || wall_now > session.request.deadline_at_ms;
+    if past_cutoff && safe.outcome != HttpsOutcome::TimedOut {
+        return Err(Fail::Input("https_result_refused"));
+    }
+    safe.validate_for(&session.request, granted, wall_now)?;
+    let head = safe.into_head_result(&session.request)?;
+    Ok((safe, head))
+}
+
 fn handle_event(
     store: &mut dyn HttpsAttemptStore,
     boundary: &mut dyn HttpsBoundary,
     session: &HttpsAttemptSession,
     granted_phase: &mut HttpsPhase,
-    attempt_end: Instant,
+    windows: AttemptWindows,
     event: HttpsEvent,
     now_fn: &mut dyn FnMut() -> Res<i64>,
 ) -> Res<Option<(HttpsSafeResult, HttpsHeadResult)>> {
@@ -203,14 +237,12 @@ fn handle_event(
                 session,
                 granted_phase,
                 next_phase,
-                attempt_end,
+                windows.io_cutoff,
             )?;
             Ok(None)
         }
         HttpsEvent::Result(safe) => {
-            safe.validate_for(&session.request, *granted_phase, now_fn()?)?;
-            let head = safe.into_head_result(&session.request)?;
-            Ok(Some((safe, head)))
+            admit_result(session, *granted_phase, windows, safe, now_fn).map(Some)
         }
     }
 }
@@ -261,3 +293,7 @@ fn now_unix_ms() -> Res<i64> {
         .map_err(|_| Fail::State("live_effect_deadline"))?;
     i64::try_from(d.as_millis()).map_err(|_| Fail::State("live_effect_deadline"))
 }
+
+#[cfg(test)]
+#[path = "../../tests/m1_live_dns/units/effect_https_clock.rs"]
+mod tests;

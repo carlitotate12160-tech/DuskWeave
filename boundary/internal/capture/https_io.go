@@ -26,13 +26,8 @@ func (c *capConn) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 	if c.left <= 0 {
-		var one [1]byte
-		n, err := c.Conn.Read(one[:])
-		if n > 0 || (err != nil && !errors.Is(err, io.EOF)) {
-			c.tripped = true
-			return 0, errNetCap
-		}
-		return 0, io.EOF
+		c.tripped = true
+		return 0, errNetCap
 	}
 	if len(p) > c.left {
 		p = p[:c.left]
@@ -127,6 +122,9 @@ func readHeader(conn net.Conn, max int, deadline time.Time) ([]byte, string) {
 		n, err := conn.Read(one)
 		if n == 1 {
 			buf = append(buf, one[0])
+			if bytes.HasSuffix(buf, []byte("\r\n\r\n")) && len(buf) <= max {
+				return buf, ""
+			}
 		}
 		if err != nil {
 			if errors.Is(err, errNetCap) {
