@@ -1,7 +1,7 @@
 //! Broker-owned phased HTTPS control loop (`connect` -> `tls` -> `head`) over single attempt budget.
 use crate::m1_effect_session::attempt::{HttpsAttemptSession, HttpsAttemptStore};
 use crate::m1_https::HttpsHeadResult;
-use crate::m1_https::ipc::{HttpsIpcRequest, HttpsOutcome, HttpsPhase, HttpsSafeResult};
+use crate::m1_https::ipc::{HttpsIpcRequest, HttpsPhase, HttpsSafeResult};
 use crate::{Fail, Res};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -210,10 +210,6 @@ fn admit_result(
     let wall_now = now_fn()?;
     if mono_now >= windows.handle_end {
         return Err(Fail::State("live_effect_deadline"));
-    }
-    let past_cutoff = mono_now >= windows.io_cutoff || wall_now > session.request.deadline_at_ms;
-    if past_cutoff && safe.outcome != HttpsOutcome::TimedOut {
-        return Err(Fail::Input("https_result_refused"));
     }
     safe.validate_for(&session.request, granted, wall_now)?;
     let head = safe.into_head_result(&session.request)?;

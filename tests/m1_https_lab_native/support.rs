@@ -4,6 +4,7 @@
 use crate::lab_support::{lab_proposal_for_pack, lab_registration_json, lab_run_request_json};
 use crate::sdk_fixture::{Reply, Server, envelope};
 use serde_json::{Value, json};
+use std::time::Duration;
 use uuid::Uuid;
 
 pub(super) const CORE_BIN: &str = "/usr/local/libexec/duskweave/duskweave";
@@ -11,16 +12,74 @@ pub(super) const DEFAULT_BUILD_ROOT: &str = "/srv/duskweave-build/https-lab-r1";
 pub(super) const OWNER_MARKER: &str = "/etc/duskweave/m1/.live-dns-owner";
 pub(super) const DEPLOYMENT_MANIFEST: &str = "/etc/duskweave/m1/deployment.json";
 
-pub(super) fn start_loopback_sdk(dep_refresh: &'static str) -> Server {
-    Server::lab(move |inc| {
-        let req: Value = serde_json::from_slice(&inc.body).expect("SDK request JSON");
-        let text = req["input"][0]["content"][0]["text"]
-            .as_str()
-            .unwrap_or("{}");
-        let pack: Value = serde_json::from_str(text).unwrap_or_else(|_| json!({"references": []}));
+pub(super) fn extract_https_context_pack(wire: &Value) -> Result<Value, &'static str> {
+    let items = wire["input"]
+        .as_array()
+        .ok_or("missing_or_malformed_https_context_pack")?;
+    for item in items {
+        if item["role"].as_str() != Some("user") {
+            continue;
+        }
+        let Some(raw) = item["content"].as_str() else {
+            continue;
+        };
+        let Ok(pack) = serde_json::from_str::<Value>(raw) else {
+            continue;
+        };
+        if pack["version"].as_str() == Some(duskweave::m1_https::VERSION_HTTPS_LOOP)
+            && pack["references"].is_array()
+        {
+            return Ok(pack);
+        }
+    }
+    Err("missing_or_malformed_https_context_pack")
+}
+
+pub(super) fn start_loopback_sdk_at(
+    address: &str,
+    dep_refresh: &'static str,
+    d2_delay: Duration,
+) -> Server {
+    Server::start(address, move |inc| {
+        let Ok(req) = serde_json::from_slice::<Value>(&inc.body) else {
+            return Reply::Length(
+                400,
+                serde_json::to_vec(&json!({"error": "invalid_sdk_json"})).unwrap(),
+            );
+        };
+        let pack = match extract_https_context_pack(&req) {
+            Ok(p) => p,
+            Err(code) => {
+                return Reply::Length(400, serde_json::to_vec(&json!({"error": code})).unwrap());
+            }
+        };
+        if !d2_delay.is_zero() {
+            let refs = pack["references"]
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let is_d2 = refs.iter().any(|r| r["id"] == "endpoint_0")
+                && !refs
+                    .iter()
+                    .any(|r| r["id"].as_str().is_some_and(|id| id.starts_with("https_")));
+            if is_d2 {
+                std::thread::sleep(d2_delay);
+            }
+        }
         let prop = lab_proposal_for_pack(&pack, dep_refresh);
         Reply::Length(200, serde_json::to_vec(&envelope(&prop)).unwrap())
     })
+}
+
+pub(super) fn start_loopback_sdk(dep_refresh: &'static str) -> Server {
+    start_loopback_sdk_at("127.0.0.1:18083", dep_refresh, Duration::ZERO)
+}
+
+pub(super) fn start_loopback_sdk_with_delay(
+    dep_refresh: &'static str,
+    d2_delay: Duration,
+) -> Server {
+    start_loopback_sdk_at("127.0.0.1:18083", dep_refresh, d2_delay)
 }
 
 pub(super) fn build_native_run_bundle(
@@ -43,7 +102,7 @@ pub(super) mod linux_host {
     use super::*;
     use crate::lab_support::{validate_deployment_manifest, verify_responder_provenance_bytes};
     use crate::sdk_fixture::FixtureChild;
-    use duskweave::m1_inference_profile::HTTPS_LAB_IPV4;
+    use duskweave::m1_inference_profile::{HTTPS_LAB_IPV4, HTTPS_LAB_RESOLVER};
     use postgres::{Client, NoTls};
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
@@ -68,26 +127,33 @@ pub(super) mod linux_host {
         fc.output()
     }
 
-    fn checked(binary: &str, args: &[&str]) {
-        let out = cmd(binary, args);
+    fn ip(args: &[&str]) -> Output {
+        cmd("/usr/sbin/ip", args)
+    }
+
+    fn checked_ip(args: &[&str]) {
+        let out = ip(args);
         assert!(
             out.status.success(),
-            "cmd {binary} failed: {}",
+            "ip failed: {}",
             String::from_utf8_lossy(&out.stderr)
         );
+    }
+
+    fn read_json<T: serde::de::DeserializeOwned>(p: impl AsRef<Path>) -> T {
+        serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap()
     }
 
     pub(crate) struct NativeHost {
         pub admin: Client,
         pub manifest: Value,
+        pub source_sha: String,
         pub environment: BTreeMap<String, String>,
         pub report: PathBuf,
-        pub dns_counters: PathBuf,
         pub https_counters: PathBuf,
         build_root: PathBuf,
         ns: String,
         host_if: String,
-        dns_proc: Option<Child>,
         https_proc: Option<Child>,
         inputs: Vec<PathBuf>,
         ns_owned: bool,
@@ -111,20 +177,16 @@ pub(super) mod linux_host {
                     .unwrap_or_else(|| DEFAULT_BUILD_ROOT.into()),
             );
             assert!(cfg.is_absolute() && rpt.is_absolute() && build_root.is_absolute());
-            let env_map: BTreeMap<String, String> =
-                serde_json::from_slice(&std::fs::read(cfg.join("environment.json")).unwrap())
-                    .unwrap();
-            let test_map: BTreeMap<String, String> =
-                serde_json::from_slice(&std::fs::read(cfg.join("test-environment.json")).unwrap())
-                    .unwrap();
-            let manifest: Value =
-                serde_json::from_slice(&std::fs::read(DEPLOYMENT_MANIFEST).unwrap()).unwrap();
+            let env_map: BTreeMap<String, String> = read_json(cfg.join("environment.json"));
+            let test_map: BTreeMap<String, String> = read_json(cfg.join("test-environment.json"));
+            let manifest: Value = read_json(DEPLOYMENT_MANIFEST);
             validate_deployment_manifest(&manifest).unwrap();
             let rsp_bin = std::fs::read(build_root.join("go-release/httpslab-arm64")).unwrap();
             let rsp_prov =
                 std::fs::read(build_root.join("go-release/httpslab-arm64.provenance.json"))
                     .unwrap();
-            verify_responder_provenance_bytes(&rsp_prov, &rsp_bin).unwrap();
+            let prov = verify_responder_provenance_bytes(&rsp_prov, &rsp_bin).unwrap();
+            let source_sha = prov["build_source_commit"].as_str().unwrap().to_owned();
             let mut admin =
                 Client::connect(&test_map["DW_TEST_ADMIN_DATABASE_URL"], NoTls).unwrap();
             let id: Uuid = admin
@@ -135,23 +197,23 @@ pub(super) mod linux_host {
             let report = rpt.join(id.simple().to_string());
             std::fs::create_dir_all(&report).unwrap();
             for cidr in ["192.0.2.53/32", "198.51.100.10/32"] {
-                let r = cmd("/usr/sbin/ip", &["-4", "route", "show", cidr]);
                 assert!(
-                    String::from_utf8_lossy(&r.stdout).trim().is_empty(),
+                    String::from_utf8_lossy(&ip(&["-4", "route", "show", cidr]).stdout)
+                        .trim()
+                        .is_empty(),
                     "route collision"
                 );
             }
             Self {
                 admin,
                 manifest,
+                source_sha,
                 environment: env_map,
-                dns_counters: report.join("dns-counters.json"),
                 https_counters: report.join("https-counters.json"),
                 report,
                 build_root,
                 ns: format!("hl{tag}"),
                 host_if: format!("hh{tag}"),
-                dns_proc: None,
                 https_proc: None,
                 inputs: Vec::new(),
                 ns_owned: false,
@@ -162,34 +224,38 @@ pub(super) mod linux_host {
             }
         }
 
-        pub fn start_topology(&mut self, scenario: &str) {
+        pub fn start_topology_for(
+            &mut self,
+            scenario: &str,
+            run_id: Uuid,
+            dns_ttl: u32,
+            dns_refresh_ttl: u32,
+        ) {
             let inner = self.host_if.replacen("hh", "hn", 1);
-            checked("/usr/sbin/ip", &["netns", "add", &self.ns]);
+            checked_ip(&["netns", "add", &self.ns]);
             self.ns_owned = true;
-            checked(
-                "/usr/sbin/ip",
-                &[
-                    "link",
-                    "add",
-                    &self.host_if,
-                    "type",
-                    "veth",
-                    "peer",
-                    "name",
-                    &inner,
-                ],
-            );
+            checked_ip(&[
+                "link",
+                "add",
+                &self.host_if,
+                "type",
+                "veth",
+                "peer",
+                "name",
+                &inner,
+            ]);
             self.link_owned = true;
-            checked("/usr/sbin/ip", &["link", "set", &inner, "netns", &self.ns]);
-            checked(
-                "/usr/sbin/ip",
-                &["addr", "add", "192.0.2.1/32", "dev", &self.host_if],
-            );
-            self.ns(&["addr", "add", "192.0.2.53/32", "dev", &inner]);
-            self.ns(&["addr", "add", "198.51.100.10/32", "dev", &inner]);
-            checked("/usr/sbin/ip", &["link", "set", &self.host_if, "up"]);
             for args in [
-                &["link", "set", inner.as_str(), "up"][..],
+                &["link", "set", inner.as_str(), "netns", &self.ns][..],
+                &["addr", "add", "192.0.2.1/32", "dev", &self.host_if],
+                &["link", "set", &self.host_if, "up"],
+            ] {
+                checked_ip(args);
+            }
+            for args in [
+                &["addr", "add", "192.0.2.53/32", "dev", &inner][..],
+                &["addr", "add", "198.51.100.10/32", "dev", &inner],
+                &["link", "set", inner.as_str(), "up"],
                 &["link", "set", "lo", "up"],
                 &["route", "add", "192.0.2.1/32", "dev", inner.as_str()],
                 &[
@@ -205,48 +271,28 @@ pub(super) mod linux_host {
             ] {
                 self.ns(args);
             }
-            checked(
-                "/usr/sbin/ip",
-                &["route", "add", "192.0.2.53/32", "dev", &self.host_if],
-            );
+            checked_ip(&["route", "add", "192.0.2.53/32", "dev", &self.host_if]);
             self.route_dns_owned = true;
-            checked(
-                "/usr/sbin/ip",
-                &["route", "add", "198.51.100.10/32", "dev", &self.host_if],
-            );
+            checked_ip(&["route", "add", "198.51.100.10/32", "dev", &self.host_if]);
             self.route_https_owned = true;
             for idx in 0..4u8 {
                 assert!(self.iptables_rule("-I", idx));
                 self.fwd_owned += 1;
             }
-            let dns_bin = std::env::var("DW_M1_LAB_DNS_BIN")
-                .unwrap_or_else(|_| "/srv/duskweave-build/go-release/dns-lab".into());
-            self.dns_proc = Some(
-                Command::new("/usr/sbin/ip")
-                    .args(["netns", "exec", &self.ns, &dns_bin, "--counter-file"])
-                    .arg(&self.dns_counters)
-                    .env_clear()
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .unwrap(),
-            );
-            let rsp_bin = self.build_root.join("go-release/httpslab-arm64");
+            let rsp = self.build_root.join("go-release/httpslab-arm64");
             self.https_proc = Some(
                 Command::new("/usr/sbin/ip")
+                    .args(["netns", "exec", &self.ns, rsp.to_str().unwrap()])
+                    .args(["-listen", &format!("{HTTPS_LAB_IPV4}:443")])
+                    .args(["-dns-listen", &format!("{HTTPS_LAB_RESOLVER}:53")])
                     .args([
-                        "netns",
-                        "exec",
-                        &self.ns,
-                        rsp_bin.to_str().unwrap(),
-                        "-listen",
-                        &format!("{HTTPS_LAB_IPV4}:443"),
-                        "-scenario",
-                        scenario,
-                        "-counters",
-                        self.https_counters.to_str().unwrap(),
+                        "-dns-ttl",
+                        &dns_ttl.to_string(),
+                        "-dns-refresh-ttl",
+                        &dns_refresh_ttl.to_string(),
                     ])
+                    .args(["-scenario", scenario, "-run-id", &run_id.to_string()])
+                    .args(["-counters", self.https_counters.to_str().unwrap()])
                     .env_clear()
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -255,18 +301,27 @@ pub(super) mod linux_host {
                     .unwrap(),
             );
             let dl = Instant::now() + Duration::from_secs(3);
-            while !(self.dns_counters.exists() && self.https_counters.exists())
-                && Instant::now() < dl
-            {
+            while !self.https_counters.exists() && Instant::now() < dl {
+                let alive = self
+                    .https_proc
+                    .as_mut()
+                    .unwrap()
+                    .try_wait()
+                    .unwrap()
+                    .is_none();
+                assert!(alive, "httpslab exited");
                 std::thread::sleep(Duration::from_millis(5));
             }
-            assert!(self.dns_counters.exists() && self.https_counters.exists());
+            assert!(
+                self.https_counters.exists(),
+                "httpslab counter readiness timeout"
+            );
         }
 
         fn ns(&self, args: &[&str]) {
             let mut full = vec!["netns", "exec", &self.ns, "/usr/sbin/ip"];
             full.extend_from_slice(args);
-            checked("/usr/sbin/ip", &full);
+            checked_ip(&full);
         }
 
         fn iptables_rule(&self, op: &str, idx: u8) -> bool {
@@ -281,33 +336,23 @@ pub(super) mod linux_host {
             } else {
                 ("dvh+", self.host_if.as_str(), "10.203.0.0/24", cidr)
             };
-            cmd(
-                "/usr/sbin/iptables",
-                &[
-                    op,
-                    "DOCKER-USER",
-                    "-i",
-                    in_if,
-                    "-o",
-                    out_if,
-                    "-s",
-                    src,
-                    "-d",
-                    dst,
-                    "-p",
-                    proto,
-                    pflag,
-                    port,
-                    "-m",
-                    "comment",
-                    "--comment",
-                    &self.ns,
-                    "-j",
-                    "ACCEPT",
-                ],
-            )
-            .status
-            .success()
+            let ch = Command::new("/usr/sbin/iptables")
+                .args([op, "DOCKER-USER", "-i", in_if, "-o", out_if])
+                .args(["-s", src, "-d", dst, "-p", proto, pflag, port])
+                .args(["-m", "comment", "--comment", &self.ns, "-j", "ACCEPT"])
+                .env_clear()
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("iptables");
+            let mut fc = FixtureChild::new(ch);
+            assert!(
+                fc.wait_until(Instant::now() + Duration::from_secs(2))
+                    .is_some(),
+                "iptables timeout"
+            );
+            fc.output().status.success()
         }
 
         pub fn id(&mut self) -> Uuid {
@@ -370,55 +415,68 @@ pub(super) mod linux_host {
         }
 
         pub fn dns_count(&self, k: &str) -> u64 {
-            let v: Value =
-                serde_json::from_slice(&std::fs::read(&self.dns_counters).unwrap()).unwrap();
-            v[k].as_u64().unwrap_or(0)
+            self.https_counters()[k].as_u64().unwrap_or(0)
         }
 
         pub fn https_counters(&self) -> Value {
             serde_json::from_slice(&std::fs::read(&self.https_counters).unwrap()).unwrap()
         }
+
+        pub fn save_inspect_artifact(
+            &self,
+            label: &str,
+            run_id: Uuid,
+            inspect_stdout: &str,
+            inspect_sanitized: &Value,
+            recover_sanitized: &Value,
+        ) {
+            assert!(
+                !inspect_stdout.contains("://")
+                    && !inspect_stdout.contains("password=")
+                    && !inspect_stdout.contains("DW_"),
+                "unsafe inspect stdout"
+            );
+            let artifact = json!({
+                "label": label,
+                "source_sha": self.source_sha,
+                "run_id": run_id,
+                "counter_file": self.https_counters.display().to_string(),
+                "counters": self.https_counters(),
+                "inspect_stdout": inspect_stdout.trim(),
+                "inspect_sanitized": inspect_sanitized,
+                "recover_sanitized": recover_sanitized,
+            });
+            std::fs::write(
+                self.report.join(format!("{label}-inspect-artifact.json")),
+                serde_json::to_vec_pretty(&artifact).unwrap(),
+            )
+            .unwrap();
+        }
     }
 
     impl Drop for NativeHost {
         fn drop(&mut self) {
-            for proc in [self.https_proc.take(), self.dns_proc.take()]
-                .into_iter()
-                .flatten()
-            {
-                let mut p = proc;
+            if let Some(mut p) = self.https_proc.take() {
                 let _ = p.kill();
                 let _ = p.wait();
             }
-            let mut clean = true;
-            for idx in 0..self.fwd_owned {
-                clean &= self.iptables_rule("-D", idx);
-            }
-            if self.route_https_owned {
-                clean &= cmd(
-                    "/usr/sbin/ip",
+            let mut clean = (0..self.fwd_owned).all(|idx| self.iptables_rule("-D", idx));
+            let ip_cleanups: [(bool, &[&str]); 4] = [
+                (
+                    self.route_https_owned,
                     &["route", "del", "198.51.100.10/32", "dev", &self.host_if],
-                )
-                .status
-                .success();
-            }
-            if self.route_dns_owned {
-                clean &= cmd(
-                    "/usr/sbin/ip",
+                ),
+                (
+                    self.route_dns_owned,
                     &["route", "del", "192.0.2.53/32", "dev", &self.host_if],
-                )
-                .status
-                .success();
-            }
-            if self.link_owned {
-                clean &= cmd("/usr/sbin/ip", &["link", "del", &self.host_if])
-                    .status
-                    .success();
-            }
-            if self.ns_owned {
-                clean &= cmd("/usr/sbin/ip", &["netns", "del", &self.ns])
-                    .status
-                    .success();
+                ),
+                (self.link_owned, &["link", "del", &self.host_if]),
+                (self.ns_owned, &["netns", "del", &self.ns]),
+            ];
+            for (owned, args) in ip_cleanups {
+                if owned {
+                    clean &= cmd("/usr/sbin/ip", args).status.success();
+                }
             }
             for p in &self.inputs {
                 let _ = std::fs::remove_file(p);

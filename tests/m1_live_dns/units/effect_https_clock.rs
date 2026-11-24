@@ -220,37 +220,73 @@ fn delayed_release_avoids_double_deduction_and_admits_timeout_at_cutoff_plus_750
     assert_eq!(store.recorded.unwrap().observed_at_ms, dl + 700);
 }
 
+fn run_head_case(
+    base_wall: i64,
+    max_duration_ms: u32,
+    obs_offset_ms: i64,
+    deliver_at: Duration,
+    grant_head: bool,
+) -> (Res<()>, TimedStore, TimedBoundary) {
+    let mut store = TimedStore::new(base_wall, max_duration_ms, Duration::ZERO);
+    let dl = store.session.attempt_deadline_at_ms;
+    let res = make_result(
+        &store.session.request,
+        HttpsOutcome::HeadResponse,
+        dl + obs_offset_ms,
+    );
+    let mut events = vec![ScheduledEvent {
+        at: Duration::from_millis(10),
+        event: HttpsEvent::Ready(HttpsPhase::Tls),
+    }];
+    if grant_head {
+        events.push(ScheduledEvent {
+            at: Duration::from_millis(20),
+            event: HttpsEvent::Ready(HttpsPhase::Head),
+        });
+    }
+    events.push(ScheduledEvent {
+        at: deliver_at,
+        event: HttpsEvent::Result(res),
+    });
+    let mut boundary = TimedBoundary::new(events);
+    let t0 = Instant::now();
+    let mut clk = || Ok(base_wall + t0.elapsed().as_millis() as i64);
+    let run_id = store.session.run_id;
+    let out = acquire_with_clock(&mut store, &mut boundary, run_id, 2, &mut clk);
+    (out, store, boundary)
+}
+
 #[test]
 fn terminal_window_rejects_late_head_success_and_results_past_1000ms() {
     let base_wall = 1_700_000_000_000i64;
-    let mut store_late = TimedStore::new(base_wall, 200, Duration::ZERO);
-    let dl = store_late.session.attempt_deadline_at_ms;
-    let late_ok = make_result(
-        &store_late.session.request,
-        HttpsOutcome::HeadResponse,
-        dl - 10,
+    // Pre-cutoff success delivered at cutoff + 750ms (inside +1000ms window) is accepted.
+    let (ok_res, ok_store, ok_boundary) =
+        run_head_case(base_wall, 200, -10, Duration::from_millis(950), true);
+    ok_res.expect("pre-cutoff success delivered at cutoff+750ms must be accepted");
+    assert_eq!(ok_boundary.stop_calls, 0);
+    assert!(ok_store.closed_disposed);
+    assert_eq!(
+        ok_store.recorded.unwrap().observed_at_ms,
+        ok_store.session.attempt_deadline_at_ms - 10
     );
-    let mut b_late = TimedBoundary::new(vec![
-        ScheduledEvent {
-            at: Duration::from_millis(10),
-            event: HttpsEvent::Ready(HttpsPhase::Tls),
-        },
-        ScheduledEvent {
-            at: Duration::from_millis(20),
-            event: HttpsEvent::Ready(HttpsPhase::Head),
-        },
-        ScheduledEvent {
-            at: Duration::from_millis(300),
-            event: HttpsEvent::Result(late_ok),
-        },
-    ]);
-    let t0 = Instant::now();
-    let mut clk0 = || Ok(base_wall + t0.elapsed().as_millis() as i64);
-    let run_id_late = store_late.session.run_id;
-    let err =
-        acquire_with_clock(&mut store_late, &mut b_late, run_id_late, 2, &mut clk0).unwrap_err();
-    assert_eq!(err, Fail::Input("https_result_refused"));
-    assert_eq!(b_late.stop_calls, 1);
+
+    // Negative: success observed after cutoff rejects.
+    let (err_after, _, b_after) =
+        run_head_case(base_wall, 200, 10, Duration::from_millis(250), true);
+    assert_eq!(err_after.unwrap_err(), Fail::Input("https_result_refused"));
+    assert_eq!(b_after.stop_calls, 1);
+
+    // Negative: future observation (observed_at_ms > wall_now) rejects.
+    let (err_future, _, b_future) =
+        run_head_case(base_wall, 200, -10, Duration::from_millis(30), true);
+    assert_eq!(err_future.unwrap_err(), Fail::Input("https_result_refused"));
+    assert_eq!(b_future.stop_calls, 1);
+
+    // Negative: invalid phase (HeadResponse when only Tls granted) rejects.
+    let (err_phase, _, b_phase) =
+        run_head_case(base_wall, 200, -10, Duration::from_millis(50), false);
+    assert_eq!(err_phase.unwrap_err(), Fail::Input("https_result_refused"));
+    assert_eq!(b_phase.stop_calls, 1);
 
     let mut store_over = TimedStore::new(base_wall, 150, Duration::ZERO);
     let dl_over = store_over.session.attempt_deadline_at_ms;

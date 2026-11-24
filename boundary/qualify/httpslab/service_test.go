@@ -4,10 +4,14 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"duskweave/boundary/internal/dns"
+	"duskweave/boundary/internal/frame"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -181,5 +185,136 @@ func TestNegativeScenarios(t *testing.T) {
 
 	if _, err := Start("127.0.0.1:0", "invalid_scenario", ""); err == nil {
 		t.Fatalf("expected invalid scenario error")
+	}
+}
+
+func sendUDPQuery(t *testing.T, addr string, pkt []byte) []byte {
+	t.Helper()
+	conn, err := net.DialTimeout("udp4", addr, time.Second)
+	if err != nil {
+		t.Fatalf("dial udp4 %s: %v", addr, err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(time.Second))
+	if _, err := conn.Write(pkt); err != nil {
+		t.Fatalf("write udp: %v", err)
+	}
+	buf := make([]byte, 512)
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Fatalf("read udp: %v", err)
+	}
+	return buf[:n]
+}
+
+func TestSyntheticDNSAnswersRefusalsTTLsAndShutdown(t *testing.T) {
+	tmp := t.TempDir()
+	countersPath := filepath.Join(tmp, "dns-https.json")
+	svc, err := StartWithOptions(Options{
+		ListenAddr:    "127.0.0.1:0",
+		DNSListenAddr: "127.0.0.1:0",
+		Scenario:      "200",
+		CounterPath:   countersPath,
+		RunID:         "run-dns-check-1",
+		DNSTTL:        2,
+		DNSRefreshTTL: 30,
+	})
+	if err != nil {
+		t.Fatalf("StartWithOptions: %v", err)
+	}
+	if svc.DNSAddr() == "" {
+		t.Fatalf("expected bound UDP DNS address")
+	}
+	done := make(chan struct{})
+	go func() {
+		svc.Serve()
+		close(done)
+	}()
+
+	req := frame.Request{
+		QueryID:      42,
+		Name:         labHostname,
+		AllowedNames: []string{labHostname},
+	}
+	q1, err := dns.Query(42, labHostname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1 := sendUDPQuery(t, svc.DNSAddr(), q1)
+	p1, err := dns.Decode(r1, req)
+	if err != nil {
+		t.Fatalf("Decode r1: %v", err)
+	}
+	if p1.Rcode != 0 || len(p1.Answers) != 1 || p1.Answers[0].IPv4 != "198.51.100.10" || p1.Answers[0].TTL != 2 {
+		t.Fatalf("unexpected first DNS projection: %+v", p1)
+	}
+
+	// Second answered query uses DNSRefreshTTL=30.
+	q2, _ := dns.Query(43, labHostname)
+	r2 := sendUDPQuery(t, svc.DNSAddr(), q2)
+	req2 := req
+	req2.QueryID = 43
+	p2, err := dns.Decode(r2, req2)
+	if err != nil {
+		t.Fatalf("Decode r2: %v", err)
+	}
+	if p2.Rcode != 0 || len(p2.Answers) != 1 || p2.Answers[0].TTL != 30 {
+		t.Fatalf("unexpected refresh DNS projection: %+v", p2)
+	}
+
+	// Wrong hostname -> REFUSED (RCODE=5).
+	qWrongName, _ := dns.Query(44, "other.duskweave.test")
+	rWrongName := sendUDPQuery(t, svc.DNSAddr(), qWrongName)
+	if len(rWrongName) < 12 || rWrongName[3]&0x0f != 5 {
+		t.Fatalf("expected REFUSED for wrong hostname, got %x", rWrongName)
+	}
+
+	// Wrong QTYPE (AAAA=28) -> REFUSED (RCODE=5).
+	qAAAA := append([]byte(nil), q1...)
+	binary.BigEndian.PutUint16(qAAAA[0:2], 45)
+	binary.BigEndian.PutUint16(qAAAA[len(qAAAA)-4:len(qAAAA)-2], 28)
+	rAAAA := sendUDPQuery(t, svc.DNSAddr(), qAAAA)
+	if len(rAAAA) < 12 || rAAAA[3]&0x0f != 5 {
+		t.Fatalf("expected REFUSED for AAAA query, got %x", rAAAA)
+	}
+
+	// Wrong QCLASS (CH=3) -> REFUSED (RCODE=5).
+	qCH := append([]byte(nil), q1...)
+	binary.BigEndian.PutUint16(qCH[0:2], 46)
+	binary.BigEndian.PutUint16(qCH[len(qCH)-2:], 3)
+	rCH := sendUDPQuery(t, svc.DNSAddr(), qCH)
+	if len(rCH) < 12 || rCH[3]&0x0f != 5 {
+		t.Fatalf("expected REFUSED for CH class query, got %x", rCH)
+	}
+
+	if err := svc.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Serve did not stop after Close")
+	}
+
+	raw, err := os.ReadFile(countersPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Counters
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.RunID != "run-dns-check-1" || got.DNSQueries != 5 || got.DNSAnswered != 2 || got.DNSRefused != 3 {
+		t.Fatalf("unexpected DNS counters: %+v", got)
+	}
+
+	for _, bad := range []Options{
+		{ListenAddr: "127.0.0.1:0", DNSListenAddr: "127.0.0.1:0", Scenario: "200", DNSTTL: 0},
+		{ListenAddr: "127.0.0.1:0", DNSListenAddr: "127.0.0.1:0", Scenario: "200", DNSTTL: 301},
+		{ListenAddr: "127.0.0.1:0", Scenario: "200", RunID: "bad id"},
+	} {
+		if _, err := StartWithOptions(bad); err == nil {
+			t.Fatalf("expected StartWithOptions failure for %+v", bad)
+		}
 	}
 }

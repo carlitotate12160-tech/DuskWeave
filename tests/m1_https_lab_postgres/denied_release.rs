@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-fn db_now_ms(c: &mut Client) -> i64 {
+pub(crate) fn db_now_ms(c: &mut Client) -> i64 {
     c.query_one(
         "SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint",
         &[],
@@ -27,18 +27,20 @@ fn db_now_ms(c: &mut Client) -> i64 {
     .get(0)
 }
 
-fn sleep_until_db_ms(c: &mut Client, target_ms: i64) {
+pub(crate) fn sleep_until_db_ms(c: &mut Client, target_ms: i64) {
+    let guard = Instant::now() + Duration::from_secs(20);
     loop {
         let cur = db_now_ms(c);
         if cur >= target_ms {
             return;
         }
+        assert!(Instant::now() < guard, "db clock wait exceeded 20s");
         let rem = (target_ms - cur).min(200) as u64;
         std::thread::sleep(Duration::from_millis(rem.max(10)));
     }
 }
 
-fn claim_cap_until_s(e: Uuid, c: Uuid) -> i64 {
+pub(crate) fn claim_cap_until_s(e: Uuid, c: Uuid) -> i64 {
     native::admin()
         .query_one(
             "SELECT least(cc.valid_until, cc.perceived_at + least(ev.lowest_ttl_seconds, 60))
@@ -67,7 +69,7 @@ fn setup_step2_head_ready(
     let (e, c, run_id, reg, mut runs, rec) = start_lab_run(Uuid::new_v4());
     let renew = Renewals::start(run_id);
     let claim = drive_step1_live_dns(e, c, run_id, &reg, &mut runs, &rec, ttl_seconds);
-    commit_synthetic_step_decision(
+    let action = commit_synthetic_step_decision(
         &mut runs,
         &rec,
         &reg,
@@ -78,6 +80,10 @@ fn setup_step2_head_ready(
             "manifest_reference": "https-head-v1",
             "dependency_refresh": dependency_refresh
         }),
+    );
+    assert_eq!(
+        action,
+        duskweave::postgres_m1_run::https_loop::StepAction::AcquireHead { step_index: 2 }
     );
     runs.protect_next_decision(run_id, 2).unwrap();
     runs.start_phase(run_id, RunPhase::AcquisitionTwo).unwrap();
@@ -186,11 +192,11 @@ fn granted_phase(att: Uuid) -> String {
 #[test]
 fn near_expiry_head_reserve_clamps_deadline_and_rejects_expired_start_and_renewal() {
     let _guard = native::qualified_existing_db();
-    let (e, c, run_id, _reg, mut runs, renew, _claim) = setup_step2_head_ready(4, "none");
+    let (e, c, run_id, _reg, mut runs, renew, _claim) = setup_step2_head_ready(8, "none");
     let mut b = broker();
     let cap_until_ms = claim_cap_until_s(e, c) * 1000;
-    // Wait until ~1.5s remain before cap_until so 5000ms attempt must clamp to cap_until_ms.
-    sleep_until_db_ms(&mut b, cap_until_ms - 1800);
+    // Wait until ~2s remain before cap_until so 5000ms attempt must clamp to cap_until_ms.
+    sleep_until_db_ms(&mut b, cap_until_ms - 2000);
 
     let (att, g, head_rec) = reserve_head(&mut b, run_id);
     let dl = head_rec["request"]["deadline_at_ms"].as_i64().unwrap();
@@ -212,10 +218,10 @@ fn expired_later_phase_grant_and_incompatible_bound_revision_refused() {
     let _guard = native::qualified_existing_db();
     // 1. Expired later phase grant ('tls') and renewal after may_start('connect').
     {
-        let (e, c, run_id, _reg, mut runs, renew, _claim) = setup_step2_head_ready(4, "none");
+        let (e, c, run_id, _reg, mut runs, renew, _claim) = setup_step2_head_ready(8, "none");
         let mut b = broker();
         let cap_until_ms = claim_cap_until_s(e, c) * 1000;
-        sleep_until_db_ms(&mut b, cap_until_ms - 1800);
+        sleep_until_db_ms(&mut b, cap_until_ms - 2000);
         let (att, g, _) = reserve_head(&mut b, run_id);
         att_may_start(&mut b, att, g).unwrap();
         sleep_until_db_ms(&mut b, cap_until_ms + 50);
@@ -269,18 +275,19 @@ fn expired_later_phase_grant_and_incompatible_bound_revision_refused() {
         assert!(att_current(&mut b, att, g).is_err());
         assert!(att_phase(&mut b, att, g, "tls").is_err());
         admin.execute("UPDATE terrain.evaluations SET outcome = 'qualified_dns_claim', lowest_ttl_seconds = 30 WHERE operation_id = $1", &[&op_id]).unwrap();
+        renew.stop();
+        runs.renew(run_id).unwrap();
         admin.execute("UPDATE execution.live_qualifications SET valid_until_ms = $1 WHERE qualification_ref = $2", &[&(db_now_ms(&mut b) - 1), &qref]).unwrap();
         assert!(att_current(&mut b, att, g).is_err());
         assert!(att_phase(&mut b, att, g, "tls").is_err());
-        renew.stop();
         let _ = runs.stop(run_id);
     }
 
-    // 3. Refresh lineage: ttl=2s expires -> dns_refresh issues rev 2 with ttl=3s -> HEAD binds rev 2,
+    // 3. Refresh lineage: ttl=6s expires after D2 -> dns_refresh issues rev 2 with ttl=5s -> HEAD binds rev 2,
     //    succeeds on 'tls', then expires before 'head'.
     {
         let (e, c, run_id, _reg, mut runs, renew, _claim) =
-            setup_step2_head_ready(2, "dns_once_if_stale");
+            setup_step2_head_ready(6, "dns_once_if_stale");
         let mut b = broker();
         sleep_until_db_ms(&mut b, claim_cap_until_s(e, c) * 1000 + 100);
         let dns_ref: Value = b
@@ -297,7 +304,7 @@ fn expired_later_phase_grant_and_incompatible_bound_revision_refused() {
             "schema": "m1_dns_ipc_v1", "kind": "RESULT", "attempt": att_r, "session_generation": g_r,
             "sequence": 3, "status": "completed", "observed_at_ms": dl_r - 2000, "rcode": 0,
             "truncated": false, "complete": true, "withheld_aliases": 0,
-            "answers": [{"ipv4": HTTPS_LAB_IPV4, "ttl_seconds": 3}], "aliases": []
+            "answers": [{"ipv4": HTTPS_LAB_IPV4, "ttl_seconds": 5}], "aliases": []
         });
         b.execute(
             "SELECT execution.live_attempt_dns_result($1,$2,$3)",

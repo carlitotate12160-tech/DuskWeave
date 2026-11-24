@@ -221,67 +221,62 @@ pub fn lab_registration_json(eng: Uuid, cmp: Uuid, qref: Uuid, rel: &str, now_s:
         Uuid::new_v4(),
     );
     let (vantage_ref, perm_id, terms_ref) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
-    json!({
-        "version": "1",
-        "engagement_id": eng,
-        "campaign_id": cmp,
-        "operator_ref": op_ref,
-        "authority_ref": auth_ref,
-        "authority_revision": 1,
-        "goal_ref": goal_ref,
-        "exercise_mode": "fixture_only",
-        "starts_at": now_s - 60,
-        "ends_at": now_s + 3600,
-        "included_assets": [asset],
-        "excluded_assets": [],
-        "m1_permission": {
-            "policy_version": "1",
-            "ct_base_domain": "duskweave.test",
-            "provider_disclosure": "crt_sh",
-            "vantage_ref": vantage_ref,
-            "resolver_ipv4": HTTPS_LAB_RESOLVER,
-            "discovery_rules": [{"label_suffix": "duskweave.test"}],
-            "contact_rules": [{"asset_ref": asset, "rule": {"exact": HTTPS_LAB_HOSTNAME}, "priority": 1}],
-            "excluded_names": [],
-            "approved_path": "/",
-            "starts_at": now_s - 60,
-            "ends_at": now_s + 3600,
-            "campaign_limits": {
-                "episodes": 3, "provider_calls": 4, "dns_questions": 4,
-                "dns_followups": 2, "tcp_connections": 2, "head_requests": 2
-            },
-            "concurrency": 1
+    let op_limits = json!({
+        "context_bytes": 8192, "candidates": 8, "request_bytes": 16384,
+        "configuration_bytes": 16384, "response_bytes": 65536, "calls_per_decision": 2,
+        "output_tokens_per_call": 8192, "decision_wall_time_ms": 249000,
+        "per_call_wall_time_ms": 122000, "soft_completion_ms": 120000,
+        "shared_wall_time_ms": 244000, "phase_wall_time_ms": 254000,
+        "connect_time_ms": 5000, "proposal_bytes": 8192, "repair_bytes": 2048,
+        "text_field_bytes": 1024, "repair_error_codes": 8, "json_depth": 32,
+        "collection_entries": 64, "concurrency": 1, "cancel_grace_ms": 2000,
+        "accounting_window_ms": 3000
+    });
+    let m1_perm = json!({
+        "policy_version": 1, "ct_base_domain": "duskweave.test",
+        "provider_disclosure": "crt_sh", "vantage_ref": vantage_ref,
+        "resolver_ipv4": HTTPS_LAB_RESOLVER,
+        "discovery_rules": [{"label_suffix": "duskweave.test"}],
+        "contact_rules": [{"asset_ref": asset, "rule": {"exact": HTTPS_LAB_HOSTNAME}, "priority": 1}],
+        "excluded_names": [], "approved_path": "/",
+        "starts_at": now_s - 60, "ends_at": now_s + 3600,
+        "campaign_limits": {
+            "episodes": 3, "provider_calls": 8, "dns_questions": 3,
+            "dns_followups": 1, "tcp_connections": 2, "head_requests": 2
         },
-        "m1_inference_permission": {
-            "version": VERSION_HTTPS_LOOP,
-            "permission_id": perm_id,
-            "engagement_id": eng,
-            "campaign_id": cmp,
-            "operator_ref": op_ref,
-            "authority_ref": auth_ref,
-            "authority_revision": 1,
-            "goal_ref": goal_ref,
-            "exercise_mode": "fixture_only",
-            "mission_revision": 1,
-            "profile": FIXTURE_PRO_V2_PROFILE,
-            "execution_mode": "live",
-            "run_profile": HTTPS_LAB_RUN_PROFILE,
-            "live_binding": {
-                "release_sha256": rel,
-                "qualification_ref": qref,
-                "resolver_ipv4": HTTPS_LAB_RESOLVER
-            },
-            "provider_terms_approved": true,
-            "provider_terms_ref": terms_ref,
-            "starts_at": now_s - 60,
-            "ends_at": now_s + 3600,
-            "field_classes": [
-                "mission_question_constraints", "scoped_opaque_references",
-                "owner_qualified_summaries", "admitted_operator_premises",
-                "manifest_availability", "omissions_unknown", "capacity",
-                "admitted_repair_fields_codes", "admitted_campaign_decision_feedback"
-            ]
-        }
+        "concurrency": 1
+    });
+    let inf_perm = json!({
+        "version": VERSION_HTTPS_LOOP, "permission_id": perm_id,
+        "engagement_id": eng, "campaign_id": cmp, "operator_ref": op_ref,
+        "authority_ref": auth_ref, "authority_revision": 1, "goal_ref": goal_ref,
+        "exercise_mode": "blind", "mission_revision": 1,
+        "profile": FIXTURE_PRO_V2_PROFILE, "recipient": "http://127.0.0.1:18083/responses",
+        "execution_mode": "live", "run_profile": HTTPS_LAB_RUN_PROFILE,
+        "live_binding": {
+            "release_sha256": rel, "qualification_ref": qref, "resolver_ipv4": HTTPS_LAB_RESOLVER
+        },
+        "provider_terms_approved": true, "provider_terms_ref": terms_ref,
+        "starts_at": now_s - 60, "ends_at": now_s + 3600,
+        "field_classes": [
+            "mission_question_constraints", "scoped_opaque_references",
+            "owner_qualified_summaries", "admitted_operator_premises",
+            "manifest_availability", "omissions_unknown", "capacity",
+            "admitted_repair_fields_codes", "admitted_campaign_decision_feedback"
+        ],
+        "campaign_limits": {
+            "calls": 8, "output_token_capacity": 65536, "wall_time_ms": 996000,
+            "request_bytes": 131072, "response_bytes": 524288
+        },
+        "operation_limits": op_limits
+    });
+    json!({
+        "engagement_id": eng, "campaign_id": cmp, "operator_ref": op_ref,
+        "authority_ref": auth_ref, "authority_revision": 1, "goal_ref": goal_ref,
+        "exercise_mode": "blind", "starts_at": now_s - 60, "ends_at": now_s + 3600,
+        "included_assets": [asset], "excluded_assets": [],
+        "m1_permission": m1_perm,
+        "m1_inference_permission": inf_perm
     })
 }
 
@@ -295,28 +290,21 @@ pub fn lab_run_request_json(
     let asset = &reg["included_assets"][0];
     let inf = &reg["m1_inference_permission"];
     json!({
-        "version": VERSION_HTTPS_LOOP,
-        "run_id": run_id,
-        "execution_mode": "live",
-        "run_profile": HTTPS_LAB_RUN_PROFILE,
-        "inference_profile": FIXTURE_PRO_V2_PROFILE,
+        "version": VERSION_HTTPS_LOOP, "run_id": run_id, "execution_mode": "live",
+        "run_profile": HTTPS_LAB_RUN_PROFILE, "inference_profile": FIXTURE_PRO_V2_PROFILE,
         "live_binding": {
-            "release_sha256": rel,
-            "qualification_ref": qref,
-            "resolver_ipv4": HTTPS_LAB_RESOLVER
+            "release_sha256": rel, "qualification_ref": qref, "resolver_ipv4": HTTPS_LAB_RESOLVER
         },
         "context": {
-            "version": "1",
+            "version": "m1_context_prepare_request_v1",
             "mission": {
-                "engagement_id": reg["engagement_id"],
-                "campaign_id": reg["campaign_id"],
-                "operator_ref": reg["operator_ref"],
-                "permission_id": inf["permission_id"],
-                "mission_revision": 1,
-                "goal_ref": reg["goal_ref"]
+                "version": "m1_inference_reservation_request_v1",
+                "engagement_id": reg["engagement_id"], "campaign_id": reg["campaign_id"],
+                "operator_ref": reg["operator_ref"], "expected_mission_revision": 1,
+                "permission_id": inf["permission_id"], "goal_ref": reg["goal_ref"],
+                "exercise_mode": reg["exercise_mode"]
             },
-            "question": "Select next authorized candidate for dns_udp or single-endpoint https-head-v1 (endpoint_N), or retain/defer/stop/capability_gap.",
-            "candidates": [{"asset_ref": asset, "kind": "domain_name", "value": HTTPS_LAB_HOSTNAME}]
+            "candidates": [{"asset_ref": asset, "priority": "high"}]
         },
         "seed_names": [{"asset_ref": asset, "name": HTTPS_LAB_HOSTNAME}],
         "deadline_at_ms": deadline_ms

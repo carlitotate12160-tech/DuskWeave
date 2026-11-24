@@ -226,15 +226,16 @@ impl Renewals {
     pub(crate) fn start(run: Uuid) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let failure = Arc::new(Mutex::new(None));
+        let mut runs = duskweave::postgres_m1_run::PgRunStore::new(broker());
+        runs.renew(run).unwrap();
         let (s, f) = (stop.clone(), failure.clone());
         let worker = std::thread::spawn(move || {
-            let mut runs = duskweave::postgres_m1_run::PgRunStore::new(broker());
             while !s.load(Ordering::SeqCst) {
                 if let Err(e) = runs.renew(run) {
                     *f.lock().unwrap() = Some(format!("{e:?}"));
                     return;
                 }
-                std::thread::sleep(Duration::from_millis(350));
+                std::thread::sleep(Duration::from_millis(200));
             }
         });
         Self {
@@ -248,7 +249,7 @@ impl Renewals {
         if let Some(w) = self.worker.take() {
             let _ = w.join();
         }
-        assert!(self.failure.lock().unwrap().take().is_none());
+        assert_eq!(self.failure.lock().unwrap().take(), None);
     }
 }
 impl Drop for Renewals {
@@ -429,19 +430,28 @@ fn live_https_loop_phase_cli_routes_dns_blocked_refresh_and_head() {
     let (e2, c2, run2, reg2, mut runs2, rec2, rel2) =
         crate::episode::start_cli_lab_run(Uuid::new_v4());
     let r2 = Renewals::start(run2);
-    drive_step1_live_dns_with_release(e2, c2, run2, &reg2, &mut runs2, &rec2, &rel2, 2);
-    commit_synthetic_step_decision(
+    drive_step1_live_dns_with_release(e2, c2, run2, &reg2, &mut runs2, &rec2, &rel2, 6);
+    let act2 = commit_synthetic_step_decision(
         &mut runs2,
         &rec2,
         &reg2,
         2,
         json!({"category":"validate","references":["asset_0","endpoint_0"],"manifest_reference":"https-head-v1","dependency_refresh":"none"}),
     );
-    std::thread::sleep(Duration::from_millis(2200));
+    assert_eq!(
+        act2,
+        duskweave::postgres_m1_run::https_loop::StepAction::AcquireHead { step_index: 2 }
+    );
+    let cap2_ms = crate::denied_release::claim_cap_until_s(e2, c2) * 1000;
+    crate::denied_release::sleep_until_db_ms(&mut broker(), cap2_ms + 100);
     runs2.protect_next_decision(run2, 2).unwrap();
     runs2.start_phase(run2, RunPhase::AcquisitionTwo).unwrap();
     let (st2, err2) = spawn_acquisition_phase(run2, RunPhase::AcquisitionTwo);
     assert!(st2.success(), "run2 stderr: {err2}");
+    assert_eq!(
+        runs2.https_step(run2, 2).unwrap().head_outcome.as_deref(),
+        Some("blocked")
+    );
     runs2
         .complete_phase(run2, RunPhase::AcquisitionTwo)
         .unwrap();
