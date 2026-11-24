@@ -3898,4 +3898,110 @@ BEGIN
     RETURN payload;
 END $$;
 
+CREATE OR REPLACE FUNCTION execution.assert_current_pack_terrain(e uuid, c uuid, d uuid, p jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    source jsonb; ref jsonb; v jsonb; claim jsonb; q jsonb;
+    https_loop boolean := p->>'version' = 'm1_https_loop_v1';
+    mats jsonb; mat jsonb; hview jsonb; hclaim jsonb; cap_until bigint; exp_fresh text;
+BEGIN
+    source := mission.current_inference_publication(e, c, d);
+    IF source IS NULL THEN RAISE EXCEPTION 'fixture_authority_expired'; END IF;
+    FOR ref IN SELECT value FROM jsonb_array_elements(p->'references') WHERE value->>'owner' = 'cyber_terrain' LOOP
+        IF https_loop AND coalesce(ref->>'id', '') LIKE 'endpoint_%' THEN
+            mats := terrain.current_dns_endpoint_material(e, c, ARRAY[(ref->>'asset_ref')::uuid]);
+            SELECT value INTO mat FROM jsonb_array_elements(mats) WHERE value->'claim_id' = ref->'entity';
+            IF mat IS NULL OR mat->>'effective_status' IS DISTINCT FROM 'observed'
+               OR mat->'conflicted' IS DISTINCT FROM 'false'::jsonb OR mat->'integrity_hold' IS DISTINCT FROM 'false'::jsonb
+               OR mat->'claim_revision' IS DISTINCT FROM ref->'parent_revision'
+               OR (p->>'evaluated_at')::bigint < (mat->>'perceived_at')::bigint
+               OR (mat->>'valid_until')::bigint < (mat->>'perceived_at')::bigint THEN
+                RAISE EXCEPTION 'fixture_stale_premises';
+            END IF;
+            cap_until := least((mat->>'valid_until')::bigint, (mat->>'perceived_at')::bigint + least((mat->>'lowest_ttl_seconds')::bigint, 60));
+            exp_fresh := CASE WHEN (p->>'evaluated_at')::bigint >= (mat->>'perceived_at')::bigint AND (p->>'evaluated_at')::bigint < cap_until THEN 'fresh' ELSE 'expired' END;
+            IF ref->'valid_until' IS DISTINCT FROM to_jsonb(cap_until) OR ref->>'freshness' IS DISTINCT FROM exp_fresh THEN
+                RAISE EXCEPTION 'fixture_stale_premises';
+            END IF;
+        ELSIF https_loop AND coalesce(ref->>'id', '') LIKE 'https_%' THEN
+            IF ref->>'asset_ref' IS NULL THEN RAISE EXCEPTION 'fixture_stale_premises'; END IF;
+            hview := terrain.current_https_context_view(e, c, ARRAY[(ref->>'asset_ref')::uuid], (p->>'evaluated_at')::bigint);
+            SELECT value INTO hclaim FROM jsonb_array_elements(hview) WHERE value->'claim_id' = ref->'entity';
+            IF hclaim IS NULL
+               OR hclaim->'asset_ref' IS DISTINCT FROM ref->'asset_ref'
+               OR hclaim->'claim_revision' IS DISTINCT FROM ref->'revision'
+               OR hclaim->>'claim_status' IS NULL
+               OR hclaim->>'outcome' IS NULL
+               OR hclaim->>'perceived_at' IS NULL
+               OR hclaim->>'claim_status' IS DISTINCT FROM ref->>'status'
+               OR hclaim->>'outcome' IS DISTINCT FROM ref->>'outcome'
+               OR (p->>'evaluated_at')::bigint < (hclaim->>'perceived_at')::bigint THEN
+                RAISE EXCEPTION 'fixture_stale_premises';
+            END IF;
+            IF hclaim->>'claim_status' = 'observed' THEN
+                NULL;
+            ELSIF hclaim->>'claim_status' = 'withheld'
+                  AND hclaim->>'outcome' = 'execution_refused'
+                  AND ref->>'status' = 'withheld'
+                  AND ref->>'outcome' = 'execution_refused'
+                  AND hclaim->'endpoint_reachable' = 'false'::jsonb
+                  AND ref->'endpoint_reachable' = 'false'::jsonb
+                  AND hclaim->'status_code' = 'null'::jsonb
+                  AND ref->'status_code' = 'null'::jsonb
+                  AND hclaim->>'redirect' = 'none'
+                  AND ref->>'redirect' = 'none'
+                  AND hclaim->'whole_host_proven' = 'false'::jsonb
+                  AND ref->'whole_host_proven' = 'false'::jsonb
+                  AND hclaim->'objective_completed' = 'false'::jsonb
+                  AND ref->'objective_completed' = 'false'::jsonb
+                  AND hclaim->>'source_kind' IS NOT NULL
+                  AND ref->>'source' = hclaim->>'source_kind'
+                  AND jsonb_typeof(hclaim->'parent_claim_revision') = 'number'
+                  AND ref->'parent_revision' = hclaim->'parent_claim_revision'
+                  AND jsonb_typeof(hclaim->'perceived_at') = 'number'
+                  AND ref->'perceived_at' = hclaim->'perceived_at'
+                  AND jsonb_typeof(hclaim->'limitations') = 'array'
+                  AND ref->'limitations' = hclaim->'limitations' THEN
+                NULL;
+            ELSE
+                RAISE EXCEPTION 'fixture_stale_premises';
+            END IF;
+        ELSE
+            q := jsonb_build_object('version', 'm1_terrain_context_view_query_v1', 'engagement_id', e, 'campaign_id', c,
+                'operator_ref', source#>'{fields,operator_ref}', 'expected_mission_revision', 1, 'goal_ref', source#>'{fields,goal_ref}',
+                'exercise_mode', source#>'{fields,exercise_mode}', 'selected_assets', jsonb_build_array(ref->'asset_ref'),
+                'claim_ids', jsonb_build_array(ref->'entity'));
+            v := terrain.current_dns_context_view(q);
+            SELECT value INTO claim FROM jsonb_array_elements(v->'claims') WHERE value->'claim_id' = ref->'entity';
+            IF claim IS NULL OR
+               (claim->'claim_revision', claim->'asset_ref', claim->'event_id', claim->'operation_id',
+                claim->'observation_id', claim->'material_id', claim->'evaluation_id', claim->'perceived_at',
+                claim->'valid_until', claim->'temporal_frontier', claim->'source_kind') IS DISTINCT FROM
+               (ref->'revision', ref->'asset_ref', ref->'lineage'->0, ref->'lineage'->1,
+                ref->'lineage'->2, ref->'lineage'->3, ref->'lineage'->4, ref->'perceived_at',
+                ref->'valid_until', ref->'temporal_frontier', ref->'source')
+               OR claim->>'claim_status' IS DISTINCT FROM 'observed'
+               OR claim->'conflicted' IS DISTINCT FROM 'false'::jsonb
+               OR claim->'integrity_hold' IS DISTINCT FROM 'false'::jsonb
+               OR claim->>'outcome' IS DISTINCT FROM 'qualified_dns_claim'
+               OR (claim->'vantage_ref', claim->'uncertainty_seconds', claim->'lowest_ttl_seconds', claim->'completeness', claim->'limitations') IS DISTINCT FROM
+                  (ref->'vantage_ref', ref->'time_uncertainty', ref->'ttl_seconds', ref->'completeness', ref->'limitations')
+               OR (ref->>'status', ref->>'tier') IS DISTINCT FROM ('observed', 'tier1')
+               OR ref->'conflicted' IS DISTINCT FROM 'false'::jsonb OR ref->'integrity_hold' IS DISTINCT FROM 'false'::jsonb
+               OR ref->'corroborated' IS DISTINCT FROM 'false'::jsonb OR ref->'evaluated_at' IS DISTINCT FROM p->'evaluated_at' THEN
+                RAISE EXCEPTION 'fixture_stale_premises';
+            END IF;
+            IF ref->>'freshness' = 'fresh' THEN
+                IF (v->>'evaluated_at')::bigint < (claim->>'perceived_at')::bigint
+                   OR (claim->>'valid_until')::bigint <= (v->>'evaluated_at')::bigint THEN RAISE EXCEPTION 'fixture_stale_premises'; END IF;
+            ELSIF https_loop AND ref->>'freshness' = 'expired' THEN
+                IF (claim->>'valid_until')::bigint > (v->>'evaluated_at')::bigint THEN RAISE EXCEPTION 'fixture_stale_premises'; END IF;
+            ELSE
+                RAISE EXCEPTION 'fixture_stale_premises';
+            END IF;
+        END IF;
+    END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION execution.assert_current_pack_terrain(uuid, uuid, uuid, jsonb) FROM PUBLIC;
+
 COMMIT;

@@ -15,6 +15,8 @@ mod admission;
 mod denied_release;
 #[path = "m1_https_lab_postgres/episode.rs"]
 mod episode;
+#[path = "m1_https_lab_postgres/feedback.rs"]
+mod feedback;
 #[path = "m1_https_lab_postgres/lineage.rs"]
 mod lineage;
 #[path = "m1_https_lab_postgres/recovery.rs"]

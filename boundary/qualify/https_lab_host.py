@@ -86,6 +86,7 @@ REQUIRED_0038_FUNCTIONS = (
     "execution.genai_binding_valid",
     "execution.assert_successor_pack",
     "execution.assert_autonomous_pack",
+    "execution.assert_current_pack_terrain",
     "execution.run_start",
     "execution.run_current",
     "execution.live_https_loop_dns_reserve",
