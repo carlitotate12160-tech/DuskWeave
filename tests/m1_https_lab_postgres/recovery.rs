@@ -231,11 +231,22 @@ impl Renewals {
         let (s, f) = (stop.clone(), failure.clone());
         let worker = std::thread::spawn(move || {
             while !s.load(Ordering::SeqCst) {
-                if let Err(e) = runs.renew(run) {
-                    *f.lock().unwrap() = Some(format!("{e:?}"));
+                std::thread::sleep(Duration::from_millis(350));
+                if s.load(Ordering::SeqCst) {
                     return;
                 }
-                std::thread::sleep(Duration::from_millis(200));
+                if let Err(e) = runs.renew(run) {
+                    let terminal = runs.summary(run).ok().is_some_and(|v| {
+                        matches!(
+                            v["status"].as_str(),
+                            Some("deferred" | "retained" | "completed" | "stopped")
+                        )
+                    });
+                    if !terminal {
+                        *f.lock().unwrap() = Some(format!("{e:?}"));
+                    }
+                    return;
+                }
             }
         });
         Self {
