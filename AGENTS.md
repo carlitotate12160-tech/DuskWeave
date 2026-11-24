@@ -168,6 +168,14 @@ research plane unless an accepted ADR promotes a specific component
 
 Never introduce another production language without an ADR.
 
+### Python development boundary
+
+Do not add new Python files, dependencies, or functionality, including operator,
+qualification, CI, and test tooling. Existing Python scripts may be executed
+unchanged. Maintenance or retirement requires an explicitly scoped assignment.
+Use Rust for new core/operator logic and Go within its accepted adapter ownership.
+Do not retain parallel implementations after a replacement is verified.
+
 ---
 
 ## Dependency discipline
