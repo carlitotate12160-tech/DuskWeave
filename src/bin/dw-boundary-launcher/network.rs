@@ -11,6 +11,7 @@ mod namespace;
 mod process;
 use process::*;
 const ROOT: &str = "/run/duskweave/launcher";
+const EGRESS_LEASE_MS: u32 = 2000;
 
 struct Names {
     netns: String,
@@ -104,18 +105,18 @@ fn create_target(attempt: Uuid, pid: u32, dest: &str, https: bool, end: Instant)
     outcome
 }
 pub(super) fn grant(attempt: Uuid, deadline: i64) -> Res<()> {
-    grant_until(attempt, deadline, 2000)
+    grant_until(attempt, deadline)
 }
 pub(super) fn grant_https(attempt: Uuid, deadline: i64) -> Res<()> {
-    grant_until(attempt, deadline, 5000)
+    grant_until(attempt, deadline)
 }
-fn grant_until(attempt: Uuid, deadline: i64, max_lease_ms: i64) -> Res<()> {
+fn grant_until(attempt: Uuid, deadline: i64) -> Res<()> {
     let n = names(attempt);
     if std::fs::read_to_string(slot(&n)).ok().as_deref() != Some(&attempt.to_string()) {
         return Err(Fail::Config("live_host_unqualified"));
     }
     let now = super::qualification::now_ms()?;
-    let lease = (deadline - now).min(max_lease_ms);
+    let lease = deadline.saturating_sub(now).min(i64::from(EGRESS_LEASE_MS));
     if lease <= 0 {
         return Err(Fail::State("live_effect_deadline"));
     }
