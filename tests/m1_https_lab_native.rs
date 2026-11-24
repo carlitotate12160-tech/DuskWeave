@@ -7,8 +7,12 @@ mod sdk_fixture;
 
 #[path = "m1_https_lab_native/active_effect.rs"]
 mod active_effect;
+#[path = "m1_https_lab_native/active_effect_evidence.rs"]
+mod active_effect_evidence;
 #[path = "m1_https_lab_native/active_effect_probe.rs"]
 mod active_effect_probe;
+#[path = "m1_https_lab_native/active_effect_tests.rs"]
+mod active_effect_tests;
 #[path = "m1_https_lab_native/episode.rs"]
 mod episode;
 #[path = "m1_https_lab_native/failure.rs"]

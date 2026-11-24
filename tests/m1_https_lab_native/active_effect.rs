@@ -1,12 +1,15 @@
 #![allow(dead_code)]
 //! Privileged Linux ARM64 active-HEAD STOP and control-loss fault tests (`#[ignore]`).
 
+use super::active_effect_evidence::{ActiveHeadBinding, SqlActiveState, check_all};
 #[cfg(target_os = "linux")]
-use super::active_effect_probe::linux::{probe_attempt_disposal, wait_for_active_head};
+use super::active_effect_evidence::{
+    DisposalEvidence, EXPECTED_PRE_FAULT_SDK_CALLS, MIN_INJECTION_MARGIN_MS, WorkerPairBaseline,
+    execute_armed_fault, validate_disposal_evidence,
+};
 #[cfg(target_os = "linux")]
-use super::active_effect_probe::{
-    ActiveHeadBinding, ActiveWindowObservation, DisposalEvidence, LauncherSessionEvidence,
-    validate_disposal_evidence,
+use super::active_effect_probe::linux::{
+    prepare_armed_head_window, probe_attempt_disposal, read_sql_active_state,
 };
 #[cfg(target_os = "linux")]
 use super::support::linux_host::NativeHost;
@@ -16,26 +19,165 @@ use super::support::start_loopback_sdk;
 use crate::lab_support::sanitize_inspect_receipt;
 #[cfg(target_os = "linux")]
 use crate::sdk_fixture::Server;
+use serde_json::Value;
 #[cfg(target_os = "linux")]
-use serde_json::{Value, json};
+use serde_json::json;
 #[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
-#[cfg(target_os = "linux")]
 use uuid::Uuid;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ExpectedFaultOutcome {
+    Stopped,
+    ControlRootLossUnknown,
+}
+
+impl ExpectedFaultOutcome {
+    fn expected_status(self) -> &'static str {
+        if self == Self::Stopped {
+            "stopped"
+        } else {
+            "unknown"
+        }
+    }
+
+    fn allowed_step3_status(self, status: &str) -> bool {
+        let wanted = if self == Self::Stopped {
+            "stopped"
+        } else {
+            "pending"
+        };
+        status == wanted
+    }
+}
+
+fn validate_sql_after_fault(
+    expected: ExpectedFaultOutcome,
+    binding: &ActiveHeadBinding,
+    sql: &SqlActiveState,
+) -> Result<(), String> {
+    let st = expected.expected_status();
+    let att_ok = sql.head_attempt_id == Some(binding.attempt_id)
+        && sql.attempt_kind.as_deref() == Some("head");
+    let phase_ok = sql.possibly_started && sql.granted_phase.as_deref() == Some("head");
+    let ev_ok = sql.has_may_start_event && sql.has_phase_head_event;
+    let no_res = !sql.has_result_recorded_event && !sql.head_result_present;
+    check_all(&[
+        (
+            sql.run_id == binding.run_id && sql.step_index == 2,
+            "run/step mismatch",
+        ),
+        (
+            sql.run_status == st && sql.step_status == st,
+            "run/step status mismatch",
+        ),
+        (att_ok, "head_attempt_id mismatch"),
+        (
+            sql.session_generation == Some(binding.session_generation as i64),
+            "generation mismatch",
+        ),
+        (phase_ok && ev_ok, "HEAD charge/phase/events lost"),
+        (no_res && !sql.d3_executed, "HEAD result or D3 recorded"),
+    ])
+}
+
+pub(super) fn validate_post_fault_state(
+    expected: ExpectedFaultOutcome,
+    binding: &ActiveHeadBinding,
+    after_sql: &SqlActiveState,
+    snap: &Value,
+    sdk_calls: usize,
+) -> Result<(), String> {
+    validate_sql_after_fault(expected, binding, after_sql)?;
+    check_all(&[(sdk_calls == 2, "extra SDK call executed")])?;
+    let st = expected.expected_status();
+    let att = binding.attempt_id.to_string();
+    let steps = snap["steps"].as_array().ok_or("snapshot missing steps")?;
+    let s2 = steps
+        .iter()
+        .find(|s| s["step_index"].as_i64() == Some(2))
+        .ok_or("missing step 2")?;
+    let s3_ok = steps
+        .iter()
+        .find(|s| s["step_index"].as_i64() == Some(3))
+        .is_none_or(|s| {
+            s["status"]
+                .as_str()
+                .is_some_and(|v| expected.allowed_step3_status(v))
+        });
+    let sess = snap["sessions"]
+        .as_array()
+        .and_then(|arr| arr.iter().find(|s| s["attempt"].as_str() == Some(&att)))
+        .ok_or("missing HEAD session row")?;
+    let evs: Vec<&str> = snap["events"]
+        .as_array()
+        .ok_or("missing events")?
+        .iter()
+        .filter(|e| e["attempt"].as_str() == Some(&att))
+        .filter_map(|e| e["phase"].as_str())
+        .collect();
+    let s2_ok = s2["status"].as_str() == Some(st) && s2["head_attempt_id"].as_str() == Some(&att);
+    let s2_empty = s2["head_result_id"].is_null() && s2["head_outcome"].is_null();
+    let sess_ok = sess["step_index"].as_i64() == Some(2)
+        && sess["attempt_kind"].as_str() == Some("head")
+        && sess["generation"].as_u64() == Some(binding.session_generation)
+        && sess["possibly_started"].as_bool() == Some(true)
+        && sess["granted_phase"].as_str() == Some("head");
+    let evs_ok = evs.contains(&"may_start")
+        && evs.contains(&"phase_head")
+        && !evs.contains(&"result_recorded");
+    check_all(&[
+        (
+            snap["control"]["status"].as_str() == Some(st),
+            "control.status mismatch",
+        ),
+        (s2_ok && s2_empty && s3_ok, "snapshot step 2/3 mismatch"),
+        (sess_ok && evs_ok, "snapshot session/events invalid"),
+    ])
+}
+
+pub(super) fn validate_recovery_receipts(
+    expected: ExpectedFaultOutcome,
+    run_id: Uuid,
+    insp: &Value,
+    rec1: &Value,
+    rec2: &Value,
+) -> Result<(), String> {
+    let st = expected.expected_status();
+    let r = run_id.to_string();
+    let ok = |v: &Value| {
+        v["run_id"].as_str() == Some(&r)
+            && v["status"].as_str() == Some(st)
+            && v["decision_count"].as_u64() == Some(2)
+            && v["dns_effect_count"].as_u64() == Some(1)
+            && v["head_effect_count"].as_u64() == Some(0)
+    };
+    check_all(&[
+        (rec1 == rec2, "m1-run-recover not idempotent"),
+        (ok(insp) && ok(rec1), "recovery receipt fields mismatch"),
+    ])
+}
+
+pub(super) fn validate_post_recover_sql(
+    expected: ExpectedFaultOutcome,
+    binding: &ActiveHeadBinding,
+    before_recover: &SqlActiveState,
+    after_recover: &SqlActiveState,
+) -> Result<(), String> {
+    validate_sql_after_fault(expected, binding, after_recover)?;
+    let same = after_recover.disposal_confirmed == before_recover.disposal_confirmed;
+    check_all(&[(same, "recover must not fabricate disposal_confirmed")])
+}
 
 #[cfg(target_os = "linux")]
 fn wait_for_disposal(
     attempt: Uuid,
-    launcher: &LauncherSessionEvidence,
+    baseline: &WorkerPairBaseline,
     timeout: Duration,
 ) -> Result<DisposalEvidence, String> {
     let deadline = Instant::now() + timeout;
     loop {
-        let ev = probe_attempt_disposal(
-            attempt,
-            &launcher.observed_pids,
-            &launcher.observed_container_ids,
-        );
+        let ev = probe_attempt_disposal(attempt, baseline);
         if validate_disposal_evidence(&ev).is_ok() {
             return Ok(ev);
         }
@@ -58,106 +200,125 @@ fn run_fresh_cli_recovery(
     expected_counters: &Value,
     expected_sdk_calls: usize,
     extra: Value,
-) -> (Value, Value, Value) {
+) -> Result<(Value, Value, Value), String> {
     let run_str = run_id.to_string();
-    let assert_zero_replay = |h: &NativeHost, step: &str| {
-        assert_eq!(
-            &h.https_counters(),
-            expected_counters,
-            "{label} {step} replayed network/DNS I/O"
-        );
-        assert_eq!(
-            sdk.count(),
-            expected_sdk_calls,
-            "{label} {step} replayed SDK inference calls"
-        );
+    let zero_replay = |h: &NativeHost, step: &str| -> Result<(), String> {
+        let ok = &h.https_counters() == expected_counters && sdk.count() == expected_sdk_calls;
+        check_all(&[(ok, "replayed network/DNS/SDK I/O")])
+            .map_err(|e| format!("{label} {step}: {e}"))
     };
-
-    assert_zero_replay(host, "pre_inspect");
+    zero_replay(host, "pre_inspect")?;
     let insp = host.cli(&["m1-run-inspect", "--run", &run_str]);
-    assert!(
-        insp.status.success(),
-        "m1-run-inspect failed on {label}: {}",
-        String::from_utf8_lossy(&insp.stderr)
-    );
-    assert_zero_replay(host, "post_inspect");
-
+    check_all(&[(insp.status.success(), "m1-run-inspect failed")])?;
+    zero_replay(host, "post_inspect")?;
     let rec1 = host.cli(&["m1-run-recover", "--run", &run_str]);
-    assert!(
-        rec1.status.success(),
-        "m1-run-recover #1 failed on {label}: {}",
-        String::from_utf8_lossy(&rec1.stderr)
-    );
-    assert_zero_replay(host, "post_recover_1");
-
+    check_all(&[(rec1.status.success(), "m1-run-recover #1 failed")])?;
+    zero_replay(host, "post_recover_1")?;
     let rec2 = host.cli(&["m1-run-recover", "--run", &run_str]);
-    assert!(
-        rec2.status.success(),
-        "m1-run-recover #2 failed on {label}: {}",
-        String::from_utf8_lossy(&rec2.stderr)
-    );
-    assert_zero_replay(host, "post_recover_2");
+    check_all(&[(rec2.status.success(), "m1-run-recover #2 failed")])?;
+    zero_replay(host, "post_recover_2")?;
 
-    let insp_san = sanitize_inspect_receipt(&NativeHost::receipt(&insp)).unwrap();
-    let rec1_san = sanitize_inspect_receipt(&NativeHost::receipt(&rec1)).unwrap();
-    let rec2_san = sanitize_inspect_receipt(&NativeHost::receipt(&rec2)).unwrap();
-    assert_eq!(rec1_san, rec2_san, "{label} recover must be idempotent");
+    let insp_san = sanitize_inspect_receipt(&NativeHost::receipt(&insp)).map_err(str::to_string)?;
+    let rec1_san = sanitize_inspect_receipt(&NativeHost::receipt(&rec1)).map_err(str::to_string)?;
+    let rec2_san = sanitize_inspect_receipt(&NativeHost::receipt(&rec2)).map_err(str::to_string)?;
     let insp_stdout = String::from_utf8_lossy(&insp.stdout);
-    assert!(
-        !insp_stdout.contains("://")
-            && !insp_stdout.contains("password=")
-            && !insp_stdout.contains("DW_"),
-        "unsafe inspect stdout"
+    if insp_stdout.contains("://")
+        || insp_stdout.contains("password=")
+        || insp_stdout.contains("DW_")
+    {
+        return Err("unsafe inspect stdout".into());
+    }
+    host.save_structured_artifact(
+        label,
+        &json!({
+            "label": label, "source_sha": host.source_sha, "run_id": run_id,
+            "fault_evidence": extra, "counters": host.https_counters(),
+            "inspect_stdout": insp_stdout.trim(), "inspect_sanitized": insp_san,
+            "recover_1_sanitized": rec1_san, "recover_2_sanitized": rec2_san,
+        }),
     );
-
-    let artifact = json!({
-        "label": label,
-        "source_sha": host.source_sha,
-        "run_id": run_id,
-        "fault_evidence": extra,
-        "counters": host.https_counters(),
-        "inspect_stdout": insp_stdout.trim(),
-        "inspect_sanitized": insp_san,
-        "recover_1_sanitized": rec1_san,
-        "recover_2_sanitized": rec2_san,
-    });
-    host.save_structured_artifact(label, &artifact);
-    (insp_san, rec1_san, rec2_san)
+    Ok((insp_san, rec1_san, rec2_san))
 }
 
 #[cfg(target_os = "linux")]
-fn find_session_row(snapshot: &Value, attempt_id: Uuid) -> &Value {
-    let target = attempt_id.to_string();
-    snapshot["sessions"]
-        .as_array()
-        .and_then(|arr| arr.iter().find(|s| s["attempt"].as_str() == Some(&target)))
-        .expect("head attempt session missing from authoritative SQL snapshot")
-}
-
-#[cfg(target_os = "linux")]
-fn start_timeout_run(host: &mut NativeHost) -> (Uuid, Server, crate::sdk_fixture::FixtureChild) {
+fn run_active_fault_scenario<F>(
+    host: &mut NativeHost,
+    label: &str,
+    fault_name: &str,
+    expected: ExpectedFaultOutcome,
+    inject: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&mut NativeHost, Uuid) -> Result<Value, String>,
+{
     let run_id = host.id();
     host.start_topology_for("timeout", run_id, 30, 30);
     let sdk = start_loopback_sdk("none");
     let run_file = host.prepare_run_input(run_id, |_| {});
-    let parent = host.spawn_cli(&[
+    let args = [
         "m1-run",
         "--input",
         run_file.to_str().unwrap(),
         "--timing-profile",
         "reasoning-bounded-pro-v2",
-    ]);
-    (run_id, sdk, parent)
-}
+    ];
+    let mut parent = host.spawn_cli(&args);
+    let (armed, before_sql, before_counters) = prepare_armed_head_window(
+        host,
+        &mut parent,
+        &sdk,
+        run_id,
+        "timeout",
+        Duration::from_secs(20),
+    )?;
+    let binding = armed.binding.clone();
+    let workers = armed.observation.launcher.workers.clone();
 
-#[cfg(target_os = "linux")]
-fn assert_one_head_counters(hc: &Value, run_id: Uuid) {
-    assert_eq!(hc["run_id"], run_id.to_string());
-    assert_eq!(hc["scenario"], "timeout");
-    assert_eq!(hc["dns_answered"], 1);
-    assert_eq!(hc["connections"], 1);
-    assert_eq!(hc["tls_handshakes"], 1);
-    assert_eq!(hc["head_requests"], 1);
+    let (fault_detail, timing) =
+        execute_armed_fault(&armed, MIN_INJECTION_MARGIN_MS, Instant::now, || {
+            inject(host, run_id)
+        })?;
+
+    if parent
+        .wait_until(Instant::now() + Duration::from_secs(15))
+        .is_none()
+    {
+        return Err(format!("m1-run did not exit within 15s after {fault_name}"));
+    }
+    let disposal = wait_for_disposal(binding.attempt_id, &workers, Duration::from_secs(8))?;
+    let after_counters = host.https_counters();
+    let counters_ok = after_counters["run_id"] == run_id.to_string()
+        && after_counters["scenario"] == "timeout"
+        && after_counters["dns_answered"] == 1
+        && after_counters["connections"] == 1
+        && after_counters["tls_handshakes"] == 1
+        && after_counters["head_requests"] == 1;
+    check_all(&[(counters_ok, "unexpected timeout responder counters")])?;
+    let after_sql =
+        read_sql_active_state(&mut host.admin, run_id)?.ok_or("step 2 missing after fault")?;
+    let after_snapshot = host.sql_snapshot(run_id)?;
+    validate_post_fault_state(expected, &binding, &after_sql, &after_snapshot, sdk.count())?;
+
+    let extra = json!({
+        "fault": fault_name, "fault_detail": fault_detail, "step_index": binding.step_index,
+        "attempt_id": binding.attempt_id, "session_generation": binding.session_generation,
+        "workers": workers, "timing": timing, "before_counters": before_counters,
+        "after_counters": after_counters, "before_sql": before_sql, "after_sql": after_snapshot,
+        "sql_disposal_confirmed_before_recover": after_sql.disposal_confirmed, "disposal": disposal,
+    });
+    let (insp, rec1, rec2) = run_fresh_cli_recovery(
+        host,
+        &sdk,
+        run_id,
+        label,
+        &after_counters,
+        EXPECTED_PRE_FAULT_SDK_CALLS,
+        extra,
+    )?;
+    validate_recovery_receipts(expected, run_id, &insp, &rec1, &rec2)?;
+    let post_recover =
+        read_sql_active_state(&mut host.admin, run_id)?.ok_or("step 2 missing after recover")?;
+    validate_post_recover_sql(expected, &binding, &after_sql, &post_recover)
 }
 
 #[cfg(target_os = "linux")]
@@ -165,73 +326,29 @@ fn assert_one_head_counters(hc: &Value, run_id: Uuid) {
 #[test]
 fn native_active_stop_during_head_revokes_without_replay() {
     let mut host = NativeHost::new();
-    let (run_id, sdk, mut parent) = start_timeout_run(&mut host);
-    let (binding, obs): (ActiveHeadBinding, ActiveWindowObservation) = wait_for_active_head(
+    let res = run_active_fault_scenario(
         &mut host,
-        &mut parent,
-        run_id,
-        "timeout",
-        Duration::from_secs(20),
-    )
-    .unwrap();
-    let before_sql = host.sql_snapshot(run_id).unwrap();
-    let before_counters = host.https_counters();
-    let sdk_calls_before = sdk.count();
-    let fault_at_ms = host.db_now_s() * 1000;
-
-    let stop_out = host.cli(&["m1-run-stop", "--run", &run_id.to_string()]);
-    assert!(
-        stop_out.status.success(),
-        "m1-run-stop failed: {}",
-        String::from_utf8_lossy(&stop_out.stderr)
-    );
-    let stop_receipt = NativeHost::receipt(&stop_out);
-    assert_eq!(stop_receipt["local_stop"]["stop_latched"], true);
-
-    assert!(
-        parent
-            .wait_until(Instant::now() + Duration::from_secs(15))
-            .is_some(),
-        "m1-run did not exit within 15s after active HEAD STOP"
-    );
-    let disposal =
-        wait_for_disposal(binding.attempt_id, &obs.launcher, Duration::from_secs(8)).unwrap();
-    let after_counters = host.https_counters();
-    assert_one_head_counters(&after_counters, run_id);
-    assert_eq!(sdk.count(), sdk_calls_before);
-
-    let after_sql = host.sql_snapshot(run_id).unwrap();
-    assert_eq!(after_sql["control"]["status"], "stopped");
-    let head_sess = find_session_row(&after_sql, binding.attempt_id);
-    assert_eq!(head_sess["possibly_started"], true);
-    assert_eq!(head_sess["granted_phase"], "head");
-
-    let extra = json!({
-        "fault": "m1-run-stop",
-        "step_index": binding.step_index,
-        "attempt_id": binding.attempt_id,
-        "session_generation": binding.session_generation,
-        "fault_at_ms": fault_at_ms,
-        "launcher_before": obs.launcher,
-        "before_counters": before_counters,
-        "after_counters": after_counters,
-        "stop_receipt": stop_receipt,
-        "before_sql": before_sql,
-        "after_sql": after_sql,
-        "disposal": disposal,
-    });
-    let (insp_san, rec1_san, _) = run_fresh_cli_recovery(
-        &mut host,
-        &sdk,
-        run_id,
         "active-head-stop",
-        &after_counters,
-        sdk_calls_before,
-        extra,
+        "m1-run-stop",
+        ExpectedFaultOutcome::Stopped,
+        |h, run_id| {
+            let stop_out = h.cli(&["m1-run-stop", "--run", &run_id.to_string()]);
+            if !stop_out.status.success() {
+                return Err(format!(
+                    "m1-run-stop failed: {}",
+                    String::from_utf8_lossy(&stop_out.stderr)
+                ));
+            }
+            let rcpt = NativeHost::receipt(&stop_out);
+            if rcpt["local_stop"]["stop_latched"] != true {
+                return Err(format!("stop_latched != true: {rcpt}"));
+            }
+            Ok(json!({ "stop_receipt": rcpt }))
+        },
     );
-    assert_eq!(insp_san["status"], "stopped");
-    assert_eq!(rec1_san["status"], "stopped");
-    host.dispose().unwrap();
+    let dispose_res = host.dispose();
+    res.unwrap();
+    dispose_res.unwrap();
 }
 
 #[cfg(target_os = "linux")]
@@ -239,173 +356,20 @@ fn native_active_stop_during_head_revokes_without_replay() {
 #[test]
 fn native_active_control_loss_during_head_recovers_without_replay() {
     let mut host = NativeHost::new();
-    let (run_id, sdk, mut parent) = start_timeout_run(&mut host);
-    let (binding, obs) = wait_for_active_head(
+    let res = run_active_fault_scenario(
         &mut host,
-        &mut parent,
-        run_id,
-        "timeout",
-        Duration::from_secs(20),
-    )
-    .unwrap();
-    let before_sql = host.sql_snapshot(run_id).unwrap();
-    let before_counters = host.https_counters();
-    let sdk_calls_before = sdk.count();
-    let fault_at_ms = host.db_now_s() * 1000;
-
-    let faulted_dir = host.inject_control_root_loss("active-head").unwrap();
-    assert!(
-        parent
-            .wait_until(Instant::now() + Duration::from_secs(15))
-            .is_some(),
-        "m1-run did not exit within 15s after control-root loss"
-    );
-    let disposal =
-        wait_for_disposal(binding.attempt_id, &obs.launcher, Duration::from_secs(8)).unwrap();
-    let after_counters = host.https_counters();
-    assert_one_head_counters(&after_counters, run_id);
-    assert_eq!(sdk.count(), sdk_calls_before);
-
-    let after_sql = host.sql_snapshot(run_id).unwrap();
-    let head_sess = find_session_row(&after_sql, binding.attempt_id);
-    assert_eq!(head_sess["possibly_started"], true);
-    assert_eq!(head_sess["granted_phase"], "head");
-
-    let extra = json!({
-        "fault": "private_core_control_root_loss",
-        "faulted_sibling_name": faulted_dir.file_name().and_then(|s| s.to_str()),
-        "step_index": binding.step_index,
-        "attempt_id": binding.attempt_id,
-        "session_generation": binding.session_generation,
-        "fault_at_ms": fault_at_ms,
-        "launcher_before": obs.launcher,
-        "before_counters": before_counters,
-        "after_counters": after_counters,
-        "before_sql": before_sql,
-        "after_sql": after_sql,
-        "disposal": disposal,
-    });
-    run_fresh_cli_recovery(
-        &mut host,
-        &sdk,
-        run_id,
         "active-head-control-loss",
-        &after_counters,
-        sdk_calls_before,
-        extra,
+        "private_core_control_root_loss",
+        ExpectedFaultOutcome::ControlRootLossUnknown,
+        |h, _| {
+            let dir = h.inject_control_root_loss("active-head")?;
+            if !dir.exists() {
+                return Err("faulted sibling dir missing after rename".into());
+            }
+            Ok(json!({ "faulted_sibling_name": dir.file_name().and_then(|s| s.to_str()) }))
+        },
     );
-    assert!(faulted_dir.exists());
-    host.dispose().unwrap();
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::active_effect_probe::*;
-    use uuid::Uuid;
-
-    fn valid_observation(run_id: Uuid, attempt: Uuid) -> ActiveWindowObservation {
-        ActiveWindowObservation {
-            sql: SqlActiveState {
-                run_id,
-                step_index: 2,
-                step_status: "acquisition_running".into(),
-                resolved_endpoint_ref: Some("endpoint_0".into()),
-                dns_result_present: true,
-                head_attempt_id: Some(attempt),
-                attempt_kind: Some("head".into()),
-                session_generation: Some(2),
-                control_phase: Some("may_start".into()),
-                granted_phase: Some("head".into()),
-                possibly_started: true,
-                disposal_confirmed: false,
-                has_may_start_event: true,
-                has_phase_head_event: true,
-                has_result_recorded_event: false,
-            },
-            launcher: LauncherSessionEvidence {
-                run_id,
-                attempt,
-                session_generation: 2,
-                granted_phase: Some("head".into()),
-                started_marker_present: true,
-                observed_pids: vec![1234],
-                observed_container_ids: vec!["abc".into()],
-            },
-            responder: ResponderCounterEvidence {
-                run_id: run_id.to_string(),
-                scenario: "timeout".into(),
-                dns_answered: 1,
-                connections: 1,
-                tls_handshakes: 1,
-                head_requests: 1,
-            },
-        }
-    }
-
-    #[test]
-    fn active_head_validator_rejects_pre_head_completed_and_mismatched_identities() {
-        let (run_id, attempt) = (Uuid::new_v4(), Uuid::new_v4());
-        let ok_obs = valid_observation(run_id, attempt);
-        let binding = validate_active_head_window(run_id, "timeout", &ok_obs).unwrap();
-        assert_eq!(
-            (
-                binding.run_id,
-                binding.attempt_id,
-                binding.session_generation
-            ),
-            (run_id, attempt, 2)
-        );
-        let expect_err = |name: &str, f: fn(&mut ActiveWindowObservation)| {
-            let mut obs = ok_obs.clone();
-            f(&mut obs);
-            assert!(
-                validate_active_head_window(run_id, "timeout", &obs).is_err(),
-                "{name}"
-            );
-        };
-        expect_err("pre_head_tls", |o| o.sql.granted_phase = Some("tls".into()));
-        expect_err("reservation_only", |o| o.sql.possibly_started = false);
-        expect_err("missing_phase_head", |o| o.sql.has_phase_head_event = false);
-        expect_err("already_completed", |o| {
-            o.sql.step_status = "completed".into()
-        });
-        expect_err("result_recorded", |o| {
-            o.sql.has_result_recorded_event = true
-        });
-        expect_err("missing_started", |o| {
-            o.launcher.started_marker_present = false
-        });
-        expect_err("attempt_mismatch", |o| o.launcher.attempt = Uuid::new_v4());
-        expect_err("gen_mismatch", |o| o.launcher.session_generation = 9);
-        expect_err("run_mismatch", |o| {
-            o.responder.run_id = Uuid::new_v4().to_string()
-        });
-        expect_err("zero_head", |o| o.responder.head_requests = 0);
-    }
-
-    #[test]
-    fn disposal_validator_fails_closed_on_residuals_and_probe_errors() {
-        let clean = DisposalEvidence {
-            attempt_id: Uuid::new_v4(),
-            ..Default::default()
-        };
-        assert!(validate_disposal_evidence(&clean).is_ok());
-        let expect_err = |name: &str, f: fn(&mut DisposalEvidence)| {
-            let mut bad = clean.clone();
-            f(&mut bad);
-            assert!(validate_disposal_evidence(&bad).is_err(), "{name}");
-        };
-        expect_err("probe_error", |e| e.probe_errors.push("nft err".into()));
-        expect_err("launcher_dir", |e| e.launcher_dir_present = true);
-        expect_err("pending", |e| {
-            e.pending_markers.push("dwcap.pending".into())
-        });
-        expect_err("network_slot", |e| e.network_slot_held = true);
-        expect_err("container", |e| e.containers_present.push("dwcap1".into()));
-        expect_err("netns", |e| e.netns_present = true);
-        expect_err("veth", |e| e.veth_present = true);
-        expect_err("nft", |e| e.nft_table_present = true);
-        expect_err("pid", |e| e.residual_pids.push(4321));
-        expect_err("cgroup", |e| e.residual_cgroups.push("/proc/4321".into()));
-    }
+    let dispose_res = host.dispose();
+    res.unwrap();
+    dispose_res.unwrap();
 }
