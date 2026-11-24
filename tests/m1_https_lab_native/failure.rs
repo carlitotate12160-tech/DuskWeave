@@ -3,17 +3,13 @@
 #[cfg(target_os = "linux")]
 use super::support::linux_host::NativeHost;
 #[cfg(target_os = "linux")]
-use super::support::{
-    CORE_BIN, build_native_run_bundle, extract_https_context_pack, start_loopback_sdk,
-};
+use super::support::{extract_https_context_pack, start_loopback_sdk};
 #[cfg(target_os = "linux")]
 use crate::lab_support::{lab_proposal_for_pack, sanitize_inspect_receipt};
 #[cfg(target_os = "linux")]
-use crate::sdk_fixture::{FixtureChild, Reply, Server, envelope};
+use crate::sdk_fixture::{Reply, Server, envelope};
 #[cfg(target_os = "linux")]
 use serde_json::{Value, json};
-#[cfg(target_os = "linux")]
-use std::process::{Command, Stdio};
 #[cfg(target_os = "linux")]
 use std::sync::{
     Arc,
@@ -33,7 +29,7 @@ pub const NEGATIVE_SCENARIOS: &[(&str, &str, u64, u64)] = &[
 ];
 
 #[cfg(target_os = "linux")]
-fn assert_inspect_recover_parity(
+pub(super) fn assert_inspect_recover_parity(
     host: &mut NativeHost,
     label: &str,
     run_id: uuid::Uuid,
@@ -72,35 +68,12 @@ fn assert_inspect_recover_parity(
 }
 
 #[cfg(target_os = "linux")]
-fn prepare_run_input(
-    host: &mut NativeHost,
-    run_id: uuid::Uuid,
-    mutate: impl FnOnce(&mut Value),
-) -> std::path::PathBuf {
-    let (e, c, now_s) = (host.id(), host.id(), host.db_now_s());
-    let (reg, mut req) =
-        build_native_run_bundle(e, c, run_id, &host.manifest, now_s, now_s * 1000 + 400_000);
-    mutate(&mut req);
-    let op = host.id();
-    let reg_file = host.write_input(&reg);
-    let reg_out = host.cli(&[
-        "register",
-        "--operation",
-        &op.to_string(),
-        "--input",
-        reg_file.to_str().unwrap(),
-    ]);
-    assert!(reg_out.status.success(), "register failed for {run_id}");
-    host.write_input(&req)
-}
-
-#[cfg(target_os = "linux")]
 fn run_acquisition_failure(scenario: &str, exp_outcome: &str, exp_tls: u64, exp_head: u64) {
     let mut host = NativeHost::new();
     let run_id = host.id();
     host.start_topology_for(scenario, run_id, 30, 30);
     let sdk = start_loopback_sdk("none");
-    let run_file = prepare_run_input(&mut host, run_id, |_| {});
+    let run_file = host.prepare_run_input(run_id, |_| {});
     let run_out = host.cli(&[
         "m1-run",
         "--input",
@@ -149,6 +122,7 @@ fn run_acquisition_failure(scenario: &str, exp_outcome: &str, exp_tls: u64, exp_
         1,
         exp_head,
     );
+    host.dispose().unwrap();
 }
 
 #[cfg(target_os = "linux")]
@@ -157,7 +131,7 @@ fn run_preadmission_refusal(label: &str, mutate_req: impl FnOnce(&mut Value)) {
     let run_id = host.id();
     host.start_topology_for("200", run_id, 30, 30);
     let _sdk = start_loopback_sdk("none");
-    let run_file = prepare_run_input(&mut host, run_id, mutate_req);
+    let run_file = host.prepare_run_input(run_id, mutate_req);
     let run_out = host.cli(&[
         "m1-run",
         "--input",
@@ -197,6 +171,7 @@ fn run_preadmission_refusal(label: &str, mutate_req: impl FnOnce(&mut Value)) {
             .status
             .success()
     );
+    host.dispose().unwrap();
 }
 
 #[cfg(target_os = "linux")]
@@ -217,7 +192,7 @@ fn native_https_lab_negative_matrix_and_zero_replay_recovery() {
 #[cfg(target_os = "linux")]
 #[ignore = "requires reviewed install, schema-0038 DB, and isolated ARM64 netns topology"]
 #[test]
-fn native_stop_and_control_loss_prevent_further_effects() {
+fn native_pre_effect_stop_during_d2_hold_prevents_https_effects() {
     let mut host = NativeHost::new();
     let run_id = host.id();
     host.start_topology_for("200", run_id, 30, 30);
@@ -239,28 +214,14 @@ fn native_stop_and_control_loss_prevent_further_effects() {
             serde_json::to_vec(&envelope(&lab_proposal_for_pack(&pack, "none"))).unwrap(),
         )
     });
-    let run_file = prepare_run_input(&mut host, run_id, |_| {});
-    let mut parent = FixtureChild::new(
-        Command::new("/usr/sbin/runuser")
-            .args([
-                "-u",
-                "duskweave-core",
-                "--",
-                CORE_BIN,
-                "m1-run",
-                "--input",
-                run_file.to_str().unwrap(),
-                "--timing-profile",
-                "reasoning-bounded-pro-v2",
-            ])
-            .env_clear()
-            .envs(&host.environment)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap(),
-    );
+    let run_file = host.prepare_run_input(run_id, |_| {});
+    let mut parent = host.spawn_cli(&[
+        "m1-run",
+        "--input",
+        run_file.to_str().unwrap(),
+        "--timing-profile",
+        "reasoning-bounded-pro-v2",
+    ]);
     let wait_end = Instant::now() + Duration::from_secs(8);
     while host.dns_count("dns_answered") == 0 && Instant::now() < wait_end {
         std::thread::sleep(Duration::from_millis(5));
@@ -280,13 +241,21 @@ fn native_stop_and_control_loss_prevent_further_effects() {
     assert_eq!(hc["connections"], 0);
     assert_eq!(hc["tls_handshakes"], 0);
     assert_eq!(hc["head_requests"], 0);
-    assert_inspect_recover_parity(&mut host, "stop-d2-hold", run_id, "stopped", 1, 0);
+    assert_inspect_recover_parity(
+        &mut host,
+        "pre-effect-stop-d2-hold",
+        run_id,
+        "stopped",
+        1,
+        0,
+    );
+    host.dispose().unwrap();
 }
 
 #[cfg(target_os = "linux")]
 #[ignore = "requires reviewed install, schema-0038 DB, and isolated ARM64 netns topology"]
 #[test]
-fn native_unknown_outcome_blocks_replay_on_recover() {
+fn native_pre_effect_d2_provider_http_400_blocks_replay_on_recover() {
     let mut host = NativeHost::new();
     let run_id = host.id();
     host.start_topology_for("200", run_id, 30, 30);
@@ -299,14 +268,17 @@ fn native_unknown_outcome_blocks_replay_on_recover() {
             .iter()
             .any(|r| r["id"] == "endpoint_0")
         {
-            return Reply::Length(400, br#"{"error":"synthetic_control_loss"}"#.to_vec());
+            return Reply::Length(
+                400,
+                br#"{"error":"synthetic_d2_provider_http_400"}"#.to_vec(),
+            );
         }
         Reply::Length(
             200,
             serde_json::to_vec(&envelope(&lab_proposal_for_pack(&pack, "none"))).unwrap(),
         )
     });
-    let run_file = prepare_run_input(&mut host, run_id, |_| {});
+    let run_file = host.prepare_run_input(run_id, |_| {});
     let run_out = host.cli(&[
         "m1-run",
         "--input",
@@ -319,7 +291,15 @@ fn native_unknown_outcome_blocks_replay_on_recover() {
     assert_eq!(hc["dns_answered"], 1);
     assert_eq!(hc["connections"], 0);
     assert_eq!(hc["head_requests"], 0);
-    assert_inspect_recover_parity(&mut host, "unknown-d2-loss", run_id, "unknown", 1, 0);
+    assert_inspect_recover_parity(
+        &mut host,
+        "pre-effect-d2-provider-http-400",
+        run_id,
+        "unknown",
+        1,
+        0,
+    );
+    host.dispose().unwrap();
 }
 
 #[cfg(test)]

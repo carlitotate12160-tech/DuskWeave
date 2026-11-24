@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-//! Shared config, responder provenance, scoped netns topology, and SQL/CLI helpers for native HTTPS LAB.
+//! Shared config, responder provenance, private control-root isolation, and SQL/CLI helpers for native HTTPS LAB.
 
 use crate::lab_support::{lab_proposal_for_pack, lab_registration_json, lab_run_request_json};
 use crate::sdk_fixture::{Reply, Server, envelope};
@@ -99,46 +99,21 @@ pub(super) fn build_native_run_bundle(
 
 #[cfg(target_os = "linux")]
 pub(super) mod linux_host {
+    use super::super::topology::resolve_core_gid_from_passwd;
+    use super::super::topology_linux::LabTopology;
     use super::*;
     use crate::lab_support::{validate_deployment_manifest, verify_responder_provenance_bytes};
     use crate::sdk_fixture::FixtureChild;
-    use duskweave::m1_inference_profile::{HTTPS_LAB_IPV4, HTTPS_LAB_RESOLVER};
     use postgres::{Client, NoTls};
+    use rustix::fs::{Gid, Uid, chown};
     use std::collections::BTreeMap;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
-    use std::process::{Child, Command, Output, Stdio};
+    use std::process::{Command, Output, Stdio};
+    use std::sync::{Mutex, MutexGuard};
     use std::time::{Duration, Instant};
 
-    pub(crate) fn cmd(binary: &str, args: &[&str]) -> Output {
-        let ch = Command::new(binary)
-            .args(args)
-            .env_clear()
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("host command");
-        let mut fc = FixtureChild::new(ch);
-        assert!(
-            fc.wait_until(Instant::now() + Duration::from_secs(2))
-                .is_some(),
-            "host cmd timeout"
-        );
-        fc.output()
-    }
-
-    fn ip(args: &[&str]) -> Output {
-        cmd("/usr/sbin/ip", args)
-    }
-
-    fn checked_ip(args: &[&str]) {
-        let out = ip(args);
-        assert!(
-            out.status.success(),
-            "ip failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
+    static HOST_SERIAL: Mutex<()> = Mutex::new(());
 
     fn read_json<T: serde::de::DeserializeOwned>(p: impl AsRef<Path>) -> T {
         serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap()
@@ -152,19 +127,16 @@ pub(super) mod linux_host {
         pub report: PathBuf,
         pub https_counters: PathBuf,
         build_root: PathBuf,
-        ns: String,
-        host_if: String,
-        https_proc: Option<Child>,
+        core_uid: u32,
+        core_gid: u32,
+        topology: LabTopology,
         inputs: Vec<PathBuf>,
-        ns_owned: bool,
-        link_owned: bool,
-        route_dns_owned: bool,
-        route_https_owned: bool,
-        fwd_owned: u8,
+        _serial: MutexGuard<'static, ()>,
     }
 
     impl NativeHost {
         pub fn new() -> Self {
+            let serial = HOST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
             assert_eq!(rustix::process::geteuid().as_raw(), 0, "root required");
             assert_eq!(
                 std::fs::read_to_string(OWNER_MARKER).unwrap().trim(),
@@ -177,7 +149,7 @@ pub(super) mod linux_host {
                     .unwrap_or_else(|| DEFAULT_BUILD_ROOT.into()),
             );
             assert!(cfg.is_absolute() && rpt.is_absolute() && build_root.is_absolute());
-            let env_map: BTreeMap<String, String> = read_json(cfg.join("environment.json"));
+            let mut env_map: BTreeMap<String, String> = read_json(cfg.join("environment.json"));
             let test_map: BTreeMap<String, String> = read_json(cfg.join("test-environment.json"));
             let manifest: Value = read_json(DEPLOYMENT_MANIFEST);
             validate_deployment_manifest(&manifest).unwrap();
@@ -187,23 +159,24 @@ pub(super) mod linux_host {
                     .unwrap();
             let prov = verify_responder_provenance_bytes(&rsp_prov, &rsp_bin).unwrap();
             let source_sha = prov["build_source_commit"].as_str().unwrap().to_owned();
+            let core_uid = manifest["core_uid"].as_u64().unwrap() as u32;
+            let passwd = std::fs::read_to_string("/etc/passwd").unwrap();
+            let core_gid = resolve_core_gid_from_passwd(&passwd, core_uid).unwrap();
             let mut admin =
                 Client::connect(&test_map["DW_TEST_ADMIN_DATABASE_URL"], NoTls).unwrap();
             let id: Uuid = admin
                 .query_one("SELECT gen_random_uuid()", &[])
                 .unwrap()
                 .get(0);
-            let tag = &id.simple().to_string()[..10];
-            let report = rpt.join(id.simple().to_string());
+            let tag = id.simple().to_string();
+            let report = rpt.join(&tag);
             std::fs::create_dir_all(&report).unwrap();
-            for cidr in ["192.0.2.53/32", "198.51.100.10/32"] {
-                assert!(
-                    String::from_utf8_lossy(&ip(&["-4", "route", "show", cidr]).stdout)
-                        .trim()
-                        .is_empty(),
-                    "route collision"
-                );
-            }
+            let topology = LabTopology::new(&tag[..12], core_uid, core_gid).unwrap();
+            // Scope core control root to this NativeHost's child environment only.
+            env_map.insert(
+                "DW_M1_RUN_CONTROL_ROOT".into(),
+                topology.dirs.core_control_dir.to_str().unwrap().to_owned(),
+            );
             Self {
                 admin,
                 manifest,
@@ -212,15 +185,11 @@ pub(super) mod linux_host {
                 https_counters: report.join("https-counters.json"),
                 report,
                 build_root,
-                ns: format!("hl{tag}"),
-                host_if: format!("hh{tag}"),
-                https_proc: None,
+                core_uid,
+                core_gid,
+                topology,
                 inputs: Vec::new(),
-                ns_owned: false,
-                link_owned: false,
-                route_dns_owned: false,
-                route_https_owned: false,
-                fwd_owned: 0,
+                _serial: serial,
             }
         }
 
@@ -231,128 +200,11 @@ pub(super) mod linux_host {
             dns_ttl: u32,
             dns_refresh_ttl: u32,
         ) {
-            let inner = self.host_if.replacen("hh", "hn", 1);
-            checked_ip(&["netns", "add", &self.ns]);
-            self.ns_owned = true;
-            checked_ip(&[
-                "link",
-                "add",
-                &self.host_if,
-                "type",
-                "veth",
-                "peer",
-                "name",
-                &inner,
-            ]);
-            self.link_owned = true;
-            for args in [
-                &["link", "set", inner.as_str(), "netns", &self.ns][..],
-                &["addr", "add", "192.0.2.1/32", "dev", &self.host_if],
-                &["link", "set", &self.host_if, "up"],
-            ] {
-                checked_ip(args);
-            }
-            for args in [
-                &["addr", "add", "192.0.2.53/32", "dev", &inner][..],
-                &["addr", "add", "198.51.100.10/32", "dev", &inner],
-                &["link", "set", inner.as_str(), "up"],
-                &["link", "set", "lo", "up"],
-                &["route", "add", "192.0.2.1/32", "dev", inner.as_str()],
-                &[
-                    "route",
-                    "add",
-                    "10.203.0.0/24",
-                    "via",
-                    "192.0.2.1",
-                    "dev",
-                    inner.as_str(),
-                    "onlink",
-                ],
-            ] {
-                self.ns(args);
-            }
-            checked_ip(&["route", "add", "192.0.2.53/32", "dev", &self.host_if]);
-            self.route_dns_owned = true;
-            checked_ip(&["route", "add", "198.51.100.10/32", "dev", &self.host_if]);
-            self.route_https_owned = true;
-            for idx in 0..4u8 {
-                assert!(self.iptables_rule("-I", idx));
-                self.fwd_owned += 1;
-            }
             let rsp = self.build_root.join("go-release/httpslab-arm64");
-            self.https_proc = Some(
-                Command::new("/usr/sbin/ip")
-                    .args(["netns", "exec", &self.ns, rsp.to_str().unwrap()])
-                    .args(["-listen", &format!("{HTTPS_LAB_IPV4}:443")])
-                    .args(["-dns-listen", &format!("{HTTPS_LAB_RESOLVER}:53")])
-                    .args([
-                        "-dns-ttl",
-                        &dns_ttl.to_string(),
-                        "-dns-refresh-ttl",
-                        &dns_refresh_ttl.to_string(),
-                    ])
-                    .args(["-scenario", scenario, "-run-id", &run_id.to_string()])
-                    .args(["-counters", self.https_counters.to_str().unwrap()])
-                    .env_clear()
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .unwrap(),
-            );
-            let dl = Instant::now() + Duration::from_secs(3);
-            while !self.https_counters.exists() && Instant::now() < dl {
-                let alive = self
-                    .https_proc
-                    .as_mut()
-                    .unwrap()
-                    .try_wait()
-                    .unwrap()
-                    .is_none();
-                assert!(alive, "httpslab exited");
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            assert!(
-                self.https_counters.exists(),
-                "httpslab counter readiness timeout"
-            );
-        }
-
-        fn ns(&self, args: &[&str]) {
-            let mut full = vec!["netns", "exec", &self.ns, "/usr/sbin/ip"];
-            full.extend_from_slice(args);
-            checked_ip(&full);
-        }
-
-        fn iptables_rule(&self, op: &str, idx: u8) -> bool {
-            let (proto, cidr, pflag, port, out) = match idx {
-                0 => ("udp", "192.0.2.53/32", "--dport", "53", false),
-                1 => ("udp", "192.0.2.53/32", "--sport", "53", true),
-                2 => ("tcp", "198.51.100.10/32", "--dport", "443", false),
-                _ => ("tcp", "198.51.100.10/32", "--sport", "443", true),
-            };
-            let (in_if, out_if, src, dst) = if out {
-                (self.host_if.as_str(), "dvh+", cidr, "10.203.0.0/24")
-            } else {
-                ("dvh+", self.host_if.as_str(), "10.203.0.0/24", cidr)
-            };
-            let ch = Command::new("/usr/sbin/iptables")
-                .args([op, "DOCKER-USER", "-i", in_if, "-o", out_if])
-                .args(["-s", src, "-d", dst, "-p", proto, pflag, port])
-                .args(["-m", "comment", "--comment", &self.ns, "-j", "ACCEPT"])
-                .env_clear()
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .expect("iptables");
-            let mut fc = FixtureChild::new(ch);
-            assert!(
-                fc.wait_until(Instant::now() + Duration::from_secs(2))
-                    .is_some(),
-                "iptables timeout"
-            );
-            fc.output().status.success()
+            self.topology
+                .start_for(&rsp, scenario, run_id, dns_ttl, dns_refresh_ttl)
+                .unwrap();
+            let _ = self.https_counters();
         }
 
         pub fn id(&mut self) -> Uuid {
@@ -373,18 +225,54 @@ pub(super) mod linux_host {
         }
 
         pub fn write_input(&mut self, value: &Value) -> PathBuf {
-            use std::os::unix::fs::PermissionsExt;
-            let p = Path::new("/run/duskweave/m1").join(format!("{}.input", self.id().simple()));
+            let input_id = self.id();
+            let p = self
+                .topology
+                .dirs
+                .core_input_dir
+                .join(format!("{}.input", input_id.simple()));
             std::fs::write(&p, serde_json::to_vec(value).unwrap()).unwrap();
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
-            let uid = self.manifest["core_uid"].as_u64().unwrap() as u32;
-            rustix::fs::chown(&p, Some(rustix::process::Uid::from_raw(uid)), None).unwrap();
+            chown(
+                &p,
+                Some(Uid::from_raw(self.core_uid)),
+                Some(Gid::from_raw(self.core_gid)),
+            )
+            .unwrap();
             self.inputs.push(p.clone());
             p
         }
 
-        pub fn cli(&self, args: &[&str]) -> Output {
-            let mut ch = FixtureChild::new(
+        pub fn prepare_run_input(
+            &mut self,
+            run_id: Uuid,
+            mutate: impl FnOnce(&mut Value),
+        ) -> PathBuf {
+            let (e, c, now_s) = (self.id(), self.id(), self.db_now_s());
+            let (reg, mut req) = build_native_run_bundle(
+                e,
+                c,
+                run_id,
+                &self.manifest,
+                now_s,
+                now_s * 1000 + 400_000,
+            );
+            mutate(&mut req);
+            let op = self.id();
+            let reg_file = self.write_input(&reg);
+            let reg_out = self.cli(&[
+                "register",
+                "--operation",
+                &op.to_string(),
+                "--input",
+                reg_file.to_str().unwrap(),
+            ]);
+            assert!(reg_out.status.success(), "register failed for {run_id}");
+            self.write_input(&req)
+        }
+
+        pub fn spawn_cli(&self, args: &[&str]) -> FixtureChild {
+            FixtureChild::new(
                 Command::new("/usr/sbin/runuser")
                     .args(["-u", "duskweave-core", "--", CORE_BIN])
                     .args(args)
@@ -395,10 +283,16 @@ pub(super) mod linux_host {
                     .stderr(Stdio::piped())
                     .spawn()
                     .unwrap(),
-            );
+            )
+        }
+
+        pub fn cli(&self, args: &[&str]) -> Output {
+            let mut ch = self.spawn_cli(args);
             assert!(
                 ch.wait_until(Instant::now() + Duration::from_secs(90))
-                    .is_some()
+                    .is_some(),
+                "cli command timed out: {:?}",
+                args
             );
             ch.output()
         }
@@ -419,7 +313,43 @@ pub(super) mod linux_host {
         }
 
         pub fn https_counters(&self) -> Value {
-            serde_json::from_slice(&std::fs::read(&self.https_counters).unwrap()).unwrap()
+            let bytes = std::fs::read(&self.topology.dirs.counter_path).unwrap();
+            let val: Value = serde_json::from_slice(&bytes).unwrap();
+            let _ = std::fs::write(&self.https_counters, &bytes);
+            val
+        }
+
+        pub fn inject_control_root_loss(&mut self, suffix: &str) -> Result<PathBuf, String> {
+            self.topology.dirs.inject_control_root_loss(suffix)
+        }
+
+        pub fn sql_snapshot(&mut self, run_id: Uuid) -> Result<Value, String> {
+            self.admin
+                .query_one(
+                    "SELECT jsonb_build_object(
+                        'control', (SELECT row_to_json(c) FROM execution.autonomous_control c WHERE c.run_id = $1),
+                        'steps', coalesce((SELECT jsonb_agg(row_to_json(s) ORDER BY s.step_index)
+                                           FROM execution.https_loop_steps s WHERE s.run_id = $1), '[]'::jsonb),
+                        'sessions', coalesce((SELECT jsonb_agg(jsonb_build_object(
+                                                'attempt', les.attempt, 'step_index', les.step_index,
+                                                'attempt_kind', les.attempt_kind, 'generation', les.generation,
+                                                'control_phase', lec.phase, 'granted_phase', lec.granted_phase,
+                                                'possibly_started', lec.possibly_started,
+                                                'disposal_confirmed', lec.disposal_confirmed
+                                              ) ORDER BY les.generation)
+                                              FROM execution.live_effect_sessions les
+                                              JOIN execution.live_effect_control lec USING (attempt)
+                                              WHERE les.run_id = $1), '[]'::jsonb),
+                        'events', coalesce((SELECT jsonb_agg(jsonb_build_object(
+                                                'attempt', lee.attempt, 'generation', lee.generation,
+                                                'phase', lee.phase, 'occurred_at_ms', lee.occurred_at_ms
+                                              ) ORDER BY lee.generation, lee.occurred_at_ms, lee.phase)
+                                            FROM execution.live_effect_events lee WHERE lee.run_id = $1), '[]'::jsonb)
+                     )::json",
+                    &[&run_id],
+                )
+                .map(|r| r.get(0))
+                .map_err(|e| e.to_string())
         }
 
         pub fn save_inspect_artifact(
@@ -446,43 +376,35 @@ pub(super) mod linux_host {
                 "inspect_sanitized": inspect_sanitized,
                 "recover_sanitized": recover_sanitized,
             });
+            self.save_structured_artifact(label, &artifact);
+        }
+
+        pub fn save_structured_artifact(&self, label: &str, artifact: &Value) {
+            let encoded = serde_json::to_vec_pretty(artifact).unwrap();
+            let text = std::str::from_utf8(&encoded).unwrap();
+            assert!(
+                !text.contains("://") && !text.contains("password=") && !text.contains("DW_"),
+                "unsafe artifact payload"
+            );
             std::fs::write(
                 self.report.join(format!("{label}-inspect-artifact.json")),
-                serde_json::to_vec_pretty(&artifact).unwrap(),
+                encoded,
             )
             .unwrap();
+        }
+
+        pub fn dispose(mut self) -> Result<(), Vec<String>> {
+            for p in self.inputs.drain(..) {
+                let _ = std::fs::remove_file(p);
+            }
+            self.topology.dispose()
         }
     }
 
     impl Drop for NativeHost {
         fn drop(&mut self) {
-            if let Some(mut p) = self.https_proc.take() {
-                let _ = p.kill();
-                let _ = p.wait();
-            }
-            let mut clean = (0..self.fwd_owned).all(|idx| self.iptables_rule("-D", idx));
-            let ip_cleanups: [(bool, &[&str]); 4] = [
-                (
-                    self.route_https_owned,
-                    &["route", "del", "198.51.100.10/32", "dev", &self.host_if],
-                ),
-                (
-                    self.route_dns_owned,
-                    &["route", "del", "192.0.2.53/32", "dev", &self.host_if],
-                ),
-                (self.link_owned, &["link", "del", &self.host_if]),
-                (self.ns_owned, &["netns", "del", &self.ns]),
-            ];
-            for (owned, args) in ip_cleanups {
-                if owned {
-                    clean &= cmd("/usr/sbin/ip", args).status.success();
-                }
-            }
-            for p in &self.inputs {
+            for p in self.inputs.drain(..) {
                 let _ = std::fs::remove_file(p);
-            }
-            if !std::thread::panicking() {
-                assert!(clean, "scoped LAB disposal incomplete");
             }
         }
     }
