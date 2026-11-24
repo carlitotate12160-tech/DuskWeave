@@ -23,16 +23,14 @@ from release_descriptor import (
     IMAGE_DIGEST_RE,
     IMAGE_REF_RE,
     NOTICE_MEMBERS,
-    PROD_BASELINE_PATHS,
     ReleaseError,
-    _check_clean_git_identity,
     _no_dup_pairs_hook,
-    _run_git,
     _sha256_file,
     _validate_member_entry,
     _walk_package_files,
     sanitize_release_env,
     verify_elf64_aarch64,
+    verify_pinned_source_tree,
 )
 
 SCHEMA_VERSION = 3
@@ -97,20 +95,15 @@ def verify_https_lab_source(
     expected_uids: tuple[int, ...] | None = None,
     stop_at: Path | None = None,
 ) -> tuple[str, str]:
-    """Verify clean HTTPS LAB source tree, absent .cargo/build.rs, and exact pinned root CA."""
-    for forbidden, err in ((".cargo", "candidate_cargo_config_present"), ("build.rs", "unexpected_root_build_rs")):
-        if (source_root / forbidden).exists() or (source_root / forbidden).is_symlink():
-            raise ReleaseError(err)
+    """Verify clean HTTPS LAB source tree, absent root build.rs, narrow .cargo policy, and root CA."""
     uids = expected_uids if expected_uids is not None else (0, os.geteuid())
     anchor = stop_at or (Path("/") if os.geteuid() == 0 else source_root)
-    _verify_root_ca_bytes(source_root / ROOT_CA_SOURCE_REL, uids, anchor)
-    if not check_clean_git:
-        return ("", "")
-    head, tree = _check_clean_git_identity(
-        source_root, expected_commit, expected_tree, expected_driver_commit, expected_driver_tree,
+    head, tree = verify_pinned_source_tree(
+        source_root, expected_commit=expected_commit, expected_tree=expected_tree,
+        expected_driver_commit=expected_driver_commit, expected_driver_tree=expected_driver_tree,
+        check_clean_git=check_clean_git, expected_uids=uids, stop_at=anchor,
     )
-    if _run_git(source_root, ["ls-files", "--others", "-i", "--exclude-standard", "--", *PROD_BASELINE_PATHS]).strip():
-        raise ReleaseError("ignored_production_input_present")
+    _verify_root_ca_bytes(source_root / ROOT_CA_SOURCE_REL, uids, anchor)
     return head, tree
 
 

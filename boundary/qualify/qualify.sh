@@ -33,30 +33,6 @@ qualify_extract_driver_pins() {
     done
     [[ $QUALIFY_EXP_COMMIT =~ ^[0-9a-f]{40}$ && $QUALIFY_EXP_TREE =~ ^[0-9a-f]{40}$ ]]
 }
-qualify_check_driver_file() {
-    local p=$1 enforce_root=$2
-    if [[ $enforce_root == 1 ]]; then
-        protected_ancestors "$p" && protected_regular_file "$p" || refuse driver_custody_refused
-    else
-        [[ -f $p && ! -L $p && $(stat -c %h "$p") == 1 ]] || refuse driver_custody_refused
-    fi
-}
-qualify_verify_driver_before_load() {
-    local qdir=$1 commit=$2 tree=$3 enforce_root=${4:-1} repo f st hd tr
-    [[ $commit =~ ^[0-9a-f]{40}$ && $tree =~ ^[0-9a-f]{40}$ ]] || refuse driver_pin_malformed
-    repo=$(cd -- "$qdir/../.." && pwd -P)
-    [[ ! -e $repo/.cargo && ! -L $repo/.cargo ]] || refuse driver_cargo_config_present
-    for f in deployment_custody.sh qualify.sh candidate.sh release_descriptor.py candidate_files.py \
-             candidate_postgres.py candidate_host.py candidate_install.py candidate_database.py candidate_binding.py; do
-        qualify_check_driver_file "$qdir/$f" "$enforce_root"
-    done
-    qualify_check_driver_file "$repo/tests/support/m1_native_bootstrap.py" "$enforce_root"
-    st=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" status --porcelain=v1 --untracked-files=all) || refuse driver_git_failed
-    [[ -z $st ]] || refuse driver_worktree_unclean
-    hd=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" rev-parse HEAD) || refuse driver_git_failed
-    tr=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" rev-parse 'HEAD^{tree}') || refuse driver_git_failed
-    [[ $hd == "$commit" && $tr == "$tree" ]] || refuse driver_git_pin_mismatch
-}
 require_deployment_host() {
     [[ $EUID == 0 && $(hostname) == pica-arm-01 && $(uname -m) == aarch64 ]] || refuse host_identity_refused
     [[ -f $ROOT/.live-dns-20261030-owner && $(cat "$ROOT/.live-dns-20261030-owner") == DW-IMPLEMENT-M1-LIVE-DNS-GENAI ]] || refuse deployment_owner_refused

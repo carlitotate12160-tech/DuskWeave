@@ -372,6 +372,77 @@ class HttpsLabHostAndShellTests(unittest.TestCase):
                     driver_verifier=lambda *_a, **_k: None,
                 ), 0)
 
+    def test_https_lab_sh_sourcing_inert_and_fail_closed_across_dispatches_and_build(self) -> None:
+        head, tree = "a" * 40, "b" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            marker = base / "downstream.log"
+            stub_bin = base / "bin"
+            stub_bin.mkdir()
+            stub_py = stub_bin / "python3"
+            stub_py.write_text("#!/usr/bin/env bash\necho custody_fail >&2\nexit 1\n", encoding="utf-8")
+            os.chmod(stub_py, 0o755)
+            env = {"PATH": f"{stub_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}", "HOME": tmp}
+
+            # 1. Sourcing preserves caller shell options (with and without -euo pipefail) and executes nothing.
+            for prefix in ("set +euo pipefail", "set -euo pipefail"):
+                res = subprocess.run(
+                    ["bash", "-c", f'{prefix}; b_f="$-"; b_p=$(shopt -po pipefail); source "{QUALIFY_DIR / "https_lab.sh"}"; [[ $- == "$b_f" && $(shopt -po pipefail) == "$b_p" ]]'],
+                    capture_output=True, text=True, env=env, timeout=15,
+                )
+                self.assertEqual(res.returncode, 0, res.stderr)
+                self.assertEqual(res.stdout, "")
+
+            # 2. All 6 privileged dispatches fail closed on custody failure under ordinary AND conditional calls.
+            setup = (
+                f'source "{QUALIFY_DIR / "https_lab.sh"}"; '
+                'source() { case "$1" in */candidate.sh) return 0 ;; *) builtin source "$@" ;; esac; }; '
+                'https_lab_require_host() { return 0; }; https_lab_require_clean_env() { return 0; }; '
+                f'check_candidate_build_storage() {{ echo storage >> "{marker}"; }}; '
+                f'https_lab_build() {{ echo build >> "{marker}"; }}; '
+                f'https_lab_provision_db() {{ echo prov >> "{marker}"; }}; '
+                f'https_lab_install() {{ echo inst >> "{marker}"; }}; '
+                f'python3() {{ case "$*" in *https_lab_binding.py*) echo bind >> "{marker}" ;; *) command python3 "$@" ;; esac; }}; '
+            )
+            for cmd_name in ("build-storage", "build", "provision-db", "install", "bind", "reconcile"):
+                args = f'{cmd_name} --expected-driver-commit {head} --expected-driver-tree {tree}'
+                for inv in (
+                    f'set +e; https_lab_main {args}',
+                    f'if https_lab_main {args}; then exit 0; fi; exit 1',
+                    f'rc=0; https_lab_main {args} || rc=$?; exit "$rc"',
+                ):
+                    r = subprocess.run(["bash", "-c", setup + inv], capture_output=True, text=True, env=env, timeout=15)
+                    self.assertNotEqual(r.returncode, 0, f"{cmd_name} / {inv}")
+                    self.assertFalse(marker.exists(), marker.read_text() if marker.exists() else "")
+
+            # 3. Inner build producer failures never invoke record-responder or package.
+            src = base / "src"
+            (src / "boundary" / "fixtures").mkdir(parents=True)
+            (src / "boundary" / "Dockerfile.https-lab").write_text("FROM scratch\n", encoding="utf-8")
+            (src / "boundary" / "fixtures" / "https-lab-root-v1.pem").write_text("PEM\n", encoding="utf-8")
+            for fail_at in ("verify_source", "cargo", "go", "docker_build", "docker_inspect"):
+                marker.unlink(missing_ok=True)
+                b_sh = (
+                    f'source "{QUALIFY_DIR / "https_lab.sh"}"; '
+                    f'HTTPS_LAB_FIXED_SOURCE="{src}"; HTTPS_LAB_BUILD_ROOT="{base}/br_{fail_at}"; '
+                    f'HTTPS_LAB_BUNDLE_DIR="{base}/bd_{fail_at}"; HTTPS_LAB_REPORT_ROOT="{base}/rp_{fail_at}"; '
+                    'source() { case "$1" in */candidate.sh) return 0 ;; *) builtin source "$@" ;; esac; }; '
+                    'check_candidate_build_storage() { return 0; }; '
+                    'install() { [[ $1 == -d ]] && mkdir -p "${@: -1}"; return 0; }; stat() { echo 1; }; '
+                    'cp() { : > "${@: -1}"; }; chmod() { return 0; }; '
+                    f'cargo() {{ [[ {fail_at} == cargo ]] && return 1; mkdir -p "$HTTPS_LAB_BUILD_ROOT/normal/release"; : > "$HTTPS_LAB_BUILD_ROOT/normal/release/duskweave"; : > "$HTTPS_LAB_BUILD_ROOT/normal/release/dw-boundary-launcher"; }}; '
+                    f'go() {{ [[ {fail_at} == go ]] && return 1; while [[ $# -gt 1 ]]; do shift; done; : > "${{1:-/dev/null}}" 2>/dev/null || true; }}; '
+                    f'docker() {{ if [[ $1 == image && $2 == inspect && $* != *--format* ]]; then return 1; fi; '
+                    f'if [[ $1 == build ]]; then [[ {fail_at} == docker_build ]] && return 1 || return 0; fi; '
+                    f'[[ {fail_at} == docker_inspect ]] && return 1 || echo "sha256:{"a"*64}"; }}; '
+                    f'python3() {{ case "$*" in *verify-source*) [[ {fail_at} != verify_source ]] ;; '
+                    f'*record-responder*|*package*) echo "$*" >> "{marker}" ;; esac; }}; '
+                    f'if https_lab_build --expected-driver-commit {head} --expected-driver-tree {tree}; then exit 0; fi; exit 1'
+                )
+                r = subprocess.run(["bash", "-c", b_sh], capture_output=True, text=True, env=env, timeout=15)
+                self.assertNotEqual(r.returncode, 0, fail_at)
+                self.assertFalse(marker.exists(), marker.read_text() if marker.exists() else "")
+
 
 if __name__ == "__main__":
     unittest.main()

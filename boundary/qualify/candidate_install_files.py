@@ -12,10 +12,50 @@ import stat
 from candidate_files import (
     FileCustodyError,
     create_exclusive_dir,
+    fsync_dir,
     read_protected_bytes,
     require_safe_ancestors,
+    verify_written_file,
     write_exclusive_verified,
 )
+
+
+def publish_atomic_verified(
+    path: Path,
+    data: bytes,
+    *,
+    mode: int,
+    expected_uids: tuple[int, ...],
+    owner_uid: int | None = None,
+    owner_gid: int | None = None,
+    stop_at: Path = Path("/"),
+    writer=os.write,
+    fsync_fn=os.fsync,
+    replacer=os.replace,
+) -> str:
+    """Stage exclusively, verify content/metadata, replace atomically, fsync dir, reverify."""
+    if path.is_symlink():
+        raise FileCustodyError("REFUSED", f"symlink_destination_refused:{path.name}")
+    require_safe_ancestors(path.parent, expected_uids, stop_at=stop_at)
+    stage = path.with_name(f".{path.name}.stage.{os.getpid()}")
+    write_exclusive_verified(
+        stage,
+        data,
+        mode=mode,
+        expected_uids=expected_uids,
+        owner_uid=owner_uid,
+        owner_gid=owner_gid,
+        stop_at=stop_at,
+        writer=writer,
+        fsync_fn=fsync_fn,
+    )
+    try:
+        replacer(stage, path)
+        fsync_dir(path.parent, fsync_fn=fsync_fn)
+    except OSError as exc:
+        raise FileCustodyError("INCOMPLETE", f"atomic_replace_failed:{path.name}") from exc
+    verify_uids = expected_uids if owner_uid is None else (owner_uid,)
+    return verify_written_file(path, data, expected_uids=verify_uids, expected_mode=mode)
 
 
 def observe_optional_file(
