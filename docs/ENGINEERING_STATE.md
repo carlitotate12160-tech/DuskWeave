@@ -105,7 +105,7 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-M1-HTTPS-LAB-IMPLEMENT-R1` (`FIX2`, continuing from accepted `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) at `20ecbcedc569fbac3caffd4bb53762652eecc15b`) repairs F1–F7 across the schema-`0038` SQL attempt/fence model, HTTPS effect controller timing, bounded Go capture close/cap handling, schema-3 `HTTPS_LOOP_LAB` release/responder provenance, protected database/install orchestration, and the Linux native harness (`tests/m1_https_lab_native`). Current delivery status remains **`NATIVE_UNVERIFIED`**: schema `0038`/`0037`/`0036` PostgreSQL suites and offline Rust/Go/Python checks are exercised locally, while protected ARM64 host installation, image build, and a live native episode on `pica-arm-01` remain unexecuted pending exact-candidate review. No public LIVE permission, paid-provider consent, or M1 seal is claimed; PR/candidate/CI delivery state remains on GitHub.
+**Active work:** `DW-M1-HTTPS-LAB-IMPLEMENT-R1` (draft [PR #163](https://github.com/carlitotate12160-tech/DuskWeave/pull/163), continuing from accepted `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) at `20ecbcedc569fbac3caffd4bb53762652eecc15b`) targets the schema-`0038` HTTPS LAB loop (`tests/m1_https_lab_native`). Native qualification R2 on `pica-arm-01` failed Case 1, leaving Cases 2–7 **`UNVERIFIED`**; the protected host installation, install backup, custody, and R2 database are retained (not restored). Root-cause corrections for the released CA image filesystem and D3 withheld-claim path are next before candidate review and host reconciliation/continuation. No public LIVE permission, paid-provider consent, or M1 seal is claimed; PR/candidate/CI delivery state remains on GitHub.
 
 **Delivered fixture orchestration:** `DW-M1-HTTPS-LOOP-SKELETON-R1` (merged via
 PR #159 at `4b0bba6c956c3e853f248ff25759d9f5bc408f74`) delivered the bounded
@@ -142,7 +142,7 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** Complete review of the draft PR candidate for `DW-M1-HTTPS-LAB-IMPLEMENT-R1` (`NATIVE_UNVERIFIED`) before any protected ARM64 host installation, database provisioning, binding, or live synthetic HTTPS LAB episode on `pica-arm-01`. Fresh authority and qualified boundaries remain prerequisites; M1 stays unsealed.
+**Next product action:** Complete the bounded CA filesystem and D3 withheld-claim root-cause corrections on draft [PR #163](https://github.com/carlitotate12160-tech/DuskWeave/pull/163) and submit the updated candidate for review before any `pica-arm-01` installation/database reconciliation or continuation native qualification. Fresh authority and qualified boundaries remain prerequisites; M1 stays unsealed.
 
 ## 7. Unresolved constraints
 

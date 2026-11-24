@@ -91,19 +91,33 @@ class HttpsLabHostAndShellTests(unittest.TestCase):
             return _run
 
         good_tar = _make_save_tar([("l0.tar", [
-            ("dw-dns-capture", cap_b),
-            ("dw-dns-exporter", exp_b),
-            ("etc/duskweave/https-lab-root-v1.pem", pem_b),
+            ("dw-dns-capture", cap_b, {"mode": 0o555}),
+            ("dw-dns-exporter", exp_b, {"mode": 0o555}),
+            ("etc/", "DIR:", {"mode": 0o755}),
+            ("etc/duskweave/", "DIR:", {"mode": 0o755}),
+            ("etc/duskweave/https-lab-root-v1.pem", pem_b, {"mode": 0o444}),
         ])])
         got = https_lab_host.extract_https_lab_image_digests("dw-https-lab:r1", docker_runner=runner(good_tar))
         self.assertEqual(got["workers"]["dw-dns-capture"], hashlib.sha256(cap_b).hexdigest())
         self.assertEqual(got["workers"]["dw-dns-exporter"], hashlib.sha256(exp_b).hexdigest())
         self.assertEqual(got["extras"][https_lab_host.ROOT_CA_IMAGE_PATH], https_lab_host.ROOT_CA_SHA256)
 
+        bad_dir_tar = _make_save_tar([("l0.tar", [
+            ("dw-dns-capture", cap_b, {"mode": 0o555}),
+            ("dw-dns-exporter", exp_b, {"mode": 0o555}),
+            ("etc/", "DIR:", {"mode": 0o444}),
+            ("etc/duskweave/", "DIR:", {"mode": 0o444}),
+            ("etc/duskweave/https-lab-root-v1.pem", pem_b, {"mode": 0o444}),
+        ])])
+        with self.assertRaisesRegex(https_lab_host.HostObservationError, "^image_extra_parent_unsafe:etc$"):
+            https_lab_host.extract_https_lab_image_digests("dw-https-lab:r1", docker_runner=runner(bad_dir_tar))
+
         bad_pem_tar = _make_save_tar([("l0.tar", [
-            ("dw-dns-capture", cap_b),
-            ("dw-dns-exporter", exp_b),
-            ("etc/duskweave/https-lab-root-v1.pem", b"wrong-pem"),
+            ("dw-dns-capture", cap_b, {"mode": 0o555}),
+            ("dw-dns-exporter", exp_b, {"mode": 0o555}),
+            ("etc/", "DIR:", {"mode": 0o755}),
+            ("etc/duskweave/", "DIR:", {"mode": 0o755}),
+            ("etc/duskweave/https-lab-root-v1.pem", b"wrong-pem", {"mode": 0o444}),
         ])])
         with self.assertRaisesRegex(https_lab_host.HostObservationError, "^image_extra_member_mismatch:"):
             https_lab_host.extract_https_lab_image_digests("dw-https-lab:r1", docker_runner=runner(bad_pem_tar))

@@ -6,13 +6,15 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import stat
 import subprocess
 import tarfile
-from pathlib import PurePosixPath
 
 DEFAULT_WORKER_BINARIES = ("dw-dns-capture", "dw-dns-exporter")
 MAX_WORKER_BYTES = 64 * 1024 * 1024
 MAX_IMAGE_STREAM_BYTES = 96 * 1024 * 1024
+ALLOWED_EXTRA_DIR_MODES = (0o555, 0o755)
+EXPECTED_EXTRA_FILE_MODE = 0o444
 
 
 class HostObservationError(RuntimeError):
@@ -58,6 +60,15 @@ def _normalize_tar_member(name: str) -> str:
     return clean
 
 
+def _normalize_dir_member(name: str) -> str | None:
+    if name in (".", "./"):
+        return None
+    clean = name.removeprefix("./")
+    if clean.endswith("/"):
+        clean = clean[:-1]
+    return _normalize_tar_member(clean)
+
+
 def _extract_layer_regular_member(
     ltf: tarfile.TarFile,
     member: tarfile.TarInfo,
@@ -65,6 +76,7 @@ def _extract_layer_regular_member(
     sizes: dict[str, int],
     total_ref: list[int],
     allowed: set[str],
+    meta: dict[str, tuple[str, int, int, int]] | None = None,
 ) -> None:
     norm = _normalize_tar_member(member.name)
     if norm not in allowed or norm in found:
@@ -80,6 +92,8 @@ def _extract_layer_regular_member(
         raise HostObservationError("REFUSED", f"image_worker_truncated:{norm}")
     found[norm] = hashlib.sha256(raw).hexdigest()
     sizes[norm] = len(raw)
+    if meta is not None:
+        meta[norm] = ("reg", member.uid, member.gid, stat.S_IMODE(member.mode))
 
 
 def _validate_layer_member(
@@ -89,16 +103,18 @@ def _validate_layer_member(
     sizes: dict[str, int],
     total_ref: list[int],
     allowed: set[str],
+    meta: dict[str, tuple[str, int, int, int]] | None = None,
 ) -> None:
     if member.issym() or member.islnk() or member.isdev() or member.isfifo():
         raise HostObservationError("REFUSED", "image_layer_link_or_device_refused")
     if member.isdir():
-        if any(p.startswith(".wh.") or p == ".." for p in PurePosixPath(member.name).parts):
-            raise HostObservationError("REFUSED", "image_layer_unsafe_member")
+        norm = _normalize_dir_member(member.name)
+        if norm is not None and meta is not None:
+            meta[norm] = ("dir", member.uid, member.gid, stat.S_IMODE(member.mode))
         return
     if not member.isreg():
         raise HostObservationError("REFUSED", "image_layer_nonregular_member")
-    _extract_layer_regular_member(ltf, member, found, sizes, total_ref, allowed)
+    _extract_layer_regular_member(ltf, member, found, sizes, total_ref, allowed, meta)
 
 
 def _scan_layer_tar(
@@ -107,11 +123,12 @@ def _scan_layer_tar(
     sizes: dict[str, int],
     total_ref: list[int],
     allowed: set[str],
+    meta: dict[str, tuple[str, int, int, int]] | None = None,
 ) -> None:
     try:
         with tarfile.open(fileobj=io.BytesIO(layer_bytes), mode="r:*") as ltf:
             for member in ltf.getmembers():
-                _validate_layer_member(ltf, member, found, sizes, total_ref, allowed)
+                _validate_layer_member(ltf, member, found, sizes, total_ref, allowed, meta)
     except tarfile.TarError as exc:
         raise HostObservationError("UNKNOWN", "image_layer_tar_corrupt") from exc
 
@@ -120,6 +137,7 @@ def _extract_workers_from_save(
     raw_tar: bytes,
     expected_layers: int,
     allowed: set[str] | None = None,
+    meta: dict[str, tuple[str, int, int, int]] | None = None,
 ) -> tuple[dict[str, str], dict[str, int]]:
     allowed_set = set(DEFAULT_WORKER_BINARIES) if allowed is None else allowed
     found: dict[str, str] = {}
@@ -138,10 +156,34 @@ def _extract_workers_from_save(
                 lfile = tf.extractfile(layer_path)
                 if lfile is None:
                     raise HostObservationError("REFUSED", "image_layer_missing")
-                _scan_layer_tar(lfile.read(), found, sizes, total_ref, allowed_set)
+                _scan_layer_tar(lfile.read(), found, sizes, total_ref, allowed_set, meta)
     except (tarfile.TarError, UnicodeDecodeError, json.JSONDecodeError, KeyError) as exc:
         raise HostObservationError("UNKNOWN", "image_archive_parse_failed") from exc
     return found, sizes
+
+
+def _validate_extra_file(
+    path: str,
+    exp_size: int,
+    exp_sha: str,
+    found: dict[str, str],
+    sizes: dict[str, int],
+    meta: dict[str, tuple[str, int, int, int]],
+) -> str:
+    parts = path.split("/")
+    for idx in range(1, len(parts)):
+        parent = "/".join(parts[:idx])
+        entry = meta.get(parent)
+        if entry is None or entry[0] != "dir":
+            raise HostObservationError("REFUSED", f"image_extra_parent_missing:{parent}")
+        if entry[1] != 0 or entry[2] != 0 or entry[3] not in ALLOWED_EXTRA_DIR_MODES:
+            raise HostObservationError("REFUSED", f"image_extra_parent_unsafe:{parent}")
+    fentry = meta.get(path)
+    if fentry is None or fentry[0] != "reg" or fentry[1] != 0 or fentry[2] != 0 or fentry[3] != EXPECTED_EXTRA_FILE_MODE:
+        raise HostObservationError("REFUSED", f"image_extra_member_unsafe:{path}")
+    if sizes[path] != exp_size or found[path] != exp_sha:
+        raise HostObservationError("REFUSED", f"image_extra_member_mismatch:{path}")
+    return found[path]
 
 
 def extract_image_worker_digests(
@@ -163,16 +205,15 @@ def extract_image_worker_digests(
         raise HostObservationError("UNKNOWN", "docker_image_save_failed") from exc
     if save_proc.returncode != 0 or len(save_proc.stdout) > MAX_IMAGE_STREAM_BYTES:
         raise HostObservationError("REFUSED", "docker_image_save_rejected")
-    found, sizes = _extract_workers_from_save(save_proc.stdout, expected_layers, allowed)
+    meta: dict[str, tuple[str, int, int, int]] = {}
+    found, sizes = _extract_workers_from_save(save_proc.stdout, expected_layers, allowed, meta)
     if set(found) != allowed:
         raise HostObservationError("REFUSED", "image_workers_incomplete")
     workers = {name: found[name] for name in expected_files}
     result: dict = {"image_id": image_id, "os": "linux", "architecture": "arm64", "workers": workers}
     if expected_extra_files is not None:
-        extras: dict[str, str] = {}
-        for path, (exp_size, exp_sha) in expected_extra_files.items():
-            if sizes[path] != exp_size or found[path] != exp_sha:
-                raise HostObservationError("REFUSED", f"image_extra_member_mismatch:{path}")
-            extras[path] = found[path]
-        result["extras"] = extras
+        result["extras"] = {
+            path: _validate_extra_file(path, exp_size, exp_sha, found, sizes, meta)
+            for path, (exp_size, exp_sha) in expected_extra_files.items()
+        }
     return result

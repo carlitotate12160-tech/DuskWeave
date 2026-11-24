@@ -22,24 +22,37 @@ import (
 	"time"
 )
 
+func mustOK(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPinnedRootDigest(t *testing.T) {
 	if RootVersion != "duskweave-https-lab-root-v1" || RootPath != "/etc/duskweave/https-lab-root-v1.pem" || len(RootSHA) != 64 {
 		t.Fatal("unexpected root constants")
 	}
-	stored, err := os.ReadFile("../../fixtures/https-lab-root-v1.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool, err := LabPool(stored)
-	if err != nil || pool == nil {
-		t.Fatal("pinned root rejected")
-	}
+	stored, _ := readCAAndPool(t)
 	mutated := strings.Replace(string(stored), "A", "B", 1)
-	if _, err = LabPool([]byte(mutated)); err == nil {
+	if _, err := LabPool([]byte(mutated)); err == nil {
 		t.Fatal("mutated root accepted")
 	}
-	if _, err = LabPool(append(bytes.Clone(stored), '\n')); err == nil {
+	if _, err := LabPool(append(bytes.Clone(stored), '\n')); err == nil {
 		t.Fatal("root with extra byte accepted")
+	}
+}
+
+func TestImageBuiltRootCAReadAsWorkerUID(t *testing.T) {
+	if os.Getenv("DW_TEST_IMAGE_ROOT_CA") != "1" {
+		t.Skip("opt-in built-image CA read proof")
+	}
+	if uid, gid, euid, egid := os.Getuid(), os.Getgid(), os.Geteuid(), os.Getegid(); uid != 65532 || gid != 65532 || euid != 65532 || egid != 65532 {
+		t.Fatalf("unexpected worker ids uid=%d gid=%d euid=%d egid=%d", uid, gid, euid, egid)
+	}
+	pool, err := LoadLabPool()
+	if err != nil || pool == nil || pool.Equal(x509.NewCertPool()) {
+		t.Fatalf("LoadLabPool failed at %s: %v", RootPath, err)
 	}
 }
 
@@ -218,13 +231,12 @@ func TestCaptureRejectsInferenceProfileInCapabilityFieldF1(t *testing.T) {
 }
 
 func readCAAndPool(t *testing.T) ([]byte, *x509.CertPool) {
+	t.Helper()
 	stored, err := os.ReadFile("../../fixtures/https-lab-root-v1.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
+	mustOK(t, err)
 	pool, err := LabPool(stored)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || pool == nil {
+		t.Fatal("pinned root rejected")
 	}
 	return stored, pool
 }
@@ -236,22 +248,16 @@ func testLeafTLS(t *testing.T, nextProtos []string) (*x509.CertPool, *tls.Config
 	stored, pool := readCAAndPool(t)
 	block, _ := pem.Decode(stored)
 	caCert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	mustOK(t, err)
 	pub, leafPriv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	mustOK(t, err)
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: frame.LabHost}, DNSNames: []string{frame.LabHost},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, pub, caPriv)
-	if err != nil {
-		t.Fatal(err)
-	}
+	mustOK(t, err)
 	return pool, &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: leafPriv}}, NextProtos: nextProtos}
 }
 
@@ -281,9 +287,7 @@ func runCaptureAndExporterPair(t *testing.T, q frame.HttpsRequest, deps httpsDep
 	var res frame.SafeResult
 	for {
 		p, err := cr.Take(frame.Limit)
-		if err != nil {
-			t.Fatal(err)
-		}
+		mustOK(t, err)
 		cr.Count++
 		if kind, _ := frame.Field(p, "kind"); kind == "READY" {
 			var er, rdy frame.PhaseReady
@@ -310,12 +314,8 @@ func runCaptureAndExporterPair(t *testing.T, q frame.HttpsRequest, deps httpsDep
 		}
 		break
 	}
-	if err := <-capDone; err != nil {
-		t.Fatalf("capture error: %v", err)
-	}
-	if err := <-expDone; err != nil {
-		t.Fatalf("exporter error: %v", err)
-	}
+	mustOK(t, <-capDone)
+	mustOK(t, <-expDone)
 	return res
 }
 
