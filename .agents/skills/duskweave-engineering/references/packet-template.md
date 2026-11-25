@@ -17,7 +17,7 @@ PACKET: <exact identifier>
 WORKSPACE: <verified path>
 BRANCH: <actual delivery branch>
 BASE: <verified full commit>
-OUTCOME: <one coherent reviewable outcome and its offensive/MVP contribution>
+OUTCOME: <one first skeleton or vertical increment; observable proof, real entrypoint/consumer and offensive/MVP contribution>
 
 Execute the assigned packet directly. Do not return another architecture plan.
 
@@ -37,6 +37,9 @@ Execute the assigned packet directly. Do not return another architecture plan.
   feasible cohesive paths up front; preferred size is headroom, not a new cap.
 
 ## Decisions to Implement
+- Reused owners/mechanisms, minimum necessary changes, first complete path to prove,
+  and explicitly deferred work. Expose substantial platform prerequisites and resolve
+  their scope before assignment; retain controls required for the current effect.
 - Concrete architectural and implementation decisions captured by accepted PRDs/ADRs and packet.
 - Maintenance per QUALITY_BAR.md: one inspected/no-trigger line for routine changes; when triggered, four brief facts (mechanism/alternative/reason, estimated additions/removals by category, new responsibilities or none, retirement/replacement evidence or retained consumer). Reuse existing decisions; no separate artifact.
 - Fix the mechanism, consumer scope and permitted operational steps before handoff. Estimates do not authorize scope expansion; routine local choices remain with the executor.

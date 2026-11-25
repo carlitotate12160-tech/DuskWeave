@@ -41,8 +41,15 @@ Skills guide development, not runtime campaign-agent authority.
 
 Be a critical engineering peer: distinguish verified facts, inference and owner
 decisions; resolve material architecture before assigning implementation.
-Apply QUALITY_BAR's [packet-feasibility checks](../../QUALITY_BAR.md#packet-feasibility-and-early-feedback)
-to every runtime packet. Keep only task-specific ownership/file-map/check decisions
+Before issuing each runtime prompt, select a first walking skeleton or one thin
+vertical increment under QUALITY_BAR's
+[packet-feasibility checks](../../QUALITY_BAR.md#packet-feasibility-and-early-feedback).
+State the first observable proof, reused mechanisms, minimum necessary changes,
+completion and deferred work in the existing template. Expose substantial platform
+prerequisites and resolve material scope decisions before assignment. Require
+focused feedback on the first complete path before expanding scenarios; retain
+required effect controls and do not split by file count.
+Keep only task-specific ownership/file-map/check decisions
 in the [existing template](../../.agents/skills/duskweave-engineering/references/packet-template.md).
 Do not repeat permanent rules, add a new tracker or turn routine coding into a
 separate planning deliverable.

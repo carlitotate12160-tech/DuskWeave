@@ -66,8 +66,11 @@ isolated test doubles. Fixture success proves orchestration, not LLM cognition,
 live acquisition or a milestone seal. Keep that runnable regression in later slices.
 
 Measure slices by observable behavior and failure completeness. Target one
-cohesive PR for the first skeleton; file/diff LOC alone cannot force precursor
-PRs or helper fragmentation. Retain the enforced McCabe ratchet.
+cohesive PR for the first skeleton, then thin vertical increments over its existing
+owners. Apply QUALITY_BAR.md's packet-feasibility checks before issuing each runtime
+assignment and when material scope changes; expose platform prerequisites before
+coding. File/diff LOC alone cannot force precursor PRs or helper fragmentation.
+Retain the enforced McCabe ratchet.
 Prefer owner-local unit tests and integration tests through application contracts
 for internal logic. Do not expose private APIs or add public CLI commands only
 for testing. Keep a real-entrypoint test for operational commands such as m1-run;

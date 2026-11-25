@@ -15,7 +15,10 @@ authorized outcome. Historical packets do not establish current permission.
 3. Use duskweave-engineering for architecture and packet preparation,
    build-duskweave for assigned delivery, and duskweave-adversarial-review
    for a distinct review session.
-4. Start one conversation per bounded outcome; preserve a compact handoff.
+4. Before each new runtime assignment, apply PROJECT_INSTRUCTIONS' pre-prompt
+   skeleton/vertical-increment check using current repository authority. Reuse
+   unchanged sources within the session; reload after context loss.
+5. Start one conversation per bounded outcome; preserve a compact handoff.
 
 Project instructions guide behavior; they do not guarantee memory isolation or
 automatically update application settings. Treat recalled status as unverified.
