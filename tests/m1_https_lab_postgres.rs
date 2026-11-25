@@ -21,5 +21,7 @@ mod feedback;
 mod lineage;
 #[path = "m1_https_lab_postgres/recovery.rs"]
 mod recovery;
+#[path = "m1_https_lab_postgres/stop_ordering.rs"]
+mod stop_ordering;
 #[path = "m1_https_lab_postgres/upgrade.rs"]
 mod upgrade;

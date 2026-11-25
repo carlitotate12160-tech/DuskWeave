@@ -1,12 +1,8 @@
 #![cfg(test)]
-//! Unprivileged unit, Docker/proc seam, monotonic-clock, and outcome regressions for active-HEAD fault evidence.
+//! Unprivileged unit, Docker/proc seam, and monotonic-clock regressions for active-HEAD fault evidence.
 
-use super::active_effect::{
-    ExpectedFaultOutcome, validate_post_fault_state, validate_post_recover_sql,
-    validate_recovery_receipts,
-};
 use super::active_effect_evidence::{
-    ActiveHeadBinding, ActiveWindowObservation, DisposalEvidence, EXPECTED_PRE_FAULT_SDK_CALLS,
+    ActiveWindowObservation, DisposalEvidence, EXPECTED_PRE_FAULT_SDK_CALLS,
     LauncherSessionEvidence, LauncherSessionMeta, MIN_INJECTION_MARGIN_MS,
     ResponderCounterEvidence, SqlActiveState, WORKER_OWNER_LABEL, WorkerIdentity,
     WorkerPairBaseline, WorkerRole, arm_fault_window, execute_armed_fault,
@@ -22,7 +18,6 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-const UNK: ExpectedFaultOutcome = ExpectedFaultOutcome::ControlRootLossUnknown;
 type Mut<T> = fn(&mut T);
 
 fn sample_workers(attempt: Uuid) -> WorkerPairBaseline {
@@ -41,7 +36,7 @@ fn sample_workers(attempt: Uuid) -> WorkerPairBaseline {
     }
 }
 
-fn sample_sql(run_id: Uuid, attempt: Uuid) -> SqlActiveState {
+pub(super) fn sample_sql(run_id: Uuid, attempt: Uuid) -> SqlActiveState {
     SqlActiveState {
         run_id,
         run_status: "running".into(),
@@ -92,7 +87,7 @@ fn sample_obs(run_id: Uuid, attempt: Uuid) -> ActiveWindowObservation {
     }
 }
 
-fn sample_snapshot(run_id: Uuid, attempt: Uuid, status: &str, step3: &str) -> Value {
+pub(super) fn sample_snapshot(run_id: Uuid, attempt: Uuid, status: &str, step3: &str) -> Value {
     json!({
         "control": { "run_id": run_id, "status": status },
         "steps": [
@@ -109,14 +104,6 @@ fn sample_snapshot(run_id: Uuid, attempt: Uuid, status: &str, step3: &str) -> Va
             { "attempt": attempt, "generation": 2, "phase": "may_start", "occurred_at_ms": 101 },
             { "attempt": attempt, "generation": 2, "phase": "phase_head", "occurred_at_ms": 102 }
         ]
-    })
-}
-
-fn sample_receipt(run_id: Uuid, status: &str) -> Value {
-    json!({
-        "run_id": run_id, "status": status, "live_qualified": true, "decision_count": 2,
-        "dns_effect_count": 1, "head_effect_count": 0, "decision_history_count": 2,
-        "terrain_history_count": 1, "release_sha256": "a".repeat(64)
     })
 }
 
@@ -400,94 +387,4 @@ fn disposal_probes_detect_orphan_id_cgroup_pid_and_unreadable_proc_errors() {
     let found = inspect_attempt_containers_with(&mut ps_runner, attempt, &baseline, &mut ps_errs);
     assert!(ps_errs.is_empty() && found.len() == 1);
     let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn post_fault_and_recovery_validators_enforce_unknown_vs_stopped_without_replay() {
-    let (run_id, attempt) = (Uuid::new_v4(), Uuid::new_v4());
-    let b = ActiveHeadBinding {
-        run_id,
-        step_index: 2,
-        attempt_id: attempt,
-        session_generation: 2,
-    };
-    let mut sql_unk = sample_sql(run_id, attempt);
-    (sql_unk.run_status, sql_unk.step_status) = ("unknown".into(), "unknown".into());
-    let snap_unk = sample_snapshot(run_id, attempt, "unknown", "pending");
-    assert!(validate_post_fault_state(UNK, &b, &sql_unk, &snap_unk, 2).is_ok());
-
-    let r_unk = sample_receipt(run_id, "unknown");
-    assert!(validate_recovery_receipts(UNK, run_id, &r_unk, &r_unk, &r_unk).is_ok());
-    assert!(validate_post_recover_sql(UNK, &b, &sql_unk, &sql_unk).is_ok());
-
-    let mut sql_stop = sample_sql(run_id, attempt);
-    (sql_stop.run_status, sql_stop.step_status) = ("stopped".into(), "stopped".into());
-    let snap_stop = sample_snapshot(run_id, attempt, "stopped", "stopped");
-    assert!(
-        validate_post_fault_state(ExpectedFaultOutcome::Stopped, &b, &sql_stop, &snap_stop, 2)
-            .is_ok()
-    );
-    assert!(validate_post_fault_state(UNK, &b, &sql_stop, &snap_stop, 2).is_err());
-
-    let cases: [(&str, Mut<SqlActiveState>, Mut<Value>); 5] = [
-        (
-            "completed_retained",
-            |s| {
-                s.run_status = "retained".into();
-                s.step_status = "completed".into();
-            },
-            |v| {
-                v["control"]["status"] = json!("retained");
-                v["steps"][1]["status"] = json!("completed");
-            },
-        ),
-        (
-            "timeout_result",
-            |s| s.head_result_present = true,
-            |v| {
-                v["steps"][1]["head_result_id"] = json!(Uuid::new_v4());
-                v["steps"][1]["head_outcome"] = json!("timed_out");
-            },
-        ),
-        (
-            "result_recorded",
-            |s| s.has_result_recorded_event = true,
-            |v| {
-                let att = v["sessions"][0]["attempt"].clone();
-                v["events"]
-                    .as_array_mut()
-                    .unwrap()
-                    .push(json!({"attempt": att, "phase": "result_recorded"}));
-            },
-        ),
-        (
-            "substituted_attempt",
-            |s| s.head_attempt_id = Some(Uuid::new_v4()),
-            |v| v["steps"][1]["head_attempt_id"] = json!(Uuid::new_v4()),
-        ),
-        (
-            "d3_executed",
-            |s| s.d3_executed = true,
-            |v| v["steps"][2]["status"] = json!("decision_running"),
-        ),
-    ];
-    for (name, ms, mv) in cases {
-        let (mut s, mut v) = (sql_unk.clone(), snap_unk.clone());
-        ms(&mut s);
-        mv(&mut v);
-        assert!(
-            validate_post_fault_state(UNK, &b, &s, &snap_unk, 2).is_err(),
-            "{name} sql"
-        );
-        assert!(
-            validate_post_fault_state(UNK, &b, &sql_unk, &v, 2).is_err(),
-            "{name} snap"
-        );
-    }
-    let mut r_bad = r_unk.clone();
-    r_bad["head_effect_count"] = json!(1);
-    assert!(validate_recovery_receipts(UNK, run_id, &r_unk, &r_unk, &r_bad).is_err());
-    let mut sql_fake = sql_unk.clone();
-    sql_fake.disposal_confirmed = true;
-    assert!(validate_post_recover_sql(UNK, &b, &sql_unk, &sql_fake).is_err());
 }

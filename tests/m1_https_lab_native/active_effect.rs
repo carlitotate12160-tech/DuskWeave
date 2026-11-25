@@ -24,6 +24,7 @@ use serde_json::Value;
 use serde_json::json;
 #[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
+#[cfg(target_os = "linux")]
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +50,19 @@ impl ExpectedFaultOutcome {
         };
         status == wanted
     }
+}
+
+fn valid_no_result_head_outcome(v: &Value) -> bool {
+    v.is_null() || v.as_str() == Some("unknown")
+}
+
+fn step_by_index(v: &Value, idx: i64) -> Result<&Value, String> {
+    v["steps"]
+        .as_array()
+        .ok_or("snapshot missing steps")?
+        .iter()
+        .find(|s| s["step_index"].as_i64() == Some(idx))
+        .ok_or_else(|| format!("missing step {idx}"))
 }
 
 fn validate_sql_after_fault(
@@ -117,7 +131,8 @@ pub(super) fn validate_post_fault_state(
         .filter_map(|e| e["phase"].as_str())
         .collect();
     let s2_ok = s2["status"].as_str() == Some(st) && s2["head_attempt_id"].as_str() == Some(&att);
-    let s2_empty = s2["head_result_id"].is_null() && s2["head_outcome"].is_null();
+    let s2_empty =
+        s2["head_result_id"].is_null() && valid_no_result_head_outcome(&s2["head_outcome"]);
     let sess_ok = sess["step_index"].as_i64() == Some(2)
         && sess["attempt_kind"].as_str() == Some("head")
         && sess["generation"].as_u64() == Some(binding.session_generation)
@@ -136,26 +151,58 @@ pub(super) fn validate_post_fault_state(
     ])
 }
 
+fn validate_receipt_projection(
+    expected: ExpectedFaultOutcome,
+    binding: &ActiveHeadBinding,
+    snap_s2: &Value,
+    v: &Value,
+) -> Result<(), String> {
+    let st = expected.expected_status();
+    let r = binding.run_id.to_string();
+    let att = binding.attempt_id.to_string();
+    let s2 = step_by_index(v, 2)?;
+    let s3_ok = v["steps"]
+        .as_array()
+        .and_then(|arr| arr.iter().find(|s| s["step_index"].as_i64() == Some(3)))
+        .is_none_or(|s| {
+            s["status"]
+                .as_str()
+                .is_some_and(|w| expected.allowed_step3_status(w))
+        });
+    let step2_ok = s2["status"].as_str() == Some(st)
+        && s2["head_attempt_id"].as_str() == Some(&att)
+        && s2["head_result_id"].is_null()
+        && valid_no_result_head_outcome(&s2["head_outcome"])
+        && s2["head_outcome"] == snap_s2["head_outcome"]
+        && s2["disposition"] == snap_s2["disposition"];
+    let counts_ok = v["run_id"].as_str() == Some(&r)
+        && v["status"].as_str() == Some(st)
+        && v["decision_count"].as_u64() == Some(2)
+        && v["dns_effect_count"].as_u64() == Some(1)
+        && v["head_effect_count"].as_u64() == Some(0);
+    check_all(&[(
+        counts_ok && step2_ok && s3_ok,
+        "recovery receipt fields mismatch",
+    )])
+}
+
 pub(super) fn validate_recovery_receipts(
     expected: ExpectedFaultOutcome,
-    run_id: Uuid,
+    binding: &ActiveHeadBinding,
+    post_fault_snap: &Value,
     insp: &Value,
     rec1: &Value,
     rec2: &Value,
 ) -> Result<(), String> {
-    let st = expected.expected_status();
-    let r = run_id.to_string();
-    let ok = |v: &Value| {
-        v["run_id"].as_str() == Some(&r)
-            && v["status"].as_str() == Some(st)
-            && v["decision_count"].as_u64() == Some(2)
-            && v["dns_effect_count"].as_u64() == Some(1)
-            && v["head_effect_count"].as_u64() == Some(0)
-    };
-    check_all(&[
-        (rec1 == rec2, "m1-run-recover not idempotent"),
-        (ok(insp) && ok(rec1), "recovery receipt fields mismatch"),
-    ])
+    let snap_s2 = step_by_index(post_fault_snap, 2)?;
+    check_all(&[(
+        valid_no_result_head_outcome(&snap_s2["head_outcome"]),
+        "unexpected post-fault head_outcome",
+    )])?;
+    validate_receipt_projection(expected, binding, snap_s2, insp)?;
+    validate_receipt_projection(expected, binding, snap_s2, rec1)?;
+    validate_receipt_projection(expected, binding, snap_s2, rec2)?;
+    check_all(&[(rec1 == rec2, "m1-run-recover not idempotent")])
 }
 
 pub(super) fn validate_post_recover_sql(
@@ -218,9 +265,12 @@ fn run_fresh_cli_recovery(
     check_all(&[(rec2.status.success(), "m1-run-recover #2 failed")])?;
     zero_replay(host, "post_recover_2")?;
 
-    let insp_san = sanitize_inspect_receipt(&NativeHost::receipt(&insp)).map_err(str::to_string)?;
-    let rec1_san = sanitize_inspect_receipt(&NativeHost::receipt(&rec1)).map_err(str::to_string)?;
-    let rec2_san = sanitize_inspect_receipt(&NativeHost::receipt(&rec2)).map_err(str::to_string)?;
+    let insp_raw = NativeHost::receipt(&insp);
+    let rec1_raw = NativeHost::receipt(&rec1);
+    let rec2_raw = NativeHost::receipt(&rec2);
+    let insp_san = sanitize_inspect_receipt(&insp_raw).map_err(str::to_string)?;
+    let rec1_san = sanitize_inspect_receipt(&rec1_raw).map_err(str::to_string)?;
+    let rec2_san = sanitize_inspect_receipt(&rec2_raw).map_err(str::to_string)?;
     let insp_stdout = String::from_utf8_lossy(&insp.stdout);
     if insp_stdout.contains("://")
         || insp_stdout.contains("password=")
@@ -237,7 +287,7 @@ fn run_fresh_cli_recovery(
             "recover_1_sanitized": rec1_san, "recover_2_sanitized": rec2_san,
         }),
     );
-    Ok((insp_san, rec1_san, rec2_san))
+    Ok((insp_raw, rec1_raw, rec2_raw))
 }
 
 #[cfg(target_os = "linux")]
@@ -315,9 +365,17 @@ where
         EXPECTED_PRE_FAULT_SDK_CALLS,
         extra,
     )?;
-    validate_recovery_receipts(expected, run_id, &insp, &rec1, &rec2)?;
+    validate_recovery_receipts(expected, &binding, &after_snapshot, &insp, &rec1, &rec2)?;
     let post_recover =
         read_sql_active_state(&mut host.admin, run_id)?.ok_or("step 2 missing after recover")?;
+    let post_recover_snap = host.sql_snapshot(run_id)?;
+    let before_s2 = step_by_index(&after_snapshot, 2)?;
+    let after_s2 = step_by_index(&post_recover_snap, 2)?;
+    check_all(&[(
+        after_s2["head_outcome"] == before_s2["head_outcome"]
+            && after_s2["disposition"] == before_s2["disposition"],
+        "recover mutated step 2 uncertainty/disposition",
+    )])?;
     validate_post_recover_sql(expected, &binding, &after_sql, &post_recover)
 }
 

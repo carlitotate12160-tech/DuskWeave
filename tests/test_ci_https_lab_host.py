@@ -146,6 +146,7 @@ class HttpsLabHostAndShellTests(unittest.TestCase):
                 https_lab_host.observe_installed_root_pem(pem, expected_uids=(uid,), stop_at=base)
 
         specs = https_lab_host.extract_0038_function_specs(ROOT / "migrations" / "0038_https_lab.sql")
+        self.assertEqual(len(https_lab_host.REQUIRED_0038_FUNCTIONS), 23)
         self.assertEqual(set(specs.keys()), set(https_lab_host.REQUIRED_0038_FUNCTIONS))
         self.assertIn("execution.assert_current_pack_terrain", https_lab_host.REQUIRED_0038_FUNCTIONS)
         invoker_fns = {"execution.inference_profile_matches", "execution.assert_successor_pack"}
@@ -153,12 +154,25 @@ class HttpsLabHostAndShellTests(unittest.TestCase):
             self.assertEqual(spec["security_definer"], name not in invoker_fns, name)
             self.assertEqual(spec["search_path"], "search_path=pg_catalog, pg_temp", name)
         sql_0037 = (ROOT / "migrations" / "0037_https_loop.sql").read_text(encoding="utf-8").replace("\r\n", "\n")
-        m_0037 = https_lab_host.LAB_FN_DEF_RE.search(sql_0037[sql_0037.index("CREATE OR REPLACE FUNCTION execution.assert_current_pack_terrain"):])
-        self.assertIsNotNone(m_0037)
-        self.assertNotEqual(
-            specs["execution.assert_current_pack_terrain"]["prosrc_sha256"],
-            hashlib.sha256(m_0037.group(6).encode("utf-8")).hexdigest(),
-        )
+        for fn in (
+            "execution.assert_current_pack_terrain",
+            "execution.run_unknown",
+            "execution.run_stop",
+            "execution.mark_https_loop_effect_unknown",
+        ):
+            m_0037 = https_lab_host.LAB_FN_DEF_RE.search(sql_0037[sql_0037.index(f"CREATE OR REPLACE FUNCTION {fn}"):])
+            self.assertIsNotNone(m_0037, fn)
+            self.assertNotEqual(specs[fn]["prosrc_sha256"], hashlib.sha256(m_0037.group(6).encode("utf-8")).hexdigest(), fn)
+
+        rows = [
+            f"{fn}|{s['args']}|{s['language']}|{'true' if s['security_definer'] else 'false'}|{s['search_path']}|{s['prosrc_sha256']}"
+            for fn, s in sorted(specs.items())
+        ]
+        self.assertEqual(len(https_lab_host._verify_0038_functions("c", "d", specs, lambda *_a: "\n".join(rows))), 23)
+        for fn in ("execution.run_unknown", "execution.run_stop", "execution.mark_https_loop_effect_unknown"):
+            bad_rows = [r.replace(specs[fn]["prosrc_sha256"], "0" * 64) if r.startswith(f"{fn}|") else r for r in rows]
+            with self.assertRaisesRegex(https_lab_host.PostgresError, f"^schema_0038_body_or_attr_mismatch:{fn}$"):
+                https_lab_host._verify_0038_functions("c", "d", specs, lambda *_a: "\n".join(bad_rows))
 
     def test_https_lab_sh_is_sourceable_and_refuses_off_host_privileged_subcommands(self) -> None:
         clean_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/tmp"}

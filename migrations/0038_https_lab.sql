@@ -1563,7 +1563,7 @@ END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_unknown(r uuid, wanted text) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE x execution.autonomous_runs;
+DECLARE x execution.autonomous_runs; ac_status text;
 BEGIN
     IF execution.run_record(r) IS NULL THEN RAISE EXCEPTION 'run_identity_unavailable'; END IF;
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
@@ -1582,7 +1582,13 @@ BEGIN
     END IF;
     INSERT INTO execution.autonomous_phases VALUES (r, wanted, 'unknown', floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint) ON CONFLICT DO NOTHING;
     UPDATE execution.autonomous_control SET status = 'unknown', lease_until_ms = 0 WHERE run_id = r AND status = 'running';
-    UPDATE execution.https_loop_steps SET status = 'unknown' WHERE run_id = r AND (decision_phase = wanted OR acquisition_phase = wanted) AND status NOT IN ('completed', 'terminal');
+    SELECT status INTO ac_status FROM execution.autonomous_control WHERE run_id = r;
+    IF ac_status = 'unknown' THEN
+        UPDATE execution.https_loop_steps
+        SET status = 'unknown', updated_at_ms = floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+        WHERE run_id = r AND (decision_phase = wanted OR acquisition_phase = wanted)
+          AND status NOT IN ('completed', 'terminal', 'stopped');
+    END IF;
     IF x.request->>'execution_mode' = 'controlled_fixture' THEN
         IF x.request->>'version' = 'm1_https_loop_v1' THEN PERFORM execution.close_https_loop_effect_session(r, 'unknown');
         ELSE PERFORM execution.close_fixture_session(r, 'unknown'); END IF;
@@ -1593,15 +1599,24 @@ END $$;
 
 CREATE OR REPLACE FUNCTION execution.run_stop(r uuid) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE x execution.autonomous_runs;
+DECLARE x execution.autonomous_runs; ac_status text;
 BEGIN
     IF execution.run_record(r) IS NULL THEN RAISE EXCEPTION 'run_identity_unavailable'; END IF;
     SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
     PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text || ':' || x.c::text, 0));
     PERFORM execution.private_live_control_scope(r, 'stop_run');
     UPDATE execution.session_fences SET epoch = epoch + 1 WHERE engagement_id = x.e AND campaign_id = x.c;
-    UPDATE execution.autonomous_control SET status = 'stopped', lease_until_ms = 0 WHERE run_id = r AND status = 'running';
-    UPDATE execution.https_loop_steps SET status = 'stopped' WHERE run_id = r AND status IN ('pending', 'decision_running', 'acquisition_pending', 'acquisition_running');
+    UPDATE execution.autonomous_control
+    SET status = 'stopped', lease_until_ms = 0
+    WHERE run_id = r
+      AND (status = 'running' OR (x.request->>'version' = 'm1_https_loop_v1' AND status = 'unknown'));
+    SELECT status INTO ac_status FROM execution.autonomous_control WHERE run_id = r;
+    IF x.request->>'version' = 'm1_https_loop_v1' AND ac_status = 'stopped' THEN
+        UPDATE execution.https_loop_steps
+        SET status = 'stopped', updated_at_ms = floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+        WHERE run_id = r
+          AND status IN ('pending', 'decision_running', 'decision_completed', 'acquisition_pending', 'acquisition_running', 'unknown');
+    END IF;
     IF x.request->>'execution_mode' = 'controlled_fixture' THEN
         IF x.request->>'version' = 'm1_https_loop_v1' THEN PERFORM execution.close_https_loop_effect_session(r, 'stopped');
         ELSE PERFORM execution.close_fixture_session(r, 'stopped'); END IF;
@@ -4003,5 +4018,59 @@ BEGIN
     END LOOP;
 END $$;
 REVOKE ALL ON FUNCTION execution.assert_current_pack_terrain(uuid, uuid, uuid, jsonb) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION execution.mark_https_loop_effect_unknown(r uuid, idx integer, effect_kind text, reason text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_variable
+DECLARE
+    x execution.autonomous_runs;
+    ac execution.autonomous_control;
+    st execution.https_loop_steps;
+    actor oid;
+    next_status text;
+    next_refresh_outcome text;
+    next_head_outcome text;
+BEGIN
+    IF NOT pg_has_role(session_user, 'dw_m1_broker', 'MEMBER') OR idx NOT BETWEEN 1 AND 3 THEN
+        RAISE EXCEPTION 'run_terminal_unknown';
+    END IF;
+    SELECT * INTO x FROM execution.autonomous_runs WHERE run_id = r;
+    SELECT oid INTO actor FROM pg_catalog.pg_roles WHERE rolname = session_user;
+    IF NOT FOUND OR x.writer_oid <> actor OR x.request->>'version' IS DISTINCT FROM 'm1_https_loop_v1' THEN
+        RAISE EXCEPTION 'run_terminal_unknown';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(x.e::text || ':' || x.c::text, 0));
+    SELECT * INTO ac FROM execution.autonomous_control WHERE run_id = r FOR UPDATE;
+    SELECT * INTO st FROM execution.https_loop_steps s1 WHERE s1.run_id = r AND s1.step_index = idx FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'run_terminal_unknown'; END IF;
+    IF st.status IN ('completed', 'terminal')
+       OR (ac.status IS NOT NULL AND ac.status NOT IN ('running', 'unknown', 'stopped')) THEN
+        RETURN;
+    END IF;
+    next_status := CASE WHEN st.status = 'stopped' OR ac.status = 'stopped' THEN 'stopped' ELSE 'unknown' END;
+    next_refresh_outcome := CASE
+        WHEN effect_kind = 'refresh' AND st.refresh_result_id IS NULL THEN coalesce(st.refresh_outcome, reason)
+        ELSE st.refresh_outcome
+    END;
+    next_head_outcome := CASE
+        WHEN st.head_result_id IS NOT NULL THEN st.head_outcome
+        WHEN effect_kind = 'refresh' THEN CASE
+            WHEN st.refresh_result_id IS NULL THEN coalesce(st.head_outcome, 'unknown_refresh')
+            ELSE st.head_outcome
+        END
+        WHEN effect_kind IN ('dns', 'initial') AND st.dns_result_id IS NOT NULL THEN st.head_outcome
+        ELSE coalesce(st.head_outcome, 'unknown')
+    END;
+    UPDATE execution.https_loop_steps
+    SET status = next_status,
+        refresh_outcome = next_refresh_outcome,
+        head_outcome = next_head_outcome,
+        disposition = coalesce(st.disposition, reason),
+        protection_state = CASE WHEN protection_state = 'protected' THEN 'unknown' ELSE protection_state END,
+        updated_at_ms = floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+    WHERE run_id = r AND step_index = idx;
+END $$;
+REVOKE ALL ON FUNCTION execution.mark_https_loop_effect_unknown(uuid, integer, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION execution.mark_https_loop_effect_unknown(uuid, integer, text, text) TO dw_m1_broker;
 
 COMMIT;
