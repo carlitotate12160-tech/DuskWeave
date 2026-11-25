@@ -9,7 +9,8 @@ import re
 import sys
 
 PROTECTED = (
-    'mission.rs', 'm1_permission.rs', 'm1_policy.rs', 'm1_session.rs',
+    'mission.rs', 'planning.rs', 'registration.rs', 'withdrawal.rs', 'trajectory.rs',
+    'm1_permission.rs', 'm1_policy.rs', 'm1_session.rs',
     'm1_inference_permission.rs', 'm1_inference_budget.rs', 'm1_context.rs',
     'm1_context_input.rs', 'm1_context_capacity.rs', 'm1_autonomous_context.rs',
     'm1_terrain.rs', 'm1_terrain_input.rs', 'm1_terrain_view.rs', 'm1_terrain_issued.rs',
@@ -18,7 +19,8 @@ PROTECTED = (
     'm1_reasoning/bounded_json.rs', 'm1_reasoning/response.rs', 'm1_reasoning/inference_intent.rs',
     'm1_dns.rs', 'm1_https.rs', 'm1_https_terrain.rs', 'm1_effect_session.rs', 'm1_inference_profile.rs',
 )
-PROTECTED_OWNERS = ('m1_dns/', 'm1_run/', 'm1_context/', 'm1_https/',
+PROTECTED_OWNERS = ('planning/', 'registration/', 'withdrawal/', 'trajectory/',
+                    'm1_dns/', 'm1_run/', 'm1_context/', 'm1_https/',
                     'm1_inference_permission/', 'm1_reasoning/inference_intent/',
                     'm1_terrain_input/', 'm1_terrain_view/')
 
@@ -27,7 +29,7 @@ def protected(name):
     return name in PROTECTED or name.startswith(PROTECTED_OWNERS)
 
 
-TOKEN = re.compile(r'//[^\n]*|/\*|r(\#*)"|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'|[a-zA-Z_][a-zA-Z_0-9]*|::|[{};,*]', re.S)
+TOKEN = re.compile(r'//[^\n]*|/\*|(?:b|c)?r(#*)"|(?:b|c)?"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'|[a-zA-Z_][a-zA-Z_0-9]*|::|[{};,*]', re.S)
 IDENT = re.compile(r'^[a-zA-Z_][a-zA-Z_0-9]*$')
 
 
@@ -43,12 +45,12 @@ def tokens(source):
                     raise ValueError('unclosed Rust comment')
                 depth += 1 if nested[0] == '/*' else -1
                 pos += nested.end()
-        elif token.startswith('r') and token.endswith('"'):
+        elif match[1] is not None:
             end = source.find('"' + match[1], pos)
             if end < 0:
                 raise ValueError('unclosed Rust raw string')
             pos = end + 1 + len(match[1])
-        elif not token.startswith(('//', '"', "'")):
+        elif not (token.startswith(('//', "'")) or token.endswith('"')):
             result.append(token)
     return result
 
