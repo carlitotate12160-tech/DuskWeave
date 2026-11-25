@@ -44,8 +44,21 @@ MARKER_RIGHT = re.compile(r"^>{7}")
 MARKER_MID = re.compile(r"^={7}\s*$")
 UNWRAP_RE = re.compile(r"\.(?:unwrap|expect)\s*\(")
 UNSAFE_RE = re.compile(r"\bunsafe\b")
-RUST_TEST_BOUNDARY = re.compile(r"^\s*#\[\s*cfg\s*\(\s*test\s*\)\s*\]", re.M)
 RUST_COMMENT = re.compile(r"^\s*//")
+RUST_TOKEN = re.compile(
+    r"//[^\r\n]*|/\*|(?:b|c)?r(#*)\"|(?:b|c)?\"(?:\\.|[^\"\\])*\"|"
+    r"b?'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)|[^'\\\r\n])'|"
+    r"'(?:r#)?[A-Za-z_][A-Za-z0-9_]*|(?:b|c)?\"|b?'|"
+    r"(?:r#)?[A-Za-z_][A-Za-z0-9_]*|->|=>|::|[#\[\](){};!<>,=:]",
+    re.S,
+)
+DELIM_PAIRS = {"(": ")", "[": "]", "{": "}"}
+BLOCK_ITEMS = {"mod", "struct", "enum", "union", "trait", "impl", "fn", "while", "for", "loop", "match", "extern", "{"}
+SEMI_ITEMS = {"use", "type", "static", "const", "let"}
+
+
+class _HygieneError(Exception):
+    pass
 
 
 def iter_files(root):
@@ -108,19 +121,162 @@ def check_conflict_markers(rel, lines):
     return hits
 
 
-def check_rust_hygiene(rel, text):
-    segments = rel.split("/")[:-1]
-    if any(s in RUST_TEST_PATH_SEGMENTS for s in segments):
-        return []
-    boundary = RUST_TEST_BOUNDARY.search(text)
-    production = text[: boundary.start()] if boundary else text
-    hits = []
-    for i, line in enumerate(production.split("\n"), 1):
-        if RUST_COMMENT.match(line):
+def _lex_rust(text):
+    tokens, pos, n = [], 0, len(text)
+    while match := RUST_TOKEN.search(text, pos):
+        tok, start, pos = match[0], match.start(), match.end()
+        if tok.startswith("//"):
             continue
-        if UNWRAP_RE.search(line):
+        if tok == "/*":
+            depth = 1
+            while depth and (nxt := re.search(r"/\*|\*/", text[pos:])):
+                depth, pos = depth + (1 if nxt[0] == "/*" else -1), pos + nxt.end()
+            if depth:
+                raise _HygieneError(start, "unterminated block comment")
+        elif match[1] is not None:
+            if (end := text.find('"' + match[1], pos)) < 0:
+                raise _HygieneError(start, "unterminated raw string literal")
+            pos = end + 1 + len(match[1])
+            tokens.append(("lit", text[start:pos], start, pos))
+        elif tok in ('"', 'b"', 'c"', "'", "b'") or (tok.startswith("'") and not tok.endswith("'") and pos < n and text[pos] == "'"):
+            raise _HygieneError(start, f"unterminated {'string' if '\"' in tok else 'character'} literal")
+        else:
+            kind = "lit" if tok.endswith(('"', "'")) else "lifetime" if tok.startswith("'") else "ident" if tok[0].isalpha() or tok[0] == "_" else "punct"
+            tokens.append((kind, tok, start, pos))
+    return tokens
+
+
+def _skip_balanced(tokens, idx, message):
+    stack, start, i, n = [DELIM_PAIRS[tokens[idx][1]]], tokens[idx][2], idx + 1, len(tokens)
+    while i < n and stack:
+        t, s = tokens[i][1], tokens[i][2]
+        if t in DELIM_PAIRS:
+            stack.append(DELIM_PAIRS[t])
+        elif t in (")", "]", "}") and t != stack.pop():
+            raise _HygieneError(s, message)
+        i += 1
+    if stack:
+        raise _HygieneError(start, message)
+    return i
+
+
+def _scan_to(tokens, k, stops, allow_angles, attr_start, label):
+    angle, n = 0, len(tokens)
+    while k < n:
+        t, s = tokens[k][1], tokens[k][2]
+        if angle == 0 and t in stops:
+            return k
+        if t in DELIM_PAIRS:
+            k = _skip_balanced(tokens, k, f"unmatched '{t}' in #[cfg(test)] {label}")
+        elif allow_angles and t in ("<", ">") and (t == "<" or angle):
+            angle, k = angle + (1 if t == "<" else -1), k + 1
+        elif t in (")", "]", "}") or (t == ";" and ";" not in stops):
+            raise _HygieneError(s, f"malformed #[cfg(test)] {label} item")
+        else:
+            k += 1
+    raise _HygieneError(attr_start, f"unterminated #[cfg(test)] {label} item")
+
+
+def _skip_item_prefix(tokens, k):
+    n = len(tokens)
+    while k < n and tokens[k][1] == "#":
+        if k + 1 >= n or tokens[k + 1][1] != "[":
+            raise _HygieneError(tokens[k][2], "malformed attribute after #[cfg(test)]")
+        k = _skip_balanced(tokens, k + 1, "unterminated attribute after #[cfg(test)]")
+    if k < n and tokens[k][1] == "pub":
+        k = _skip_balanced(tokens, k + 1, "unmatched '(' in visibility") if k + 1 < n and tokens[k + 1][1] == "(" else k + 1
+    while k < n and (tokens[k][1] in ("async", "unsafe", "default") or (tokens[k][1] == "const" and k + 1 < n and tokens[k + 1][1] in ("fn", "unsafe", "extern"))):
+        k += 1
+    if k < n and tokens[k][1] == "extern":
+        j = k + 2 if k + 1 < n and tokens[k + 1][0] == "lit" else k + 1
+        return j if j < n and tokens[j][1] == "fn" else k
+    return k
+
+
+def _consume_macro_item(tokens, k, attr_start):
+    n, m = len(tokens), k + 1
+    while m + 1 < n and tokens[m][1] == "::" and tokens[m + 1][0] == "ident":
+        m += 2
+    if m >= n or tokens[m][1] != "!":
+        return None
+    m += 2 if tokens[k][1] == "macro_rules" and m + 1 < n and tokens[m + 1][0] == "ident" else 1
+    if m >= n or tokens[m][1] not in DELIM_PAIRS:
+        raise _HygieneError(attr_start, "malformed #[cfg(test)] macro item")
+    open_ch = tokens[m][1]
+    m = _skip_balanced(tokens, m, f"unmatched '{open_ch}' in #[cfg(test)] macro")
+    if open_ch == "{" or (m < n and tokens[m][1] in ("}", ";")):
+        return m + (1 if m < n and tokens[m][1] == ";" and open_ch != "{" else 0)
+    raise _HygieneError(attr_start, "missing ';' after #[cfg(test)] macro invocation")
+
+
+def _consume_cfg_test_item(tokens, idx):
+    attr_start, n = tokens[idx][2], len(tokens)
+    k = _skip_item_prefix(tokens, idx + 7)
+    if k >= n or tokens[k][1] in (")", "]", "}"):
+        raise _HygieneError(attr_start, "orphaned #[cfg(test)] attribute")
+    t = tokens[k][1]
+    if t in SEMI_ITEMS or (t == "extern" and k + 1 < n and tokens[k + 1][1] == "crate"):
+        return _scan_to(tokens, k + (2 if t == "extern" else 1), {";"}, False, attr_start, t) + 1
+    if t in BLOCK_ITEMS:
+        if t in ("fn", "mod") and (k + 1 >= n or tokens[k + 1][0] != "ident"):
+            raise _HygieneError(attr_start, f"malformed #[cfg(test)] {t} item")
+        if t == "mod" and (k + 2 >= n or tokens[k + 2][1] not in (";", "{")):
+            raise _HygieneError(attr_start, "malformed #[cfg(test)] mod boundary")
+        end = _scan_to(tokens, k if t == "{" else k + 1, {"{", ";"} if t in ("mod", "struct", "fn") else {"{"}, t in ("struct", "enum", "union", "trait", "impl", "fn"), attr_start, t)
+        return end + 1 if tokens[end][1] == ";" else _skip_balanced(tokens, end, f"unmatched '{{' in #[cfg(test)] {t}")
+    if t == "if":
+        while True:
+            k = _skip_balanced(tokens, _scan_to(tokens, k + 1, {"{"}, False, attr_start, "if"), "unmatched '{' in #[cfg(test)] if")
+            if k >= n or tokens[k][1] != "else":
+                return k
+            if k + 1 < n and tokens[k + 1][1] == "if":
+                k += 1
+            elif k + 1 < n and tokens[k + 1][1] == "{":
+                return _skip_balanced(tokens, k + 1, "unmatched '{' in #[cfg(test)] else")
+            else:
+                raise _HygieneError(attr_start, "malformed #[cfg(test)] else branch")
+    if tokens[k][0] == "ident" and (macro_end := _consume_macro_item(tokens, k, attr_start)) is not None:
+        return macro_end
+    raise _HygieneError(attr_start, f"unsupported #[cfg(test)] target near '{t}'")
+
+
+def _excluded_cfg_test_spans(tokens):
+    spans, i, n = [], 0, len(tokens)
+    while i < n:
+        texts = [tok[1] for tok in tokens[i:i + 8]]
+        if texts == ["#", "!", "[", "cfg", "(", "test", ")", "]"]:
+            raise _HygieneError(tokens[i][2], "unsupported #![cfg(test)] inner attribute")
+        if texts[:7] == ["#", "[", "cfg", "(", "test", ")", "]"]:
+            end_idx = _consume_cfg_test_item(tokens, i)
+            spans.append((tokens[i][2], tokens[end_idx - 1][3]))
+            i = end_idx
+        elif tokens[i][1] == "#":
+            j = i + 2 if i + 1 < n and tokens[i + 1][1] == "!" else i + 1
+            i = _skip_balanced(tokens, j, "unterminated attribute") if j < n and tokens[j][1] == "[" else i + 1
+        elif tokens[i][0] == "ident" and i + 1 < n and tokens[i + 1][1] == "!":
+            m = i + 3 if tokens[i][1] == "macro_rules" and i + 2 < n and tokens[i + 2][0] == "ident" else i + 2
+            i = _skip_balanced(tokens, m, "unterminated macro token tree") if m < n and tokens[m][1] in DELIM_PAIRS else i + 1
+        else:
+            i += 1
+    return spans
+
+
+def check_rust_hygiene(rel, text):
+    if any(s in RUST_TEST_PATH_SEGMENTS for s in rel.split("/")[:-1]):
+        return []
+    try:
+        spans = _excluded_cfg_test_spans(_lex_rust(text))
+    except _HygieneError as err:
+        return [f"{rel}:{len(PHYSICAL_EOL.findall(text[:err.args[0]])) + 1} {err.args[1]}"]
+    out, prev = [], 0
+    for start, end in spans:
+        out.extend([text[prev:start], "".join(c if c in ("\r", "\n") else " " for c in text[start:end])])
+        prev = end
+    hits = []
+    for i, line in enumerate(split_physical("".join(out) + text[prev:]), 1):
+        if not RUST_COMMENT.match(line) and UNWRAP_RE.search(line):
             hits.append(f"{rel}:{i} unwrap/expect on production path")
-        if UNSAFE_RE.search(line):
+        if not RUST_COMMENT.match(line) and UNSAFE_RE.search(line):
             hits.append(f"{rel}:{i} unsafe block")
     return hits
 
