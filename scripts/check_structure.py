@@ -53,7 +53,7 @@ RUST_TOKEN = re.compile(
     re.S,
 )
 DELIM_PAIRS = {"(": ")", "[": "]", "{": "}"}
-BLOCK_ITEMS = {"mod", "struct", "enum", "union", "trait", "impl", "fn", "while", "for", "loop", "match", "extern", "const", "{"}
+BLOCK_ITEMS = {"mod", "struct", "enum", "union", "trait", "impl", "fn", "loop", "extern", "const", "{"}
 SEMI_ITEMS = {"use", "type", "static", "const", "let"}
 NON_MACRO_KW = frozenset("if while match return break in loop else for let async await const continue crate dyn enum extern false fn impl mod move mut pub ref self Self static struct super trait true type unsafe use where".split())
 
@@ -115,9 +115,7 @@ def check_conflict_markers(rel, lines):
     hits = []
     is_md = rel.endswith(".md")
     for i, line in enumerate(lines, 1):
-        if MARKER_LEFT.match(line) or MARKER_RIGHT.match(line):
-            hits.append(f"{rel}:{i}")
-        elif not is_md and MARKER_MID.match(line):
+        if MARKER_LEFT.match(line) or MARKER_RIGHT.match(line) or (not is_md and MARKER_MID.match(line)):
             hits.append(f"{rel}:{i}")
     return hits
 
@@ -210,7 +208,7 @@ def _consume_macro_item(tokens, k, attr_start):
     raise _HygieneError(attr_start, "missing ';' after #[cfg(test)] macro invocation")
 
 
-def _consume_cfg_test_item(tokens, idx):
+def _consume_cfg_test_item(tokens, idx, text=None):
     attr_start, n = tokens[idx][2], len(tokens)
     k = _skip_item_prefix(tokens, idx + 7)
     if k >= n or tokens[k][1] in (")", "]", "}"):
@@ -226,31 +224,34 @@ def _consume_cfg_test_item(tokens, idx):
             raise _HygieneError(attr_start, "malformed #[cfg(test)] mod boundary")
         end = _scan_to(tokens, k if t == "{" else k + 1, {"{", ";"} if t in ("mod", "struct", "fn") else {"{"}, t in ("struct", "enum", "union", "trait", "impl", "fn"), attr_start, t)
         return end + 1 if tokens[end][1] == ";" else _skip_balanced(tokens, end, f"unmatched '{{' in #[cfg(test)] {t}")
-    if t == "if":
-        while True:
-            cond = _skip_balanced(tokens, k + 1, "unmatched '{' in #[cfg(test)] if") if k + 1 < n and tokens[k + 1][1] == "{" else k + 1
-            k = _skip_balanced(tokens, _scan_to(tokens, cond, {"{"}, False, attr_start, "if"), "unmatched '{' in #[cfg(test)] if")
-            if k >= n or tokens[k][1] != "else":
-                return k
-            if k + 1 < n and tokens[k + 1][1] == "if":
-                k += 1
-            elif k + 1 < n and tokens[k + 1][1] == "{":
-                return _skip_balanced(tokens, k + 1, "unmatched '{' in #[cfg(test)] else")
+    if t == "if" and k + 1 < n and tokens[k + 1][1] == "let":
+        j = k + 2
+        while j < n and tokens[j][1] not in ("=", "{", "}", ")", "]", ";"):
+            j = _skip_balanced(tokens, j, "unmatched delimiter in #[cfg(test)] if") if tokens[j][1] in ("(", "[") else j + 1
+        j, last_call = (j + 1, False) if k + 2 < j < n and tokens[j][1] == "=" and not any(x[1] == "{" for x in tokens[k + 2:j]) else (n, False)
+        while j < n and not (text is not None and any(c in text[tokens[j - 1][3]:tokens[j][2]] for c in "&|+-*%^~@")):
+            kind, tok = tokens[j][0], tokens[j][1]
+            if tok == "(" and tokens[j - 1][1] not in ("=", "::"):
+                j, last_call = _skip_balanced(tokens, j, "unmatched '(' in #[cfg(test)] if"), True
+            elif (tok == "::" and j + 1 < n and tokens[j + 1][0] == "ident") or (kind == "ident" and (tok not in NON_MACRO_KW or tok in ("self", "Self", "super", "crate"))):
+                j, last_call = j + 1, False
+            elif tok == "{" and last_call and ((end := _skip_balanced(tokens, j, "unmatched '{' in #[cfg(test)] if")) >= n or tokens[end][1] != "else"):
+                return end
             else:
-                raise _HygieneError(attr_start, "malformed #[cfg(test)] else branch")
+                break
     if tokens[k][0] == "ident" and t not in NON_MACRO_KW and (macro_end := _consume_macro_item(tokens, k, attr_start)) is not None:
         return macro_end
-    raise _HygieneError(attr_start, f"unsupported #[cfg(test)] target near '{t}'")
+    raise _HygieneError(attr_start, f"unsupported #[cfg(test)] {t} boundary")
 
 
-def _excluded_cfg_test_spans(tokens):
+def _excluded_cfg_test_spans(tokens, text=None):
     spans, i, n = [], 0, len(tokens)
     while i < n:
         texts = [tok[1] for tok in tokens[i:i + 8]]
         if texts == ["#", "!", "[", "cfg", "(", "test", ")", "]"]:
             raise _HygieneError(tokens[i][2], "unsupported #![cfg(test)] inner attribute")
         if texts[:7] == ["#", "[", "cfg", "(", "test", ")", "]"]:
-            end_idx = _consume_cfg_test_item(tokens, i)
+            end_idx = _consume_cfg_test_item(tokens, i, text)
             spans.append((tokens[i][2], tokens[end_idx - 1][3]))
             i = end_idx
         elif tokens[i][1] == "#":
@@ -268,7 +269,7 @@ def check_rust_hygiene(rel, text):
     if any(s in RUST_TEST_PATH_SEGMENTS for s in rel.split("/")[:-1]):
         return []
     try:
-        spans = _excluded_cfg_test_spans(_lex_rust(text))
+        spans = _excluded_cfg_test_spans(_lex_rust(text), text)
     except _HygieneError as err:
         return [f"{rel}:{len(PHYSICAL_EOL.findall(text[:err.args[0]])) + 1} {err.args[1]}"]
     out, prev = [], 0

@@ -170,6 +170,9 @@ class StructureTests(unittest.TestCase):
             ('#[cfg(test)] #[path = "t.rs"] mod t; fn prod() { y.expect("e"); }\n', 1, "unwrap/expect on production path"),
             ('#[cfg(test)] fn t() { x.unwrap(); }\n#[cfg(test)] mod m { fn k() { z.unwrap(); } }\nfn prod() { unsafe { f(); } }\n', 3, "unsafe block"),
             ('#[cfg(test)] const {} let _ = Some(1).unwrap();\n', 1, "unwrap/expect on production path"),
+            ('#[cfg(test)] if let Some(p) = TEST.with(|r| { r.borrow().clone() }) { let _ = p.unwrap(); } let _ = Some(1).unwrap();\n', 1, "unwrap/expect on production path"),
+            ("fn f() -> i32 {\n    #[cfg(test)]\n    if let Some(p) = TEST.with(|r| { r.borrow().clone() }) { return p.unwrap(); }\n    let _ = Some(1).expect(\"prod\");\n    0\n}\n", 4, "unwrap/expect on production path"),
+            ("fn f() -> i32 {\n    #[cfg(test)]\n    if let Some(mut c) = tests::peer::command() { let _ = c.unwrap(); return 1; }\n    unsafe { danger(); }\n    0\n}\n", 4, "unsafe block"),
         ):
             with self.subTest(text=text):
                 code, out = check_files({"src/domain.rs": text})
@@ -198,11 +201,17 @@ class StructureTests(unittest.TestCase):
             "    #[cfg(test)]\n"
             "    if let Some(v) = Some(1) { return v; }\n"
             "    #[cfg(test)]\n"
+            "    if let Some(p) = TEST.with(|r| { r.borrow().clone() }) { let _ = p.unwrap(); return p; }\n"
+            "    #[cfg(test)]\n"
+            "    if let Some(p) = TEST_ROOT_PEM.with(|p| {\n"
+            "        p.borrow().as_ref().map(|path| path.to_string_lossy().into_owned())\n"
+            "    }) { let _ = p.expect(\"test\"); }\n"
+            "    #[cfg(test)]\n"
+            "    if let Some(mut cmd) = tests::peer::command() { let _ = cmd.unwrap(); }\n"
+            "    #[cfg(test)]\n"
             "    { let _ = Some(1).unwrap(); }\n"
             "    #[cfg(test)]\n"
             "    const { let _ = Some(1).unwrap(); }\n"
-            "    #[cfg(test)]\n"
-            "    if { true } { let _ = Some(1).unwrap(); }\n"
             "    if !{ #[cfg(test)] let _ = Some(1).unwrap(); true } {}\n"
             "    42\n"
             "}\n"
@@ -285,9 +294,54 @@ class StructureTests(unittest.TestCase):
             bad = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
             self.assertEqual(bad.returncode, 1, bad.stdout + bad.stderr)
             self.assertIn("src/m1_reasoning_cli.rs:4", bad.stdout)
+            src.write_text(
+                "pub fn f() {\n    #[cfg(test)]\n    if !{ false } { let _ = Some(1).unwrap(); }\n}\n",
+                encoding="utf-8",
+            )
+            unsupported = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+            self.assertEqual(unsupported.returncode, 1, unsupported.stdout + unsupported.stderr)
+            self.assertIn("src/m1_reasoning_cli.rs:2 unsupported #[cfg(test)] if boundary", unsupported.stdout)
+            self.assertNotIn("unwrap/expect on production path", unsupported.stdout)
 
+    def _unsupported_cases(self):
+        return (
+            ("negated_block_if_same_line", "if", 2, "fn prod() {\n    #[cfg(test)] if !{ false } { let _ = Some(1).unwrap(); }\n}\n"),
+            ("negated_block_if_multiline", "if", 2, "fn prod() {\n    #[cfg(test)]\n    if !{\n        false\n    } {\n        let _ = Some(1).unwrap();\n    }\n}\n"),
+            ("while_block_same_line", "while", 2, "fn prod() {\n    #[cfg(test)] while { false } { let _ = Some(1).unwrap(); }\n}\n"),
+            ("while_block_multiline", "while", 2, "fn prod() {\n    #[cfg(test)]\n    while {\n        false\n    } {\n        let _ = Some(1).unwrap();\n    }\n}\n"),
+            ("match_block_same_line", "match", 2, "fn prod() {\n    #[cfg(test)] match { 0 } { _ => { let _ = Some(1).unwrap(); } }\n}\n"),
+            ("match_block_multiline", "match", 2, "fn prod() {\n    #[cfg(test)]\n    match {\n        0\n    } {\n        _ => { let _ = Some(1).unwrap(); }\n    }\n}\n"),
+            ("if_block_condition", "if", 2, "fn prod() {\n    #[cfg(test)] if { true } { let _ = Some(1).unwrap(); }\n}\n"),
+            ("for_block_same_line", "for", 2, "fn prod() {\n    #[cfg(test)] for _ in { 0..1 } { let _ = Some(1).unwrap(); }\n}\n"),
+            ("for_block_multiline", "for", 2, "fn prod() {\n    #[cfg(test)]\n    for _ in {\n        0..1\n    } {\n        let _ = Some(1).unwrap();\n    }\n}\n"),
+            ("if_let_braced_rhs_same_line", "if", 2, "fn prod() {\n    #[cfg(test)] if let Some(x) = { Some(1) } { let _ = x.unwrap(); }\n}\n"),
+            ("if_let_braced_rhs_multiline", "if", 2, "fn prod() {\n    #[cfg(test)]\n    if let Some(x) = {\n        Some(1)\n    } {\n        let _ = x.unwrap();\n    }\n}\n"),
+            ("if_let_braced_pattern", "if", 2, "fn prod() {\n    #[cfg(test)] if let S { x } = make() { let _ = x.unwrap(); }\n}\n"),
+            ("if_let_else", "if", 2, "fn prod() {\n    #[cfg(test)] if let Some(x) = make() { let _ = x.unwrap(); } else { let _ = Some(1).unwrap(); }\n}\n"),
+            ("if_let_else_if", "if", 2, "fn prod() {\n    #[cfg(test)] if let Some(x) = make() { let _ = x.unwrap(); } else if cond { let _ = Some(1).unwrap(); }\n}\n"),
+            ("if_let_chain", "if", 2, "fn prod() {\n    #[cfg(test)] if let Some(x) = make() && let Some(y) = other() { let _ = (x, y).unwrap(); }\n}\n"),
+            ("if_let_chain_block", "if", 2, "fn prod() {\n    #[cfg(test)] if let Some(x) = make() && { true } { let _ = x.unwrap(); }\n}\n"),
+        )
 
+    def test_unsupported_control_flow_boundaries_fail_explicitly(self):
+        for label, kw, line, text in self._unsupported_cases():
+            with self.subTest(case=label):
+                code, out = check_files({"src/domain.rs": text})
+                self.assertEqual(code, 1, out)
+                self.assertIn(f"src/domain.rs:{line} unsupported #[cfg(test)] {kw} boundary", out)
+                self.assertNotIn("unwrap/expect on production path", out)
+                self.assertNotIn("unsafe block", out)
+                self.assertNotIn("literal", out)
 
+    def test_unsupported_cfg_test_boundaries_raise_before_returning_spans(self):
+        spec = importlib.util.spec_from_file_location("structure", SCRIPT)
+        checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checker)
+        for label, kw, _, text in self._unsupported_cases():
+            with self.subTest(case=label):
+                with self.assertRaises(checker._HygieneError) as ctx:
+                    checker._excluded_cfg_test_spans(checker._lex_rust(text), text)
+                self.assertIn(f"unsupported #[cfg(test)] {kw} boundary", ctx.exception.args[1])
 
 
 class VendoredSdkTests(unittest.TestCase):
