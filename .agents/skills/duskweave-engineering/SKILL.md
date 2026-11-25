@@ -146,6 +146,13 @@ criteria; add no separate artifact, approval tier or gate.
 
 ## Change-local maintainability
 
+Before emitting a runtime prompt, select a first walking skeleton or one vertical
+increment over an existing path under QUALITY_BAR.md's packet-feasibility rules.
+State the first observable proof, reused mechanisms, necessary changes, completion
+and deferred work in the existing template. Resolve substantial platform prerequisites
+and material scope decisions before handoff. Do not turn one capability into a
+platform rewrite or split it into disconnected layer/file assignments.
+
 Before every runtime packet, apply QUALITY_BAR.md's
 "Packet feasibility and early feedback" within its existing maintenance review.
 Inspect actual destinations before assigning paths; specify module ownership,

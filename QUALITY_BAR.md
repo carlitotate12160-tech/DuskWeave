@@ -51,22 +51,39 @@ satisfy a number.
 
 ### Packet feasibility and early feedback
 
-Apply these five checks to every runtime IMPLEMENT/FIX packet, even when the
-request does not mention size or decomposition. Record only task-specific
-decisions in the existing file map, checks and review; add no separate artifact.
-1. Inspect actual destination sizes, responsibilities, consumers and dependencies
-   before assigning editable paths. Resolve known placement conflicts before handoff.
-2. For new or extracted modules, name responsibility, owning types/state, real
+Start a new path with a walking skeleton: the minimum complete behavior through
+the real entrypoint and owners to an observable consumer result. Extend a working
+path with one thin vertical increment. Split by independently observable behavior,
+not by language, layer, file count or a fixed number of prompts. Each increment
+retains the authority, containment, sanitization, STOP/UNKNOWN and recovery controls
+required for its actual effects; a thin slice cannot defer those controls.
+
+Before issuing every runtime IMPLEMENT/FIX packet, apply these six checks even
+without a user reminder. Record the answers in the existing outcome, decisions,
+file map, checks and completion fields; add no separate artifact or approval tier.
+1. Name the first observable proof, whether it creates or extends the skeleton,
+   the real entrypoint/consumer, reused owners/mechanisms and explicitly deferred
+   work. Do not bundle optional provider changes, ports, generic frameworks or cleanup.
+2. Inspect actual destination sizes, responsibilities, consumers and dependencies
+   before assigning exact editable paths. Resolve known placement conflicts before handoff.
+3. Justify every new mechanism, service, migration, dependency or execution boundary
+   against the current outcome and the simpler existing path. Expose substantial
+   platform prerequisites and their cost before assignment; resolve their scope
+   rather than silently absorbing them into a capability. Use the maintenance
+   estimates below, including runtime, tests, provisioning and tooling.
+4. For new or extracted modules, name responsibility, owning types/state, real
    caller, narrow visibility, dependency direction and replaced code. Authorize
    necessary cohesive paths up front; do not widen access merely to make a split compile.
-3. Use the preferred below-300 production size as planning headroom, not another
-   hard cap. Avoid deliberately creating near-cap fragments or speculative modules.
-4. After the first complete entrypoint-to-consumer path, run focused compile/
+   Use preferred sizes as headroom, not another cap or a reason for near-cap fragments.
+5. After the first complete entrypoint-to-consumer path, run focused compile/
    contract and local LOC checks before multiplying scenarios. Preserve assertions,
    integration-target identity and fixture/resource custody; reuse actual fixture owners.
-5. Before handoff, challenge packet feasibility; after implementation, review
-   whether a small next change would cross unrelated owners, forwarding chains or
-   oversized shared fixtures. Numeric compliance alone does not prove good architecture.
+   Reuse unchanged valid evidence and run final-candidate gates as required.
+6. Compare the proposed and actual scope with the one outcome. Challenge unrelated-owner
+   fan-out, forwarding chains and oversized fixtures. Return a missing material
+   decision or out-of-map requirement before expanding; routine in-scope fixes continue.
+   File/diff counts are review signals, not automatic split criteria. Do not add
+   speculative extensibility or weaken required failure behavior to make a slice small.
 
 For a routine local change, one maintenance line confirming existing ownership
 and no trigger suffices.

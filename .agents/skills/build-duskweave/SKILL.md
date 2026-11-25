@@ -332,7 +332,12 @@ Do not silently create a new PRD/ADR or repair higher authority to unblock yours
 ## Early ownership and capacity feedback
 
 Apply QUALITY_BAR.md's packet-feasibility checks even without a repeated user
-reminder. Use the packet's cohesive paths and narrow visibility; verify the first
-complete path before expanding scenarios. Preserve assertions and fixture custody.
-Report a material missing path as a precise packet-map defect; fix routine compiler/
-gate failures within scope. Do not duplicate setup or add another planning deliverable.
+reminder. Implement the assigned skeleton or vertical increment through the real
+entrypoint and consumer; run focused checks on that first complete path before
+expanding scenarios. Reuse the assigned owners and mechanisms. Preserve required
+effect controls, assertions and fixture custody; partial wiring is not completion.
+Compare actual scope with the assigned proof and deferred work as implementation
+evolves. Report a new unassigned mechanism, owner or substantial platform prerequisite
+as a precise packet-map/material-decision defect before expanding. Routine in-map
+compiler/test fixes continue. Do not duplicate setup, redesign the architecture,
+split by file count or add another planning deliverable.

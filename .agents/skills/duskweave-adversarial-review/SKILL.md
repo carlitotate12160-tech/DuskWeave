@@ -211,6 +211,14 @@ run, blockers, readiness, and the next permitted packet boundary.
 
 ## Packet feasibility and change cost
 
+Challenge the chosen skeleton or vertical increment against its first observable
+proof, reused mechanisms, required effect controls and explicit deferred work.
+Check whether a simpler existing path supplies the same outcome and whether
+platform prerequisites were exposed before assignment. Identify concrete unnecessary
+mechanisms or silent scope growth, as well as missing wiring or safety hidden by
+a small diff. Do not require a fixed prompt/file count or unrelated legacy cleanup.
+Apply this within the existing review; a policy checklist alone is not proof.
+
 Apply QUALITY_BAR.md's packet-feasibility checks to every runtime packet/delta.
 Check actual capacity, owners/callers and dependency/visibility boundaries before
 numeric compliance. Challenge fragmentation, broadened test-only access, duplicate
