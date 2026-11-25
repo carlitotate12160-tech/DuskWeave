@@ -17,7 +17,8 @@ PACKET: <exact identifier>
 WORKSPACE: <verified path>
 BRANCH: <actual delivery branch>
 BASE: <verified full commit>
-OUTCOME: <one first skeleton or vertical increment; observable proof, real entrypoint/consumer and offensive/MVP contribution>
+OUTCOME (IMPLEMENT/FIX): <one first skeleton or vertical increment; observable proof, real entrypoint/consumer and offensive/MVP contribution>
+OUTCOME (DESIGN): <one cohesive reviewable design outcome and its offensive/MVP contribution>
 
 Execute the assigned packet directly. Do not return another architecture plan.
 
