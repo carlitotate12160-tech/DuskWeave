@@ -61,7 +61,9 @@ impl IssuedDnsReference {
             .ok_or(Fail::Input("invalid_issued_source_reference"))
     }
     fn source_binding(&self) -> bool {
-        use crate::m1_inference_profile::{LAB_RUN_PROFILE, LIVE_RUN_PROFILE};
+        use crate::m1_inference_profile::{
+            HTTPS_LAB_RUN_PROFILE, LAB_RUN_PROFILE, LIVE_RUN_PROFILE,
+        };
         match (self.version.as_str(), self.execution_mode.as_str()) {
             ("m1_terrain_dns_issued_observation_v1", "controlled_fixture") => matches!(
                 self.run_profile.as_str(),
@@ -72,7 +74,7 @@ impl IssuedDnsReference {
             ),
             ("m1_terrain_dns_issued_observation_v2", "live") => matches!(
                 self.run_profile.as_str(),
-                LIVE_RUN_PROFILE | LAB_RUN_PROFILE
+                LIVE_RUN_PROFILE | LAB_RUN_PROFILE | HTTPS_LAB_RUN_PROFILE
             ),
             _ => false,
         }

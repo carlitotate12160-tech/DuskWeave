@@ -1,4 +1,5 @@
 //! Root-owned attempt state and the shared monotonic grant/STOP guard.
+pub(super) mod https;
 use duskweave::m1_dns::DnsRequest;
 use duskweave::{Fail, Res};
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,6 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 const ROOT: &str = "/run/duskweave/launcher";
-
 #[cfg(test)]
 thread_local! {
     static TEST_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
@@ -25,7 +25,6 @@ fn root() -> PathBuf {
     }
     PathBuf::from(ROOT)
 }
-
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Session {
@@ -38,13 +37,12 @@ pub(super) struct Session {
     pub attempt_deadline_at_ms: Option<i64>,
     pub handling_deadline_at_ms: i64,
 }
-fn dir(attempt: Uuid) -> PathBuf {
+pub(super) fn dir(attempt: Uuid) -> PathBuf {
     root().join(attempt.simple().to_string())
 }
 fn stop_path(e: Uuid, c: Uuid, g: u64) -> PathBuf {
     root().join(format!("stop-{}-{}-{g}", e.simple(), c.simple()))
 }
-
 pub(super) struct Guard(File);
 impl Drop for Guard {
     fn drop(&mut self) {
@@ -56,6 +54,9 @@ fn guard(e: Uuid, c: Uuid, end: Instant) -> Res<Guard> {
 }
 fn run_guard(run: Uuid, end: Instant) -> Res<Guard> {
     guard_path(format!("run-guard-{}", run.simple()), end)
+}
+pub(super) fn session_guard_ids(run: Uuid, e: Uuid, c: Uuid, end: Instant) -> Res<(Guard, Guard)> {
+    Ok((run_guard(run, end)?, guard(e, c, end)?))
 }
 fn guard_path(name: String, end: Instant) -> Res<Guard> {
     let file = OpenOptions::new()
@@ -83,19 +84,32 @@ fn campaign_path(e: Uuid, c: Uuid) -> PathBuf {
 fn run_path(run: Uuid) -> PathBuf {
     root().join(format!("run-stop-{}", run.simple()))
 }
+pub(super) fn stopped_ids(e: Uuid, c: Uuid, g: u64) -> bool {
+    stop_path(e, c, g).exists() || campaign_path(e, c).exists()
+}
+pub(super) fn blocked_ids(e: Uuid, c: Uuid, g: u64, run: Uuid) -> bool {
+    stopped_ids(e, c, g) || run_path(run).exists()
+}
 pub(super) fn stopped(q: &DnsRequest) -> bool {
-    stop_path(q.engagement_id, q.campaign_id, q.session_generation).exists()
-        || campaign_path(q.engagement_id, q.campaign_id).exists()
+    stopped_ids(q.engagement_id, q.campaign_id, q.session_generation)
 }
 fn blocked(s: &Session) -> bool {
-    stopped(&s.request) || run_path(s.run_id).exists()
+    blocked_ids(
+        s.request.engagement_id,
+        s.request.campaign_id,
+        s.request.session_generation,
+        s.run_id,
+    )
 }
 fn session_guard(s: &Session, end: Instant) -> Res<(Guard, Guard)> {
-    let r = run_guard(s.run_id, end)?;
-    let c = guard(s.request.engagement_id, s.request.campaign_id, end)?;
-    Ok((r, c))
+    session_guard_ids(
+        s.run_id,
+        s.request.engagement_id,
+        s.request.campaign_id,
+        end,
+    )
 }
-fn owned_root() -> Res<()> {
+pub(super) fn owned_root() -> Res<()> {
     let m = std::fs::symlink_metadata(root()).map_err(|_| Fail::Config("live_host_unqualified"))?;
     let f = super::custody::observed(&m);
     super::custody::control_root(&f)
@@ -109,18 +123,9 @@ pub(super) fn load(attempt: Uuid, generation: u64) -> Res<Session> {
     }
     Ok(session)
 }
-fn qualify_session_meta(m: &std::fs::Metadata) -> bool {
+pub(super) fn qualify_session_meta(m: &std::fs::Metadata) -> bool {
     let f = super::custody::observed(m);
     super::custody::session_journal(&f)
-}
-
-fn parse_session_file(file: File, attempt: Uuid) -> Res<Session> {
-    let session: Session = serde_json::from_reader(file.take(16385))
-        .map_err(|_| Fail::Config("live_host_unqualified"))?;
-    if session.request.attempt != attempt {
-        return Err(Fail::Config("live_host_unqualified"));
-    }
-    Ok(session)
 }
 
 fn record(attempt: Uuid) -> Res<Session> {
@@ -131,10 +136,18 @@ fn record(attempt: Uuid) -> Res<Session> {
         return Err(Fail::Config("live_host_unqualified"));
     }
     let file = File::open(path).map_err(|_| Fail::Config("live_host_unqualified"))?;
-    parse_session_file(file, attempt)
+    let session: Session = serde_json::from_reader(file.take(16385))
+        .map_err(|_| Fail::Config("live_host_unqualified"))?;
+    if session.request.attempt != attempt {
+        return Err(Fail::Config("live_host_unqualified"));
+    }
+    Ok(session)
 }
 fn save(session: &Session) -> Res<()> {
-    let path = dir(session.request.attempt).join("session.next");
+    save_json(session.request.attempt, session)
+}
+pub(super) fn save_json<T: Serialize>(attempt: Uuid, session: &T) -> Res<()> {
+    let path = dir(attempt).join("session.next");
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -145,35 +158,35 @@ fn save(session: &Session) -> Res<()> {
     file.write_all(&bytes)
         .map_err(|_| Fail::Config("live_host_unqualified"))?;
     drop(file);
-    std::fs::rename(path, dir(session.request.attempt).join("session.json"))
+    std::fs::rename(path, dir(attempt).join("session.json"))
         .map_err(|_| Fail::Config("live_host_unqualified"))
 }
 pub(super) fn open(run_id: Uuid, request: &DnsRequest) -> Res<Session> {
     let monotonic = Instant::now();
-    owned_root()?;
-    let now = super::qualification::now_ms()?;
-    validate_open(run_id, request, now)?;
+    let now = validate_open(run_id, request)?;
     let session = new_session(run_id, request, now, monotonic);
     let _guard = session_guard(&session, monotonic + Duration::from_millis(1000))?;
     if blocked(&session) {
         return Err(Fail::State("live_effect_stopped"));
     }
-    create_session(session)
-}
-fn create_session(session: Session) -> Res<Session> {
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(dir(session.request.attempt))
-        .map_err(|_| Fail::Config("live_attempt_already_exists"))?;
+    create_dir(session.request.attempt)?;
     save(&session)?;
     Ok(session)
 }
-fn validate_open(run: Uuid, request: &DnsRequest, now: i64) -> Res<()> {
+pub(super) fn create_dir(attempt: Uuid) -> Res<()> {
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(dir(attempt))
+        .map_err(|_| Fail::Config("live_attempt_already_exists"))
+}
+fn validate_open(run: Uuid, request: &DnsRequest) -> Res<i64> {
+    owned_root()?;
+    let now = super::qualification::now_ms()?;
     request.validate(now)?;
     if run.is_nil() {
         return Err(Fail::Config("live_host_unqualified"));
     }
-    Ok(())
+    Ok(now)
 }
 fn new_session(run_id: Uuid, request: &DnsRequest, now: i64, monotonic: Instant) -> Session {
     let prep_ms = (request.deadline_at_ms - now).min(5000) as u64;
@@ -287,16 +300,35 @@ impl StopScope {
         };
         latch(path)
     }
-    fn matches(self, s: &Session) -> bool {
-        let q = &s.request;
+    fn matches_ids(self, run: Uuid, e: Uuid, c: Uuid, generation: u64) -> bool {
         match self {
-            Self::Generation(e, c, g) => {
-                (e, c, g) == (q.engagement_id, q.campaign_id, q.session_generation)
-            }
-            Self::Campaign(e, c) => (e, c) == (q.engagement_id, q.campaign_id),
-            Self::Run(run) => run == s.run_id,
+            Self::Generation(te, tc, tg) => (te, tc, tg) == (e, c, generation),
+            Self::Campaign(te, tc) => (te, tc) == (e, c),
+            Self::Run(trun) => trun == run,
         }
     }
+    #[cfg(test)]
+    fn matches(self, s: &Session) -> bool {
+        self.matches_ids(
+            s.run_id,
+            s.request.engagement_id,
+            s.request.campaign_id,
+            s.request.session_generation,
+        )
+    }
+}
+fn stop_ids(attempt: Uuid) -> Option<(Uuid, Uuid, Uuid, u64)> {
+    record(attempt)
+        .ok()
+        .map(|s| {
+            (
+                s.run_id,
+                s.request.engagement_id,
+                s.request.campaign_id,
+                s.request.session_generation,
+            )
+        })
+        .or_else(|| https::stop_ids(attempt))
 }
 pub(super) fn stop(e: Uuid, c: Uuid, g: u64) -> bool {
     stop_until(e, c, g, Instant::now() + Duration::from_millis(1000))
@@ -332,18 +364,14 @@ fn stop_entry(entry: std::io::Result<std::fs::DirEntry>, scope: StopScope, end: 
     let Ok(attempt) = Uuid::parse_str(&entry.file_name().to_string_lossy()) else {
         return true;
     };
-    let Ok(session) = record(attempt) else {
+    let Some((run, e, c, g)) = stop_ids(attempt) else {
         return false;
     };
-    if !scope.matches(&session) {
+    if !scope.matches_ids(run, e, c, g) {
         return true;
     }
     // Wait out any in-flight grant under the same guard, then reap outside it.
-    let Ok(guard) = guard(
-        session.request.engagement_id,
-        session.request.campaign_id,
-        end,
-    ) else {
+    let Ok(guard) = guard(e, c, end) else {
         return false;
     };
     drop(guard);
@@ -366,7 +394,6 @@ pub(super) fn dispose_until(attempt: Uuid, end: Instant) -> bool {
     }
     std::fs::remove_dir_all(dir(attempt)).is_ok() || !dir(attempt).exists()
 }
-
 #[cfg(test)]
 #[path = "../../../tests/m1_live_dns/units/launcher_attempt.rs"]
 pub(crate) mod tests;

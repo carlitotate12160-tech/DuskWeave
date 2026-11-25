@@ -11,10 +11,19 @@ import (
 func Run(parent io.Reader, safe io.Writer) error {
 	input := frame.Reader{Source: parent}
 	out := frame.Writer{Sink: safe}
-	var q frame.Request
-	if input.Read(&q, frame.Limit) != nil || dns.Validate(q, time.Now()) != nil {
+	payload, err := input.Take(frame.Limit)
+	if err != nil {
 		return frame.ErrFrame
 	}
+	if schema, serr := frame.Field(payload, "schema"); serr == nil && schema == frame.HttpsSchema {
+		input.Count++
+		return runHTTPS(&input, &out, payload)
+	}
+	var q frame.Request
+	if frame.Decode(payload, &q) != nil || dns.Validate(q, time.Now()) != nil {
+		return frame.ErrFrame
+	}
+	input.Count++
 	readyAt := time.Now()
 	if out.Write(frame.Control{Identity: frame.Bound(q, "READY", 1), Deadline: q.Deadline}, frame.ControlLimit) != nil {
 		return frame.ErrFrame

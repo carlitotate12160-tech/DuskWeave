@@ -1,4 +1,5 @@
 //! Broker-owned live attempt accounting. Historical may-start is never transmission proof.
+pub mod attempt;
 use crate::m1_dns::{DnsRequest, DnsResult};
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};

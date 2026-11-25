@@ -161,6 +161,12 @@ fn root_protocol_probe() {
         protocol_episode(fault);
     }
     watchdog_episode();
+    for fault in [
+        crate::relay::https::tests::HttpsFault::None,
+        crate::relay::https::tests::HttpsFault::WrongStart,
+    ] {
+        https_protocol_episode(fault);
+    }
 }
 
 fn protocol_episode(fault: crate::relay::unit_tests::Fault) {
@@ -346,4 +352,147 @@ fn dispatch_rechecks_qualification_before_returning_any_grant() {
         peer.reply().is_err(),
         "expired qualification produces no Qualified reply"
     );
+}
+
+fn dummy_https_qualified() -> Qualified {
+    let mut qualified = dummy_qualified();
+    qualified.manifest.purpose = "HTTPS_LOOP_LAB".into();
+    qualified.manifest.run_profile = "autonomous-https-genai-lab-v1".into();
+    qualified
+}
+
+#[test]
+fn qualify_reply_and_open_https_reject_mismatches() {
+    let qd = dummy_https_qualified();
+    let ok = LiveBinding {
+        qualification_ref: qd.manifest.qualification_ref,
+        release_sha256: qd.manifest.release_sha256.clone(),
+        resolver_ipv4: qd.manifest.resolver_ipv4.clone(),
+    };
+    assert!(matches!(
+        qualify_reply(&qd, &ok, "autonomous-https-genai-lab-v1"),
+        HostReply::Qualified { .. }
+    ));
+    assert!(matches!(
+        qualify_reply(&qd, &ok, "autonomous-dns-genai-lab-v1"),
+        HostReply::Refused
+    ));
+
+    let (client, server) = UnixStream::pair().unwrap();
+    let mut q = crate::attempt::https::tests::sample_request(
+        Uuid::new_v4(),
+        crate::qualification::now_ms().unwrap(),
+    );
+    q.qualification_ref = qd.manifest.qualification_ref;
+    q.run_profile = "autonomous-dns-genai-lab-v1".into();
+    assert_eq!(
+        open_https(
+            &mut HostChannel::new(server),
+            &qd.manifest,
+            q.run_id,
+            &q,
+            &client
+        )
+        .unwrap_err(),
+        Fail::Config("live_host_unqualified")
+    );
+}
+
+fn https_client_exchange(
+    peer: UnixStream,
+    req: &HttpsIpcRequest,
+    dl: i64,
+    fault: crate::relay::https::tests::HttpsFault,
+) {
+    use crate::relay::https::tests::HttpsFault;
+    use duskweave::m1_https::ipc::HttpsPhase;
+    let mut ch = HostChannel::new(peer);
+    let send = |c: &mut HostChannel<UnixStream>, cmd| c.send_command(&cmd).unwrap();
+    let start = |p, g| HostCommand::StartPhase {
+        attempt: req.attempt,
+        generation: g,
+        phase: p,
+        deadline_at_ms: dl,
+    };
+    let renew = || HostCommand::RenewHttps {
+        attempt: req.attempt,
+        generation: req.session_generation,
+        deadline_at_ms: dl,
+    };
+    assert!(
+        matches!(ch.reply().unwrap(), HostReply::ReadyPhase { attempt, phase: HttpsPhase::Connect, .. } if attempt == req.attempt)
+    );
+    send(
+        &mut ch,
+        start(
+            HttpsPhase::Connect,
+            req.session_generation + u64::from(fault == HttpsFault::WrongStart),
+        ),
+    );
+    if fault == HttpsFault::WrongStart {
+        assert!(ch.reply().is_err());
+        return;
+    }
+    send(&mut ch, renew());
+    for phase in [HttpsPhase::Tls, HttpsPhase::Head] {
+        assert!(
+            matches!(ch.reply().unwrap(), HostReply::ReadyPhase { phase: p, .. } if p == phase)
+        );
+        send(&mut ch, start(phase, req.session_generation));
+    }
+    let HostReply::ResultHttps { result } = ch.reply().unwrap() else {
+        panic!("result")
+    };
+    assert_eq!(result.status_code, 200);
+    send(&mut ch, renew());
+    let (attempt, generation) = (req.attempt, req.session_generation);
+    send(
+        &mut ch,
+        HostCommand::AckHttps {
+            attempt,
+            generation,
+        },
+    );
+    assert!(matches!(
+        ch.reply().unwrap(),
+        HostReply::Stopped {
+            disposal_confirmed: true
+        }
+    ));
+}
+
+fn https_protocol_episode(fault: crate::relay::https::tests::HttpsFault) {
+    use crate::relay::https::tests::{HttpsFault, resource_scope};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    let root = crate::attempt::tests::TestRootGuard::new();
+    let net = crate::network::tests::fixture::Network::new();
+    let qd = dummy_https_qualified();
+    let now = crate::qualification::now_ms().unwrap();
+    let mut q = crate::attempt::https::tests::sample_request(Uuid::new_v4(), now);
+    q.qualification_ref = qd.manifest.qualification_ref;
+    crate::docker::tests::simulate_absent_attempt(q.attempt);
+    let _wd = watchdog::tests::child_scope(false);
+    let renewed = Arc::new(AtomicBool::new(false));
+    net.signals.borrow_mut().push((5, renewed.clone()));
+    let sig = (fault == HttpsFault::None).then_some(renewed.clone());
+    let _res = resource_scope(&qd.manifest.image_digest, &q, fault, sig);
+    let end = Instant::now() + Duration::from_secs(2);
+    crate::network::create_https(q.attempt, 42, &q.ipv4, end).unwrap();
+    let (host, peer) = UnixStream::pair().unwrap();
+    for s in [&host, &peer] {
+        s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    }
+    let mut host = HostChannel::new(host);
+    let (req, dl) = (q.clone(), q.deadline_at_ms);
+    let client = std::thread::spawn(move || https_client_exchange(peer, &req, dl, fault));
+    let peer_ref = host.peer().unwrap();
+    let out = open_https(&mut host, &qd.manifest, Uuid::new_v4(), &q, &peer_ref);
+    assert_eq!(out.is_ok(), fault == HttpsFault::None, "{fault:?}: {out:?}");
+    drop((host, peer_ref));
+    client.join().unwrap();
+    assert!(!root.path().join(q.attempt.simple().to_string()).exists());
+    assert!(fault != HttpsFault::None || renewed.load(Ordering::SeqCst));
 }

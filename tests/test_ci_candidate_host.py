@@ -22,24 +22,33 @@ if str(QUALIFY_DIR) not in sys.path:
 import candidate_host  # noqa: E402
 
 
-def _make_layer(members: list[tuple[str, bytes | str]]) -> bytes:
+def _make_layer(members: list[tuple]) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tf:
-        for name, content in members:
+        for entry in members:
+            name, content = entry[0], entry[1]
+            opts = entry[2] if len(entry) > 2 else {}
+            ti = tarfile.TarInfo(name)
+            ti.uid = opts.get("uid", 0)
+            ti.gid = opts.get("gid", 0)
             if isinstance(content, str) and content.startswith("SYM:"):
-                ti = tarfile.TarInfo(name)
                 ti.type = tarfile.SYMTYPE
                 ti.linkname = content[4:]
+                ti.mode = opts.get("mode", 0o777)
+                tf.addfile(ti)
+            elif isinstance(content, str) and content == "DIR:":
+                ti.type = tarfile.DIRTYPE
+                ti.mode = opts.get("mode", 0o755)
                 tf.addfile(ti)
             else:
                 raw = content.encode("utf-8") if isinstance(content, str) else content
-                ti = tarfile.TarInfo(name)
+                ti.mode = opts.get("mode", 0o644)
                 ti.size = len(raw)
                 tf.addfile(ti, io.BytesIO(raw))
     return buf.getvalue()
 
 
-def _make_save_tar(layer_specs: list[tuple[str, list[tuple[str, bytes | str]]]]) -> bytes:
+def _make_save_tar(layer_specs: list[tuple[str, list[tuple]]]) -> bytes:
     buf = io.BytesIO()
     layer_names = [n for n, _ in layer_specs]
     with tarfile.open(fileobj=buf, mode="w") as tf:
@@ -230,6 +239,92 @@ class CandidateHostImageAndQuiescenceTests(unittest.TestCase):
             candidate_host.extract_image_worker_digests("dw:test", docker_runner=make_runner(b"not-a-tar"))
         self.assertEqual(cor_err.exception.status, "UNKNOWN")
         self.assertEqual(meta[:1], "{")
+
+    def test_extract_image_extra_file_traversal_and_metadata_rules(self) -> None:
+        img_id = "sha256:" + ("a" * 64)
+        cap_b, exp_b, ca_b = b"CAP_ELF", b"EXP_ELF", b"CA_PEM_BYTES"
+        ca_path = "etc/duskweave/https-lab-root-v1.pem"
+        ca_spec = {ca_path: (len(ca_b), hashlib.sha256(ca_b).hexdigest())}
+
+        def make_runner(save_bytes: bytes, layer_count: int = 1):
+            m = json.dumps({
+                "Id": img_id, "Os": "linux", "Architecture": "arm64",
+                "RootFS": {"Type": "layers", "Layers": [f"sha256:{i}" for i in range(layer_count)]},
+            })
+            return lambda cmd, **_kw: _cp(0, stdout=m) if cmd[2] == "inspect" else _cp(0, stdout=save_bytes)
+
+        valid_single = [
+            ("0755", [("dw-dns-capture", cap_b, {"mode": 0o555}), ("dw-dns-exporter", exp_b, {"mode": 0o555}),
+                      ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})]),
+            ("0555_dot_slash", [("./dw-dns-capture", cap_b, {"mode": 0o555}), ("./dw-dns-exporter", exp_b, {"mode": 0o555}),
+                                ("./etc/", "DIR:", {"mode": 0o555}), ("./etc/duskweave/", "DIR:", {"mode": 0o555}), (f"./{ca_path}", ca_b, {"mode": 0o444})]),
+        ]
+        for label, members in valid_single:
+            with self.subTest(valid=label):
+                got = candidate_host.extract_image_worker_digests(
+                    "dw:test", docker_runner=make_runner(_make_save_tar([("l0.tar", members)])), expected_extra_files=ca_spec,
+                )
+                self.assertEqual(set(got.keys()), {"image_id", "os", "architecture", "workers", "extras"})
+                self.assertEqual(got["extras"][ca_path], ca_spec[ca_path][1])
+
+        multi_ok = _make_save_tar([
+            ("l0.tar", [("dw-dns-capture", cap_b, {"mode": 0o555}), ("dw-dns-exporter", exp_b, {"mode": 0o555})]),
+            ("l1.tar", [("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o555}), (ca_path, ca_b, {"mode": 0o444})]),
+        ])
+        self.assertEqual(
+            candidate_host.extract_image_worker_digests(
+                "dw:test", docker_runner=make_runner(multi_ok, layer_count=2), expected_extra_files=ca_spec,
+            )["extras"][ca_path],
+            ca_spec[ca_path][1],
+        )
+
+        w = [("dw-dns-capture", cap_b, {"mode": 0o555}), ("dw-dns-exporter", exp_b, {"mode": 0o555})]
+        bad_single = [
+            ("r2_0444_dirs", [*w, ("etc/", "DIR:", {"mode": 0o444}), ("etc/duskweave/", "DIR:", {"mode": 0o444}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_unsafe:etc"),
+            ("bad_leaf_dir_0444", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o444}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_unsafe:etc/duskweave"),
+            ("missing_top_dir", [*w, ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_missing:etc"),
+            ("missing_leaf_dir", [*w, ("etc/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_missing:etc/duskweave"),
+            ("missing_all_dirs", [*w, (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_missing:etc"),
+            ("parent_uid_nonroot", [*w, ("etc/", "DIR:", {"mode": 0o755, "uid": 65532}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_unsafe:etc"),
+            ("parent_gid_nonroot", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755, "gid": 65532}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_unsafe:etc/duskweave"),
+            ("parent_mode_0700", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o700}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_unsafe:etc/duskweave"),
+            ("parent_mode_0777", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o777}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_unsafe:etc/duskweave"),
+            ("parent_setgid", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o2755}), (ca_path, ca_b, {"mode": 0o444})], "image_extra_parent_unsafe:etc/duskweave"),
+            ("file_mode_0644", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o644})], f"image_extra_member_unsafe:{ca_path}"),
+            ("file_setuid", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o4444})], f"image_extra_member_unsafe:{ca_path}"),
+            ("file_uid_nonroot", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444, "uid": 65532})], f"image_extra_member_unsafe:{ca_path}"),
+            ("file_gid_nonroot", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444, "gid": 65532})], f"image_extra_member_unsafe:{ca_path}"),
+            ("symlink_parent", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave", "SYM:/tmp"), (ca_path, ca_b, {"mode": 0o444})], "image_layer_link_or_device_refused"),
+            ("symlink_file", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, "SYM:/etc/passwd")], "image_layer_link_or_device_refused"),
+            ("abs_dir", [*w, ("/etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})], "image_layer_unsafe_member"),
+            ("double_slash_dir", [*w, ("etc/", "DIR:", {"mode": 0o755}), ("etc//duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})], "image_layer_unsafe_member"),
+        ]
+        for label, members, expected_reason in bad_single:
+            with self.subTest(bad=label):
+                with self.assertRaises(candidate_host.HostObservationError) as err:
+                    candidate_host.extract_image_worker_digests(
+                        "dw:test", docker_runner=make_runner(_make_save_tar([("l0.tar", members)])), expected_extra_files=ca_spec,
+                    )
+                self.assertEqual(err.exception.status, "REFUSED")
+                self.assertEqual(err.exception.reason, expected_reason)
+
+        bad_multi = [
+            ("later_mode_downgrade", [("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})],
+             [("etc/duskweave/", "DIR:", {"mode": 0o444})], "image_extra_parent_unsafe:etc/duskweave"),
+            ("later_uid_downgrade", [("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})],
+             [("etc/", "DIR:", {"mode": 0o755, "uid": 65532})], "image_extra_parent_unsafe:etc"),
+            ("later_dir_over_file", [("etc/", "DIR:", {"mode": 0o755}), ("etc/duskweave/", "DIR:", {"mode": 0o755}), (ca_path, ca_b, {"mode": 0o444})],
+             [(f"{ca_path}/", "DIR:", {"mode": 0o755})], f"image_extra_member_unsafe:{ca_path}"),
+        ]
+        for label, l0_extra, l1, expected_reason in bad_multi:
+            with self.subTest(bad=label):
+                tar_b = _make_save_tar([("l0.tar", [*w, *l0_extra]), ("l1.tar", l1)])
+                with self.assertRaises(candidate_host.HostObservationError) as err:
+                    candidate_host.extract_image_worker_digests(
+                        "dw:test", docker_runner=make_runner(tar_b, layer_count=2), expected_extra_files=ca_spec,
+                    )
+                self.assertEqual(err.exception.status, "REFUSED")
+                self.assertEqual(err.exception.reason, expected_reason)
 
     def test_check_quiescence_catches_active_procs_containers_netns_launcher_and_dbs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

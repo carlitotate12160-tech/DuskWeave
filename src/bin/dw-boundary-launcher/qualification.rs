@@ -1,4 +1,5 @@
 //! Root-installed release identity. An ordinary caller cannot mint qualification.
+pub(super) mod https_lab;
 use duskweave::m1_inference_permission::LiveBinding;
 use duskweave::{Fail, Res};
 use serde::Deserialize;
@@ -219,8 +220,18 @@ pub(super) fn parse_manifest(bytes: &[u8]) -> Res<Qualified> {
     if bytes.len() > 16384 {
         return Err(Fail::Config("live_host_unqualified"));
     }
-    let manifest: Manifest =
+    let value: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|_| Fail::Config("live_host_unqualified"))?;
+    let purpose = value
+        .get("purpose")
+        .and_then(|v| v.as_str())
+        .ok_or(Fail::Config("live_host_unqualified"))?;
+    let manifest = if purpose == "HTTPS_LOOP_LAB" {
+        https_lab::parse_manifest(bytes)?
+    } else {
+        serde_json::from_slice::<Manifest>(bytes)
+            .map_err(|_| Fail::Config("live_host_unqualified"))?
+    };
     Ok(Qualified {
         manifest,
         manifest_sha256: Sha256::digest(bytes)
@@ -301,6 +312,9 @@ pub(super) fn identity(peer: rustix::net::UCred) -> Res<Qualified> {
 pub(super) fn acquisition(qualified: &Qualified) -> Res<()> {
     qualified.manifest.validate()?;
     qualified.manifest.verify_image()?;
+    if qualified.manifest.purpose == "HTTPS_LOOP_LAB" {
+        https_lab::verify_root_custody()?;
+    }
     host_sinks()
 }
 

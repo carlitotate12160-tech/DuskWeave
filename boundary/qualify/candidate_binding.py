@@ -6,7 +6,8 @@ from __future__ import annotations
 import argparse, hashlib, ipaddress, json, os, re, time, uuid
 from pathlib import Path
 
-from candidate_files import FileCustodyError, create_exclusive_dir, publish_atomic_verified, read_protected_bytes, reject_sensitive_env, verify_driver_custody, write_exclusive_verified
+from candidate_files import FileCustodyError, create_exclusive_dir, read_protected_bytes, reject_sensitive_env, verify_driver_custody, write_exclusive_verified
+from candidate_install_files import publish_atomic_verified
 from candidate_host import HostObservationError, INSTALL_BINARIES, PRIVILEGED_SCOPE, WORKER_BINARIES, check_quiescence, extract_image_worker_digests, observe_installed_facts
 from candidate_postgres import PostgresError, run_psql_stdin, verify_release_schema_and_identities
 import release_descriptor

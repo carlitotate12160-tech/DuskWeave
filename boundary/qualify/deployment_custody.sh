@@ -1,5 +1,5 @@
 # Protected deployment-path custody and the frozen-bundle file/digest contract.
-# Sourced by boundary/qualify/qualify.sh only; refusal names live in callers.
+# Sourced by boundary/qualify/qualify.sh and https_lab.sh; refusal names live in callers.
 
 # Canonical frozen-bundle map: sha256 + bundle-relative path. Membership and
 # digest validation both consume this one owner; bind selects its four binaries.
@@ -105,4 +105,53 @@ validate_bundle_members() {
 
 validate_bundle_digests() {
     (cd -- "$1" && sha256sum --check --strict - >/dev/null 2>&1 <<<"$DEPLOYMENT_BUNDLE_SUMS")
+}
+
+qualify_check_driver_file() {
+    local p=$1 enforce_root=$2
+    if [[ $enforce_root == 1 ]]; then
+        protected_ancestors "$p" && protected_regular_file "$p" || { refuse driver_custody_refused; return 1; }
+    elif [[ $enforce_root == 0 ]]; then
+        [[ -f $p && ! -L $p && $(stat -c %h "$p") == 1 ]] || { refuse driver_custody_refused; return 1; }
+    else
+        refuse driver_custody_refused; return 1
+    fi
+}
+
+qualify_verify_driver_before_load() {
+    local qdir=$1 commit=$2 tree=$3 enforce_root=${4:-1} repo f st hd tr
+    [[ $commit =~ ^[0-9a-f]{40}$ && $tree =~ ^[0-9a-f]{40}$ ]] || { refuse driver_pin_malformed; return 1; }
+    repo=$(cd -- "$qdir/../.." && pwd -P) || { refuse driver_custody_refused; return 1; }
+    for f in deployment_custody.sh qualify.sh candidate.sh release_descriptor.py candidate_files.py \
+             candidate_postgres.py candidate_host.py candidate_install.py candidate_install_files.py \
+             candidate_database.py candidate_binding.py; do
+        qualify_check_driver_file "$qdir/$f" "$enforce_root" || return 1
+    done
+    qualify_check_driver_file "$repo/tests/support/m1_native_bootstrap.py" "$enforce_root" || return 1
+    st=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" status --porcelain=v1 --untracked-files=all) \
+        || { refuse driver_git_failed; return 1; }
+    [[ -z $st ]] || { refuse driver_worktree_unclean; return 1; }
+    hd=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" rev-parse HEAD) || { refuse driver_git_failed; return 1; }
+    tr=$(env -i PATH=/usr/bin:/bin LC_ALL=C git -C "$repo" rev-parse 'HEAD^{tree}') || { refuse driver_git_failed; return 1; }
+    [[ $hd == "$commit" && $tr == "$tree" ]] || { refuse driver_git_pin_mismatch; return 1; }
+    if ! python3 -I -B - "$qdir" "$repo" "$commit" "$enforce_root" <<'PY'
+import os, pathlib, sys
+sys.path.insert(0, sys.argv[1])
+from candidate_files import FileCustodyError, verify_cargo_dir_custody
+repo = pathlib.Path(sys.argv[2])
+enforce = sys.argv[4] == "1"
+uids = (0,) if enforce else (os.geteuid(),)
+stop_at = pathlib.Path("/") if enforce else repo
+try:
+    verify_cargo_dir_custody(
+        repo, commit=sys.argv[3], expected_uids=uids, stop_at=stop_at,
+        require_git=True, reason="driver_cargo_config_present",
+    )
+except FileCustodyError:
+    raise SystemExit(1)
+PY
+    then
+        refuse driver_cargo_config_present
+        return 1
+    fi
 }

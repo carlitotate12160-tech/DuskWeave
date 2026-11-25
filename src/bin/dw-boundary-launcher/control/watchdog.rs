@@ -26,6 +26,9 @@ pub(super) struct Watchdog {
 }
 impl Watchdog {
     pub(super) fn start(q: &DnsRequest) -> Res<Self> {
+        Self::start_ids(q.attempt, q.session_generation)
+    }
+    pub(super) fn start_ids(attempt: uuid::Uuid, generation: u64) -> Res<Self> {
         let (parent, child) =
             UnixStream::pair().map_err(|_| Fail::Config("live_host_unqualified"))?;
         parent
@@ -42,20 +45,20 @@ impl Watchdog {
             process,
             channel: parent,
         };
-        owner.handshake(q)?;
+        owner.handshake(attempt, generation)?;
         Ok(owner)
     }
-    fn handshake(&mut self, q: &DnsRequest) -> Res<()> {
+    fn handshake(&mut self, attempt: uuid::Uuid, generation: u64) -> Res<()> {
         let mut channel = HostChannel::new(&mut self.channel);
         channel.send_command(&HostCommand::Ack {
-            attempt: q.attempt,
-            generation: q.session_generation,
+            attempt,
+            generation,
         })?;
         match channel.reply()? {
             HostReply::Ready {
-                attempt,
-                generation,
-            } if (attempt, generation) == (q.attempt, q.session_generation) => Ok(()),
+                attempt: got_attempt,
+                generation: got_generation,
+            } if (got_attempt, got_generation) == (attempt, generation) => Ok(()),
             _ => Err(Fail::Config("live_host_unqualified")),
         }
     }
@@ -91,7 +94,36 @@ impl Drop for Watchdog {
         }
     }
 }
-fn initialize(socket: &mut UnixStream) -> Res<super::super::attempt::Session> {
+struct WatchdogTarget {
+    attempt: uuid::Uuid,
+    engagement_id: uuid::Uuid,
+    campaign_id: uuid::Uuid,
+    generation: u64,
+    handling_deadline_at_ms: i64,
+    max_wall_ms: u64,
+}
+fn load_watchdog(attempt: uuid::Uuid, generation: u64) -> Res<WatchdogTarget> {
+    if let Ok(s) = super::super::attempt::load(attempt, generation) {
+        return Ok(WatchdogTarget {
+            attempt,
+            engagement_id: s.request.engagement_id,
+            campaign_id: s.request.campaign_id,
+            generation: s.request.session_generation,
+            handling_deadline_at_ms: s.handling_deadline_at_ms,
+            max_wall_ms: 9000,
+        });
+    }
+    let s = super::super::attempt::https::load(attempt, generation)?;
+    Ok(WatchdogTarget {
+        attempt,
+        engagement_id: s.request.engagement_id,
+        campaign_id: s.request.campaign_id,
+        generation: s.request.session_generation,
+        handling_deadline_at_ms: s.handling_deadline_at_ms,
+        max_wall_ms: s.max_watchdog_ms(),
+    })
+}
+fn initialize(socket: &mut UnixStream) -> Res<WatchdogTarget> {
     let HostCommand::Ack {
         attempt,
         generation,
@@ -99,7 +131,7 @@ fn initialize(socket: &mut UnixStream) -> Res<super::super::attempt::Session> {
     else {
         return Err(Fail::Config("live_host_unqualified"));
     };
-    let original = super::super::attempt::load(attempt, generation)?;
+    let original = load_watchdog(attempt, generation)?;
     HostChannel::new(&mut *socket).send_reply(&HostReply::Ready {
         attempt,
         generation,
@@ -111,22 +143,24 @@ fn initialize(socket: &mut UnixStream) -> Res<super::super::attempt::Session> {
 }
 pub(crate) fn serve(mut socket: UnixStream) -> Res<()> {
     let original = initialize(&mut socket)?;
-    let attempt = original.request.attempt;
-    let generation = original.request.session_generation;
+    let attempt = original.attempt;
+    let generation = original.generation;
     let origin = Instant::now();
     loop {
         if watchdog_stop(&mut socket, attempt, generation)?
-            || origin.elapsed() >= Duration::from_millis(9000)
+            || origin.elapsed() >= Duration::from_millis(original.max_wall_ms)
         {
-            let q = &original.request;
-            let _ =
-                super::super::attempt::stop(q.engagement_id, q.campaign_id, q.session_generation);
+            let _ = super::super::attempt::stop(
+                original.engagement_id,
+                original.campaign_id,
+                original.generation,
+            );
             return Ok(());
         }
     }
 }
 fn watchdog_stop(socket: &mut UnixStream, attempt: uuid::Uuid, generation: u64) -> Res<bool> {
-    let Ok(session) = super::super::attempt::load(attempt, generation) else {
+    let Ok(session) = load_watchdog(attempt, generation) else {
         return Ok(true);
     };
     if super::super::qualification::now_ms()? >= session.handling_deadline_at_ms {

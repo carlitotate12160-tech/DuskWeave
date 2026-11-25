@@ -44,12 +44,12 @@ def provisioning_probe(recorded):
 class SchemaRevisionCases(unittest.TestCase):
     def test_revision_0032_accepted_and_out_of_range_refused(self):
         self.assertIn("0032", bootstrap.SCHEMA_REVISIONS)
-        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0037")
+        self.assertEqual(bootstrap.SCHEMA_REVISIONS[-1], "0038")
 
         def bomb(args, data=None):
             raise AssertionError("provisioning must not start for an invalid revision")
 
-        for revision, kind in (("0037", "live"), ("0035", "live"), ("0034", "live"), ("0038", "fixture"),
+        for revision, kind in (("0037", "live"), ("0036", "live"), ("0035", "live"), ("0034", "live"), ("0039", "fixture"),
                                ("0033", "live"), ("0032", "live"), ("0031", "live"), ("32", "fixture")):
             with mock.patch.object(bootstrap, "private_run", bomb):
                 with self.assertRaisesRegex(RuntimeError, "^native_schema_revision_refused$"):
@@ -115,7 +115,8 @@ class SchemaRevisionCases(unittest.TestCase):
     def test_revision_tail_counts_stay_distinct(self):
         for revision, initial, refresh in (
             ("0020", 18, 9), ("0021", 19, 10), ("0022", 20, 11),
-            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22), ("0034", 32, 23), ("0035", 33, 24), ("0036", 34, 25), ("0037", 35, 26),
+            ("0030", 28, 19), ("0031", 29, 20), ("0032", 30, 21), ("0033", 31, 22),
+            ("0034", 32, 23), ("0035", 33, 24), ("0036", 34, 25), ("0037", 35, 26), ("0038", 36, 27),
         ):
             self.assertEqual(len(migrate_calls(revision, initial=True)), initial, revision)
             self.assertEqual(len(migrate_calls(revision, initial=False)), refresh, revision)
@@ -211,6 +212,20 @@ class SchemaRevisionCases(unittest.TestCase):
             self.assertIn("OR q#>>'{live_binding,release_sha256}' IS DISTINCT FROM release", tail)
             self.assertIn("THEN RAISE EXCEPTION 'live_qualification_unavailable'; END IF;", tail)
             self.assertIn("lq.valid_until_ms-n", tail)
+
+    def test_revision_0038_accepted_for_fixture_and_live_and_provisions_stop_owner(self):
+        for kind in ("fixture", "live"):
+            recorded = []
+            with self.subTest(kind=kind), \
+                 mock.patch.object(bootstrap, "service_qualified"), \
+                 mock.patch.object(bootstrap, "private_run", provisioning_probe(recorded)):
+                fixture = bootstrap.Fixture("dwpg-r3", kind, database=f"dw_native_s38_{kind}", schema_revision="0038")
+            self.assertIn("stop", fixture.roles)
+            self.assertIn("DW_STOP_WRITER_DATABASE_URL", fixture.env)
+        for initial, expected_count in ((True, 36), (False, 27)):
+            calls = migrate_calls("0038", initial)
+            self.assertEqual(len(calls), expected_count)
+            self.assertIn("HTTPS_LOOP_LAB", calls[-1])
 
     def test_container_refusal_runs_before_any_provisioning(self):
         def bomb(args, data=None):

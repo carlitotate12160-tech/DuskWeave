@@ -189,3 +189,140 @@ fn completed_channels_and_control_readable() {
         Fail::State("live_host_unavailable")
     );
 }
+
+fn https_channel_pair() -> (HostChannel<UnixStream>, HostChannel<UnixStream>) {
+    let (host, peer) = UnixStream::pair().unwrap();
+    host.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    (HostChannel::new(host), HostChannel::new(peer))
+}
+
+#[test]
+fn receive_https_start_and_https_acknowledged_enforce_phase_and_identity() {
+    let q = crate::attempt::https::tests::sample_request(Uuid::new_v4(), 1000);
+    let (mut host, mut peer) = https_channel_pair();
+
+    peer.send_command(&HostCommand::StartPhase {
+        attempt: q.attempt,
+        generation: q.session_generation,
+        phase: HttpsPhase::Connect,
+        deadline_at_ms: 2000,
+    })
+    .unwrap();
+    assert_eq!(
+        receive_https_start(&mut host, &q, HttpsPhase::Connect).unwrap(),
+        2000
+    );
+
+    for bad in [
+        HostCommand::StartPhase {
+            attempt: q.attempt,
+            generation: q.session_generation,
+            phase: HttpsPhase::Tls,
+            deadline_at_ms: 2000,
+        },
+        HostCommand::StartPhase {
+            attempt: q.attempt,
+            generation: q.session_generation + 1,
+            phase: HttpsPhase::Connect,
+            deadline_at_ms: 2000,
+        },
+        HostCommand::AckHttps {
+            attempt: q.attempt,
+            generation: q.session_generation,
+        },
+    ] {
+        peer.send_command(&bad).unwrap();
+        assert_eq!(
+            receive_https_start(&mut host, &q, HttpsPhase::Connect).unwrap_err(),
+            Fail::State("live_effect_start_refused")
+        );
+    }
+
+    peer.send_command(&HostCommand::RenewHttps {
+        attempt: q.attempt,
+        generation: q.session_generation,
+        deadline_at_ms: 2000,
+    })
+    .unwrap();
+    assert!(!https_acknowledged(&mut host, &q).unwrap());
+
+    peer.send_command(&HostCommand::AckHttps {
+        attempt: q.attempt,
+        generation: q.session_generation,
+    })
+    .unwrap();
+    assert!(https_acknowledged(&mut host, &q).unwrap());
+
+    peer.send_command(&HostCommand::AckHttps {
+        attempt: q.attempt,
+        generation: q.session_generation + 1,
+    })
+    .unwrap();
+    assert_eq!(
+        https_acknowledged(&mut host, &q).unwrap_err(),
+        Fail::State("live_host_protocol_refused")
+    );
+}
+
+#[test]
+fn https_wait_rejects_protocol_drift_and_disconnects() {
+    let q = crate::attempt::https::tests::sample_request(
+        Uuid::new_v4(),
+        crate::qualification::now_ms().unwrap(),
+    );
+    let (mut host, mut peer) = https_channel_pair();
+    let dl = q.deadline_at_ms;
+    let mut wait = HttpsWait {
+        channel: &mut host,
+        q: &q,
+        deadline: dl,
+        waiting_phase: None,
+        io_revoked: false,
+    };
+
+    wait.on_ready(HttpsPhase::Tls).unwrap();
+    assert!(matches!(
+        peer.reply().unwrap(),
+        HostReply::ReadyPhase {
+            phase: HttpsPhase::Tls,
+            ..
+        }
+    ));
+    assert_eq!(
+        wait.on_ready(HttpsPhase::Head).unwrap_err(),
+        Fail::State("live_host_protocol_refused")
+    );
+
+    assert_eq!(
+        wait.on_renew(q.attempt, q.session_generation, dl + 1)
+            .unwrap_err(),
+        Fail::State("live_host_protocol_refused")
+    );
+    let (cmd_tx, _cmd_rx) = std::sync::mpsc::sync_channel(1);
+    assert_eq!(
+        wait.on_start(
+            &cmd_tx,
+            q.attempt,
+            q.session_generation,
+            HttpsPhase::Head,
+            dl
+        )
+        .unwrap_err(),
+        Fail::State("live_host_protocol_refused")
+    );
+
+    peer.send_command(&HostCommand::StopRun { run_id: q.run_id })
+        .unwrap();
+    assert_eq!(
+        wait.command(&cmd_tx).unwrap_err(),
+        Fail::State("live_host_protocol_refused")
+    );
+
+    let (evt_tx, evt_rx) = std::sync::mpsc::sync_channel(1);
+    drop(evt_tx);
+    assert_eq!(
+        wait.drain(&evt_rx).unwrap_err(),
+        Fail::State("https_ipc_failure")
+    );
+}

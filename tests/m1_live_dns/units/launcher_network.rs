@@ -151,7 +151,17 @@ fn owner_preparation_installs_default_deny_before_activating_links() {
     let inner = std::fs::read_to_string(&calls[4].input).unwrap();
     let outer = std::fs::read_to_string(&calls[5].input).unwrap();
     assert!(inner.contains("policy drop"));
+    assert!(inner.contains("ip daddr 192.0.2.53 udp dport 53 accept"));
+    assert!(inner.contains("ip saddr 192.0.2.53 udp sport 53 ct state established accept"));
+    assert!(!inner.contains("tcp") && !inner.contains("dport 443"));
     assert!(outer.contains("flags timeout; timeout 2000ms"));
+    assert!(outer.contains("ip daddr 192.0.2.53 udp dport 53"));
+    assert!(
+        outer.contains(
+            "ip saddr 192.0.2.53 udp sport 53 ip daddr @live ct state established accept"
+        )
+    );
+    assert!(!outer.contains("tcp") && !outer.contains("dport 443"));
     assert!(
         !outer.contains("add element"),
         "preparation cannot grant egress"
@@ -244,4 +254,122 @@ fn process_completion_and_rule_input_keep_one_absolute_budget() {
     let expired = Instant::now();
     assert!(run("/bin/true", &[], expired).is_err());
     assert!(spawn_nft(None, "", false, expired).is_err());
+}
+
+fn parse_timeout_ms(rules: &str) -> i64 {
+    let after = rules
+        .split("timeout ")
+        .nth(1)
+        .expect("rules must contain timeout");
+    let digits = after.split("ms").next().expect("timeout must end in ms");
+    digits.parse::<i64>().expect("timeout digits")
+}
+
+#[test]
+fn https_preparation_installs_default_deny_two_second_set_and_tcp_443_only() {
+    let io = fixture::Network::new();
+    let attempt = Uuid::new_v4();
+    let end = Instant::now() + Duration::from_secs(3);
+    create_https(attempt, 42, "198.51.100.10", end).unwrap();
+    let calls = io.events.borrow();
+    assert_eq!(calls.len(), 11);
+    assert_eq!(calls[0].program, IP);
+    assert_eq!(
+        calls[0].args,
+        ["netns", "attach", &names(attempt).netns, "42"]
+    );
+    let inner = std::fs::read_to_string(&calls[4].input).unwrap();
+    let outer = std::fs::read_to_string(&calls[5].input).unwrap();
+    assert!(inner.contains("policy drop"));
+    assert!(inner.contains("ip daddr 198.51.100.10 tcp dport 443 accept"));
+    assert!(inner.contains("ip saddr 198.51.100.10 tcp sport 443 ct state established accept"));
+    assert!(!inner.contains("udp") && !inner.contains("dport 53"));
+    assert!(outer.contains("flags timeout; timeout 2000ms;"));
+    assert_eq!(parse_timeout_ms(&outer), 2000);
+    assert!(
+        !outer.contains("add element"),
+        "preparation cannot grant egress"
+    );
+    assert!(outer.contains("ip daddr 198.51.100.10 tcp dport 443"));
+    assert!(outer.contains(
+        "ip saddr 198.51.100.10 tcp sport 443 ip daddr @live ct state established accept"
+    ));
+    assert!(!outer.contains("udp") && !outer.contains("dport 53"));
+    assert!(calls[8].args.ends_with(&["up".into()]));
+    assert!(calls[9].args.ends_with(&["up".into()]));
+    drop(calls);
+    assert!(
+        create_https(attempt, 42, "198.51.100.10", end).is_err(),
+        "slot cannot be reused"
+    );
+    assert!(destroy(attempt, Instant::now() + Duration::from_secs(2)));
+    assert!(!std::path::Path::new(&slot(&names(attempt))).exists());
+}
+
+#[test]
+fn https_grants_cap_lease_at_two_seconds_clamp_near_deadlines_and_refuse_failures() {
+    let io = fixture::Network::new();
+    let attempt = Uuid::new_v4();
+    let n = names(attempt);
+    let (_, inner_ip, _) = addresses(&n);
+
+    // Missing and wrong slot owner must refuse.
+    assert!(grant_https(attempt, i64::MAX).is_err());
+    acquire_slot(&n, attempt).unwrap();
+    std::fs::write(slot(&n), Uuid::new_v4().to_string()).unwrap();
+    let now = super::super::qualification::now_ms().unwrap();
+    assert_eq!(
+        grant_https(attempt, now + 5000),
+        Err(Fail::Config("live_host_unqualified"))
+    );
+    std::fs::write(slot(&n), attempt.to_string()).unwrap();
+
+    // Expired deadlines must refuse.
+    assert_eq!(
+        grant_https(attempt, now),
+        Err(Fail::State("live_effect_deadline"))
+    );
+    assert_eq!(
+        grant_https(attempt, now - 100),
+        Err(Fail::State("live_effect_deadline"))
+    );
+
+    // Distant operation deadline (> 2s) is accepted, while the egress grant caps at 2000 ms.
+    let distant = super::super::qualification::now_ms().unwrap() + 10_000;
+    grant_https(attempt, distant).unwrap();
+    let first = std::fs::read_to_string(&io.events.borrow()[0].input).unwrap();
+    assert!(first.contains(&format!(
+        "add element inet {} live {{ {inner_ip} timeout",
+        n.table
+    )));
+    assert!(parse_timeout_ms(&first) <= 2000);
+    assert_eq!(parse_timeout_ms(&first), 2000);
+
+    // Repeated grants (authorized renewals) remain capped at 2000 ms.
+    grant_https(attempt, distant).unwrap();
+    let renewed = std::fs::read_to_string(&io.events.borrow()[1].input).unwrap();
+    assert_eq!(parse_timeout_ms(&renewed), 2000);
+
+    // Near original deadline clamps positive lease below 2000 ms.
+    let near = super::super::qualification::now_ms().unwrap() + 800;
+    grant_https(attempt, near).unwrap();
+    let clamped = std::fs::read_to_string(&io.events.borrow()[2].input).unwrap();
+    let clamped_ms = parse_timeout_ms(&clamped);
+    assert!(clamped_ms > 0 && clamped_ms <= 800 && clamped_ms < 2000);
+
+    // DNS grant with near deadline also clamps below 2000 ms, and distant DNS caps at 2000 ms.
+    grant(attempt, near).unwrap();
+    let dns_clamped = std::fs::read_to_string(&io.events.borrow()[3].input).unwrap();
+    let dns_ms = parse_timeout_ms(&dns_clamped);
+    assert!(dns_ms > 0 && dns_ms <= 800 && dns_ms < 2000);
+
+    // Revoke flushes the live set.
+    revoke(attempt).unwrap();
+    let revoked = std::fs::read_to_string(&io.events.borrow()[4].input).unwrap();
+    assert_eq!(revoked, format!("flush set inet {} live\n", n.table));
+
+    // Failed nft command refuses.
+    let fail_idx = io.events.borrow().len();
+    io.fail_at.set(Some(fail_idx));
+    assert!(grant_https(attempt, distant).is_err());
 }

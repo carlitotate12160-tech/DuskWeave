@@ -13,6 +13,8 @@ from pathlib import Path
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 DEFAULT_MAX_READ_BYTES = 134_217_728
 SENSITIVE_ENV_ALLOW = frozenset({"DW_TEST_FIXTURE_SUPERVISOR"})
+PERMITTED_CARGO_REL = ".cargo/mutants.toml"
+_CLEAN_GIT_ENV = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
 
 
 class FileCustodyError(RuntimeError):
@@ -166,13 +168,14 @@ def _write_all_fd(fd: int, data: bytes, writer=os.write) -> None:
         offset += written
 
 
-def _verify_written_file(
+def verify_written_file(
     path: Path,
     expected: bytes,
     *,
     expected_uids: tuple[int, ...],
     expected_mode: int,
 ) -> str:
+    """Re-open written file without following symlinks and verify metadata and bytes."""
     fd = _open_nofollow_ro(path)
     try:
         st = os.fstat(fd)
@@ -216,16 +219,9 @@ def _commit_fd_metadata(
 
 
 def write_exclusive_verified(
-    path: Path,
-    data: bytes,
-    *,
-    mode: int,
-    expected_uids: tuple[int, ...],
-    owner_uid: int | None = None,
-    owner_gid: int | None = None,
-    stop_at: Path = Path("/"),
-    writer=os.write,
-    fsync_fn=os.fsync,
+    path: Path, data: bytes, *, mode: int, expected_uids: tuple[int, ...],
+    owner_uid: int | None = None, owner_gid: int | None = None,
+    stop_at: Path = Path("/"), writer=os.write, fsync_fn=os.fsync,
 ) -> str:
     """Create path exclusively with full-buffer loop, fsync, and readback verification."""
     try:
@@ -241,62 +237,18 @@ def write_exclusive_verified(
         raise FileCustodyError("REFUSED", f"exclusive_create_failed:{path.name}") from exc
     try:
         _write_all_fd(fd, data, writer=writer)
-        _commit_fd_metadata(
-            fd, mode=mode, owner_uid=owner_uid, owner_gid=owner_gid, fsync_fn=fsync_fn
-        )
+        _commit_fd_metadata(fd, mode=mode, owner_uid=owner_uid, owner_gid=owner_gid, fsync_fn=fsync_fn)
     finally:
         os.close(fd)
     verify_uids = expected_uids if owner_uid is None else (owner_uid,)
-    digest = _verify_written_file(path, data, expected_uids=verify_uids, expected_mode=mode)
+    digest = verify_written_file(path, data, expected_uids=verify_uids, expected_mode=mode)
     fsync_dir(path.parent, fsync_fn=fsync_fn)
     return digest
 
 
-def publish_atomic_verified(
-    path: Path,
-    data: bytes,
-    *,
-    mode: int,
-    expected_uids: tuple[int, ...],
-    owner_uid: int | None = None,
-    owner_gid: int | None = None,
-    stop_at: Path = Path("/"),
-    writer=os.write,
-    fsync_fn=os.fsync,
-    replacer=os.replace,
-) -> str:
-    """Stage exclusively, verify content/metadata, replace atomically, fsync dir, reverify."""
-    if path.is_symlink():
-        raise FileCustodyError("REFUSED", f"symlink_destination_refused:{path.name}")
-    require_safe_ancestors(path.parent, expected_uids, stop_at=stop_at)
-    stage = path.with_name(f".{path.name}.stage.{os.getpid()}")
-    write_exclusive_verified(
-        stage,
-        data,
-        mode=mode,
-        expected_uids=expected_uids,
-        owner_uid=owner_uid,
-        owner_gid=owner_gid,
-        stop_at=stop_at,
-        writer=writer,
-        fsync_fn=fsync_fn,
-    )
-    try:
-        replacer(stage, path)
-        fsync_dir(path.parent, fsync_fn=fsync_fn)
-    except OSError as exc:
-        raise FileCustodyError("INCOMPLETE", f"atomic_replace_failed:{path.name}") from exc
-    verify_uids = expected_uids if owner_uid is None else (owner_uid,)
-    return _verify_written_file(path, data, expected_uids=verify_uids, expected_mode=mode)
-
-
 def create_exclusive_dir(
-    path: Path,
-    *,
-    mode: int,
-    expected_uids: tuple[int, ...],
-    stop_at: Path = Path("/"),
-    fsync_fn=os.fsync,
+    path: Path, *, mode: int, expected_uids: tuple[int, ...],
+    stop_at: Path = Path("/"), fsync_fn=os.fsync,
 ) -> None:
     """Exclusively create one fresh protected directory beneath verified ancestors."""
     try:
@@ -329,6 +281,7 @@ DRIVER_QUALIFY_FILES = (
     "candidate_files.py",
     "candidate_host.py",
     "candidate_install.py",
+    "candidate_install_files.py",
     "candidate_postgres.py",
     "deployment_custody.sh",
     "qualify.sh",
@@ -336,40 +289,108 @@ DRIVER_QUALIFY_FILES = (
 )
 
 
-def verify_driver_custody(
-    qualify_dir: Path,
-    expected_commit: str,
-    expected_tree: str,
-    *,
-    expected_uids: tuple[int, ...] = (0,),
-    stop_at: Path = Path("/"),
-    git_runner=subprocess.run,
+def _git_bytes(repo_root: Path, args: list[str], git_runner, reason: str) -> bytes:
+    try:
+        proc = git_runner(
+            ["git", "-C", str(repo_root), *args],
+            capture_output=True, text=False, env=_CLEAN_GIT_ENV, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise FileCustodyError("REFUSED", reason) from exc
+    if proc.returncode != 0:
+        raise FileCustodyError("REFUSED", reason)
+    return proc.stdout if isinstance(proc.stdout, bytes) else proc.stdout.encode("utf-8")
+
+
+def _parse_permitted_cargo_blob(ls_out: bytes, reason: str) -> str:
+    if not ls_out.endswith(b"\x00"):
+        raise FileCustodyError("REFUSED", reason)
+    entries = ls_out[:-1].split(b"\x00")
+    if len(entries) != 1 or b"\t" not in entries[0]:
+        raise FileCustodyError("REFUSED", reason)
+    meta, rel = entries[0].split(b"\t", 1)
+    parts = meta.split(b" ")
+    if len(parts) != 3 or parts[0] != b"100644" or parts[1] != b"blob" or rel != PERMITTED_CARGO_REL.encode("ascii"):
+        raise FileCustodyError("REFUSED", reason)
+    blob_oid = parts[2].decode("ascii", "replace")
+    if not HEX40_RE.fullmatch(blob_oid):
+        raise FileCustodyError("REFUSED", reason)
+    return blob_oid
+
+
+def _verify_git_pin_bytes(repo_root: Path, commit: str, expected_tree: str | None, git_runner, reason: str) -> None:
+    checks = [(["rev-parse", "--is-inside-work-tree"], "true"), (["rev-parse", "HEAD"], commit)]
+    if expected_tree is not None:
+        if not isinstance(expected_tree, str) or not HEX40_RE.fullmatch(expected_tree):
+            raise FileCustodyError("REFUSED", reason)
+        checks.append((["rev-parse", "HEAD^{tree}"], expected_tree))
+    for args, want in checks:
+        if _git_bytes(repo_root, args, git_runner, reason).strip().decode("ascii", "replace") != want:
+            raise FileCustodyError("REFUSED", reason)
+
+
+def verify_cargo_dir_custody(
+    repo_root: Path, *, commit: str | None, expected_uids: tuple[int, ...], stop_at: Path,
+    expected_tree: str | None = None, verify_head_pin: bool = False, require_git: bool = True,
+    git_runner=subprocess.run, reason: str = "candidate_cargo_config_present",
 ) -> None:
-    """Validate driver files under protected custody and clean pinned Git commit/tree."""
+    """Allow absent .cargo in historical/synthetic trees or exact pinned .cargo/mutants.toml only."""
+    cargo_dir = repo_root / ".cargo"
+    present = cargo_dir.exists() or cargo_dir.is_symlink()
+    has_git = (repo_root / ".git").exists() or (repo_root / ".git").is_symlink()
+    if not present and not has_git and not require_git:
+        return
+    if not isinstance(commit, str) or not HEX40_RE.fullmatch(commit):
+        raise FileCustodyError("REFUSED", reason)
+    if verify_head_pin:
+        _verify_git_pin_bytes(repo_root, commit, expected_tree, git_runner, reason)
+    ls_out = _git_bytes(repo_root, ["ls-tree", "-r", "-z", commit, "--", ".cargo"], git_runner, reason)
+    if not present:
+        if ls_out:
+            raise FileCustodyError("REFUSED", reason)
+        return
+    try:
+        require_safe_ancestors(cargo_dir, expected_uids, stop_at=stop_at)
+        if os.listdir(cargo_dir) != ["mutants.toml"]:
+            raise FileCustodyError("REFUSED", reason)
+        disk = read_protected_bytes(cargo_dir / "mutants.toml", expected_uids=expected_uids, stop_at=stop_at)
+    except (FileCustodyError, OSError) as exc:
+        raise FileCustodyError("REFUSED", reason) from exc
+    blob_oid = _parse_permitted_cargo_blob(ls_out, reason)
+    if disk != _git_bytes(repo_root, ["cat-file", "blob", blob_oid], git_runner, reason):
+        raise FileCustodyError("REFUSED", reason)
+
+
+def verify_file_list_custody(
+    repo_root: Path, tracked: list[Path], expected_commit: str, expected_tree: str,
+    *, expected_uids: tuple[int, ...] = (0,), stop_at: Path = Path("/"), git_runner=subprocess.run,
+) -> None:
+    """Validate explicit file list under protected custody and clean pinned Git commit/tree."""
     if not HEX40_RE.fullmatch(expected_commit) or not HEX40_RE.fullmatch(expected_tree):
         raise FileCustodyError("REFUSED", "driver_pin_malformed")
-    repo_root = qualify_dir.parents[1]
-    tracked = [qualify_dir / name for name in DRIVER_QUALIFY_FILES] + [
-        repo_root / "tests" / "support" / "m1_native_bootstrap.py"
-    ]
     for item in tracked:
         read_protected_bytes(item, expected_uids=expected_uids, stop_at=stop_at)
-    clean_git_env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
-    head = git_runner(
-        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
-        capture_output=True, text=True, env=clean_git_env, timeout=15,
-    )
-    tree = git_runner(
-        ["git", "-C", str(repo_root), "rev-parse", "HEAD^{tree}"],
-        capture_output=True, text=True, env=clean_git_env, timeout=15,
-    )
-    status = git_runner(
-        ["git", "-C", str(repo_root), "status", "--porcelain=v1", "--untracked-files=all"],
-        capture_output=True, text=True, env=clean_git_env, timeout=15,
-    )
-    if head.returncode != 0 or tree.returncode != 0 or status.returncode != 0:
-        raise FileCustodyError("REFUSED", "driver_git_inspection_failed")
-    if head.stdout.strip() != expected_commit or tree.stdout.strip() != expected_tree:
+    head = _git_bytes(repo_root, ["rev-parse", "HEAD"], git_runner, "driver_git_inspection_failed").strip().decode("ascii", "replace")
+    tree = _git_bytes(repo_root, ["rev-parse", "HEAD^{tree}"], git_runner, "driver_git_inspection_failed").strip().decode("ascii", "replace")
+    status = _git_bytes(repo_root, ["status", "--porcelain=v1", "--untracked-files=all"], git_runner, "driver_git_inspection_failed").strip()
+    if head != expected_commit or tree != expected_tree:
         raise FileCustodyError("REFUSED", "driver_git_pin_mismatch")
-    if status.stdout.strip() or (repo_root / ".cargo").exists() or (repo_root / ".cargo").is_symlink():
+    if status:
         raise FileCustodyError("REFUSED", "driver_worktree_unclean_or_cargo_present")
+    verify_cargo_dir_custody(
+        repo_root, commit=expected_commit, expected_uids=expected_uids, stop_at=stop_at,
+        require_git=True, git_runner=git_runner, reason="driver_worktree_unclean_or_cargo_present",
+    )
+
+
+def verify_driver_custody(
+    qualify_dir: Path, expected_commit: str, expected_tree: str,
+    *, expected_uids: tuple[int, ...] = (0,), stop_at: Path = Path("/"), git_runner=subprocess.run,
+) -> None:
+    """Validate driver files under protected custody and clean pinned Git commit/tree."""
+    repo_root = qualify_dir.parents[1]
+    tracked = [qualify_dir / name for name in DRIVER_QUALIFY_FILES] + [repo_root / "tests" / "support" / "m1_native_bootstrap.py"]
+    verify_file_list_custody(
+        repo_root, tracked, expected_commit, expected_tree,
+        expected_uids=expected_uids, stop_at=stop_at, git_runner=git_runner,
+    )

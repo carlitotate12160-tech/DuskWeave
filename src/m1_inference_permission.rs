@@ -68,8 +68,18 @@ pub struct InferencePermission {
 }
 
 impl InferencePermission {
+    fn unexpected_live_binding(&self) -> bool {
+        [
+            self.live_binding.is_some(),
+            self.version != "m1_inference_permission_v6",
+            !self.https_lab_binding_allowed(),
+        ]
+        .into_iter()
+        .all(std::convert::identity)
+    }
+
     fn check_profile(&self) -> Res<()> {
-        if self.version != "m1_inference_permission_v6" && self.live_binding.is_some() {
+        if self.unexpected_live_binding() {
             return Err(Fail::Input("inference_unsupported_profile"));
         }
         match self.version.as_str() {
@@ -81,6 +91,14 @@ impl InferencePermission {
             _ => self.check_initial_profile(),
         }
     }
+    fn https_lab_binding_allowed(&self) -> bool {
+        self.version == crate::m1_https::VERSION_HTTPS_LOOP
+            && self.profile == crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE
+            && self.run_profile.as_deref()
+                == Some(crate::m1_inference_profile::HTTPS_LAB_RUN_PROFILE)
+            && self.execution_mode.as_deref() == Some("live")
+    }
+
     fn check_v4_or_loop(&self) -> Res<()> {
         if self.version == crate::m1_https::VERSION_HTTPS_LOOP {
             self.check_https_loop()

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"duskweave/boundary/internal/frame"
 	"encoding/binary"
+	"strings"
 	"testing"
+	"time"
 )
 
 func question() frame.Request {
@@ -104,5 +106,73 @@ func TestDuplicateAddressesRetainLowestTTL(t *testing.T) {
 	p, err := Decode(wire, question())
 	if err != nil || len(p.Answers) != 1 || p.Answers[0].TTL != 3 {
 		t.Fatal("duplicate addresses were not reconciled conservatively")
+	}
+}
+
+func TestValidateHttpsLabAndLegacyBranchesMapB(t *testing.T) {
+	now := time.Now()
+	id := "00000000-0000-0000-0000-000000000001"
+	valid := frame.Request{
+		Identity:      frame.Identity{Schema: frame.Schema, Kind: "REQUEST", Attempt: id, Generation: 1, Sequence: 0},
+		Engagement:    id,
+		Campaign:      id,
+		Decision:      id,
+		Profile:       "dns-routing-v2",
+		Mode:          "live",
+		RunProfile:    "autonomous-https-genai-lab-v1",
+		Release:       strings.Repeat("a", 64),
+		Qualification: id,
+		Name:          "head.duskweave.test",
+		Resolver:      "192.0.2.53",
+		Transport:     "udp",
+		QueryID:       7,
+		AllowedNames:  []string{"head.duskweave.test"},
+		Deadline:      now.Add(2 * time.Second).UnixMilli(),
+		Duration:      2000,
+	}
+	if err := Validate(valid, now); err != nil {
+		t.Fatalf("Map B: valid HTTPS LAB DNS request rejected: %v", err)
+	}
+	// Legacy DNS LAB retains suffix rule.
+	legacyLab := valid
+	legacyLab.RunProfile = "autonomous-dns-genai-lab-v1"
+	legacyLab.Name = "other.duskweave.test"
+	legacyLab.AllowedNames = []string{"other.duskweave.test"}
+	if err := Validate(legacyLab, now); err != nil {
+		t.Fatalf("legacy DNS LAB suffix request rejected: %v", err)
+	}
+	// Negative mutations for HTTPS LAB singleton scope and common validation.
+	for name, mutate := range map[string]func(*frame.Request){
+		"wrong_resolver": func(q *frame.Request) { q.Resolver = "192.0.2.54" },
+		"suffix_only_host": func(q *frame.Request) {
+			q.Name = "other.duskweave.test"
+			q.AllowedNames = []string{"other.duskweave.test"}
+		},
+		"outside_domain": func(q *frame.Request) {
+			q.Name = "head.example.invalid"
+			q.AllowedNames = []string{"head.example.invalid"}
+		},
+		"multiple_allowed":  func(q *frame.Request) { q.AllowedNames = []string{"head.duskweave.test", "extra.duskweave.test"} },
+		"duplicate_allowed": func(q *frame.Request) { q.AllowedNames = []string{"head.duskweave.test", "head.duskweave.test"} },
+		"empty_allowed":     func(q *frame.Request) { q.AllowedNames = []string{} },
+		"uppercase_name": func(q *frame.Request) {
+			q.Name = "Head.duskweave.test"
+			q.AllowedNames = []string{"Head.duskweave.test"}
+		},
+		"trailing_dot": func(q *frame.Request) {
+			q.Name = "head.duskweave.test."
+			q.AllowedNames = []string{"head.duskweave.test."}
+		},
+		"wrong_mode":          func(q *frame.Request) { q.Mode = "controlled_fixture" },
+		"wrong_profile":       func(q *frame.Request) { q.Profile = "dns-routing-fixture-v1" },
+		"wrong_schema":        func(q *frame.Request) { q.Schema = "m1_https_ipc_v1" },
+		"wrong_transport":     func(q *frame.Request) { q.Transport = "tcp" },
+		"unknown_run_profile": func(q *frame.Request) { q.RunProfile = "unknown-profile-v1" },
+	} {
+		q := valid
+		mutate(&q)
+		if Validate(q, now) == nil {
+			t.Fatalf("Map B: accepted invalid DNS mutation %s", name)
+		}
 	}
 }

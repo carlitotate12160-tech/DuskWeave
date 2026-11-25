@@ -2,9 +2,10 @@
 mod exchange;
 mod watchdog;
 use super::qualification::{Manifest, Qualified};
-use super::relay::Pair;
+use super::relay::{Pair, https::HttpsPair};
 use duskweave::m1_dns::DnsRequest;
 use duskweave::m1_effect_control::{HostChannel, HostCommand, HostReply};
+use duskweave::m1_https::ipc::{HttpsIpcRequest, HttpsPhase};
 use duskweave::m1_inference_permission::LiveBinding;
 use duskweave::{Fail, Res};
 use std::os::unix::net::UnixStream;
@@ -115,12 +116,25 @@ pub(super) fn dispatch(socket: UnixStream, qualified: &Qualified) -> Res<()> {
                 disposal_confirmed,
             })
         }
-        HostCommand::Qualify { .. } | HostCommand::Open { .. } => {
+        HostCommand::Qualify { .. } | HostCommand::Open { .. } | HostCommand::OpenHttps { .. } => {
             acquisition(&mut channel, qualified, command)
         }
         _ => channel.send_reply(&HostReply::Refused),
     }
 }
+fn qualify_reply(qualified: &Qualified, binding: &LiveBinding, run_profile: &str) -> HostReply {
+    let manifest = &qualified.manifest;
+    if manifest.matches(binding, run_profile) {
+        HostReply::Qualified {
+            qualification_ref: manifest.qualification_ref,
+            manifest_sha256: qualified.manifest_sha256.clone(),
+            boot_id: manifest.boot_id,
+        }
+    } else {
+        HostReply::Refused
+    }
+}
+
 fn acquisition(
     channel: &mut HostChannel<UnixStream>,
     qualified: &Qualified,
@@ -133,17 +147,94 @@ fn acquisition(
         HostCommand::Qualify {
             binding,
             run_profile,
-        } if manifest.matches(&binding, &run_profile) => HostReply::Qualified {
-            qualification_ref: manifest.qualification_ref,
-            manifest_sha256: qualified.manifest_sha256.clone(),
-            boot_id: manifest.boot_id,
-        },
+        } => qualify_reply(qualified, &binding, &run_profile),
         HostCommand::Open { run_id, request } => {
             return open(channel, manifest, run_id, &request, &peer);
+        }
+        HostCommand::OpenHttps { run_id, request } => {
+            return open_https(channel, manifest, run_id, &request, &peer);
         }
         _ => HostReply::Refused,
     };
     channel.send_reply(&reply)
+}
+
+fn binding_of_https(q: &HttpsIpcRequest) -> LiveBinding {
+    LiveBinding {
+        qualification_ref: q.qualification_ref,
+        release_sha256: q.release_sha256.clone(),
+        resolver_ipv4: q.resolver_ipv4.clone(),
+    }
+}
+
+fn open_https(
+    channel: &mut HostChannel<UnixStream>,
+    manifest: &Manifest,
+    run: uuid::Uuid,
+    q: &HttpsIpcRequest,
+    peer: &UnixStream,
+) -> Res<()> {
+    if !manifest.matches(&binding_of_https(q), &q.run_profile) {
+        return Err(Fail::Config("live_host_unqualified"));
+    }
+    let session = super::attempt::https::open(run, q)?;
+    let outcome = exchange_https(channel, manifest, &session, peer);
+    if outcome.is_err() {
+        let _ = super::attempt::stop(q.engagement_id, q.campaign_id, q.session_generation);
+        let _ = super::attempt::dispose(q.attempt);
+    }
+    outcome
+}
+
+fn exchange_https(
+    channel: &mut HostChannel<UnixStream>,
+    manifest: &Manifest,
+    session: &super::attempt::https::HttpsSession,
+    peer: &UnixStream,
+) -> Res<()> {
+    let q = &session.request;
+    let (mut pair, mut watchdog) = prepare_https(channel, manifest, session)?;
+    let deadline = release_https(channel, q, &mut pair, &mut watchdog)?;
+    let result =
+        exchange::await_https_result(channel, peer, q, deadline, &mut pair, &mut watchdog)?;
+    channel.send_reply(&HostReply::ResultHttps { result })?;
+    exchange::wait_https_ack(channel, q, &mut pair, &mut watchdog)
+}
+
+fn prepare_https(
+    channel: &mut HostChannel<UnixStream>,
+    manifest: &Manifest,
+    session: &super::attempt::https::HttpsSession,
+) -> Res<(HttpsPair, Watchdog)> {
+    let q = &session.request;
+    let mut watchdog = Watchdog::start_ids(q.attempt, q.session_generation)?;
+    let pair = HttpsPair::prepare(&manifest.image_digest, session)?;
+    watchdog.current()?;
+    super::attempt::https::ready_connect(q.attempt, q.session_generation)?;
+    channel.send_reply(&HostReply::ReadyPhase {
+        attempt: q.attempt,
+        generation: q.session_generation,
+        phase: HttpsPhase::Connect,
+    })?;
+    Ok((pair, watchdog))
+}
+
+fn release_https(
+    channel: &mut HostChannel<UnixStream>,
+    q: &HttpsIpcRequest,
+    pair: &mut HttpsPair,
+    watchdog: &mut Watchdog,
+) -> Res<i64> {
+    let ready = Instant::now();
+    let deadline = exchange::receive_https_start(channel, q, HttpsPhase::Connect)?;
+    if ready.elapsed() >= Duration::from_millis(1000) {
+        return Err(Fail::State("live_effect_start_refused"));
+    }
+    watchdog.current()?;
+    super::attempt::https::start_connect(q.attempt, q.session_generation, deadline, || {
+        pair.start_connect(deadline)
+    })?;
+    Ok(deadline)
 }
 
 #[cfg(test)]

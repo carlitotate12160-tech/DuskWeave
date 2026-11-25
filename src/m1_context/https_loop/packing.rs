@@ -126,13 +126,19 @@ fn build_https_utf8(
         total_eps,
         omitted_cands,
     )?;
-    a.extend_https(&mut raw, d.context_bytes, d.configuration_bytes)?;
     deps.extend(terrain_deps);
     deps.extend(endpoint_deps);
-    Ok((encode_bounded_pack(&raw, d)?, deps))
+    Ok((encode_bounded_pack(&mut raw, ctx, a, d)?, deps))
 }
 
-fn encode_bounded_pack(raw: &Value, d: &ContextDisclosure) -> Res<String> {
+fn encode_bounded_pack(
+    raw: &mut Value,
+    ctx: &HttpsContextBasis,
+    a: &AutonomousContext,
+    d: &ContextDisclosure,
+) -> Res<String> {
+    super::super::live::bind(raw, &ctx.basis, Some(a))?;
+    a.extend_https(raw, d.context_bytes, d.configuration_bytes)?;
     let utf8 = serde_json::to_string(raw).map_err(|_| Fail::Store("context_encode"))?;
     wire_fits(&utf8, d, true)
         .then_some(utf8)

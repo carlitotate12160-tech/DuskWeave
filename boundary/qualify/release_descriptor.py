@@ -14,13 +14,8 @@ import struct
 import subprocess
 
 from candidate_files import (
-    FileCustodyError,
-    create_exclusive_dir,
-    fsync_dir,
-    read_protected_bytes,
-    reject_sensitive_env,
-    require_safe_ancestors,
-    write_exclusive_verified,
+    FileCustodyError, create_exclusive_dir, fsync_dir, read_protected_bytes,
+    reject_sensitive_env, require_safe_ancestors, verify_cargo_dir_custody, write_exclusive_verified,
 )
 
 RELEASE_BASELINE_COMMIT = "7ea7f4e4f0da4d75c785e376b8f92ec957c11e11"
@@ -63,10 +58,7 @@ class ReleaseError(RuntimeError):
 
 def sanitize_release_env(raw_env: dict[str, str] | None = None) -> None:
     """Refuse secret-bearing or override env variables before release operations."""
-    try:
-        reject_sensitive_env(raw_env, error_cls=ReleaseError)
-    except ReleaseError:
-        raise
+    reject_sensitive_env(raw_env, error_cls=ReleaseError)
 
 
 def _sha256_file(path: Path, *, expected_uids: tuple[int, ...], stop_at: Path) -> tuple[int, str]:
@@ -112,24 +104,29 @@ def _validate_member_entry(entry: object) -> tuple[str, int, str]:
     return path, size, digest
 
 
-def _validate_descriptor_metadata(obj: dict, allow_synthetic: bool) -> None:
-    if obj["schema_version"] != 2 or obj["schema_revision"] != SCHEMA_REVISION or obj["platform"] != PLATFORM:
+def _validate_descriptor_metadata(
+    obj: dict, allow_synthetic: bool, schema_revision: str = SCHEMA_REVISION,
+    baseline_commit: str = RELEASE_BASELINE_COMMIT, baseline_tree: str = RELEASE_BASELINE_TREE,
+) -> None:
+    if obj["schema_version"] != 2 or obj["schema_revision"] != schema_revision or obj["platform"] != PLATFORM:
         raise ReleaseError("descriptor_schema_or_platform_refused")
-    if obj["release_baseline_commit"] != RELEASE_BASELINE_COMMIT or obj["release_baseline_tree"] != RELEASE_BASELINE_TREE:
+    if obj["release_baseline_commit"] != baseline_commit or obj["release_baseline_tree"] != baseline_tree:
         raise ReleaseError("descriptor_baseline_refused")
-    checks = (
-        ("build_source_commit", HEX40_RE), ("build_source_tree", HEX40_RE),
-        ("driver_commit", HEX40_RE), ("driver_tree", HEX40_RE),
-        ("image_ref", IMAGE_REF_RE), ("image_digest", IMAGE_DIGEST_RE),
-    )
-    for field, pattern in checks:
+    for field, pattern in (
+        ("build_source_commit", HEX40_RE), ("build_source_tree", HEX40_RE), ("driver_commit", HEX40_RE),
+        ("driver_tree", HEX40_RE), ("image_ref", IMAGE_REF_RE), ("image_digest", IMAGE_DIGEST_RE),
+    ):
         if not isinstance(obj[field], str) or not pattern.fullmatch(obj[field]):
             raise ReleaseError(f"descriptor_field_invalid:{field}")
     if type(obj["synthetic_fixture"]) is not bool or (obj["synthetic_fixture"] and not allow_synthetic):
         raise ReleaseError("descriptor_synthetic_refused")
 
 
-def parse_descriptor_bytes(raw: bytes, *, allow_synthetic: bool = True) -> dict:
+def parse_descriptor_bytes(
+    raw: bytes, *, allow_synthetic: bool = True, schema_revision: str = SCHEMA_REVISION,
+    expected_members: tuple[str, ...] = FIXED_MEMBERS,
+    release_baseline_commit: str = RELEASE_BASELINE_COMMIT, release_baseline_tree: str = RELEASE_BASELINE_TREE,
+) -> dict:
     """Strictly decode release-descriptor.json rejecting duplicates and unknown keys."""
     try:
         obj = json.loads(raw.decode("utf-8"), object_pairs_hook=_no_dup_pairs_hook)
@@ -137,11 +134,11 @@ def parse_descriptor_bytes(raw: bytes, *, allow_synthetic: bool = True) -> dict:
         raise ReleaseError("descriptor_json_malformed") from exc
     if not isinstance(obj, dict) or set(obj.keys()) != ALLOWED_DESCRIPTOR_KEYS:
         raise ReleaseError("descriptor_keys_refused")
-    _validate_descriptor_metadata(obj, allow_synthetic)
+    _validate_descriptor_metadata(obj, allow_synthetic, schema_revision, release_baseline_commit, release_baseline_tree)
     members = obj["members"]
-    if not isinstance(members, list) or len(members) != len(FIXED_MEMBERS):
+    if not isinstance(members, list) or len(members) != len(expected_members):
         raise ReleaseError("descriptor_member_count_invalid")
-    if tuple(_validate_member_entry(m)[0] for m in members) != FIXED_MEMBERS:
+    if tuple(_validate_member_entry(m)[0] for m in members) != expected_members:
         raise ReleaseError("descriptor_member_inventory_mismatch")
     return obj
 
@@ -181,37 +178,59 @@ def _check_clean_git_identity(source_root: Path, expected_commit: str | None, ex
 def _check_release_diff(source_root: Path) -> None:
     if _run_git(source_root, ["rev-parse", f"{RELEASE_BASELINE_COMMIT}^{{tree}}"]).strip() != RELEASE_BASELINE_TREE:
         raise ReleaseError("release_baseline_tree_mismatch")
-    prod_changed = [
-        ln.strip()
-        for ln in _run_git(
-            source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT, "--", *PROD_BASELINE_PATHS]
-        ).splitlines()
-        if ln.strip() and ln.strip() not in ALLOWED_OPERATOR_DIFF_PATHS
-    ]
+    prod_raw = _run_git(source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT, "--", *PROD_BASELINE_PATHS])
+    prod_changed = [ln.strip() for ln in prod_raw.splitlines() if ln.strip() and ln.strip() not in ALLOWED_OPERATOR_DIFF_PATHS]
     if prod_changed:
         raise ReleaseError(f"production_source_drift:{','.join(prod_changed)}")
-    all_changed = [ln.strip() for ln in _run_git(
-        source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT]
-    ).splitlines() if ln.strip()]
-    for path in all_changed:
+    all_raw = _run_git(source_root, ["diff", "--name-only", RELEASE_BASELINE_COMMIT])
+    for path in (ln.strip() for ln in all_raw.splitlines() if ln.strip()):
         if path not in ALLOWED_OPERATOR_DIFF_PATHS and not path.startswith(ALLOWED_TOOLING_PREFIXES):
             raise ReleaseError(f"unexpected_candidate_diff:{path}")
+
+
+def verify_pinned_source_tree(
+    source_root: Path, *, expected_commit: str | None = None, expected_tree: str | None = None,
+    expected_driver_commit: str | None = None, expected_driver_tree: str | None = None,
+    check_clean_git: bool = True, expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None,
+) -> tuple[str, str]:
+    """Verify absent root build.rs, Git identity/cleanliness, and narrow .cargo policy."""
+    if (source_root / "build.rs").exists() or (source_root / "build.rs").is_symlink():
+        raise ReleaseError("unexpected_root_build_rs")
+    uids = expected_uids if expected_uids is not None else (0, os.geteuid())
+    anchor = stop_at or (Path("/") if os.geteuid() == 0 else source_root)
+    if check_clean_git:
+        head, tree = _check_clean_git_identity(
+            source_root, expected_commit, expected_tree, expected_driver_commit, expected_driver_tree
+        )
+        pin_c, pin_t = head, None
+    else:
+        head, tree = ("", "")
+        for a, b in ((expected_commit, expected_driver_commit), (expected_tree, expected_driver_tree)):
+            if a is not None and b is not None and a != b:
+                raise ReleaseError("source_commit_mismatch")
+        pin_c = expected_commit if expected_commit is not None else expected_driver_commit
+        pin_t = expected_tree if expected_tree is not None else expected_driver_tree
+    try:
+        verify_cargo_dir_custody(
+            source_root, commit=pin_c, expected_uids=uids, stop_at=anchor,
+            expected_tree=pin_t, verify_head_pin=not check_clean_git, require_git=check_clean_git,
+        )
+    except FileCustodyError as exc:
+        raise ReleaseError(exc.reason) from exc
+    return head, tree
 
 
 def verify_release_source(
     source_root: Path, *, expected_commit: str | None = None, expected_tree: str | None = None,
     expected_driver_commit: str | None = None, expected_driver_tree: str | None = None,
-    check_clean_git: bool = True,
+    check_clean_git: bool = True, expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None,
 ) -> tuple[str, str]:
     """Verify runtime/SQL/build inputs match the pinned reviewed release cleanly and check exact commit/tree identity."""
-    for forbidden, err in ((".cargo", "candidate_cargo_config_present"), ("build.rs", "unexpected_root_build_rs")):
-        if (source_root / forbidden).exists() or (source_root / forbidden).is_symlink():
-            raise ReleaseError(err)
-    head, tree = ("", "")
-    if check_clean_git:
-        head, tree = _check_clean_git_identity(
-            source_root, expected_commit, expected_tree, expected_driver_commit, expected_driver_tree
-        )
+    head, tree = verify_pinned_source_tree(
+        source_root, expected_commit=expected_commit, expected_tree=expected_tree,
+        expected_driver_commit=expected_driver_commit, expected_driver_tree=expected_driver_tree,
+        check_clean_git=check_clean_git, expected_uids=expected_uids, stop_at=stop_at,
+    )
     _check_release_diff(source_root)
     return head, tree
 
@@ -247,45 +266,51 @@ def _walk_package_files(package_dir: Path, expected_uids: tuple[int, ...], stop_
     return files
 
 
-def _verify_package_members(package_dir: Path, members: list[dict], uids: tuple[int, ...], anchor: Path) -> None:
+def _verify_package_members(package_dir: Path, members: list[dict], uids: tuple[int, ...], anchor: Path,
+                            binary_members: tuple[str, ...] = BINARY_MEMBERS) -> None:
     for member in members:
         mpath = package_dir / member["path"]
         size, digest = _sha256_file(mpath, expected_uids=uids, stop_at=anchor)
         if size != member["size"] or digest != member["sha256"]:
             raise ReleaseError(f"member_digest_mismatch:{member['path']}")
-        if member["path"] in BINARY_MEMBERS:
+        if member["path"] in binary_members:
             verify_elf64_aarch64(mpath, expected_uids=uids, stop_at=anchor)
 
 
-def verify_descriptor(package_dir: Path, expected_descriptor_sha256: str, *, allow_synthetic: bool = False,
-                      expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None) -> dict:
+def verify_descriptor(
+    package_dir: Path, expected_descriptor_sha256: str, *, allow_synthetic: bool = False,
+    expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None,
+    schema_revision: str = SCHEMA_REVISION, expected_members: tuple[str, ...] = FIXED_MEMBERS,
+    binary_members: tuple[str, ...] = BINARY_MEMBERS, release_baseline_commit: str = RELEASE_BASELINE_COMMIT,
+    release_baseline_tree: str = RELEASE_BASELINE_TREE,
+) -> dict:
     """Verify closed package inventory, external descriptor hash, member hashes, and ELF headers."""
     if not HEX64_RE.fullmatch(expected_descriptor_sha256):
         raise ReleaseError("expected_descriptor_sha256_invalid")
     uids = expected_uids if expected_uids is not None else (0, os.geteuid())
     anchor = stop_at or (Path("/") if os.geteuid() == 0 else package_dir)
-    if _walk_package_files(package_dir, uids, anchor) != (set(FIXED_MEMBERS) | {"release-descriptor.json"}):
+    if _walk_package_files(package_dir, uids, anchor) != (set(expected_members) | {"release-descriptor.json"}):
         raise ReleaseError("package_inventory_mismatch")
     try:
-        desc_bytes = read_protected_bytes(
-            package_dir / "release-descriptor.json", expected_uids=uids,
-            allowed_modes=(0o444, 0o400), stop_at=anchor, status_on_error="REFUSED",
-        )
+        desc_bytes = read_protected_bytes(package_dir / "release-descriptor.json", expected_uids=uids, allowed_modes=(0o444, 0o400), stop_at=anchor)
     except FileCustodyError as exc:
         raise ReleaseError(exc.reason) from exc
     if hashlib.sha256(desc_bytes).hexdigest() != expected_descriptor_sha256:
         raise ReleaseError("descriptor_sha256_mismatch")
-    desc = parse_descriptor_bytes(desc_bytes, allow_synthetic=allow_synthetic)
-    _verify_package_members(package_dir, desc["members"], uids, anchor)
+    desc = parse_descriptor_bytes(
+        desc_bytes, allow_synthetic=allow_synthetic, schema_revision=schema_revision,
+        expected_members=expected_members, release_baseline_commit=release_baseline_commit,
+        release_baseline_tree=release_baseline_tree)
+    _verify_package_members(package_dir, desc["members"], uids, anchor, binary_members)
     return desc
 
 
-def package_release(*, package_dir: Path, source_root: Path, artifact_dir: Path,
-                    image_ref: str, image_digest: str, build_source_commit: str,
-                    build_source_tree: str, driver_commit: str, driver_tree: str,
-                    synthetic_fixture: bool = False, verify_git_baseline: bool = True,
-                    raw_env: dict[str, str] | None = None,
-                    expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None) -> dict:
+def package_release(
+    *, package_dir: Path, source_root: Path, artifact_dir: Path, image_ref: str, image_digest: str,
+    build_source_commit: str, build_source_tree: str, driver_commit: str, driver_tree: str,
+    synthetic_fixture: bool = False, verify_git_baseline: bool = True, raw_env: dict[str, str] | None = None,
+    expected_uids: tuple[int, ...] | None = None, stop_at: Path | None = None,
+) -> dict:
     """Package exact binaries and notices with release-descriptor.json in a fresh directory."""
     sanitize_release_env(raw_env)
     uids = expected_uids if expected_uids is not None else (0, os.geteuid())
@@ -293,30 +318,22 @@ def package_release(*, package_dir: Path, source_root: Path, artifact_dir: Path,
     if package_dir.exists() or package_dir.is_symlink():
         raise ReleaseError("package_dir_collision")
     if verify_git_baseline:
-        verify_release_source(
-            source_root, expected_commit=build_source_commit, expected_tree=build_source_tree,
-            expected_driver_commit=driver_commit, expected_driver_tree=driver_tree, check_clean_git=True,
-        )
+        verify_release_source(source_root, expected_commit=build_source_commit, expected_tree=build_source_tree, expected_driver_commit=driver_commit, expected_driver_tree=driver_tree)
     try:
-        create_exclusive_dir(package_dir, mode=0o755, expected_uids=uids, stop_at=pkg_anchor)
-        create_exclusive_dir(package_dir / "third_party", mode=0o755, expected_uids=uids, stop_at=pkg_anchor)
-        create_exclusive_dir(package_dir / "third_party/genai", mode=0o755, expected_uids=uids, stop_at=pkg_anchor)
+        for rel_dir in (package_dir, package_dir / "third_party", package_dir / "third_party/genai"):
+            create_exclusive_dir(rel_dir, mode=0o755, expected_uids=uids, stop_at=pkg_anchor)
     except FileCustodyError as exc:
         raise ReleaseError(exc.reason) from exc
     members = _write_package_members(package_dir, source_root, artifact_dir, uids, pkg_anchor)
     descriptor = {
-        "schema_version": 2, "schema_revision": SCHEMA_REVISION, "platform": PLATFORM,
-        "build_source_commit": build_source_commit, "build_source_tree": build_source_tree,
-        "driver_commit": driver_commit, "driver_tree": driver_tree,
-        "release_baseline_commit": RELEASE_BASELINE_COMMIT, "release_baseline_tree": RELEASE_BASELINE_TREE,
-        "image_ref": image_ref, "image_digest": image_digest,
-        "synthetic_fixture": synthetic_fixture, "members": members,
+        "schema_version": 2, "schema_revision": SCHEMA_REVISION, "platform": PLATFORM, "image_ref": image_ref,
+        "image_digest": image_digest, "build_source_commit": build_source_commit, "build_source_tree": build_source_tree,
+        "driver_commit": driver_commit, "driver_tree": driver_tree, "release_baseline_commit": RELEASE_BASELINE_COMMIT,
+        "release_baseline_tree": RELEASE_BASELINE_TREE, "synthetic_fixture": synthetic_fixture, "members": members,
     }
     desc_bytes = (json.dumps(descriptor, sort_keys=True, indent=2) + "\n").encode("utf-8")
     try:
-        desc_sha = write_exclusive_verified(
-            package_dir / "release-descriptor.json", desc_bytes, mode=0o444, expected_uids=uids, stop_at=pkg_anchor,
-        )
+        desc_sha = write_exclusive_verified(package_dir / "release-descriptor.json", desc_bytes, mode=0o444, expected_uids=uids, stop_at=pkg_anchor)
         fsync_dir(package_dir / "third_party/genai")
         fsync_dir(package_dir)
     except FileCustodyError as exc:
@@ -324,20 +341,19 @@ def package_release(*, package_dir: Path, source_root: Path, artifact_dir: Path,
     return {"status": "SUCCESS", "package_dir": str(package_dir), "descriptor_sha256": desc_sha}
 
 
-def _write_package_members(package_dir: Path, source_root: Path, artifact_dir: Path,
-                           uids: tuple[int, ...], pkg_anchor: Path) -> list[dict]:
+def _write_package_members(
+    package_dir: Path, source_root: Path, artifact_dir: Path, uids: tuple[int, ...], pkg_anchor: Path,
+) -> list[dict]:
     members = []
     art_anchor = pkg_anchor if pkg_anchor == Path("/") else artifact_dir
     src_anchor = pkg_anchor if pkg_anchor == Path("/") else source_root
     for rel in BINARY_MEMBERS + NOTICE_MEMBERS:
-        src = (artifact_dir / rel) if rel in BINARY_MEMBERS else (source_root / rel)
-        anchor = art_anchor if rel in BINARY_MEMBERS else src_anchor
+        src, anchor = ((artifact_dir / rel), art_anchor) if rel in BINARY_MEMBERS else ((source_root / rel), src_anchor)
         if rel in BINARY_MEMBERS:
             verify_elf64_aarch64(src, expected_uids=uids, stop_at=anchor)
         try:
-            raw = read_protected_bytes(src, expected_uids=uids, stop_at=anchor, status_on_error="REFUSED")
-            mode = 0o555 if rel in BINARY_MEMBERS else 0o444
-            digest = write_exclusive_verified(package_dir / rel, raw, mode=mode, expected_uids=uids, stop_at=pkg_anchor)
+            raw = read_protected_bytes(src, expected_uids=uids, stop_at=anchor)
+            digest = write_exclusive_verified(package_dir / rel, raw, mode=(0o555 if rel in BINARY_MEMBERS else 0o444), expected_uids=uids, stop_at=pkg_anchor)
         except FileCustodyError as exc:
             raise ReleaseError(exc.reason) from exc
         members.append({"path": rel, "size": len(raw), "sha256": digest})
@@ -347,16 +363,12 @@ def _write_package_members(package_dir: Path, source_root: Path, artifact_dir: P
 def _dispatch_cli(args) -> dict:
     if args.cmd == "package":
         return package_release(
-            package_dir=Path(args.package_dir), source_root=Path(args.source_root),
-            artifact_dir=Path(args.artifact_dir), image_ref=args.image_ref, image_digest=args.image_digest,
-            build_source_commit=args.build_source_commit, build_source_tree=args.build_source_tree,
-            driver_commit=args.driver_commit, driver_tree=args.driver_tree,
+            package_dir=Path(args.package_dir), source_root=Path(args.source_root), artifact_dir=Path(args.artifact_dir),
+            image_ref=args.image_ref, image_digest=args.image_digest, build_source_commit=args.build_source_commit,
+            build_source_tree=args.build_source_tree, driver_commit=args.driver_commit, driver_tree=args.driver_tree,
         )
     if args.cmd == "verify-source":
-        head, tree = verify_release_source(
-            Path(args.source_root), expected_commit=args.expected_commit, expected_tree=args.expected_tree,
-            expected_driver_commit=args.expected_driver_commit, expected_driver_tree=args.expected_driver_tree,
-        )
+        head, tree = verify_release_source(Path(args.source_root), expected_commit=args.expected_commit, expected_tree=args.expected_tree, expected_driver_commit=args.expected_driver_commit, expected_driver_tree=args.expected_driver_tree)
         return {"status": "SUCCESS", "head_commit": head, "head_tree": tree}
     return verify_descriptor(args.package_dir, args.expected_descriptor_sha256)
 
@@ -365,8 +377,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Candidate release packaging, verification, and provenance")
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_pkg = sub.add_parser("package")
-    for flag in ("--package-dir", "--source-root", "--artifact-dir", "--image-ref", "--image-digest",
-                 "--build-source-commit", "--build-source-tree", "--driver-commit", "--driver-tree"):
+    for flag in ("--package-dir", "--source-root", "--artifact-dir", "--image-ref", "--image-digest", "--build-source-commit", "--build-source-tree", "--driver-commit", "--driver-tree"):
         p_pkg.add_argument(flag, required=True)
     p_ver = sub.add_parser("verify-descriptor")
     p_ver.add_argument("--package-dir", required=True, type=Path)
