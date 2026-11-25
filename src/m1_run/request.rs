@@ -134,7 +134,11 @@ impl RunRequest {
             }
             (crate::m1_https::VERSION_HTTPS_LOOP, Some(n)) => {
                 self.run_profile == crate::m1_https::VERSION_HTTPS_LOOP
-                    && n == crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE
+                    && [
+                        crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE,
+                        crate::m1_inference_profile::PRO_V2_PROFILE,
+                    ]
+                    .contains(&n)
             }
             _ => false,
         }

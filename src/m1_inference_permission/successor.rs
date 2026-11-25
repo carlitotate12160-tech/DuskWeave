@@ -60,11 +60,14 @@ impl InferencePermission {
     }
 
     pub(super) fn check_https_loop(&self) -> Res<()> {
-        let profile = crate::m1_inference_profile::lookup(
+        let profile = crate::m1_inference_profile::lookup(&self.profile)?;
+        let allowed_profile = [
             crate::m1_inference_profile::FIXTURE_PRO_V2_PROFILE,
-        )?;
+            crate::m1_inference_profile::PRO_V2_PROFILE,
+        ]
+        .contains(&profile.name);
         let valid = [
-            self.profile == profile.name,
+            allowed_profile,
             self.operation_limits.request_bytes == 16384,
             self.recipient == profile.connection.recipient,
             self.valid_https_loop_mode(),
