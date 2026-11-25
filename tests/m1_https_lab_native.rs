@@ -13,6 +13,8 @@ mod active_effect_evidence;
 mod active_effect_probe;
 #[path = "m1_https_lab_native/active_effect_tests.rs"]
 mod active_effect_tests;
+#[path = "m1_https_lab_native/d2_hold.rs"]
+mod d2_hold;
 #[path = "m1_https_lab_native/episode.rs"]
 mod episode;
 #[path = "m1_https_lab_native/failure.rs"]

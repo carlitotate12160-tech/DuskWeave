@@ -1,6 +1,11 @@
 #![allow(dead_code)]
 //! Privileged Linux ARM64 native HTTPS LAB failure & zero-replay recovery matrix (`#[ignore]`).
 #[cfg(target_os = "linux")]
+use super::d2_hold::{
+    D2_HOLD_WAIT_LIMIT, D2HoldServer, STOP_EXIT_WAIT_LIMIT, check_zero_https_counters,
+    validate_parent_termination, validate_pre_stop_state,
+};
+#[cfg(target_os = "linux")]
 use super::support::linux_host::NativeHost;
 #[cfg(target_os = "linux")]
 use super::support::{extract_https_context_pack, start_loopback_sdk};
@@ -11,12 +16,7 @@ use crate::sdk_fixture::{Reply, Server, envelope};
 #[cfg(target_os = "linux")]
 use serde_json::{Value, json};
 #[cfg(target_os = "linux")]
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-#[cfg(target_os = "linux")]
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub const NEGATIVE_SCENARIOS: &[(&str, &str, u64, u64)] = &[
     ("connection_close", "connection_failed", 1, 1),
@@ -190,31 +190,26 @@ fn native_https_lab_negative_matrix_and_zero_replay_recovery() {
 }
 
 #[cfg(target_os = "linux")]
-#[ignore = "requires reviewed install, schema-0038 DB, and isolated ARM64 netns topology"]
-#[test]
-fn native_pre_effect_stop_during_d2_hold_prevents_https_effects() {
-    let mut host = NativeHost::new();
+fn parse_receipt(out: &std::process::Output, cmd: &str) -> Result<Value, String> {
+    if !out.status.success() {
+        return Err(format!("{cmd}: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    let txt = String::from_utf8(out.stdout.clone()).map_err(|e| e.to_string())?;
+    let line = txt
+        .lines()
+        .rev()
+        .find(|l| l.starts_with('{'))
+        .unwrap_or(&txt);
+    serde_json::from_str(line).map_err(|e| format!("{cmd} json: {e}"))
+}
+
+#[cfg(target_os = "linux")]
+fn run_pre_effect_stop_during_d2_hold(host: &mut NativeHost) -> Result<(), String> {
     let run_id = host.id();
     host.start_topology_for("200", run_id, 30, 30);
-    let release = Arc::new(AtomicBool::new(false));
-    let rel_srv = release.clone();
-    let _sdk = Server::lab(move |inc| {
-        let req: Value = serde_json::from_slice(&inc.body).unwrap();
-        let pack = extract_https_context_pack(&req).unwrap();
-        if pack["references"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|r| r["id"] == "endpoint_0")
-        {
-            return Reply::Hold(rel_srv.clone());
-        }
-        Reply::Length(
-            200,
-            serde_json::to_vec(&envelope(&lab_proposal_for_pack(&pack, "none"))).unwrap(),
-        )
-    });
+    let sdk = D2HoldServer::lab();
     let run_file = host.prepare_run_input(run_id, |_| {});
+    let run_str = run_id.to_string();
     let mut parent = host.spawn_cli(&[
         "m1-run",
         "--input",
@@ -222,34 +217,45 @@ fn native_pre_effect_stop_during_d2_hold_prevents_https_effects() {
         "--timing-profile",
         "reasoning-bounded-pro-v2",
     ]);
-    let wait_end = Instant::now() + Duration::from_secs(8);
-    while host.dns_count("dns_answered") == 0 && Instant::now() < wait_end {
-        std::thread::sleep(Duration::from_millis(5));
+    let held = sdk.wait_for_held_d2(D2_HOLD_WAIT_LIMIT, || match parent.try_wait() {
+        Ok(Some(st)) => Err(format!("m1-run exited before D2 SDK hold ({st})")),
+        Ok(None) => Ok(()),
+        Err(e) => Err(format!("try_wait m1-run failed: {e}")),
+    })?;
+    let snap = host.sql_snapshot(run_id)?;
+    let insp = parse_receipt(
+        &host.cli(&["m1-run-inspect", "--run", &run_str]),
+        "m1-run-inspect",
+    )?;
+    let pre_cnt = host.https_counters();
+    validate_pre_stop_state(run_id, &held, &snap, &insp, &pre_cnt, sdk.hold_state())?;
+    let stop_val = parse_receipt(
+        &host.cli(&["m1-run-stop", "--run", &run_str]),
+        "m1-run-stop",
+    )?;
+    if stop_val["local_stop"]["stop_latched"] != true {
+        return Err(format!("stop_latched != true: {stop_val}"));
     }
-    assert_eq!(host.dns_count("dns_answered"), 1);
-    let stopped = host.cli(&["m1-run-stop", "--run", &run_id.to_string()]);
-    assert!(stopped.status.success());
-    let stop_val = NativeHost::receipt(&stopped);
-    assert_eq!(stop_val["local_stop"]["stop_latched"], true);
-    release.store(true, Ordering::Release);
-    assert!(
-        parent
-            .wait_until(Instant::now() + Duration::from_secs(10))
-            .is_some()
-    );
-    let hc = host.https_counters();
-    assert_eq!(hc["connections"], 0);
-    assert_eq!(hc["tls_handshakes"], 0);
-    assert_eq!(hc["head_requests"], 0);
-    assert_inspect_recover_parity(
-        &mut host,
-        "pre-effect-stop-d2-hold",
-        run_id,
-        "stopped",
-        1,
-        0,
-    );
-    host.dispose().unwrap();
+    let exited = parent
+        .wait_until(Instant::now() + STOP_EXIT_WAIT_LIMIT)
+        .is_some();
+    let term_res = validate_parent_termination(exited, Instant::now(), &held, sdk.hold_state());
+    sdk.release();
+    term_res?;
+    check_zero_https_counters(&host.https_counters(), run_id, sdk.hold_state().0)?;
+    assert_inspect_recover_parity(host, "pre-effect-stop-d2-hold", run_id, "stopped", 1, 0);
+    check_zero_https_counters(&host.https_counters(), run_id, sdk.hold_state().0)
+}
+
+#[cfg(target_os = "linux")]
+#[ignore = "requires reviewed install, schema-0038 DB, and isolated ARM64 netns topology"]
+#[test]
+fn native_pre_effect_stop_during_d2_hold_prevents_https_effects() {
+    let mut host = NativeHost::new();
+    let res = run_pre_effect_stop_during_d2_hold(&mut host);
+    let dispose_res = host.dispose();
+    res.unwrap();
+    dispose_res.unwrap();
 }
 
 #[cfg(target_os = "linux")]
