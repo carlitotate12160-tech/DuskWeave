@@ -48,13 +48,14 @@ RUST_COMMENT = re.compile(r"^\s*//")
 RUST_TOKEN = re.compile(
     r"//[^\r\n]*|/\*|(?:b|c)?r(#*)\"|(?:b|c)?\"(?:\\.|[^\"\\])*\"|"
     r"b?'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)|[^'\\\r\n])'|"
-    r"'(?:r#)?[A-Za-z_][A-Za-z0-9_]*|(?:b|c)?\"|b?'|"
-    r"(?:r#)?[A-Za-z_][A-Za-z0-9_]*|->|=>|::|[#\[\](){};!<>,=:]",
+    r"'(?:r#)?[^\W\d]\w*|(?:b|c)?\"|b?'|"
+    r"(?:r#)?[^\W\d]\w*|->|=>|::|[#\[\](){};!<>,=:]",
     re.S,
 )
 DELIM_PAIRS = {"(": ")", "[": "]", "{": "}"}
-BLOCK_ITEMS = {"mod", "struct", "enum", "union", "trait", "impl", "fn", "while", "for", "loop", "match", "extern", "{"}
+BLOCK_ITEMS = {"mod", "struct", "enum", "union", "trait", "impl", "fn", "while", "for", "loop", "match", "extern", "const", "{"}
 SEMI_ITEMS = {"use", "type", "static", "const", "let"}
+NON_MACRO_KW = frozenset("if while match return break in loop else for let async await const continue crate dyn enum extern false fn impl mod move mut pub ref self Self static struct super trait true type unsafe use where".split())
 
 
 class _HygieneError(Exception):
@@ -215,7 +216,8 @@ def _consume_cfg_test_item(tokens, idx):
     if k >= n or tokens[k][1] in (")", "]", "}"):
         raise _HygieneError(attr_start, "orphaned #[cfg(test)] attribute")
     t = tokens[k][1]
-    if t in SEMI_ITEMS or (t == "extern" and k + 1 < n and tokens[k + 1][1] == "crate"):
+    if (t in SEMI_ITEMS and not (t == "const" and k + 1 < n and tokens[k + 1][1] == "{")) or (
+            t == "extern" and k + 1 < n and tokens[k + 1][1] == "crate"):
         return _scan_to(tokens, k + (2 if t == "extern" else 1), {";"}, False, attr_start, t) + 1
     if t in BLOCK_ITEMS:
         if t in ("fn", "mod") and (k + 1 >= n or tokens[k + 1][0] != "ident"):
@@ -226,7 +228,8 @@ def _consume_cfg_test_item(tokens, idx):
         return end + 1 if tokens[end][1] == ";" else _skip_balanced(tokens, end, f"unmatched '{{' in #[cfg(test)] {t}")
     if t == "if":
         while True:
-            k = _skip_balanced(tokens, _scan_to(tokens, k + 1, {"{"}, False, attr_start, "if"), "unmatched '{' in #[cfg(test)] if")
+            cond = _skip_balanced(tokens, k + 1, "unmatched '{' in #[cfg(test)] if") if k + 1 < n and tokens[k + 1][1] == "{" else k + 1
+            k = _skip_balanced(tokens, _scan_to(tokens, cond, {"{"}, False, attr_start, "if"), "unmatched '{' in #[cfg(test)] if")
             if k >= n or tokens[k][1] != "else":
                 return k
             if k + 1 < n and tokens[k + 1][1] == "if":
@@ -235,7 +238,7 @@ def _consume_cfg_test_item(tokens, idx):
                 return _skip_balanced(tokens, k + 1, "unmatched '{' in #[cfg(test)] else")
             else:
                 raise _HygieneError(attr_start, "malformed #[cfg(test)] else branch")
-    if tokens[k][0] == "ident" and (macro_end := _consume_macro_item(tokens, k, attr_start)) is not None:
+    if tokens[k][0] == "ident" and t not in NON_MACRO_KW and (macro_end := _consume_macro_item(tokens, k, attr_start)) is not None:
         return macro_end
     raise _HygieneError(attr_start, f"unsupported #[cfg(test)] target near '{t}'")
 
@@ -253,7 +256,7 @@ def _excluded_cfg_test_spans(tokens):
         elif tokens[i][1] == "#":
             j = i + 2 if i + 1 < n and tokens[i + 1][1] == "!" else i + 1
             i = _skip_balanced(tokens, j, "unterminated attribute") if j < n and tokens[j][1] == "[" else i + 1
-        elif tokens[i][0] == "ident" and i + 1 < n and tokens[i + 1][1] == "!":
+        elif tokens[i][0] == "ident" and tokens[i][1] not in NON_MACRO_KW and i + 1 < n and tokens[i + 1][1] == "!":
             m = i + 3 if tokens[i][1] == "macro_rules" and i + 2 < n and tokens[i + 2][0] == "ident" else i + 2
             i = _skip_balanced(tokens, m, "unterminated macro token tree") if m < n and tokens[m][1] in DELIM_PAIRS else i + 1
         else:

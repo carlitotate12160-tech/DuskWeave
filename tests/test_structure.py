@@ -165,15 +165,16 @@ class StructureTests(unittest.TestCase):
                 self.assertIn("Rust production hygiene: 2", out)
 
     def test_same_line_trailing_production_and_multiple_cfg_items_fail(self):
-        for text, expected_line in (
-            ('#[cfg(test)] mod t { fn ok() { x.unwrap(); } } fn prod() { y.unwrap(); }\n', 1),
-            ('#[cfg(test)] #[path = "t.rs"] mod t; fn prod() { y.expect("e"); }\n', 1),
-            ('#[cfg(test)] fn t() { x.unwrap(); }\n#[cfg(test)] mod m { fn k() { z.unwrap(); } }\nfn prod() { unsafe { f(); } }\n', 3),
+        for text, expected_line, expected_msg in (
+            ('#[cfg(test)] mod t { fn ok() { x.unwrap(); } } fn prod() { y.unwrap(); }\n', 1, "unwrap/expect on production path"),
+            ('#[cfg(test)] #[path = "t.rs"] mod t; fn prod() { y.expect("e"); }\n', 1, "unwrap/expect on production path"),
+            ('#[cfg(test)] fn t() { x.unwrap(); }\n#[cfg(test)] mod m { fn k() { z.unwrap(); } }\nfn prod() { unsafe { f(); } }\n', 3, "unsafe block"),
+            ('#[cfg(test)] const {} let _ = Some(1).unwrap();\n', 1, "unwrap/expect on production path"),
         ):
             with self.subTest(text=text):
                 code, out = check_files({"src/domain.rs": text})
                 self.assertEqual(code, 1, out)
-                self.assertIn(f"src/domain.rs:{expected_line}", out)
+                self.assertIn(f"src/domain.rs:{expected_line} {expected_msg}", out)
 
     def test_repo_cfg_test_item_forms_and_clean_external_cfg_pass(self):
         text = (
@@ -198,6 +199,11 @@ class StructureTests(unittest.TestCase):
             "    if let Some(v) = Some(1) { return v; }\n"
             "    #[cfg(test)]\n"
             "    { let _ = Some(1).unwrap(); }\n"
+            "    #[cfg(test)]\n"
+            "    const { let _ = Some(1).unwrap(); }\n"
+            "    #[cfg(test)]\n"
+            "    if { true } { let _ = Some(1).unwrap(); }\n"
+            "    if !{ #[cfg(test)] let _ = Some(1).unwrap(); true } {}\n"
             "    42\n"
             "}\n"
             "#[cfg(test)]\n"
@@ -211,12 +217,12 @@ class StructureTests(unittest.TestCase):
     def test_comments_literals_lifetimes_and_macros_do_not_corrupt_boundaries(self):
         safe_with_tricky_tokens = (
             "#[cfg(test)]\n"
-            "fn with_lifetime<'a>(s: &'a str) -> &'a str {\n"
+            "fn with_lifetime<'a, 'β>(s: &'a str, _u: &'β str) -> &'a str {\n"
             "    /* nested /* } #[cfg(test)] */ */\n"
             "    let _s = \"\\\" } #[cfg(test)]\";\n"
             "    let _r = r#\" } #[cfg(test)] \"#;\n"
             "    let _b = br#\" } \\\" #[cfg(test)] \"#;\n"
-            "    let _c = '}'; let _q = '\\''; let _d = '\"';\n"
+            "    let _c = '}'; let _q = '\\''; let _d = '\"'; let _u = 'β';\n"
             "    let _ = Some(1).unwrap();\n"
             "    s\n"
             "}\n"
@@ -235,6 +241,7 @@ class StructureTests(unittest.TestCase):
             "my_macro! { #[cfg(test)] }\nfn prod() { y.unwrap(); }\n",
             "stringify!(#[cfg(test)] mod m;);\nfn prod() { y.unwrap(); }\n",
             "mod tests { fn bad() { x.unwrap(); } }\n",
+            "#[cfg(testβ)]\nmod tests { fn bad() { x.unwrap(); } }\n",
             "#[cfg(all(test, target_os = \"linux\"))]\nmod tests { fn bad() { x.unwrap(); } }\n",
         ):
             with self.subTest(bad_after=bad_after):
