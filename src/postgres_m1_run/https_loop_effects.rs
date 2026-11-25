@@ -152,22 +152,45 @@ impl PgRunStore {
         step_index: usize,
     ) -> Res<Option<HttpsHeadResult>> {
         let idx = i32::try_from(step_index).map_err(|_| Fail::Input("https_loop_step_invalid"))?;
-        let Some(row) = self
+        let Some(raw) = self.read_raw_https_result(run_id, idx)? else {
+            return Ok(None);
+        };
+        let result: HttpsHeadResult =
+            serde_json::from_value(raw).map_err(|_| Fail::Store("run_decode"))?;
+        result.validate().map_err(|_| Fail::Store("run_decode"))?;
+        Ok(Some(result))
+    }
+
+    fn read_raw_https_result(&mut self, run_id: Uuid, idx: i32) -> Res<Option<Value>> {
+        let has_reader: bool = self
             .client
+            .query_one(
+                "SELECT pg_catalog.to_regprocedure('execution.read_https_loop_head_result(uuid,integer)') IS NOT NULL",
+                &[],
+            )
+            .map_err(|_| Fail::Store("run_inspect_unknown"))?
+            .get(0);
+        if has_reader {
+            return self
+                .client
+                .query_one(
+                    "SELECT execution.read_https_loop_head_result($1,$2)",
+                    &[&run_id, &idx],
+                )
+                .map_err(|_| Fail::Store("run_inspect_unknown"))?
+                .try_get(0)
+                .map_err(|_| Fail::Store("run_decode"));
+        }
+        self.client
             .query_opt(
                 "SELECT r.result_payload FROM execution.fixture_https_results r \
                  WHERE r.run_id=$1 AND r.step_index=$2",
                 &[&run_id, &idx],
             )
             .map_err(|_| Fail::Store("run_inspect_unknown"))?
-        else {
-            return Ok(None);
-        };
-        let raw: Value = row.try_get(0).map_err(|_| Fail::Store("run_decode"))?;
-        let result: HttpsHeadResult =
-            serde_json::from_value(raw).map_err(|_| Fail::Store("run_decode"))?;
-        result.validate().map_err(|_| Fail::Store("run_decode"))?;
-        Ok(Some(result))
+            .map(|r| r.try_get(0))
+            .transpose()
+            .map_err(|_| Fail::Store("run_decode"))
     }
 }
 
@@ -183,6 +206,22 @@ const KNOWN_RESERVE_REFUSALS: &[(&str, &str)] = &[
     ("fixture_release_refused", "fixture_release_refused"),
     ("fixture_scope_refused", "fixture_scope_refused"),
     ("fixture_source_refused", "fixture_source_refused"),
+    ("live_policy_denied", "live_policy_denied"),
+    ("live_budget_exhausted", "live_budget_exhausted"),
+    ("live_time_insufficient", "live_time_insufficient"),
+    ("live_premise_ineligible", "live_premise_ineligible"),
+    ("live_refresh_exhausted", "live_refresh_exhausted"),
+    ("live_head_exhausted", "live_head_exhausted"),
+    ("live_dns_exhausted", "live_dns_exhausted"),
+    ("live_effect_expired", "live_effect_expired"),
+    (
+        "live_qualification_unavailable",
+        "live_qualification_unavailable",
+    ),
+    ("live_sender_not_closed", "live_sender_not_closed"),
+    ("live_effect_scope_refused", "live_effect_scope_refused"),
+    ("live_effect_session_busy", "live_effect_session_busy"),
+    ("live_effect_refused", "live_effect_refused"),
     ("https_loop_step_not_found", "https_loop_step_not_found"),
 ];
 

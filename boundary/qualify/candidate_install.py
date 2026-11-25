@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
-"""Privileged candidate four-binary installation with full backup, pre-staging, and bounded receipts."""
+"""Privileged candidate installation owners for schema-0036 legacy and HTTPS LAB 0038."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import stat
 
 from candidate_files import (
     FileCustodyError,
-    create_exclusive_dir,
     fsync_dir,
-    read_protected_bytes,
     reject_sensitive_env,
     require_safe_ancestors,
     verify_driver_custody,
-    write_exclusive_verified,
 )
 from candidate_host import (
     HostObservationError,
@@ -30,6 +25,17 @@ from candidate_host import (
     extract_image_worker_digests,
     observe_installed_facts,
 )
+from candidate_install_files import (
+    backup_release,
+    cleanup_staged,
+    observe_optional_file,
+    stage_artifacts,
+    validate_destination_dir,
+    verify_installed_artifacts,
+    write_receipt_safe,
+)
+import https_lab_host
+import https_lab_release
 import release_descriptor
 
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -49,7 +55,9 @@ def _member_sha_map(desc: dict) -> dict[str, str]:
     return {m["path"]: m["sha256"] for m in desc["members"]}
 
 
-def _verify_image_matches_package(desc: dict, expected_shas: dict[str, str], image_extractor) -> dict:
+def _verify_image_matches_package(
+    desc: dict, expected_shas: dict[str, str], image_extractor, *, extra_image_shas: dict[str, str] | None = None,
+) -> dict:
     try:
         img = image_extractor(desc["image_digest"])
     except HostObservationError as exc:
@@ -60,126 +68,33 @@ def _verify_image_matches_package(desc: dict, expected_shas: dict[str, str], ima
     for wname in WORKER_BINARIES:
         if workers.get(wname) != expected_shas.get(wname):
             raise InstallError("REFUSED", f"image_worker_bytes_mismatch:{wname}")
+    extras = img.get("extras") or {}
+    for img_rel, exp_sha in (extra_image_shas or {}).items():
+        if extras.get(img_rel) != exp_sha:
+            raise InstallError("REFUSED", f"image_extra_bytes_mismatch:{img_rel}")
     return img
-
-
-def _observe_old_manifest(manifest_path: Path, expected_uids: tuple[int, ...], stop_at: Path) -> dict | None:
-    if not (manifest_path.exists() or manifest_path.is_symlink()):
-        return None
-    try:
-        raw = read_protected_bytes(manifest_path, expected_uids=expected_uids,
-                                   allowed_modes=(0o400, 0o444), stop_at=stop_at, status_on_error="REFUSED")
-    except FileCustodyError as exc:
-        raise InstallError(exc.status, f"old_manifest_unqualified:{exc.reason}") from exc
-    st = os.lstat(manifest_path)
-    return {
-        "sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw),
-        "mode": stat.S_IMODE(st.st_mode), "uid": st.st_uid, "gid": st.st_gid, "bytes": raw,
-    }
-
-
-def _backup_old_release(backup_dir: Path, old_bins: dict[str, dict], old_manifest: dict | None,
-                        expected_uids: tuple[int, ...], stop_at: Path) -> None:
-    try:
-        create_exclusive_dir(backup_dir, mode=0o700, expected_uids=expected_uids, stop_at=stop_at)
-        meta: dict[str, object] = {"binaries": {}, "old_manifest_present": old_manifest is not None}
-        for name in INSTALL_BINARIES:
-            info = old_bins[name]
-            digest = write_exclusive_verified(
-                backup_dir / name, info["bytes"], mode=info["mode"], expected_uids=expected_uids,
-                owner_uid=info["uid"], owner_gid=info["gid"], stop_at=stop_at,
-            )
-            meta["binaries"][name] = {k: info[k] for k in ("size", "mode", "uid", "gid")}
-            meta["binaries"][name]["sha256"] = digest
-        if old_manifest is not None:
-            m_sha = write_exclusive_verified(
-                backup_dir / "deployment.json", old_manifest["bytes"], mode=old_manifest["mode"],
-                expected_uids=expected_uids, owner_uid=old_manifest["uid"], owner_gid=old_manifest["gid"], stop_at=stop_at,
-            )
-            meta["old_manifest"] = {k: old_manifest[k] for k in ("size", "mode", "uid", "gid")}
-            meta["old_manifest"]["sha256"] = m_sha
-        meta_bytes = (json.dumps(meta, sort_keys=True, indent=2) + "\n").encode("utf-8")
-        write_exclusive_verified(backup_dir / "backup-manifest.json", meta_bytes, mode=0o400,
-                                 expected_uids=expected_uids, stop_at=stop_at)
-        fsync_dir(backup_dir)
-        fsync_dir(backup_dir.parent)
-    except FileCustodyError as exc:
-        raise InstallError("INCOMPLETE", f"backup_failed:{exc.reason}") from exc
-
-
-def _cleanup_staged(staged: dict[str, Path]) -> None:
-    for path in staged.values():
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-
-def _stage_all_four(package_dir: Path, install_bin_dir: Path, old_bins: dict[str, dict],
-                    expected_shas: dict[str, str], expected_uids: tuple[int, ...], stop_at: Path) -> dict[str, Path]:
-    staged: dict[str, Path] = {}
-    pid = os.getpid()
-    try:
-        for name in INSTALL_BINARIES:
-            stage = install_bin_dir / f".{name}.stage.{pid}"
-            raw = read_protected_bytes(package_dir / name, expected_uids=expected_uids,
-                                       allowed_modes=(0o555,), stop_at=stop_at, status_on_error="REFUSED")
-            digest = write_exclusive_verified(
-                stage, raw, mode=old_bins[name]["mode"], expected_uids=expected_uids,
-                owner_uid=old_bins[name]["uid"], owner_gid=old_bins[name]["gid"], stop_at=stop_at,
-            )
-            if digest != expected_shas[name]:
-                raise InstallError("REFUSED", f"staged_digest_mismatch:{name}")
-            staged[name] = stage
-        fsync_dir(install_bin_dir)
-    except (FileCustodyError, InstallError) as exc:
-        _cleanup_staged(staged)
-        raise InstallError("REFUSED", f"staging_aborted_zero_installed:{exc.reason}") from exc
-    return staged
-
-
-def _verify_all_installed(install_bin_dir: Path, expected_shas: dict[str, str], old_bins: dict[str, dict],
-                          expected_uids: tuple[int, ...], stop_at: Path) -> None:
-    for name in INSTALL_BINARIES:
-        raw = read_protected_bytes(install_bin_dir / name, expected_uids=expected_uids,
-                                   allowed_modes=(old_bins[name]["mode"],), stop_at=stop_at, status_on_error="INCOMPLETE")
-        if hashlib.sha256(raw).hexdigest() != expected_shas[name]:
-            raise InstallError("INCOMPLETE", f"final_installed_digest_mismatch:{name}")
-
-
-def _write_receipt_safe(receipt_path: Path | None, receipt: dict, expected_uids: tuple[int, ...],
-                        stop_at: Path) -> dict:
-    if receipt_path is None:
-        return receipt
-    payload = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    try:
-        write_exclusive_verified(receipt_path, payload, mode=0o444, expected_uids=expected_uids, stop_at=stop_at)
-        return receipt
-    except FileCustodyError as exc:
-        return {
-            "status": "UNKNOWN" if receipt["status"] == "SUCCESS" else receipt["status"],
-            "descriptor_sha256": receipt.get("descriptor_sha256", ""),
-            "backup_dir": receipt.get("backup_dir", ""),
-            "replaced": receipt.get("replaced", []),
-            "reason": f"install_receipt_persist_failed:{exc.reason}",
-        }
 
 
 def _verify_provenance_and_desc(
     package_dir: Path, expected_descriptor_sha256: str, expected_driver_commit: str,
     expected_driver_tree: str, backup_dir: Path, receipt_path: Path | None,
     allow_synthetic: bool, expected_uids: tuple[int, ...], stop_at: Path,
-    driver_dir: Path, driver_verifier,
+    driver_dir: Path, driver_verifier, desc_verifier, *,
+    expected_build_commit: str | None = None, expected_build_tree: str | None = None,
 ) -> dict:
-    if not (HEX40_RE.fullmatch(expected_driver_commit) and HEX40_RE.fullmatch(expected_driver_tree)):
-        raise InstallError("REFUSED", "expected_driver_pin_invalid")
+    for pin_name, val in (("driver_commit", expected_driver_commit), ("driver_tree", expected_driver_tree)):
+        if not HEX40_RE.fullmatch(val):
+            raise InstallError("REFUSED", f"expected_{pin_name}_invalid")
+    for name, val in (("build_commit", expected_build_commit), ("build_tree", expected_build_tree)):
+        if val is not None and not HEX40_RE.fullmatch(val):
+            raise InstallError("REFUSED", f"expected_{name}_invalid")
     for path, err in ((backup_dir, "backup_dir_collision"), (receipt_path, "install_receipt_collision")):
         if path is not None and (path.exists() or path.is_symlink()):
             raise InstallError("REFUSED", err)
     try:
         driver_verifier(driver_dir, expected_driver_commit, expected_driver_tree, expected_uids=expected_uids, stop_at=stop_at)
         require_safe_ancestors(backup_dir.parent, expected_uids, stop_at=stop_at)
-        desc = release_descriptor.verify_descriptor(
+        desc = desc_verifier(
             package_dir, expected_descriptor_sha256, allow_synthetic=allow_synthetic,
             expected_uids=expected_uids, stop_at=stop_at,
         )
@@ -187,29 +102,43 @@ def _verify_provenance_and_desc(
         raise InstallError("REFUSED", getattr(exc, "reason", str(exc))) from exc
     if desc["driver_commit"] != expected_driver_commit or desc["driver_tree"] != expected_driver_tree:
         raise InstallError("REFUSED", "descriptor_driver_pin_mismatch")
+    if expected_build_commit is not None and desc["build_source_commit"] != expected_build_commit:
+        raise InstallError("REFUSED", "descriptor_build_pin_mismatch")
+    if expected_build_tree is not None and desc["build_source_tree"] != expected_build_tree:
+        raise InstallError("REFUSED", "descriptor_build_pin_mismatch")
     return desc
 
 
-def _run_preflight(package_dir: Path, expected_descriptor_sha256: str, expected_driver_commit: str,
-                   expected_driver_tree: str, backup_dir: Path, manifest_path: Path,
-                   receipt_path: Path | None, allow_synthetic: bool, expected_uids: tuple[int, ...],
-                   stop_at: Path, driver_dir: Path, driver_verifier, host_observer,
-                   image_extractor, quiescence_checker) -> tuple[dict, dict, dict, dict | None]:
-    desc = _verify_provenance_and_desc(
-        package_dir, expected_descriptor_sha256, expected_driver_commit, expected_driver_tree,
-        backup_dir, receipt_path, allow_synthetic, expected_uids, stop_at, driver_dir, driver_verifier,
-    )
-    shas = _member_sha_map(desc)
-    _verify_image_matches_package(desc, shas, image_extractor)
+def _commit_staged_install(
+    bin_dir: Path, bak: Path, staged: dict[str, Path], shas: dict[str, str],
+    old_bins: dict[str, dict], desc: dict, rcpt: Path | None,
+    expected_sha: str, expected_uids: tuple[int, ...], stop_at: Path, replacer,
+    *, extra_commits: tuple[tuple[str, Path, int], ...] = (),
+) -> dict:
+    replaced: list[str] = []
     try:
-        host_facts = host_observer()
-        quiescence_checker()
-    except HostObservationError as exc:
-        raise InstallError(exc.status, exc.reason) from exc
-    if set(host_facts.get("binaries", {})) != set(INSTALL_BINARIES):
-        raise InstallError("REFUSED", "existing_installed_binaries_incomplete")
-    old_manifest = _observe_old_manifest(manifest_path, expected_uids, stop_at)
-    return desc, shas, host_facts["binaries"], old_manifest
+        for name in INSTALL_BINARIES:
+            replacer(staged[name], bin_dir / name)
+            replaced.append(name)
+            fsync_dir(bin_dir)
+        for key, dst_path, _mode in extra_commits:
+            replacer(staged[key], dst_path)
+            replaced.append(key)
+            fsync_dir(dst_path.parent)
+        verify_installed_artifacts(
+            bin_dir, INSTALL_BINARIES, shas, old_bins, expected_uids, stop_at,
+            error_cls=InstallError, extra_targets=extra_commits,
+        )
+    except Exception as exc:
+        reason = getattr(exc, "reason", None) or str(exc) or type(exc).__name__
+        receipt = {"status": "INCOMPLETE", "descriptor_sha256": expected_sha,
+                   "backup_dir": str(bak), "replaced": replaced, "reason": reason}
+        return write_receipt_safe(rcpt, receipt, expected_uids, stop_at)
+    receipt = {
+        "status": "SUCCESS", "descriptor_sha256": expected_sha, "backup_dir": str(bak),
+        "replaced": replaced, "image_digest": desc["image_digest"], "installed_hashes": shas,
+    }
+    return write_receipt_safe(rcpt, receipt, expected_uids, stop_at)
 
 
 def run_install(
@@ -245,45 +174,124 @@ def run_install(
         install_bin_dir=bin_dir, expected_uids=expected_uids, stop_at=stop_at, require_binaries=True,
     ))
     q_chk = quiescence_checker or (lambda: check_quiescence(pg_container=PRIVILEGED_SCOPE["pg_container"]))
-    desc, shas, old_bins, old_mfst = _run_preflight(
+    desc = _verify_provenance_and_desc(
         pkg, expected_descriptor_sha256, expected_driver_commit, expected_driver_tree,
-        bak, mfst, rcpt, allow_synthetic, expected_uids, stop_at, drv,
-        driver_verifier, h_obs, image_extractor, q_chk,
+        bak, rcpt, allow_synthetic, expected_uids, stop_at, drv, driver_verifier, release_descriptor.verify_descriptor,
     )
-    _backup_old_release(bak, old_bins, old_mfst, expected_uids, stop_at)
+    shas = _member_sha_map(desc)
+    _verify_image_matches_package(desc, shas, image_extractor)
+    try:
+        host_facts = h_obs()
+        q_chk()
+    except HostObservationError as exc:
+        raise InstallError(exc.status, exc.reason) from exc
+    if set(host_facts.get("binaries", {})) != set(INSTALL_BINARIES):
+        raise InstallError("REFUSED", "existing_installed_binaries_incomplete")
+    old_bins = host_facts["binaries"]
+    old_mfst = observe_optional_file(mfst, expected_uids, stop_at, error_cls=InstallError, tag="old_manifest")
+    backup_release(bak, INSTALL_BINARIES, old_bins, old_mfst, expected_uids, stop_at,
+                   fsync_dir_fn=lambda p: fsync_dir(p), error_cls=InstallError)
     staged: dict[str, Path] = {}
     try:
-        staged = _stage_all_four(pkg, bin_dir, old_bins, shas, expected_uids, stop_at)
+        staged = stage_artifacts(pkg, bin_dir, INSTALL_BINARIES, old_bins, shas, expected_uids, stop_at,
+                                 fsync_dir_fn=lambda p: fsync_dir(p), error_cls=InstallError)
         q_chk()
     except (InstallError, HostObservationError) as exc:
-        _cleanup_staged(staged)
-        receipt = {"status": "REFUSED", "descriptor_sha256": expected_descriptor_sha256,
-                   "backup_dir": str(bak), "replaced": [], "reason": exc.reason}
-        return _write_receipt_safe(rcpt, receipt, expected_uids, stop_at)
+        cleanup_staged(staged)
+        return write_receipt_safe(rcpt, {"status": "REFUSED", "descriptor_sha256": expected_descriptor_sha256,
+                                         "backup_dir": str(bak), "replaced": [], "reason": exc.reason},
+                                  expected_uids, stop_at)
     return _commit_staged_install(bin_dir, bak, staged, shas, old_bins, desc, rcpt,
                                   expected_descriptor_sha256, expected_uids, stop_at, replacer)
 
 
-def _commit_staged_install(bin_dir: Path, bak: Path, staged: dict[str, Path], shas: dict[str, str],
-                           old_bins: dict[str, dict], desc: dict, rcpt: Path | None,
-                           expected_sha: str, expected_uids: tuple[int, ...], stop_at: Path, replacer) -> dict:
-    replaced: list[str] = []
+def run_https_lab_install(
+    *,
+    expected_driver_commit: str,
+    expected_driver_tree: str,
+    expected_descriptor_sha256: str,
+    expected_build_commit: str | None = None,
+    expected_build_tree: str | None = None,
+    package_dir: Path | None = None,
+    install_bin_dir: Path | None = None,
+    backup_dir: Path | None = None,
+    manifest_path: Path | None = None,
+    root_pem_path: Path | None = None,
+    receipt_path: Path | None = None,
+    driver_dir: Path | None = None,
+    raw_env: dict[str, str] | None = None,
+    expected_uids: tuple[int, ...] = (0,),
+    stop_at: Path = Path("/"),
+    allow_synthetic: bool = False,
+    driver_verifier=https_lab_host.verify_https_lab_driver_custody,
+    host_observer=None,
+    image_extractor=https_lab_host.extract_https_lab_image_digests,
+    quiescence_checker=None,
+    replacer=os.replace,
+) -> dict:
+    """Install verified HTTPS_LOOP_LAB binaries and root CA PEM after full preflight and backup."""
+    reject_sensitive_env(raw_env, error_cls=lambda _s, r: InstallError("REFUSED", r))
+    sc = https_lab_host.HTTPS_LAB_SCOPE
+    pkg = package_dir or Path(sc["bundle_dir"])
+    bin_dir = install_bin_dir or Path(sc["install_bin_dir"])
+    bak = backup_dir or Path(sc["backup_dir"])
+    mfst = manifest_path or Path(sc["manifest_path"])
+    root_dst = root_pem_path or Path(sc["root_pem_path"])
+    rcpt = receipt_path if receipt_path is not None else Path(sc["report_root"]) / "install-receipt.json"
+    drv = driver_dir or Path(__file__).resolve().parent
+    h_obs = host_observer or (lambda: observe_installed_facts(
+        install_bin_dir=bin_dir, expected_uids=expected_uids, stop_at=stop_at, require_binaries=True,
+    ))
+    q_chk = quiescence_checker or (lambda: https_lab_host.check_https_lab_quiescence(
+        pg_container=sc["pg_container"], candidate_db=sc["database"],
+    ))
+    desc = _verify_provenance_and_desc(
+        pkg, expected_descriptor_sha256, expected_driver_commit, expected_driver_tree,
+        bak, rcpt, allow_synthetic, expected_uids, stop_at, drv, driver_verifier,
+        https_lab_release.verify_https_lab_descriptor,
+        expected_build_commit=expected_build_commit, expected_build_tree=expected_build_tree,
+    )
+    shas = _member_sha_map(desc)
+    _verify_image_matches_package(
+        desc, shas, image_extractor, extra_image_shas={https_lab_host.ROOT_CA_IMAGE_PATH: https_lab_release.ROOT_CA_SHA256},
+    )
     try:
-        for name in INSTALL_BINARIES:
-            replacer(staged[name], bin_dir / name)
-            replaced.append(name)
-            fsync_dir(bin_dir)
-        _verify_all_installed(bin_dir, shas, old_bins, expected_uids, stop_at)
-    except Exception as exc:
-        reason = getattr(exc, "reason", None) or str(exc) or type(exc).__name__
-        receipt = {"status": "INCOMPLETE", "descriptor_sha256": expected_sha,
-                   "backup_dir": str(bak), "replaced": replaced, "reason": reason}
-        return _write_receipt_safe(rcpt, receipt, expected_uids, stop_at)
-    receipt = {
-        "status": "SUCCESS", "descriptor_sha256": expected_sha, "backup_dir": str(bak),
-        "replaced": replaced, "image_digest": desc["image_digest"], "installed_hashes": shas,
-    }
-    return _write_receipt_safe(rcpt, receipt, expected_uids, stop_at)
+        host_facts = h_obs()
+        q_chk()
+    except HostObservationError as exc:
+        raise InstallError(exc.status, exc.reason) from exc
+    if set(host_facts.get("binaries", {})) != set(INSTALL_BINARIES):
+        raise InstallError("REFUSED", "existing_installed_binaries_incomplete")
+    old_bins = host_facts["binaries"]
+    validate_destination_dir(bin_dir, expected_uids, stop_at, error_cls=InstallError, tag="install_bin")
+    r_uid, r_gid = validate_destination_dir(root_dst.parent, expected_uids, stop_at, error_cls=InstallError, tag="root_pem_dir")
+    old_mfst = observe_optional_file(mfst, expected_uids, stop_at, error_cls=InstallError, tag="old_manifest")
+    old_root = observe_optional_file(root_dst, expected_uids, stop_at, error_cls=InstallError, tag="old_root_pem")
+    root_mode = old_root["mode"] if old_root is not None else 0o444
+    root_owner = (old_root["uid"], old_root["gid"]) if old_root is not None else (r_uid, r_gid)
+    root_member = https_lab_release.ROOT_CA_MEMBER
+    backup_release(
+        bak, INSTALL_BINARIES, old_bins, old_mfst, expected_uids, stop_at,
+        fsync_dir_fn=lambda p: fsync_dir(p), error_cls=InstallError,
+        extra_files={root_member: (root_member, old_root)},
+    )
+    staged: dict[str, Path] = {}
+    try:
+        staged = stage_artifacts(
+            pkg, bin_dir, INSTALL_BINARIES, old_bins, shas, expected_uids, stop_at,
+            fsync_dir_fn=lambda p: fsync_dir(p), error_cls=InstallError,
+            extra_targets=((root_member, root_member, root_dst, root_mode, *root_owner),),
+        )
+        q_chk()
+    except (InstallError, HostObservationError) as exc:
+        cleanup_staged(staged)
+        return write_receipt_safe(rcpt, {"status": "REFUSED", "descriptor_sha256": expected_descriptor_sha256,
+                                         "backup_dir": str(bak), "replaced": [], "reason": exc.reason},
+                                  expected_uids, stop_at)
+    return _commit_staged_install(
+        bin_dir, bak, staged, shas, old_bins, desc, rcpt, expected_descriptor_sha256,
+        expected_uids, stop_at, replacer, extra_commits=((root_member, root_dst, root_mode),),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

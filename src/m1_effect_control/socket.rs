@@ -1,5 +1,7 @@
 //! Fixed launcher composition. No shell, inherited credentials or path override.
 use super::*;
+mod https;
+pub use https::LiveHttpsBoundary;
 
 #[cfg(not(target_os = "linux"))]
 pub(super) fn qualify(_: &LiveBinding, _: &str) -> Res<()> {

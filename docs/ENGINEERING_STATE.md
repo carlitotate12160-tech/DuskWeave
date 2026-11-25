@@ -105,7 +105,7 @@ document or owner direction is proposed, not accepted.
 
 ## 6. Current slices and next action
 
-**Active work:** `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` is ACCEPTED as the basis for a later LAB implementation. The [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) were accepted together on 2026-11-19 at `20ecbcedc569fbac3caffd4bb53762652eecc15b`. No implementation packet is assigned. No host qualification, episode permission, public LIVE, or seal is claimed. PR/candidate/CI delivery state remains on GitHub; the completed four-worker CI assignment is not active product work.
+**Active work:** `DW-M1-HTTPS-LAB-IMPLEMENT-R1` (draft [PR #163](https://github.com/carlitotate12160-tech/DuskWeave/pull/163), continuing from accepted `DW-M1-HTTPS-LAB-BINDING-DESIGN-R1` [binding and provenance amendment](contracts/M1-enabling-architecture.md#proposed-isolated-https-lab-binding-2026-11-19) and [scoped inference exception](adr/ADR-016-execution-broker.md#proposed-https-lab-inference-exception-2026-11-19) at `20ecbcedc569fbac3caffd4bb53762652eecc15b`) targets the schema-`0038` HTTPS LAB loop (`tests/m1_https_lab_native`). Root-cause A/B corrections are complete; native qualification R3 on `pica-arm-01` passed Cases 1–3 and failed Case 4 (`failure::native_pre_effect_stop_during_d2_hold_prevents_https_effects`), leaving Cases 5–7 **`UNVERIFIED`** with host/database state retained (not restored). The Case 4 D2-hold harness correction on draft [PR #163](https://github.com/carlitotate12160-tech/DuskWeave/pull/163) is reviewed; the bounded production STOP/`UNKNOWN` correction (`DW-PR163-STOP-UNKNOWN-CORRECTION-R1`) is active/under review on draft [PR #163](https://github.com/carlitotate12160-tech/DuskWeave/pull/163), with native continuation pending delta review, exact-head CI, and a new resource-handling assignment. No public LIVE permission, paid-provider consent, or M1 seal is claimed; PR/candidate/CI delivery state remains on GitHub.
 
 **Delivered fixture orchestration:** `DW-M1-HTTPS-LOOP-SKELETON-R1` (merged via
 PR #159 at `4b0bba6c956c3e853f248ff25759d9f5bc408f74`) delivered the bounded
@@ -142,7 +142,7 @@ fixtures. These are not a seal, paid-provider qualification or live
 qualification; legacy libcurl remains only for its explicitly retained old
 profiles and M0 consumers.
 
-**Next product action:** Assign one bounded LAB implementation packet that relies on the accepted text at `20ecbcedc569fbac3caffd4bb53762652eecc15b`. Before any qualification execution, that packet resolves the actual environment, artifact identities, synthetic certificate bytes, and disposable database. This acceptance authorizes no episode, host qualification, public/client HTTPS LIVE, or real-provider cognition. Fresh authority and qualified boundaries remain prerequisites. M1 stays unsealed.
+**Next product action:** Complete delta review and exact-head CI for the bounded STOP/`UNKNOWN` correction (`DW-PR163-STOP-UNKNOWN-CORRECTION-R1`) on draft [PR #163](https://github.com/carlitotate12160-tech/DuskWeave/pull/163), then issue a new resource-handling assignment before any `pica-arm-01` host reconciliation or native continuation. Fresh authority and qualified boundaries remain prerequisites; M1 stays unsealed.
 
 ## 7. Unresolved constraints
 

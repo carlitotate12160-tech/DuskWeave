@@ -606,3 +606,23 @@ no arbitrary baseline argument or source-verification bypass is exposed.
 - Reconcile immediately before a freshly authorized LIVE episode. A successful
   provider call or legitimate defer/view-request terminal is not DNS/D2 success.
   Record actual decisions, calls, effects, Terrain and key-free recovery.
+
+### HTTPS LAB schema 0038 and release tooling
+
+The closed HTTPS LAB lane pairs `m1_https_loop_v1`,
+`autonomous-https-genai-lab-v1`, `live`, purpose `HTTPS_LOOP_LAB`, and
+loopback SDK profile `fixture-genai-v4-pro-low-v2` (`http://127.0.0.1:18083/responses`,
+timing hint `--timing-profile reasoning-bounded-pro-v2`) with synthetic seed
+`head.duskweave.test`, DNS resolver `192.0.2.53` (`dns-routing-v2`, `m1_dns_ipc_v1`),
+HEAD target `198.51.100.10:443` (`https-head-v1`, `m1_https_ipc_v1`, path `/`),
+and pinned synthetic root CA `duskweave-https-lab-root-v1`
+(`boundary/fixtures/https-lab-root-v1.pem`). This closed tuple grants no public
+LIVE authorization, redirect traversal, body ingestion, or paid-provider usage.
+
+- Offline schema `0038` verification runs `tests/m1_https_lab_postgres.rs` through
+  `tests/support/m1_native_bootstrap.py --schema-revision 0038` alongside retained
+  schema `0037` (`tests/m1_https_loop_postgres.rs`) and `0036` (`tests/m1_live_dns_sql.rs`).
+- `boundary/qualify/https_lab.sh` provides offline `package`, `verify-descriptor`,
+  `verify-source`, and `render-binding` commands. Privileged host commands (`build-storage`,
+  `build`, `provision-db`, `install`, `bind`, `reconcile`) target the pinned ARM64 Linux
+  host under clean-environment custody and are executed only after exact-candidate review.

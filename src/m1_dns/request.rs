@@ -76,15 +76,24 @@ impl DnsRequest {
         Ok(())
     }
     fn validate_resolver(&self) -> Res<()> {
-        use crate::m1_inference_profile::{LAB_RUN_PROFILE, resolver_binding};
+        use crate::m1_inference_profile::{
+            HTTPS_LAB_HOSTNAME, HTTPS_LAB_RUN_PROFILE, LAB_RUN_PROFILE, resolver_binding,
+        };
         if !resolver_binding(&self.run_profile, &self.resolver_ipv4) {
             return Err(Fail::Input("dns_request_refused"));
         }
-        let allowed = self.run_profile != LAB_RUN_PROFILE
-            || self
+        let allowed = match self.run_profile.as_str() {
+            LAB_RUN_PROFILE => self
                 .name
                 .strip_suffix(".duskweave.test")
-                .is_some_and(|s| !s.is_empty());
+                .is_some_and(|s| !s.is_empty()),
+            HTTPS_LAB_RUN_PROFILE => {
+                self.name == HTTPS_LAB_HOSTNAME
+                    && self.allowed_names.len() == 1
+                    && self.allowed_names[0] == HTTPS_LAB_HOSTNAME
+            }
+            _ => true,
+        };
         allowed
             .then_some(())
             .ok_or(Fail::Input("dns_request_refused"))

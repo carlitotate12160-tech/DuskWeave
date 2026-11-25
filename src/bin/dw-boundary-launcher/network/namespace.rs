@@ -1,5 +1,5 @@
 //! Namespace/veth preparation and exact owned-resource teardown.
-use super::{IP, Names, addresses, nft, nft_output, run};
+use super::{EGRESS_LEASE_MS, IP, Names, addresses, nft, nft_output, run};
 use duskweave::{Fail, Res};
 use std::time::Instant;
 
@@ -33,17 +33,29 @@ fn attach(n: &Names, pid: u32, end: Instant) -> Res<()> {
     )
 }
 fn rule_sets(n: &Names, resolver: &str) -> (String, String) {
+    rule_sets_for(n, "udp", resolver, 53)
+}
+
+fn rule_sets_for(n: &Names, proto: &str, dest: &str, port: u16) -> (String, String) {
     let (_, inner, subnet) = addresses(n);
     let inside = format!(
-        "table inet {t} {{ chain o {{ type filter hook output priority 0; policy drop; ip daddr {resolver} udp dport 53 accept; }}; chain i {{ type filter hook input priority 0; policy drop; ip saddr {resolver} udp sport 53 ct state established accept; }}; }}\n",
+        "table inet {t} {{ chain o {{ type filter hook output priority 0; policy drop; ip daddr {dest} {proto} dport {port} accept; }}; chain i {{ type filter hook input priority 0; policy drop; ip saddr {dest} {proto} sport {port} ct state established accept; }}; }}\n",
         t = n.table
     );
     let outside = format!(
-        "table inet {t} {{ set live {{ type ipv4_addr; flags timeout; timeout 2000ms; }}; chain p {{ type nat hook postrouting priority 100; ip saddr {subnet} ip daddr {resolver} udp dport 53 masquerade; }}; chain f {{ type filter hook forward priority -50; iifname \"{v}\" ip saddr {inner} ip daddr {resolver} udp dport 53 ip saddr @live accept; iifname \"{v}\" drop; oifname \"{v}\" ip saddr {resolver} udp sport 53 ip daddr @live ct state established accept; oifname \"{v}\" drop; }}; chain i {{ type filter hook input priority -50; iifname \"{v}\" drop; }}; }}\n",
+        "table inet {t} {{ set live {{ type ipv4_addr; flags timeout; timeout {EGRESS_LEASE_MS}ms; }}; chain p {{ type nat hook postrouting priority 100; ip saddr {subnet} ip daddr {dest} {proto} dport {port} masquerade; }}; chain f {{ type filter hook forward priority -50; iifname \"{v}\" ip saddr {inner} ip daddr {dest} {proto} dport {port} ip saddr @live accept; iifname \"{v}\" drop; oifname \"{v}\" ip saddr {dest} {proto} sport {port} ip daddr @live ct state established accept; oifname \"{v}\" drop; }}; chain i {{ type filter hook input priority -50; iifname \"{v}\" drop; }}; }}\n",
         t = n.table,
         v = n.host
     );
     (inside, outside)
+}
+
+pub(super) fn prepare_https(n: &Names, pid: u32, ipv4: &str, end: Instant) -> Res<()> {
+    attach(n, pid, end)?;
+    let (inside, outside) = rule_sets_for(n, "tcp", ipv4, 443);
+    nft(Some(&n.netns), &inside, end)?;
+    nft(None, &outside, end)?;
+    configure(n, ipv4, end)
 }
 fn deny_rules(n: &Names, resolver: &str, end: Instant) -> Res<()> {
     let (inside, outside) = rule_sets(n, resolver);

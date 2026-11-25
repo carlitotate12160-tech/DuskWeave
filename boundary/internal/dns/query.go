@@ -80,11 +80,18 @@ func Validate(q frame.Request, now time.Time) error {
 	if err != nil || !ip.Is4() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLoopback() {
 		return ErrDNS
 	}
-	if q.RunProfile == "autonomous-dns-genai-lab-v1" {
+	switch q.RunProfile {
+	case "autonomous-dns-genai-lab-v1":
 		if q.Resolver != "192.0.2.53" || !strings.HasSuffix(q.Name, ".duskweave.test") {
 			return ErrDNS
 		}
-	} else if q.RunProfile != "autonomous-dns-genai-live-v1" {
+	case "autonomous-https-genai-lab-v1":
+		if q.Resolver != "192.0.2.53" || q.Name != "head.duskweave.test" ||
+			len(q.AllowedNames) != 1 || q.AllowedNames[0] != "head.duskweave.test" {
+			return ErrDNS
+		}
+	case "autonomous-dns-genai-live-v1":
+	default:
 		return ErrDNS
 	}
 	return nil
