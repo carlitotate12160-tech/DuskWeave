@@ -3,6 +3,7 @@ use super::{
     HTTPS_METHOD_HEAD, HTTPS_PORT, VERSION_HEAD_RESULT, valid_approved_path, valid_hostname,
     valid_local_id,
 };
+use crate::m1_inference_profile::{HTTPS_LAB_RUN_PROFILE, HTTPS_PUBLIC_RUN_PROFILE};
 use crate::mission::{AssetRef, CampaignId, EngagementId, OperationId};
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,8 @@ use std::net::Ipv4Addr;
 use uuid::Uuid;
 
 pub const LAB_SCOPE_LIMITATION: &str = "synthetic_https_lab_acquisition_not_public_live";
+pub const PUBLIC_SCOPE_LIMITATION: &str =
+    "public_https_single_endpoint_not_whole_host_or_objective";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -125,7 +128,8 @@ impl HttpsHeadResult {
         if self.source_kind == HttpsSourceKind::FixtureHttpsAcquisition {
             return self.valid_fixture_status();
         }
-        self.valid_issued_status() && valid_issued_limitations(self.outcome, &self.limitations)
+        self.valid_issued_status()
+            && valid_issued_limitations_shape(self.outcome, &self.limitations)
     }
 }
 
@@ -178,13 +182,44 @@ fn valid_subcode_limitation(outcome: HttpsOutcomeKind, subcode: Option<&str>) ->
     }
 }
 
-pub fn valid_issued_limitations(outcome: HttpsOutcomeKind, limitations: &[String]) -> bool {
+pub(super) fn expected_scope_limitation(run_profile: &str) -> Option<&'static str> {
+    match run_profile {
+        HTTPS_LAB_RUN_PROFILE => Some(LAB_SCOPE_LIMITATION),
+        HTTPS_PUBLIC_RUN_PROFILE => Some(PUBLIC_SCOPE_LIMITATION),
+        _ => None,
+    }
+}
+
+fn valid_issued_limitations_for_scope(
+    scope: &str,
+    outcome: HttpsOutcomeKind,
+    limitations: &[String],
+) -> bool {
     [
         (2..=3).contains(&limitations.len()),
-        limitations.first().map(String::as_str) == Some(LAB_SCOPE_LIMITATION),
+        limitations.first().map(String::as_str) == Some(scope),
         limitations.get(1).map(String::as_str) == Some(expected_outcome_limitation(outcome)),
         valid_subcode_limitation(outcome, limitations.get(2).map(String::as_str)),
     ]
     .into_iter()
     .all(std::convert::identity)
+}
+
+pub(super) fn valid_issued_limitations_for_profile(
+    run_profile: &str,
+    outcome: HttpsOutcomeKind,
+    limitations: &[String],
+) -> bool {
+    expected_scope_limitation(run_profile)
+        .is_some_and(|scope| valid_issued_limitations_for_scope(scope, outcome, limitations))
+}
+
+fn valid_issued_limitations_shape(outcome: HttpsOutcomeKind, limitations: &[String]) -> bool {
+    [LAB_SCOPE_LIMITATION, PUBLIC_SCOPE_LIMITATION]
+        .into_iter()
+        .any(|scope| valid_issued_limitations_for_scope(scope, outcome, limitations))
+}
+
+pub fn valid_issued_limitations(outcome: HttpsOutcomeKind, limitations: &[String]) -> bool {
+    valid_issued_limitations_for_scope(LAB_SCOPE_LIMITATION, outcome, limitations)
 }

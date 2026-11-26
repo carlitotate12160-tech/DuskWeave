@@ -11,6 +11,7 @@ pub const HTTPS_LOOP_RUN_PROFILE: &str = "m1_https_loop_v1";
 pub const LIVE_RUN_PROFILE: &str = "autonomous-dns-genai-live-v1";
 pub const LAB_RUN_PROFILE: &str = "autonomous-dns-genai-lab-v1";
 pub const HTTPS_LAB_RUN_PROFILE: &str = "autonomous-https-genai-lab-v1";
+pub const HTTPS_PUBLIC_RUN_PROFILE: &str = "autonomous-https-genai-live-v1";
 pub const HTTPS_LAB_PURPOSE: &str = "HTTPS_LOOP_LAB";
 pub const HTTPS_LAB_HOSTNAME: &str = "head.duskweave.test";
 pub const HTTPS_LAB_IPV4: &str = "198.51.100.10";
@@ -76,7 +77,7 @@ pub fn resolver_binding(run_profile: &str, resolver: &str) -> bool {
     }
     match run_profile {
         LAB_RUN_PROFILE | HTTPS_LAB_RUN_PROFILE => resolver == HTTPS_LAB_RESOLVER,
-        LIVE_RUN_PROFILE => global_resolver(ip),
+        LIVE_RUN_PROFILE => is_global_ipv4(ip),
         _ => false,
     }
 }
@@ -94,8 +95,8 @@ pub fn live_binding(run: &str, mode: &str, inference: &str) -> bool {
         )
 }
 
-// Closed special-use policy for the selected public-resolver lane. LAB is separate.
-fn global_resolver(ip: Ipv4Addr) -> bool {
+// Closed special-use policy for public IPv4 target and resolver addresses. LAB is separate.
+pub(crate) fn is_global_ipv4(ip: Ipv4Addr) -> bool {
     let n = u32::from(ip);
     const SPECIAL: &[(u32, u32)] = &[
         (0x00000000, 0xff000000),

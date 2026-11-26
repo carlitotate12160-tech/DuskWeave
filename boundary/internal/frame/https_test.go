@@ -3,6 +3,7 @@ package frame
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -131,5 +132,111 @@ func TestHttpsFrameStrictJSONDecoding(t *testing.T) {
 	nulled := bytes.Replace(raw, []byte(`"method":"HEAD"`), []byte(`"method":null`), 1)
 	if Decode(nulled, &decoded) == nil {
 		t.Fatal("null field accepted")
+	}
+}
+
+func samplePublicHttpsRequest(now time.Time) HttpsRequest {
+	q := sampleHttpsRequest(now)
+	q.RunProfile = PublicRunProfile
+	q.Hostname = "probe.example.invalid"
+	q.IPv4 = "93.184.216.34"
+	q.Resolver = "1.1.1.1"
+	return q
+}
+
+func TestValidateHTTPSPublicHostnameAndTupleLimits(t *testing.T) {
+	now := time.Now()
+	valid := samplePublicHttpsRequest(now)
+	if err := ValidateHTTPS(valid, now); err != nil {
+		t.Fatalf("valid public request rejected: %v", err)
+	}
+	maxHost := strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61)
+	if len(maxHost) != 253 {
+		t.Fatalf("unexpected maxHost len %d", len(maxHost))
+	}
+	maxQ := valid
+	maxQ.Hostname = maxHost
+	if err := ValidateHTTPS(maxQ, now); err != nil {
+		t.Fatalf("253-byte canonical hostname rejected: %v", err)
+	}
+	badHosts := []string{
+		"", "localhost", "probe.example.invalid.", ".probe.example.invalid",
+		"a..b.invalid", "-a.example.invalid", "a-.example.invalid",
+		"Probe.example.invalid", "https://probe.example.invalid",
+		"probe.example.invalid/path", "93.184.216.34", "bad_name.example.invalid",
+		strings.Repeat("a", 64) + ".example.invalid",
+		strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 62),
+	}
+	for _, h := range badHosts {
+		q := valid
+		q.Hostname = h
+		if ValidateHTTPS(q, now) == nil {
+			t.Fatalf("invalid public hostname accepted: %q", h)
+		}
+	}
+	mutants := []struct {
+		name   string
+		mutate func(*HttpsRequest)
+	}{
+		{"path_health", func(q *HttpsRequest) { q.Path = "/health" }},
+		{"port_8443", func(q *HttpsRequest) { q.Port = 8443 }},
+		{"method_get", func(q *HttpsRequest) { q.Method = "GET" }},
+		{"mode_fixture", func(q *HttpsRequest) { q.Mode = "controlled_fixture" }},
+		{"profile_inference", func(q *HttpsRequest) { q.Profile = "deepseek-genai-v4-pro-low-v2" }},
+		{"unknown_run_profile", func(q *HttpsRequest) { q.RunProfile = "autonomous-dns-genai-live-v1" }},
+		{"public_with_lab_resolver", func(q *HttpsRequest) { q.Resolver = LabResolver }},
+		{"lab_with_public_host", func(q *HttpsRequest) { q.RunProfile = LabRunProfile }},
+		{"zero_duration", func(q *HttpsRequest) { q.Duration = 0 }},
+		{"over_duration", func(q *HttpsRequest) { q.Duration = 5001 }},
+		{"overflow_deadline", func(q *HttpsRequest) { q.Deadline = math.MaxInt64 - 500; q.EpisodeDeadline = math.MaxInt64 }},
+		{"non_canonical_ip", func(q *HttpsRequest) { q.IPv4 = "093.184.216.34" }},
+		{"non_canonical_resolver", func(q *HttpsRequest) { q.Resolver = "01.1.1.1" }},
+	}
+	for _, m := range mutants {
+		q := valid
+		m.mutate(&q)
+		if ValidateHTTPS(q, now) == nil {
+			t.Fatalf("invalid public mutant accepted: %s", m.name)
+		}
+	}
+}
+
+func TestValidateHTTPSPublicSpecialIPv4Matrix(t *testing.T) {
+	now := time.Now()
+	valid := samplePublicHttpsRequest(now)
+	denied := []string{
+		"0.0.0.0", "0.255.255.255", "10.0.0.0", "10.255.255.255",
+		"100.64.0.0", "100.127.255.255", "127.0.0.0", "127.0.0.1", "127.255.255.255",
+		"169.254.0.0", "169.254.255.255", "172.16.0.0", "172.31.255.255",
+		"192.0.0.0", "192.0.0.255", "192.0.2.0", "192.0.2.53", "192.0.2.255",
+		"192.88.99.0", "192.88.99.255", "192.168.0.0", "192.168.255.255",
+		"198.18.0.0", "198.19.255.255", "198.51.100.0", "198.51.100.10", "198.51.100.255",
+		"203.0.113.0", "203.0.113.255", "224.0.0.0", "240.0.0.0", "255.255.255.255",
+		"::1", "not-an-ip",
+	}
+	for _, addr := range denied {
+		qTarget := valid
+		qTarget.IPv4 = addr
+		if ValidateHTTPS(qTarget, now) == nil {
+			t.Fatalf("special target IPv4 accepted: %s", addr)
+		}
+		qRes := valid
+		qRes.Resolver = addr
+		if ValidateHTTPS(qRes, now) == nil {
+			t.Fatalf("special resolver IPv4 accepted: %s", addr)
+		}
+	}
+	allowedBoundaries := []string{
+		"1.0.0.0", "9.255.255.255", "11.0.0.0", "100.63.255.255", "100.128.0.0",
+		"126.255.255.255", "128.0.0.0", "172.15.255.255", "172.32.0.0",
+		"192.0.1.0", "198.17.255.255", "198.20.0.0", "223.255.255.255",
+	}
+	for _, addr := range allowedBoundaries {
+		q := valid
+		q.IPv4 = addr
+		q.Resolver = addr
+		if err := ValidateHTTPS(q, now); err != nil {
+			t.Fatalf("global boundary IPv4 rejected %s: %v", addr, err)
+		}
 	}
 }
