@@ -84,25 +84,59 @@ fn spawn_stdin_writer(
     })
 }
 
+struct BoundedOutput {
+    bytes: Vec<u8>,
+    stream: &'static str,
+}
+
+impl BoundedOutput {
+    fn new(stream: &'static str) -> Self {
+        Self {
+            bytes: Vec::new(),
+            stream,
+        }
+    }
+
+    fn append(&mut self, chunk: &[u8], lbl: &str) -> Result<(), String> {
+        if self.bytes.len() + chunk.len() > MAX_STREAM_BYTES {
+            return Err(format!(
+                "{lbl} {} exceeded {MAX_STREAM_BYTES} bytes",
+                self.stream
+            ));
+        }
+        self.bytes.extend_from_slice(chunk);
+        Ok(())
+    }
+}
+
+fn read_next_chunk<R: Read>(
+    pipe: &mut R,
+    chunk: &mut [u8],
+    stream: &'static str,
+    lbl: &str,
+) -> Result<usize, String> {
+    loop {
+        match pipe.read(chunk) {
+            Ok(n) => return Ok(n),
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => return Err(format!("{lbl} {stream} read: {e}")),
+        }
+    }
+}
+
 fn read_stream_limited<R: Read>(
     mut pipe: R,
     stream: &'static str,
     lbl: &str,
 ) -> Result<Vec<u8>, String> {
-    let mut buf = Vec::new();
+    let mut out = BoundedOutput::new(stream);
     let mut chunk = [0u8; READ_CHUNK_BYTES];
     loop {
-        match pipe.read(&mut chunk) {
-            Ok(0) => return Ok(buf),
-            Ok(n) => {
-                if buf.len() + n > MAX_STREAM_BYTES {
-                    return Err(format!("{lbl} {stream} exceeded {MAX_STREAM_BYTES} bytes"));
-                }
-                buf.extend_from_slice(&chunk[..n]);
-            }
-            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(e) => return Err(format!("{lbl} {stream} read: {e}")),
+        let n = read_next_chunk(&mut pipe, &mut chunk, stream, lbl)?;
+        if n == 0 {
+            return Ok(out.bytes);
         }
+        out.append(&chunk[..n], lbl)?;
     }
 }
 
@@ -210,6 +244,81 @@ fn await_io(
     Ok(())
 }
 
+struct SupervisedChild {
+    child: Child,
+    workers: IoWorkers,
+}
+
+impl SupervisedChild {
+    fn spawn(
+        cmd: &mut Command,
+        stdin: Option<&[u8]>,
+        lbl: &str,
+    ) -> Result<(Self, mpsc::Receiver<Result<(), String>>), String> {
+        let si = if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        };
+        cmd.stdin(si).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = cmd.spawn().map_err(|e| format!("{lbl}: {e}"))?;
+        let pipes = match take_pipes(&mut child, stdin.is_some(), lbl) {
+            Ok(p) => p,
+            Err(e) => {
+                kill_and_reap(&mut child);
+                return Err(e);
+            }
+        };
+        let (tx, rx) = mpsc::channel();
+        let workers = IoWorkers::spawn(pipes, stdin.map(ToOwned::to_owned), lbl, &tx);
+        Ok((Self { child, workers }, rx))
+    }
+
+    fn abort_after_io_error(mut self, err: String, lbl: &str) -> String {
+        kill_and_reap(&mut self.child);
+        match self.workers.join_after_abort(lbl) {
+            Ok(diag) => format_io_abort_error(err, diag),
+            Err(panic_err) => panic_err,
+        }
+    }
+
+    fn wait_and_collect(
+        mut self,
+        deadline: Instant,
+        lbl: &str,
+    ) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), String> {
+        let rem = deadline.saturating_duration_since(Instant::now());
+        let status = match wait_child(&mut self.child, lbl, rem) {
+            Ok(st) => st,
+            Err(err) => {
+                let _ = self.workers.join_after_abort(lbl)?;
+                return Err(err);
+            }
+        };
+        let (out_bytes, err_bytes) = self.workers.join_all(lbl)?;
+        Ok((status, out_bytes, err_bytes))
+    }
+}
+
+fn format_io_abort_error(err: String, stderr_diag: Option<String>) -> String {
+    match stderr_diag {
+        Some(diag) if !err.contains("timed out") && !err.contains("exceeded") => {
+            format!("{err}: {diag}")
+        }
+        _ => err,
+    }
+}
+
+fn decode_captured_output(
+    out_bytes: Vec<u8>,
+    err_bytes: Vec<u8>,
+    lbl: &str,
+) -> Result<(String, String), String> {
+    let out = String::from_utf8(out_bytes).map_err(|e| format!("{lbl} stdout utf8: {e}"))?;
+    let err = String::from_utf8(err_bytes).map_err(|e| format!("{lbl} stderr utf8: {e}"))?;
+    Ok((out, err))
+}
+
 fn run_captured(
     cmd: &mut Command,
     stdin: Option<&[u8]>,
@@ -217,46 +326,14 @@ fn run_captured(
     lim: Duration,
 ) -> Result<(ExitStatus, String, String), String> {
     let deadline = Instant::now() + lim;
-    let si = if stdin.is_some() {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    };
-    cmd.stdin(si).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| format!("{lbl}: {e}"))?;
-    let pipes = match take_pipes(&mut child, stdin.is_some(), lbl) {
-        Ok(p) => p,
-        Err(e) => {
-            kill_and_reap(&mut child);
-            return Err(e);
-        }
-    };
-    let (tx, rx) = mpsc::channel();
-    let workers = IoWorkers::spawn(pipes, stdin.map(ToOwned::to_owned), lbl, &tx);
-    let expected = workers.count();
-    let io_res = await_io(&rx, expected, deadline, lbl);
+    let (supervised, rx) = SupervisedChild::spawn(cmd, stdin, lbl)?;
+    let io_res = await_io(&rx, supervised.workers.count(), deadline, lbl);
     drop(rx);
     if let Err(err) = io_res {
-        kill_and_reap(&mut child);
-        let stderr_diag = workers.join_after_abort(lbl)?;
-        return match stderr_diag {
-            Some(diag) if !err.contains("timed out") && !err.contains("exceeded") => {
-                Err(format!("{err}: {diag}"))
-            }
-            _ => Err(err),
-        };
+        return Err(supervised.abort_after_io_error(err, lbl));
     }
-    let rem = deadline.saturating_duration_since(Instant::now());
-    let status = match wait_child(&mut child, lbl, rem) {
-        Ok(st) => st,
-        Err(err) => {
-            let _ = workers.join_after_abort(lbl)?;
-            return Err(err);
-        }
-    };
-    let (out_bytes, err_bytes) = workers.join_all(lbl)?;
-    let out = String::from_utf8(out_bytes).map_err(|e| format!("{lbl} stdout utf8: {e}"))?;
-    let err = String::from_utf8(err_bytes).map_err(|e| format!("{lbl} stderr utf8: {e}"))?;
+    let (status, out_bytes, err_bytes) = supervised.wait_and_collect(deadline, lbl)?;
+    let (out, err) = decode_captured_output(out_bytes, err_bytes, lbl)?;
     Ok((status, out, err))
 }
 
@@ -282,213 +359,5 @@ pub(super) fn run_bounded(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        MAX_STREAM_BYTES, run_bounded, run_bounded_with_timeout, run_captured, wait_child,
-    };
-    use std::path::{Path, PathBuf};
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-    struct TempDir(PathBuf);
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn make_temp_dir(name: &str) -> TempDir {
-        let ns = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("dw_subproc_{name}_{ns}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        TempDir(dir)
-    }
-
-    fn read_ready_pid(ready: &Path) -> u32 {
-        std::fs::read_to_string(ready)
-            .expect("child should have signaled readiness before returning")
-            .trim()
-            .parse()
-            .expect("valid pid in ready file")
-    }
-
-    fn assert_reaped(pid: u32) {
-        assert!(
-            !Path::new(&format!("/proc/{pid}")).exists(),
-            "child {pid} must be terminated and reaped"
-        );
-    }
-
-    fn sh_ready_cmd(script: &str, ready: &Path) -> Command {
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", script, "_"]).arg(ready);
-        cmd
-    }
-
-    #[test]
-    fn unconsumed_large_stdin_times_out_and_reaps_child() {
-        let dir = make_temp_dir("stall");
-        let ready = dir.0.join("ready.pid");
-        let mut cmd = sh_ready_cmd(
-            "printf '%s\\n' \"$$\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\" && exec /bin/sleep 60",
-            &ready,
-        );
-        let input = vec![b'x'; 512 * 1024];
-        let start = Instant::now();
-        let res =
-            run_bounded_with_timeout(&mut cmd, Some(&input), "stall", Duration::from_millis(500));
-        let elapsed = start.elapsed();
-        assert!(res.is_err(), "expected timeout, got {res:?}");
-        assert!(
-            elapsed < Duration::from_secs(5),
-            "timeout took too long: {elapsed:?}"
-        );
-        let pid = read_ready_pid(&ready);
-        assert_reaped(pid);
-    }
-
-    #[test]
-    fn concurrent_large_stdout_stderr_and_stdin_completes() {
-        let dir = make_temp_dir("concurrent");
-        let out_file = dir.0.join("out.txt");
-        let err_file = dir.0.join("err.txt");
-        let out_body = format!("OUT_HEAD:{}:OUT_TAIL", "o".repeat(128 * 1024));
-        let err_body = format!("ERR_HEAD:{}:ERR_TAIL", "e".repeat(128 * 1024));
-        std::fs::write(&out_file, &out_body).unwrap();
-        std::fs::write(&err_file, &err_body).unwrap();
-
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args([
-            "-c",
-            "cat \"$1\" && cat \"$2\" >&2 && exec /usr/bin/wc -c",
-            "_",
-        ])
-        .arg(&out_file)
-        .arg(&err_file);
-        let input = vec![b'i'; 256 * 1024];
-        let (status, out, err) = run_captured(
-            &mut cmd,
-            Some(&input),
-            "concurrent",
-            Duration::from_secs(10),
-        )
-        .expect("concurrent stdin/stdout/stderr should complete without deadlock");
-        assert!(status.success());
-        assert!(out.starts_with("OUT_HEAD:"));
-        assert!(out.contains(":OUT_TAIL"));
-        assert!(out.trim_end().ends_with("262144"), "unexpected stdout tail");
-        assert!(err.starts_with("ERR_HEAD:"));
-        assert!(err.ends_with(":ERR_TAIL"));
-        assert_eq!(err.len(), err_body.len());
-
-        let mut cmd_nz = Command::new("/bin/sh");
-        cmd_nz
-            .args(["-c", "cat \"$1\" && cat \"$2\" >&2 && exit 4", "_"])
-            .arg(&out_file)
-            .arg(&err_file);
-        let err_msg =
-            run_bounded_with_timeout(&mut cmd_nz, None, "concurrent-nz", Duration::from_secs(10))
-                .unwrap_err();
-        assert!(err_msg.contains("ERR_HEAD:") && err_msg.contains(":ERR_TAIL"));
-    }
-
-    #[test]
-    fn early_exit_broken_input_pipe_and_nonzero_exit_fail_and_reap() {
-        let dir = make_temp_dir("early_exit");
-        let input = vec![b'x'; 512 * 1024];
-
-        let ready_nz = dir.0.join("nz.pid");
-        let mut cmd_nz = sh_ready_cmd(
-            "printf '%s\\n' \"$$\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\" && printf 'early-err\\n' >&2 && exit 7",
-            &ready_nz,
-        );
-        let start = Instant::now();
-        let res_nz = run_bounded_with_timeout(
-            &mut cmd_nz,
-            Some(&input),
-            "early-nz",
-            Duration::from_secs(10),
-        );
-        assert!(res_nz.is_err());
-        assert!(start.elapsed() < Duration::from_secs(5));
-        assert_reaped(read_ready_pid(&ready_nz));
-
-        let ready_ok = dir.0.join("ok.pid");
-        let mut cmd_ok = sh_ready_cmd(
-            "printf '%s\\n' \"$$\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\" && exit 0",
-            &ready_ok,
-        );
-        let res_ok = run_bounded_with_timeout(
-            &mut cmd_ok,
-            Some(&input),
-            "early-ok",
-            Duration::from_secs(10),
-        );
-        assert!(
-            res_ok.is_err(),
-            "unconsumed input on early exit 0 must fail"
-        );
-        assert_reaped(read_ready_pid(&ready_ok));
-
-        let mut cmd_err = Command::new("/bin/sh");
-        cmd_err.args(["-c", "printf 'boom-stderr-tail' >&2; exit 3"]);
-        let err =
-            run_bounded_with_timeout(&mut cmd_err, None, "nz", Duration::from_secs(5)).unwrap_err();
-        assert!(err.contains("boom-stderr-tail"), "unexpected err: {err}");
-    }
-
-    #[test]
-    fn output_overflow_refused_and_child_reaped_while_exact_limit_succeeds() {
-        let dir = make_temp_dir("overflow");
-        for (idx, redir) in ["", " >&2"].into_iter().enumerate() {
-            let ready = dir.0.join(format!("ov_{idx}.pid"));
-            let script = format!(
-                "printf '%s\\n' \"$$\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\" && exec /usr/bin/head -c 10485760 /dev/zero{redir}"
-            );
-            let mut cmd = sh_ready_cmd(&script, &ready);
-            let start = Instant::now();
-            let res = run_bounded_with_timeout(&mut cmd, None, "overflow", Duration::from_secs(10));
-            assert!(res.is_err(), "overflow stream {idx} must fail");
-            assert!(start.elapsed() < Duration::from_secs(5));
-            assert_reaped(read_ready_pid(&ready));
-        }
-
-        let mut exact = Command::new("/usr/bin/head");
-        exact.args(["-c", &MAX_STREAM_BYTES.to_string(), "/dev/zero"]);
-        let out = run_bounded_with_timeout(&mut exact, None, "exact", Duration::from_secs(5))
-            .expect("exact 1 MiB output must succeed");
-        assert_eq!(out.len(), MAX_STREAM_BYTES);
-    }
-
-    #[test]
-    fn closed_stdio_hanging_child_and_wait_child_timeout_reap() {
-        let dir = make_temp_dir("closed_stdio");
-        let ready = dir.0.join("closed.pid");
-        let mut cmd = sh_ready_cmd(
-            "printf '%s\\n' \"$$\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\" && exec >&- 2>&- && exec /bin/sleep 60",
-            &ready,
-        );
-        let res = run_bounded_with_timeout(&mut cmd, None, "closed", Duration::from_millis(500));
-        assert!(res.is_err());
-        assert_reaped(read_ready_pid(&ready));
-
-        let mut child = Command::new("/bin/sleep")
-            .arg("60")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        let pid = child.id();
-        let w = wait_child(&mut child, "direct-wait", Duration::from_millis(150));
-        assert!(w.is_err());
-        assert_reaped(pid);
-
-        let mut cat = Command::new("/bin/cat");
-        let echoed = run_bounded(&mut cat, Some(b"stdin-eof-closed"), "cat").unwrap();
-        assert_eq!(echoed, "stdin-eof-closed");
-    }
-}
+#[path = "subprocess/tests.rs"]
+mod tests;

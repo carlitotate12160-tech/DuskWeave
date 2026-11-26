@@ -221,6 +221,35 @@ fn read_eof<R: Read + Send + 'static>(mut src: R, lbl: &'static str) -> Vec<u8> 
     )
 }
 
+fn wait_pair_container_warm(mut child: Child, name: &str, user: &str) -> Child {
+    let expected = format!("true {user}");
+    let deadline = Instant::now() + CLEAN_WAIT;
+    loop {
+        let mut insp = clean_cmd(docker_bin());
+        insp.args([
+            "inspect",
+            "--format",
+            "{{.State.Running}} {{.Config.User}}",
+            name,
+        ]);
+        let out = match run_bounded(&mut insp, None, "warm") {
+            Ok(out) => out,
+            Err(e) => {
+                let _ = (child.kill(), child.wait());
+                panic!("{name} inspect: {e}");
+            }
+        };
+        if out.trim() == expected {
+            return child;
+        }
+        if Instant::now() >= deadline {
+            let _ = (child.kill(), child.wait());
+            panic!("{name} warm: {out}");
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
 fn spawn_pair_container(run_label: &str, name: &str, image: &str, exporter: bool) -> Child {
     let (entry, user) = if exporter {
         ("/dw-dns-exporter", "65533:65533")
@@ -241,29 +270,8 @@ fn spawn_pair_container(run_label: &str, name: &str, image: &str, exporter: bool
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = cmd.spawn().unwrap_or_else(|e| panic!("start {name}: {e}"));
-    let deadline = Instant::now() + CLEAN_WAIT;
-    loop {
-        let mut insp = clean_cmd(docker_bin());
-        insp.args([
-            "inspect",
-            "--format",
-            "{{.State.Running}} {{.Config.User}}",
-            name,
-        ]);
-        match run_bounded(&mut insp, None, "warm") {
-            Ok(out) if out.trim() == format!("true {user}") => return child,
-            Ok(out) if Instant::now() >= deadline => {
-                let _ = (child.kill(), child.wait());
-                panic!("{name} warm: {out}");
-            }
-            Err(e) => {
-                let _ = (child.kill(), child.wait());
-                panic!("{name} inspect: {e}");
-            }
-            Ok(_) => thread::sleep(Duration::from_millis(25)),
-        }
-    }
+    let child = cmd.spawn().unwrap_or_else(|e| panic!("start {name}: {e}"));
+    wait_pair_container_warm(child, name, user)
 }
 
 fn wait_exit(mut child: Child, label: &str) -> std::process::ExitStatus {

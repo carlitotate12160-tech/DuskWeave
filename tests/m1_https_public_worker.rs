@@ -74,6 +74,16 @@ pub(crate) fn sample_public_request(now_ms: i64) -> HttpsIpcRequest {
     }
 }
 
+fn outcome_limitation(outcome: HttpsOutcome) -> &'static str {
+    match outcome {
+        HttpsOutcome::HeadResponse => "head_response_does_not_prove_access_or_objective_completion",
+        HttpsOutcome::ConnectionFailed => "single_endpoint_connection_failed_not_whole_host",
+        HttpsOutcome::TlsFailed => "single_endpoint_tls_failed_not_whole_host",
+        HttpsOutcome::TimedOut => "single_endpoint_timeout_not_whole_host",
+        HttpsOutcome::ExecutionRefused => "single_endpoint_execution_refused_not_whole_host",
+    }
+}
+
 fn sample_public_safe_result(
     req: &HttpsIpcRequest,
     outcome: HttpsOutcome,
@@ -82,13 +92,7 @@ fn sample_public_safe_result(
     tls_category: &str,
     subcode: Option<&str>,
 ) -> HttpsSafeResult {
-    let second = match outcome {
-        HttpsOutcome::HeadResponse => "head_response_does_not_prove_access_or_objective_completion",
-        HttpsOutcome::ConnectionFailed => "single_endpoint_connection_failed_not_whole_host",
-        HttpsOutcome::TlsFailed => "single_endpoint_tls_failed_not_whole_host",
-        HttpsOutcome::TimedOut => "single_endpoint_timeout_not_whole_host",
-        HttpsOutcome::ExecutionRefused => "single_endpoint_execution_refused_not_whole_host",
-    };
+    let second = outcome_limitation(outcome);
     let mut limitations = vec![PUBLIC_SCOPE_LIMITATION.into(), second.into()];
     if let Some(c) = subcode {
         limitations.push(c.into());
