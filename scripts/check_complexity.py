@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """McCabe own-complexity ratchet for tracked DuskWeave Rust sources.
 
-CLI owner of the gate: pinned analyzer qualification, tracked src/**/*.rs
-inventory (``git ls-files`` candidate worktree; ``git ls-tree`` at the
-validated ``--base`` commit), analyzer invocation
-(``-p src -m -O json -o <raw> -j 1 -w``), provenance, reference point
+CLI owner of the gate: pinned analyzer qualification, tracked first-party
+``.rs`` inventory (``git ls-files`` candidate worktree; ``git ls-tree`` at the
+validated ``--base`` commit, excluding only ``third_party/genai/``), unexpected
+untracked first-party ``.rs`` rejection, explicit per-file analyzer invocation
+(``-p <file> ... -m -O json -o <raw> -j 1 -w``), provenance, reference point
 assignment, reviewed pure-dispatch classification, and the base-to-candidate
 ratchet verdict delegated to ``complexity_ratchet.py``. Report codec,
 validation and projection live in sibling ``complexity_reports.py``.
@@ -59,7 +60,11 @@ def _subprocess_timeout():
 def _run(argv, cwd=None):
     try:
         return subprocess.run(
-            argv, capture_output=True, timeout=_subprocess_timeout(), cwd=cwd
+            argv,
+            capture_output=True,
+            timeout=_subprocess_timeout(),
+            cwd=cwd,
+            shell=False,
         )
     except subprocess.TimeoutExpired as exc:
         raise reports.CheckError(
@@ -98,18 +103,39 @@ def check_analyzer(analyzer):
     return version
 
 
-def inventory():
-    out = _git("ls-files", "-z", "--", "src/*.rs", "src/**/*.rs")
-    files = sorted(
+def _git_first_party_rust(*args):
+    out = _git(*args)
+    return sorted(
         {
             p.replace("\\", "/")
             for p in out.decode("utf-8", "replace").split("\0")
-            if p.startswith("src/") and p.endswith(".rs")
+            if p and ratchet.is_first_party_rust(p)
         }
     )
+
+
+def inventory():
+    files = _git_first_party_rust("ls-files", "-z")
     if not files:
-        raise reports.CheckError("empty tracked src/**/*.rs inventory")
+        raise reports.CheckError("empty tracked first-party .rs inventory")
+    missing = [
+        rel for rel in files if not os.path.isfile(os.path.join(*rel.split("/")))
+    ]
+    if missing:
+        raise reports.CheckError(
+            f"missing tracked first-party .rs files: {missing}"
+        )
     return files
+
+
+def reject_unexpected_untracked():
+    unexpected = _git_first_party_rust(
+        "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if unexpected:
+        raise reports.CheckError(
+            f"unexpected untracked first-party .rs files: {unexpected}"
+        )
 
 
 def candidate_sha():
@@ -119,14 +145,17 @@ def candidate_sha():
     return proc.stdout.decode("ascii", "replace").strip() or None
 
 
-def run_analyzer(analyzer, raw_dir, diag_dir, cwd=None, tag="head"):
+def run_analyzer(analyzer, files, raw_dir, diag_dir, cwd=None, tag="head"):
+    if not files:
+        raise reports.CheckError(f"empty analyzer ({tag}) inventory")
     if os.path.exists(raw_dir):
         shutil.rmtree(raw_dir)
     os.makedirs(raw_dir)
-    proc = _run(
-        [analyzer, "-p", "src", "-m", "-O", "json", "-o", raw_dir, "-j", "1", "-w"],
-        cwd=cwd,
-    )
+    argv = [analyzer]
+    for rel in files:
+        argv.extend(("-p", rel))
+    argv.extend(("-m", "-O", "json", "-o", raw_dir, "-j", "1", "-w"))
+    proc = _run(argv, cwd=cwd)
     for name, data in (
         (f"analyzer-{tag}.stdout.log", proc.stdout),
         (f"analyzer-{tag}.stderr.log", proc.stderr),
@@ -274,10 +303,13 @@ def main(argv=None):
         version = check_analyzer(args.analyzer)
         base_sha = ratchet.resolve_base(_git, args.base)
         files = inventory()
+        reject_unexpected_untracked()
         sha = candidate_sha()
         os.makedirs(args.report_dir, exist_ok=True)
         head_raw = os.path.join(args.report_dir, "raw-head")
-        run_analyzer(args.analyzer, head_raw, args.report_dir, tag="head")
+        run_analyzer(
+            args.analyzer, files, head_raw, args.report_dir, tag="head"
+        )
         head_ms = _measure_all(head_raw, files)
         allowance = resolve_run_allowance(head_ms)
         with tempfile.TemporaryDirectory(prefix="dw-ratchet-base-") as root:
@@ -285,7 +317,12 @@ def main(argv=None):
             ratchet.extract_base(_git, base_sha, base_files, root)
             base_raw = os.path.join(args.report_dir, "raw-base")
             run_analyzer(
-                args.analyzer, base_raw, args.report_dir, cwd=root, tag="base"
+                args.analyzer,
+                base_files,
+                base_raw,
+                args.report_dir,
+                cwd=root,
+                tag="base",
             )
             base_ms = _measure_all(base_raw, base_files, src_root=root)
             resolve_run_allowance(base_ms)

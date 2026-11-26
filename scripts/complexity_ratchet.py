@@ -2,7 +2,7 @@
 """Base-to-candidate McCabe ratchet for the DuskWeave complexity gate.
 
 Owns baseline resolution and per-function comparison. The validated base
-commit's tracked src/**/*.rs inventory and bytes are extracted from Git
+commit's tracked first-party ``.rs`` inventory and bytes are extracted from Git
 into an isolated temporary tree — the user worktree is never checked out
 or reset and no user-authored baseline report is trusted — then measured
 by the same pinned analyzer invocation as the candidate.
@@ -42,6 +42,13 @@ RESOLVED = "resolved"
 COMPLIANT = "compliant"
 AMBIGUOUS = "ambiguous"
 REMOVED = "removed"
+EXCLUDED_VENDOR_PREFIX = "third_party/genai/"
+
+
+def is_first_party_rust(rel):
+    """True for first-party .rs paths, excluding only third_party/genai/."""
+    path = rel.replace("\\", "/")
+    return path.endswith(".rs") and not path.startswith(EXCLUDED_VENDOR_PREFIX)
 
 
 def resolve_base(git, base):
@@ -59,16 +66,18 @@ def resolve_base(git, base):
 
 
 def base_inventory(git, sha):
-    """Tracked src/**/*.rs inventory at the base commit; empty fails."""
-    out = git("ls-tree", "-r", "-z", "--name-only", sha, "--", "src")
+    """Tracked first-party .rs inventory at the base commit; empty fails."""
+    out = git("ls-tree", "-r", "-z", "--name-only", sha)
     files = sorted(
-        p
-        for p in out.decode("utf-8", "replace").split("\0")
-        if p.startswith("src/") and p.endswith(".rs")
+        {
+            p.replace("\\", "/")
+            for p in out.decode("utf-8", "replace").split("\0")
+            if p and is_first_party_rust(p)
+        }
     )
     if not files:
         raise reports.CheckError(
-            f"empty base src/**/*.rs inventory at {sha}"
+            f"empty base first-party .rs inventory at {sha}"
         )
     return files
 

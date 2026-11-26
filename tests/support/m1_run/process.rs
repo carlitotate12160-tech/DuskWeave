@@ -94,6 +94,82 @@ pub fn wall_instant(ms: u64) -> std::time::Instant {
         .unwrap();
     std::time::Instant::now() - wall.saturating_sub(std::time::Duration::from_millis(ms))
 }
+fn parse_proc_stat(stat: &str) -> Option<(u32, u64)> {
+    let fields: Vec<_> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+    let ppid = fields.get(1)?.parse::<u32>().ok()?;
+    let birth = fields.get(19)?.parse::<u64>().ok()?;
+    Some((ppid, birth))
+}
+fn proc_cmdline_matches(cmdline: &[u8], wanted_run: &str, phase_name: Option<&str>) -> bool {
+    let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
+    args.contains(&wanted_run.as_bytes())
+        && phase_name.is_none_or(|name| args.contains(&name.as_bytes()))
+}
+fn match_proc_candidate(
+    stat: &str,
+    cmdline: &[u8],
+    parent: u32,
+    wanted_run: &str,
+    phase_name: Option<&str>,
+) -> Option<u64> {
+    let (ppid, birth) = parse_proc_stat(stat)?;
+    (ppid == parent && proc_cmdline_matches(cmdline, wanted_run, phase_name)).then_some(birth)
+}
+fn select_unique_candidate<T>(matches: Vec<T>) -> Option<T> {
+    let mut iter = matches.into_iter();
+    let only = iter.next()?;
+    iter.next().is_none().then_some(only)
+}
+fn project_exit_instant(
+    sampled: std::time::Instant,
+    wall_ms: u128,
+    exited_ms: u128,
+    uncertainty: std::time::Duration,
+) -> Option<std::time::Instant> {
+    let at = if exited_ms >= wall_ms {
+        let delta = u64::try_from(exited_ms - wall_ms).ok()?;
+        sampled.checked_add(std::time::Duration::from_millis(delta))?
+    } else {
+        let delta = u64::try_from(wall_ms - exited_ms).ok()?;
+        sampled.checked_sub(std::time::Duration::from_millis(delta))?
+    };
+    at.checked_add(uncertainty)
+}
+#[cfg(not(windows))]
+fn read_proc_candidate(
+    pid: u32,
+    parent: u32,
+    wanted_run: &str,
+    phase_name: Option<&str>,
+) -> Option<(u32, u64)> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    let birth = match_proc_candidate(&stat, &cmdline, parent, wanted_run, phase_name)?;
+    Some((pid, birth))
+}
+#[cfg(not(windows))]
+fn read_proc_clk_tck() -> Option<f64> {
+    let mut frequency = Command::new("getconf");
+    frequency.arg("CLK_TCK");
+    let hz = observation_output(frequency)?;
+    std::str::from_utf8(&hz.stdout).ok()?.trim().parse().ok()
+}
+#[cfg(not(windows))]
+fn read_proc_uptime() -> Option<f64> {
+    std::fs::read_to_string("/proc/uptime")
+        .ok()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+#[cfg(not(windows))]
+fn proc_birth_instant(birth: u64) -> Option<std::time::Instant> {
+    let hz = read_proc_clk_tck()?;
+    let uptime = read_proc_uptime()?;
+    let age_secs = (uptime - birth as f64 / hz).max(0.0);
+    Some(std::time::Instant::now() - std::time::Duration::from_secs_f64(age_secs))
+}
 #[cfg(not(windows))]
 fn phase_identity(parent: u32, run: Uuid, phase: Option<RunPhase>) -> Option<PhaseIdentity> {
     let wanted = run.to_string();
@@ -102,37 +178,15 @@ fn phase_identity(parent: u32, run: Uuid, phase: Option<RunPhase>) -> Option<Pha
         .ok()?
         .filter_map(Result::ok)
         .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
-        .filter_map(|pid| {
-            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-            let fields: Vec<_> = stat.rsplit_once(')')?.1.split_whitespace().collect();
-            let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
-            let args: Vec<&[u8]> = cmd.split(|b| *b == 0).collect();
-            (fields.get(1)?.parse::<u32>().ok()? == parent
-                && args.contains(&wanted.as_bytes())
-                && phase_name.is_none_or(|n| args.contains(&n.as_bytes())))
-            .then_some((pid, fields.get(19)?.parse::<u64>().ok()?))
-        })
+        .filter_map(|pid| read_proc_candidate(pid, parent, &wanted, phase_name))
         .collect();
-    let [(pid, birth)] = matches.as_slice() else {
-        return None;
-    };
-    let mut frequency = Command::new("getconf");
-    frequency.arg("CLK_TCK");
-    let hz = observation_output(frequency)?;
-    let hz: f64 = std::str::from_utf8(&hz.stdout).ok()?.trim().parse().ok()?;
-    let uptime: f64 = std::fs::read_to_string("/proc/uptime")
-        .ok()?
-        .split_whitespace()
-        .next()?
-        .parse()
-        .ok()?;
+    let (pid, birth) = select_unique_candidate(matches)?;
     Some(PhaseIdentity {
-        pid: *pid,
-        birth: *birth,
+        pid,
+        birth,
         run,
         phase: phase_name,
-        started: std::time::Instant::now()
-            - std::time::Duration::from_secs_f64((uptime - *birth as f64 / hz).max(0.0)),
+        started: proc_birth_instant(birth)?,
     })
 }
 impl PhaseIdentity {
@@ -161,12 +215,7 @@ impl PhaseIdentity {
             .trim()
             .parse()
             .ok()?;
-        let at = if exited >= wall {
-            sampled.checked_add(Duration::from_millis(u64::try_from(exited - wall).ok()?))?
-        } else {
-            sampled.checked_sub(Duration::from_millis(u64::try_from(wall - exited).ok()?))?
-        };
-        at.checked_add(uncertainty)
+        project_exit_instant(sampled, wall, exited, uncertainty)
     }
     #[cfg(not(windows))]
     fn observed_exit(&self, end: std::time::Instant) -> Option<std::time::Instant> {
@@ -401,93 +450,5 @@ pub fn parent_log(log: &std::path::Path) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A cached identity under another phase label must never satisfy a named
-    /// phase lookup: the label, not capture order, selects custody and proof.
-    #[test]
-    fn named_phase_lookup_never_reuses_another_phase_identity() {
-        let python = std::env::var_os("DW_TEST_PYTHON").unwrap_or_else(|| "python".into());
-        let parent = Command::new(python)
-            .args(["-c", "import time;time.sleep(30)"])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-        let run = Uuid::from_u128(0xda07);
-        let mut owned = OwnedRun::new(parent, run);
-        owned.phases.push(PhaseIdentity {
-            pid: u32::MAX,
-            birth: 1,
-            started: std::time::Instant::now(),
-            run,
-            phase: Some(RunPhase::Acquisition.name()),
-        });
-        owned.focus = Some(0);
-        // The decision-two lookup must not accept the acquisition-labelled
-        // identity, and real discovery of a foreign cmdline captures nothing.
-        assert!(owned.phase_for(RunPhase::DecisionTwo).is_none());
-        assert_eq!(owned.phases.len(), 1);
-        assert_eq!(owned.focused().unwrap().0, u32::MAX);
-        assert_eq!(owned.phase().unwrap().0, u32::MAX);
-    }
-
-    fn control_parent(code: &str) -> std::process::Child {
-        let python = std::env::var_os("DW_TEST_PYTHON").unwrap_or_else(|| "python".into());
-        Command::new(python)
-            .args(["-c", code])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap()
-    }
-    fn exited_control_parent() -> std::process::Child {
-        let mut parent = control_parent("import sys;sys.exit(3)");
-        parent.wait().unwrap();
-        parent
-    }
-    fn exit_wait_result(
-        parent: &mut std::process::Child,
-        end: std::time::Instant,
-    ) -> std::thread::Result<std::time::Instant> {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            wait_parent_exit(parent, end, "control")
-        }))
-    }
-
-    /// An exit already complete is qualified by its observation instant: seen
-    /// before the bound, conservative evidence still proves on-time exit.
-    #[test]
-    fn already_exited_parent_first_seen_before_end_qualifies() {
-        let mut parent = exited_control_parent();
-        let end = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        let done = exit_wait_result(&mut parent, end).unwrap();
-        assert!(done <= end);
-    }
-
-    /// An exit first observed after the bound cannot be qualified on time:
-    /// the observation instant is the only evidence and it lies past end.
-    #[test]
-    fn already_exited_parent_first_seen_after_end_cannot_qualify() {
-        let mut parent = exited_control_parent();
-        let end = std::time::Instant::now() - std::time::Duration::from_millis(1);
-        assert!(
-            exit_wait_result(&mut parent, end).is_err(),
-            "an already-exited parent first observed after end must fail qualification"
-        );
-    }
-
-    /// A still-running parent must fail at its supplied bound; observation
-    /// never grants an open-ended grace.
-    #[test]
-    fn still_running_parent_fails_at_its_bound() {
-        let mut parent = control_parent("import time;time.sleep(30)");
-        let end = std::time::Instant::now() + std::time::Duration::from_millis(120);
-        assert!(exit_wait_result(&mut parent, end).is_err());
-        let _ = parent.kill();
-        let _ = parent.wait();
-    }
-}
+#[path = "process/tests.rs"]
+mod tests;
