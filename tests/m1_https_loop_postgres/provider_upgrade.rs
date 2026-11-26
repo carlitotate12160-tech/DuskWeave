@@ -133,15 +133,24 @@ pub(crate) fn ensure_0039_overlay() -> Overlay {
     }
 }
 
+fn admission_bodies(a: &mut Client) -> [String; 2] {
+    [MATCHES, RUN_START].map(|name| catalog_row(a, name).get(6))
+}
+
 fn ensure_0038_baseline() {
     let mut a = native::admin();
     match level(&mut a) {
         Level::V0037 => a.batch_execute(SQL_0038).unwrap(),
         Level::V0038 => {}
-        Level::V0039 => [MATCHES, RUN_START]
-            .into_iter()
-            .for_each(|f| a.batch_execute(&statement(SQL_0038, f)).unwrap()),
+        Level::V0039 => {
+            let mut tx = a.transaction().unwrap();
+            for function in [MATCHES, RUN_START] {
+                tx.batch_execute(&statement(SQL_0038, function)).unwrap();
+            }
+            tx.commit().unwrap();
+        }
     }
+    assert_eq!(admission_bodies(&mut a), expected(SQL_0038));
     assert_eq!(level(&mut a), Level::V0038);
 }
 
@@ -336,6 +345,7 @@ fn populated_0038_to_0039_preserves_fixture_run_and_recoverability() {
     );
 
     a.batch_execute(SQL_0039).unwrap();
+    assert_eq!(admission_bodies(&mut a), expected(SQL_0039));
     assert_eq!(level(&mut a), Level::V0039);
     assert!(sql_matches(&mut broker, &actual) && sql_matches(&mut broker, &fixture));
 
@@ -349,6 +359,26 @@ fn populated_0038_to_0039_preserves_fixture_run_and_recoverability() {
         snapshot(&mut a, run, e, c) == before,
         "upgrade preserves rows"
     );
+}
+
+fn assert_key_failure_receipt(receipt: &Value, run: &str, decision: Uuid, disposition: &str) {
+    assert_eq!(receipt["kind"], "m1_https_loop_run_receipt_v1");
+    assert_eq!(receipt["run_id"], run);
+    assert_eq!(receipt["run_profile"], "m1_https_loop_v1");
+    assert_eq!(receipt["inference_profile"], ACTUAL);
+    assert_eq!(receipt["execution_mode"], "controlled_fixture");
+    assert_eq!(receipt["dispatch_granted"], false);
+    assert_eq!(
+        (&receipt["dns_effect_count"], &receipt["head_effect_count"]),
+        (&json!(0), &json!(0))
+    );
+    let recorded = receipt["recorded_decisions"].as_array().unwrap();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0]["step_index"], 1);
+    assert_eq!(recorded[0]["decision"], decision.to_string());
+    assert_eq!(recorded[0]["disposition"], disposition);
+    assert!(recorded[0]["proposal"].is_null());
+    assert_eq!(recorded[0]["dispatch_granted"], false);
 }
 
 fn run_keyed(q: &Value, key: Option<&str>) -> (bool, Value) {
@@ -420,28 +450,9 @@ fn actual_pro_v2_cli_missing_and_invalid_key_fail_honestly_and_recover_key_free(
             https_support::start_server(https_support::principal_witness_proposal);
         let (ok, receipt) = run_keyed(&q, key);
         assert!(!ok, "{expected}: m1-run must fail honestly: {receipt}");
-        let decision = &receipt["recorded_decisions"][0];
-        assert_eq!(decision["disposition"], expected, "{receipt}");
-        assert!(decision["proposal"].is_null() && decision["dispatch_granted"] == false);
-        assert_eq!(
-            (&receipt["dns_effect_count"], &receipt["head_effect_count"]),
-            (&json!(0), &json!(0))
-        );
-        let r = a
-            .query_one("SELECT request->>'inference_profile', request->>'run_profile', request->>'execution_mode' FROM execution.autonomous_runs WHERE run_id=$1", &[&run])
-            .unwrap();
-        assert_eq!(
-            (
-                r.get::<_, String>(0),
-                r.get::<_, String>(1),
-                r.get::<_, String>(2)
-            ),
-            (
-                ACTUAL.into(),
-                "m1_https_loop_v1".into(),
-                "controlled_fixture".into()
-            )
-        );
+        let decision: Uuid = a.query_one("SELECT st.decision_id FROM execution.https_loop_steps st JOIN cognition.reasoning_decisions cd ON (cd.e,cd.c,cd.d)=(st.e,st.c,st.decision_id) WHERE st.run_id=$1 AND st.step_index=1 AND cd.payload->>'disposition'=$2", &[&run, &expected]).unwrap().get(0);
+        let id = run.to_string();
+        assert_key_failure_receipt(&receipt, &id, decision, expected);
         let reserved = durable_counts(&mut a, e, c, run);
         println!("KEY_FAILURE_STATE {expected} durable_and_pending={reserved:?}");
         assert_eq!(reserved, [1, 0, 1, 1, 0, 0, 1, 1], "{expected}: durable");
@@ -462,15 +473,13 @@ fn actual_pro_v2_cli_missing_and_invalid_key_fail_honestly_and_recover_key_free(
         let (charged, held) = cap_pair(&mut a, e, c);
         assert_eq!((&charged["calls"], &held["calls"]), (&json!(2), &json!(0)));
 
-        let id = run.to_string();
-        assert_eq!(
-            https_support::cli(&["m1-run-inspect", "--run", &id]).1["run_id"],
-            id.as_str()
-        );
         let (ok1, r1) = https_support::cli(&["m1-run-recover", "--run", &id]);
         let (ok2, r2) = https_support::cli(&["m1-run-recover", "--run", &id]);
         let (ok3, r3) = https_support::cli(&["m1-run-inspect", "--run", &id]);
         assert!(ok1 && ok2 && ok3, "{r1} {r2} {r3}");
+        for recovered in [&r1, &r2, &r3] {
+            assert_key_failure_receipt(recovered, &id, decision, expected);
+        }
         assert_eq!(
             (&r2, &r3),
             (&r1, &r1),

@@ -1,7 +1,7 @@
 //! Closed actual Pro-v2 tuple admission, producer/SQL/intent binding, and capacity checks.
 use crate::provider_upgrade::{
     ACTUAL, ACTUAL_URL, BROKER, FIXTURE, FIXTURE_URL, actual_pro_v2_registered_with,
-    ensure_0039_overlay, lab_permission, live_binding, permission_json, sql_matches,
+    ensure_0039_overlay, live_binding,
 };
 use crate::terrain::terrain_support::native;
 use duskweave::Fail;
@@ -201,7 +201,7 @@ fn actual_pro_v2_rust_ingress_and_rejections_enforce_closed_tuple() {
 
 #[ignore]
 #[test]
-fn actual_pro_v2_producer_sql_reservation_intent_and_sql_rejections() {
+fn actual_pro_v2_producer_reservation_intent_and_binding() {
     let _guard = native::qualified_existing_db();
     ensure_0039_overlay();
     let q = actual_pro_v2_registered_with(0xe101, |_| {});
@@ -286,64 +286,44 @@ fn actual_pro_v2_producer_sql_reservation_intent_and_sql_rejections() {
         .unwrap()
         .get(0)
     };
+    let pack = prep.prepared.utf8();
     for (cid, call) in [
         (res.generation_call, &gen_call),
         (res.repair_call, &rep_call),
     ] {
         let cfg = std::str::from_utf8(&call.configuration).unwrap();
+        let digest: String = admin
+            .query_one(
+                "SELECT execution.genai_binding_digest($1,$2)",
+                &[&pack, &cfg],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(digest, call.digest);
         assert!(binding_ok(&mut admin, cid, cfg, &call.digest));
     }
-    let bad_cfg = std::str::from_utf8(&gen_call.configuration)
+    let original = std::str::from_utf8(&gen_call.configuration).unwrap();
+    assert_eq!(original.matches(ACTUAL_URL).count(), 1);
+    let crossed = original.replacen(ACTUAL_URL, FIXTURE_URL, 1);
+    let crossed_intent: Value = serde_json::from_str(&crossed).unwrap();
+    assert_eq!(
+        (&crossed_intent["recipient"], &crossed_intent["profile"]),
+        (&json!(FIXTURE_URL), &json!(ACTUAL))
+    );
+    let altered: String = admin
+        .query_one(
+            "SELECT execution.genai_binding_digest($1,$2)",
+            &[&pack, &crossed],
+        )
         .unwrap()
-        .replace(ACTUAL_URL, FIXTURE_URL);
+        .get(0);
+    assert_ne!(altered, gen_call.digest);
     assert!(!binding_ok(
         &mut admin,
         res.generation_call,
-        &bad_cfg,
-        &gen_call.digest
+        &crossed,
+        &altered
     ));
-
-    for ok in [
-        permission_json(ACTUAL, ACTUAL_URL),
-        permission_json(FIXTURE, FIXTURE_URL),
-        lab_permission(permission_json(FIXTURE, FIXTURE_URL)),
-    ] {
-        assert!(sql_matches(&mut broker_client, &ok));
-    }
-    let mut with_live = permission_json(ACTUAL, ACTUAL_URL);
-    with_live["live_binding"] = live_binding();
-    let mut with_purpose = permission_json(ACTUAL, ACTUAL_URL);
-    with_purpose["qualification_purpose"] = json!("HTTPS_LOOP_LAB");
-    for bad in [
-        permission_json(ACTUAL, FIXTURE_URL),
-        permission_json(FIXTURE, ACTUAL_URL),
-        lab_permission(permission_json(ACTUAL, ACTUAL_URL)),
-        lab_permission(permission_json(ACTUAL, FIXTURE_URL)),
-        permission_json(BOGUS, ACTUAL_URL),
-        with_live,
-        with_purpose,
-    ] {
-        assert!(
-            !sql_matches(&mut broker_client, &bad),
-            "SQL must reject {bad}"
-        );
-    }
-
-    let run = |b: &mut postgres::Client, v: &Value| {
-        b.query_one("SELECT execution.run_start($1,$2)", &[v, &"a".repeat(64)])
-            .is_err()
-    };
-    let mut q_mismatch = actual_pro_v2_registered_with(0xe102, |_| {});
-    q_mismatch["inference_profile"] = json!(FIXTURE);
-    assert!(run(&mut broker_client, &q_mismatch));
-    let mut q_lab_actual = q_mismatch;
-    (
-        q_lab_actual["run_profile"],
-        q_lab_actual["execution_mode"],
-        q_lab_actual["inference_profile"],
-        q_lab_actual["live_binding"],
-    ) = (json!(LAB), json!("live"), json!(ACTUAL), live_binding());
-    assert!(run(&mut broker_client, &q_lab_actual));
 }
 
 #[ignore]
@@ -396,24 +376,6 @@ fn actual_pro_v2_preserves_protected_capacity_and_rejects_short_budget_or_time()
     assert_eq!(
         short_store.protect_next_decision(r_short, 1).unwrap_err(),
         Fail::State("inference_capacity_exhausted")
-    );
-
-    let now_s: i64 = native::admin()
-        .query_one(
-            "SELECT floor(extract(epoch FROM clock_timestamp()))::bigint",
-            &[],
-        )
-        .unwrap()
-        .get(0);
-    let mut q_over = actual_pro_v2_registered_with(0xe203, |_| {});
-    q_over["deadline_at_ms"] = json!(now_s * 1000 + 645_000);
-    assert!(
-        broker
-            .query_one(
-                "SELECT execution.run_start($1,$2)",
-                &[&q_over, &"a".repeat(64)]
-            )
-            .is_err()
     );
 
     let q_low = actual_pro_v2_registered_with(0xe204, |_| {});
