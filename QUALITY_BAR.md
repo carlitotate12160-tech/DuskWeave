@@ -180,9 +180,16 @@ unavailable measurement or analyzer failure is an error, not a numerical PASS.
 `scripts/check_complexity.py --base <commit>` measures the candidate worktree
 and the validated base commit with the same pinned analyzer
 (`rust-code-analysis-cli 0.0.25`, checksum-verified in CI) and ratchets per
-function/closure. Base sources and inventory come from Git into an isolated
-temporary tree; the worktree is never checked out and user-authored baseline
-reports are never trusted. Matching uses file + lexical owning scope +
+function/closure. Enforced inventory covers every Git-tracked first-party
+`.rs` path anywhere in the repository (`src/`, `tests/`, `benches/`, root
+scripts such as `build.rs`, and nested test modules), excluding only paths
+beginning with the exact prefix `third_party/genai/` (so
+`third_party/genai_extra/` and `tests/third_party/genai/` remain in scope).
+Nonignored untracked first-party `.rs` files fail closed (exit 2) before
+analyzer invocation, while ignored generated `.rs` files remain excluded. Base
+sources and inventory come from Git into an isolated temporary tree; the
+worktree is never checked out and user-authored baseline reports are never
+trusted. Matching uses file + lexical owning scope +
 function name — never line numbers or sibling indices. A cross-revision
 match is unambiguous only when the function's own key and every enclosing
 function/closure key are unique in both revisions; ambiguity propagates to

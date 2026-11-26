@@ -145,17 +145,31 @@ class CliFixtures(unittest.TestCase):
             self.fail("DW_COMPLEXITY_ANALYZER is required for these tests")
 
     def test_cap_boundary_7_passes_8_fails(self):
+        for ok_rel, new_rel in (("src/a.rs", "src/b.rs"), ("tests/a.rs", "tests/subprocess.rs")):
+            with self.subTest(ok_rel=ok_rel), tempfile.TemporaryDirectory() as td:
+                make_repo(td, {"src/a.rs": OK_RS, ok_rel: OK_RS})
+                commit(td)
+                res = run_checker(td)
+                self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+                make_repo(td, {"src/a.rs": OK_RS, ok_rel: OK_RS, new_rel: OVER_RS})
+                res = run_checker(td)
+                self.assertEqual(res.returncode, 1, res.stdout)
+                self.assertIn("own=8 cap=7", res.stdout)
+                self.assertIn("FAIL NEW", res.stdout)
+                self.assertIn("Gate FAIL: 1 complexity regressions", res.stdout)
+
+    def test_non_src_debt_retained_and_regression_fails(self):
         with tempfile.TemporaryDirectory() as td:
-            make_repo(td, {"src/a.rs": OK_RS})
+            make_repo(td, {"src/a.rs": OK_RS, "tests/subprocess.rs": OVER_RS})
             commit(td)
             res = run_checker(td)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-            make_repo(td, {"src/a.rs": OK_RS, "src/b.rs": OVER_RS})
+            self.assertIn("DEBT RETAINED tests/subprocess.rs", res.stdout)
+            worse = OVER_RS.replace("}", "    if true {}\n}", 1)
+            make_repo(td, {"src/a.rs": OK_RS, "tests/subprocess.rs": worse})
             res = run_checker(td)
             self.assertEqual(res.returncode, 1, res.stdout)
-            self.assertIn("own=8 cap=7", res.stdout)
-            self.assertIn("FAIL NEW", res.stdout)
-            self.assertIn("Gate FAIL: 1 complexity regressions", res.stdout)
+            self.assertIn("FAIL REGRESSED tests/subprocess.rs", res.stdout)
 
     def test_real_reviewed_dispatch_passes_at_10(self):
         with tempfile.TemporaryDirectory() as td:
@@ -168,14 +182,23 @@ class CliFixtures(unittest.TestCase):
             self.assertEqual(summary_of(td)["run_allowance"]["status"], "granted")
 
     def test_same_named_run_elsewhere_stays_7(self):
+        for rel in ("src/other.rs", "tests/run_test.rs"):
+            with self.subTest(rel=rel), tempfile.TemporaryDirectory() as td:
+                make_repo(td, {"src/a.rs": OK_RS, rel: REVIEWED_RUN_SRC})
+                commit(td)
+                res = run_checker(td)
+                self.assertEqual(res.returncode, 0, res.stdout)
+                self.assertIn(rel, res.stdout)
+                self.assertIn("own=10 cap=7", res.stdout)
+                self.assertIn("DEBT RETAINED", res.stdout)
         with tempfile.TemporaryDirectory() as td:
-            make_repo(td, {"src/other.rs": REVIEWED_RUN_SRC})
+            make_repo(td, {"src/a.rs": OK_RS})
             commit(td)
+            make_repo(td, {"src/a.rs": OK_RS, "tests/run_test.rs": REVIEWED_RUN_SRC})
             res = run_checker(td)
-            self.assertEqual(res.returncode, 0, res.stdout)
-            self.assertIn("src/other.rs", res.stdout)
+            self.assertEqual(res.returncode, 1, res.stdout)
             self.assertIn("own=10 cap=7", res.stdout)
-            self.assertIn("DEBT RETAINED", res.stdout)
+            self.assertIn("run allowance: absent", res.stdout)
 
     def test_nested_run_in_main_stays_7(self):
         nested = "fn wrapper() -> Res<()> {\n" + "".join(
@@ -293,15 +316,48 @@ class CliFixtures(unittest.TestCase):
                 td, "report-out", "analyzer-base.stderr.log")))
 
     def test_untracked_source_is_unexpected_report(self):
+        for rel in ("src/extra.rs", "tests/extra.rs", "third_party/genai_extra/extra.rs"):
+            with self.subTest(rel=rel), tempfile.TemporaryDirectory() as td:
+                make_repo(td, {"src/a.rs": OK_RS})
+                commit(td)
+                extra = os.path.join(td, *rel.split("/"))
+                os.makedirs(os.path.dirname(extra), exist_ok=True)
+                with open(extra, "w", encoding="utf-8") as fh:
+                    fh.write(OK_RS)
+                res = run_checker(td)
+                self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+                self.assertIn("unexpected", res.stderr)
+                self.assertTrue(os.path.exists(extra))
+
+    def test_first_party_inventory_scope_and_vendor_boundary(self):
+        expected = [
+            "benches/b.rs", "build.rs", "src/a.rs", "tests/nested/sub.rs",
+            "tests/third_party/genai/a.rs", "third_party/genai_extra/a.rs",
+        ]
+        tracked = {p: OK_RS for p in expected}
+        tracked["third_party/genai/vendor.rs"] = OVER_RS
+        tracked[".gitignore"] = "ignored_gen/\n"
         with tempfile.TemporaryDirectory() as td:
-            make_repo(td, {"src/a.rs": OK_RS})
+            make_repo(td, tracked)
             commit(td)
-            extra = os.path.join(td, "src", "extra.rs")
-            with open(extra, "w", encoding="utf-8") as fh:
-                fh.write(OK_RS)
+            for rel in ("ignored_gen/gen.rs", "third_party/genai/untracked.rs"):
+                p = os.path.join(td, *rel.split("/"))
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write(OVER_RS)
+            res = run_checker(td)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            s = summary_of(td)
+            self.assertEqual((s["files"], s["base_files"]), (6, 6))
+            self.assertEqual(sorted(m["file"] for m in s["measurements"]), expected)
+            for rel in ("build.rs", "third_party/genai_extra/a.rs", "tests/third_party/genai/a.rs"):
+                with open(os.path.join(td, *rel.split("/")), "w", encoding="utf-8") as fh:
+                    fh.write(OVER_RS)
+            self.assertEqual(run_checker(td).returncode, 1)
+            os.remove(os.path.join(td, "build.rs"))
             res = run_checker(td)
             self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
-            self.assertIn("unexpected", res.stderr)
+            self.assertIn("missing", res.stderr)
 
     def test_empty_inventory_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
@@ -364,7 +420,7 @@ class PolicyEvaluator(unittest.TestCase):
         self.assertEqual(len(self.checker.evaluate(ms_over)[0]), 1)
 
     def test_dispatch_identity_not_name_alone(self):
-        for field in ({"depth": 2}, {"file": "src/other.rs"}):
+        for field in ({"depth": 2}, {"file": "src/other.rs"}, {"file": "tests/run_test.rs"}):
             ms = [mk(own=10, **{"name": "run", **field})]
             status = self.allowance(ms)["status"]
             self.assertIn(status, ("absent", "ambiguous"))
