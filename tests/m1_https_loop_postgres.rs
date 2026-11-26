@@ -19,6 +19,12 @@ mod authority;
 mod capacity;
 #[path = "m1_https_loop_postgres/compatibility.rs"]
 mod compatibility;
+#[path = "m1_https_loop_postgres/provider_binding.rs"]
+mod provider_binding;
+#[path = "m1_https_loop_postgres/provider_rejections.rs"]
+mod provider_rejections;
+#[path = "m1_https_loop_postgres/provider_upgrade.rs"]
+mod provider_upgrade;
 #[path = "m1_https_loop_postgres/publication.rs"]
 mod publication;
 #[path = "m1_https_loop_postgres/recovery.rs"]
