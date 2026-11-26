@@ -93,10 +93,13 @@ fn pack_binding(p: &Value) -> bool {
     }
 }
 fn fixture_https_pack(p: &Value) -> bool {
+    let profile_ok = p["inference_profile"].as_str().is_some_and(|name| {
+        [profiles::FIXTURE_PRO_V2_PROFILE, profiles::PRO_V2_PROFILE].contains(&name)
+    });
     [
         p["run_profile"] == profiles::HTTPS_LOOP_RUN_PROFILE,
         p["execution_mode"] == "controlled_fixture",
-        p["inference_profile"] == profiles::FIXTURE_PRO_V2_PROFILE,
+        profile_ok,
         p.get("live_binding").is_none(),
         p.get("qualification_purpose").is_none(),
     ]
