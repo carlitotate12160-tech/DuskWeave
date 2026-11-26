@@ -18,6 +18,10 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "process_pair/subprocess.rs"]
+mod subprocess;
+use subprocess::{run_bounded, wait_child};
+
 const LABEL_PKT: &str = "org.duskweave.packet=DW-M1-PUBLIC-HTTPS-WORKER-R1";
 const GO_BIN: &str = "/home/ekoku/duskweave-build/go-1.27.3/toolchain/bin/go";
 const GO_CACHE: &str = "/home/ekoku/duskweave-build/go-1.27.3/public-https-worker-r1/gocache";
@@ -72,46 +76,6 @@ fn go_cmd(dir: &Path) -> Command {
     }
     cmd.env("GOCACHE", GO_CACHE).env("GOMODCACHE", GO_MOD);
     cmd
-}
-
-fn wait_child(
-    child: &mut Child,
-    lbl: &str,
-    lim: Duration,
-) -> Result<std::process::ExitStatus, String> {
-    let deadline = Instant::now() + lim;
-    loop {
-        if let Some(st) = child.try_wait().map_err(|e| format!("{lbl}: {e}"))? {
-            return Ok(st);
-        }
-        if Instant::now() >= deadline {
-            let _ = (child.kill(), child.wait());
-            return Err(format!("{lbl} timed out"));
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn run_bounded(cmd: &mut Command, stdin: Option<&[u8]>, lbl: &str) -> Result<String, String> {
-    let si = if stdin.is_some() {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    };
-    cmd.stdin(si).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| format!("{lbl}: {e}"))?;
-    if let Some(bytes) = stdin {
-        let mut sin = child.stdin.take().ok_or_else(|| format!("{lbl} stdin"))?;
-        sin.write_all(bytes)
-            .map_err(|e| format!("{lbl} write: {e}"))?;
-    }
-    let st = wait_child(&mut child, lbl, Duration::from_secs(60))?;
-    let (mut out, mut err) = (String::new(), String::new());
-    let _ = child.stdout.take().map(|mut s| s.read_to_string(&mut out));
-    let _ = child.stderr.take().map(|mut s| s.read_to_string(&mut err));
-    st.success()
-        .then_some(out)
-        .ok_or_else(|| format!("{lbl} ({st:?}): {err}"))
 }
 
 fn docker_run(args: &[&str], stdin: Option<&[u8]>, lbl: &str) -> String {
