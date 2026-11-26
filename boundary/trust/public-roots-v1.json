@@ -1,0 +1,23 @@
+{
+  "schema": "dw_public_roots_provenance_v1",
+  "authority_notice": "Technical provenance only; not a campaign or deployment manifest and not a runtime authority override.",
+  "bundle_version": "curl-cacert-2026-11-05",
+  "upstream_source": "Mozilla NSS certdata.txt converted by curl CA extract",
+  "upstream_date": "2026-11-05",
+  "mozilla_certdata_timestamp": "Thu Nov  5 04:12:01 2026 GMT",
+  "mozilla_certdata_sha256": "3ec2b4d240dc12c747eaf450061db84af757c483bbda302f9e29ceb5d70be510",
+  "conversion_tool": "mk-ca-bundle.pl 1.35",
+  "upstream_docs_url": "https://curl.se/docs/caextract.html",
+  "immutable_pem_url": "https://curl.se/ca/cacert-2026-11-05.pem",
+  "upstream_sha256_url": "https://curl.se/ca/cacert-2026-11-05.pem.sha256",
+  "license": "MPL-2.0",
+  "repository_path": "boundary/trust/cacert-2026-11-05.pem",
+  "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285",
+  "size_bytes": 200116,
+  "certificate_count": 118,
+  "line_endings": "LF",
+  "image_path": "/etc/duskweave/public-roots-2026-11-05.pem",
+  "image_mode": "0444",
+  "reader_uid": 65532,
+  "verification_policy": "Standard Go crypto/x509 verification against this explicit CertPool only; no SystemCertPool fallback and no claim of complete browser trust-policy equivalence."
+}

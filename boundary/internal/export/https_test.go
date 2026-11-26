@@ -231,3 +231,76 @@ func TestExporterTerminalTimeoutWindowF4(t *testing.T) {
 		t.Fatal("F4: overflow deadline accepted")
 	}
 }
+
+func publicRequest(now time.Time) frame.HttpsRequest {
+	q := labRequest(now)
+	q.RunProfile = frame.PublicRunProfile
+	q.Hostname = "probe.example.invalid"
+	q.IPv4 = "93.184.216.34"
+	q.Resolver = "1.1.1.1"
+	return q
+}
+
+func TestExporterPublicScopeProjectionAndFailClosedFraming(t *testing.T) {
+	now := time.Now()
+	q := publicRequest(now)
+	const publicScope = "public_https_single_endpoint_not_whole_host_or_objective"
+	const labScope = "synthetic_https_lab_acquisition_not_public_live"
+
+	hdr := "HTTP/1.1 302 Found\r\nLocation: https://evil.example/EXP_RAW_SENTINEL\r\n\r\n"
+	safe302, err := runExporterFrames(q, []string{"connect", "tls", "head"}, frame.PrivateResult{
+		Identity: frame.HttpsID(q.Identity, "RESULT", 7), Phase: "head",
+		Status: "received", Observed: now.UnixMilli(), Header: base64.StdEncoding.EncodeToString([]byte(hdr)), TLS: "none",
+	}, true)
+	if err != nil || safe302.Outcome != "head_response" || safe302.StatusCode != 302 ||
+		safe302.Redirect != "refused_redirect" || len(safe302.Limitations) != 2 || safe302.Limitations[0] != publicScope {
+		t.Fatalf("public 302 export failed: err=%v safe=%+v", err, safe302)
+	}
+	encoded302, _ := json.Marshal(safe302)
+	if bytes.Contains(encoded302, []byte("EXP_RAW_SENTINEL")) || bytes.Contains(encoded302, []byte(labScope)) {
+		t.Fatal("public export leaked raw material or lab scope")
+	}
+
+	cases := []struct {
+		permits []string
+		raw     frame.PrivateResult
+		outcome string
+		wantLen int
+	}{
+		{[]string{"connect"}, frame.PrivateResult{Identity: frame.HttpsID(q.Identity, "RESULT", 7), Phase: "connect", Status: "connection_failed", Observed: now.UnixMilli(), TLS: "none"}, "connection_failed", 2},
+		{[]string{"connect"}, frame.PrivateResult{Identity: frame.HttpsID(q.Identity, "RESULT", 7), Phase: "connect", Status: "execution_refused", Observed: now.UnixMilli(), TLS: "none"}, "execution_refused", 2},
+		{[]string{"connect", "tls"}, frame.PrivateResult{Identity: frame.HttpsID(q.Identity, "RESULT", 7), Phase: "tls", Status: "tls_failed", Observed: now.UnixMilli(), TLS: "unknown_root"}, "tls_failed", 3},
+		{[]string{"connect", "tls", "head"}, frame.PrivateResult{Identity: frame.HttpsID(q.Identity, "RESULT", 7), Phase: "head", Status: "header_limit", Observed: now.UnixMilli(), TLS: "none"}, "execution_refused", 3},
+	}
+	for _, tc := range cases {
+		safe, err := runExporterFrames(q, tc.permits, tc.raw, true)
+		if err != nil || safe.Outcome != tc.outcome || len(safe.Limitations) != tc.wantLen || safe.Limitations[0] != publicScope {
+			t.Fatalf("public export case failed (%+v): err=%v safe=%+v", tc, err, safe)
+		}
+	}
+
+	// Missing ACK fails closed.
+	if _, err := runExporterFrames(q, []string{"connect"}, frame.PrivateResult{
+		Identity: frame.HttpsID(q.Identity, "RESULT", 7), Phase: "connect", Status: "connection_failed", Observed: now.UnixMilli(), TLS: "none",
+	}, false); err == nil {
+		t.Fatal("missing ACK accepted")
+	}
+	// Mixed public/LAB tuple or unknown RunProfile fails closed.
+	for _, mut := range []func(*frame.HttpsRequest){
+		func(r *frame.HttpsRequest) { r.IPv4 = frame.LabIPv4 },
+		func(r *frame.HttpsRequest) { r.Resolver = frame.LabResolver },
+		func(r *frame.HttpsRequest) { r.RunProfile = "unknown-profile" },
+		func(r *frame.HttpsRequest) { r.RunProfile = frame.LabRunProfile },
+	} {
+		bad := q
+		mut(&bad)
+		if _, err := runExporterFrames(bad, []string{"connect"}, frame.PrivateResult{
+			Identity: frame.HttpsID(bad.Identity, "RESULT", 7), Phase: "connect", Status: "connection_failed", Observed: now.UnixMilli(), TLS: "none",
+		}, true); err == nil {
+			t.Fatal("mixed/unknown public-vs-lab tuple accepted")
+		}
+	}
+	if _, ok := scopeLimitation("unknown"); ok {
+		t.Fatal("scopeLimitation accepted unknown profile")
+	}
+}

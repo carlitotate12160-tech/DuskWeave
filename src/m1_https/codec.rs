@@ -3,7 +3,7 @@ use super::ipc::{
     HTTPS_IPC_MAX_CONTROL, HTTPS_IPC_MAX_FRAME, HTTPS_IPC_MAX_FRAMES, HttpsIpcRequest,
     HttpsOutcome, HttpsPhase, HttpsPhaseReady, HttpsPhaseStart, HttpsSafeResult,
 };
-use super::result::valid_issued_limitations;
+use super::result::valid_issued_limitations_for_profile;
 use super::{
     HttpsHeadResult, HttpsOutcomeKind, HttpsSourceKind, RedirectDisposition, VERSION_HEAD_RESULT,
     VERSION_HTTPS_IPC,
@@ -142,7 +142,11 @@ impl HttpsSafeResult {
             self.network_bytes <= q.limits.network_inbound_bytes,
             self.header_bytes <= q.limits.header_bytes,
             self.valid_phase_and_fields(granted),
-            valid_issued_limitations(self.outcome.into(), &self.limitations),
+            valid_issued_limitations_for_profile(
+                &q.run_profile,
+                self.outcome.into(),
+                &self.limitations,
+            ),
         ];
         base_ok
             .into_iter()
@@ -232,6 +236,13 @@ impl HttpsSafeResult {
     }
 
     pub fn into_head_result(&self, q: &HttpsIpcRequest) -> Res<HttpsHeadResult> {
+        if !valid_issued_limitations_for_profile(
+            &q.run_profile,
+            self.outcome.into(),
+            &self.limitations,
+        ) {
+            return Err(Fail::Input("invalid_https_head_result"));
+        }
         let perceived_at = self.observed_at_ms.div_euclid(1000);
         let result = HttpsHeadResult {
             version: VERSION_HEAD_RESULT.into(),

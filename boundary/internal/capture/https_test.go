@@ -342,7 +342,7 @@ func TestCaptureToExporterHeadCloseAndPostDeadlineTimeoutF3F4(t *testing.T) {
 	pool, tlsCfg := testLeafTLS(t, []string{"http/1.1"})
 	dialClose, _ := tlsDialPair(tlsCfg, func(*spyCapConn) {})
 	resConnFail := runCaptureAndExporterPair(t, q, httpsDeps{
-		now: time.Now, loadPool: func() (*x509.CertPool, error) { return pool, nil }, dial: dialClose,
+		now: time.Now, loadPool: func(string) (*x509.CertPool, error) { return pool, nil }, dial: dialClose,
 	})
 	if resConnFail.Outcome != "connection_failed" {
 		t.Fatalf("F3 E2E: expected connection_failed, got %+v", resConnFail)
@@ -379,7 +379,7 @@ func TestCaptureTimeoutClosesDirectlyWithoutCloseNotifyF7(t *testing.T) {
 	})
 	start := time.Now()
 	res := runCaptureAndExporterPair(t, q, httpsDeps{
-		now: time.Now, loadPool: func() (*x509.CertPool, error) { return pool, nil }, dial: dialStall,
+		now: time.Now, loadPool: func(string) (*x509.CertPool, error) { return pool, nil }, dial: dialStall,
 	})
 	if elapsed := time.Since(start); res.Outcome != "timed_out" || res.Observed < q.Deadline || res.Observed > q.Deadline+1000 || elapsed > 700*time.Millisecond {
 		t.Fatalf("F7 E2E: outcome=%s obs=%d elapsed=%v", res.Outcome, res.Observed, elapsed)

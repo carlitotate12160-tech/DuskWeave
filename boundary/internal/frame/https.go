@@ -1,8 +1,10 @@
 package frame
 
 import (
+	"encoding/binary"
 	"math"
 	"net/netip"
+	"strings"
 	"time"
 )
 
@@ -11,7 +13,25 @@ const LabHost = "head.duskweave.test"
 const LabIPv4 = "198.51.100.10"
 const LabResolver = "192.0.2.53"
 const LabRunProfile = "autonomous-https-genai-lab-v1"
+const PublicRunProfile = "autonomous-https-genai-live-v1"
 const LabProfile = "https-head-v1"
+
+var specialIPv4 = [][2]uint32{
+	{0x00000000, 0xff000000},
+	{0x0a000000, 0xff000000},
+	{0x64400000, 0xffc00000},
+	{0x7f000000, 0xff000000},
+	{0xa9fe0000, 0xffff0000},
+	{0xac100000, 0xfff00000},
+	{0xc0000000, 0xffffff00},
+	{0xc0000200, 0xffffff00},
+	{0xc0586300, 0xffffff00},
+	{0xc0a80000, 0xffff0000},
+	{0xc6120000, 0xfffe0000},
+	{0xc6336400, 0xffffff00},
+	{0xcb007100, 0xffffff00},
+	{0xe0000000, 0xe0000000},
+}
 
 type Limits struct {
 	NetworkInboundBytes uint32 `json:"network_inbound_bytes"`
@@ -166,6 +186,52 @@ func endpointOK(s string) bool {
 	return true
 }
 
+func isGlobalIPv4(raw string) bool {
+	ip, err := netip.ParseAddr(raw)
+	if err != nil || !ip.Is4() || ip.String() != raw {
+		return false
+	}
+	b := ip.As4()
+	n := binary.BigEndian.Uint32(b[:])
+	for _, entry := range specialIPv4 {
+		if (n & entry[1]) == entry[0] {
+			return false
+		}
+	}
+	return true
+}
+
+func validPublicHostname(name string) bool {
+	if len(name) == 0 || len(name) > 253 || !strings.Contains(name, ".") {
+		return false
+	}
+	if _, err := netip.ParseAddr(name); err == nil {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, ch := range []byte(label) {
+			if !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '-') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validHTTPSScope(q HttpsRequest) bool {
+	switch q.RunProfile {
+	case LabRunProfile:
+		return q.Hostname == LabHost && q.IPv4 == LabIPv4 && q.Resolver == LabResolver
+	case PublicRunProfile:
+		return validPublicHostname(q.Hostname) && isGlobalIPv4(q.IPv4) && isGlobalIPv4(q.Resolver)
+	default:
+		return false
+	}
+}
+
 func ValidateHTTPS(q HttpsRequest, now time.Time) error {
 	if !SameAttempt(q.Identity, q.Identity) || q.Schema != HttpsSchema || q.Kind != "REQUEST" || q.Sequence != 0 || q.Generation == 0 {
 		return ErrFrame
@@ -179,9 +245,9 @@ func ValidateHTTPS(q HttpsRequest, now time.Time) error {
 	nowMs := now.UnixMilli()
 	maxDeadline, deadlineOK := AddMs(nowMs, int64(q.Duration))
 	valid := deadlineOK && q.StepIndex >= 1 && q.StepIndex <= 4 && q.AttemptKind == "head" && q.Profile == LabProfile &&
-		q.Mode == "live" && q.RunProfile == LabRunProfile && shaOK(q.Release) && endpointOK(q.Endpoint) &&
-		q.Hostname == LabHost && q.IPv4 == LabIPv4 && q.Port == 443 && q.Path == "/" && q.Method == "HEAD" &&
-		q.ParentRevision >= 1 && q.Resolver == LabResolver && q.MissionRevision >= 1 && q.EvaluatedAt > 0 &&
+		q.Mode == "live" && validHTTPSScope(q) && shaOK(q.Release) && endpointOK(q.Endpoint) &&
+		q.Port == 443 && q.Path == "/" && q.Method == "HEAD" &&
+		q.ParentRevision >= 1 && q.MissionRevision >= 1 && q.EvaluatedAt > 0 &&
 		q.EvaluatedAt <= nowMs && q.ClaimUntil > now.Unix() && q.EpisodeDeadline >= q.Deadline &&
 		q.Duration >= 1 && q.Duration <= 5000 && q.Deadline > nowMs && q.Deadline <= maxDeadline &&
 		q.Limits == fixedLimits()

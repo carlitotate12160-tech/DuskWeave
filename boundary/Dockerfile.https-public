@@ -1,0 +1,4 @@
+FROM scratch
+COPY --chmod=0555 dw-dns-capture /dw-dns-capture
+COPY --chmod=0555 dw-dns-exporter /dw-dns-exporter
+COPY --chmod=a=rX cacert-2026-11-05.pem /etc/duskweave/public-roots-2026-11-05.pem

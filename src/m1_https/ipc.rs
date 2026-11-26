@@ -2,10 +2,11 @@
 use super::{HTTPS_METHOD_HEAD, HTTPS_PORT, VERSION_HTTPS_IPC, valid_local_id};
 use crate::m1_inference_profile::{
     HTTPS_HEAD_PROFILE, HTTPS_LAB_HOSTNAME, HTTPS_LAB_IPV4, HTTPS_LAB_RESOLVER,
-    HTTPS_LAB_RUN_PROFILE,
+    HTTPS_LAB_RUN_PROFILE, HTTPS_PUBLIC_RUN_PROFILE, is_global_ipv4,
 };
 use crate::{Fail, Res};
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, Ipv4Addr};
 use uuid::Uuid;
 
 pub const HTTPS_IPC_MAX_FRAME: usize = 16384;
@@ -251,6 +252,34 @@ fn bounded_limitations<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Str
 }
 
 impl HttpsIpcRequest {
+    fn valid_lab_scope(&self) -> bool {
+        [
+            self.hostname == HTTPS_LAB_HOSTNAME,
+            self.ipv4 == HTTPS_LAB_IPV4,
+            self.resolver_ipv4 == HTTPS_LAB_RESOLVER,
+        ]
+        .into_iter()
+        .all(|v| v)
+    }
+
+    fn valid_public_scope(&self) -> bool {
+        [
+            valid_public_hostname(&self.hostname),
+            canonical_global_ipv4(&self.ipv4),
+            canonical_global_ipv4(&self.resolver_ipv4),
+        ]
+        .into_iter()
+        .all(|v| v)
+    }
+
+    fn valid_scope_binding(&self) -> bool {
+        match self.run_profile.as_str() {
+            HTTPS_LAB_RUN_PROFILE => self.valid_lab_scope(),
+            HTTPS_PUBLIC_RUN_PROFILE => self.valid_public_scope(),
+            _ => false,
+        }
+    }
+
     pub fn validate_shape(&self) -> Res<()> {
         let ids_ok = ![
             self.engagement_id,
@@ -277,20 +306,17 @@ impl HttpsIpcRequest {
             self.attempt_kind == "head",
             self.profile == HTTPS_HEAD_PROFILE,
             self.execution_mode == "live",
-            self.run_profile == HTTPS_LAB_RUN_PROFILE,
+            self.valid_scope_binding(),
             self.release_sha256.len() == 64
                 && self
                     .release_sha256
                     .bytes()
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
             valid_local_id(&self.endpoint_ref, "endpoint_") && self.endpoint_ref.len() <= 16,
-            self.hostname == HTTPS_LAB_HOSTNAME,
-            self.ipv4 == HTTPS_LAB_IPV4,
             self.port == HTTPS_PORT,
             self.approved_path == "/",
             self.method == HTTPS_METHOD_HEAD,
             self.parent_claim_revision >= 1,
-            self.resolver_ipv4 == HTTPS_LAB_RESOLVER,
             self.expected_mission_revision >= 1,
             self.authority_evaluated_at_ms > 0,
             self.claim_valid_until_s > 0,
@@ -322,4 +348,38 @@ impl HttpsIpcRequest {
             .then_some(())
             .ok_or(Fail::Input("https_request_refused"))
     }
+}
+
+fn valid_label_byte(b: &u8) -> bool {
+    b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-'
+}
+
+fn valid_public_label(label: &str) -> bool {
+    let b = label.as_bytes();
+    [
+        !b.is_empty(),
+        b.len() <= 63,
+        b.first() != Some(&b'-'),
+        b.last() != Some(&b'-'),
+        b.iter().all(valid_label_byte),
+    ]
+    .into_iter()
+    .all(|v| v)
+}
+
+fn valid_public_hostname(host: &str) -> bool {
+    [
+        !host.is_empty(),
+        host.len() <= 253,
+        host.contains('.'),
+        host.parse::<IpAddr>().is_err(),
+        host.split('.').all(valid_public_label),
+    ]
+    .into_iter()
+    .all(|v| v)
+}
+
+fn canonical_global_ipv4(raw: &str) -> bool {
+    raw.parse::<Ipv4Addr>()
+        .is_ok_and(|ip| ip.to_string() == raw && is_global_ipv4(ip))
 }

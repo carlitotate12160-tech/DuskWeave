@@ -145,7 +145,22 @@ func tlsKnown(category string) bool {
 	}
 }
 
+func scopeLimitation(runProfile string) (string, bool) {
+	switch runProfile {
+	case frame.LabRunProfile:
+		return "synthetic_https_lab_acquisition_not_public_live", true
+	case frame.PublicRunProfile:
+		return "public_https_single_endpoint_not_whole_host_or_objective", true
+	default:
+		return "", false
+	}
+}
+
 func projectHTTPS(q frame.HttpsRequest, raw frame.PrivateResult) (frame.SafeResult, bool) {
+	scope, ok := scopeLimitation(q.RunProfile)
+	if !ok {
+		return frame.SafeResult{}, false
+	}
 	outcome, code, redirect, headerLen := raw.Status, uint16(0), "none", uint32(0)
 	switch raw.Status {
 	case "received":
@@ -168,7 +183,7 @@ func projectHTTPS(q frame.HttpsRequest, raw frame.PrivateResult) (frame.SafeResu
 	return frame.SafeResult{
 		Identity: frame.HttpsID(q.Identity, "RESULT", 7), Outcome: outcome, Observed: raw.Observed,
 		Network: raw.Network, Header: headerLen, StatusCode: code, TLS: raw.TLS, Redirect: redirect,
-		Limitations: limitationCodes(outcome, raw.Status, raw.TLS),
+		Limitations: limitationCodes(scope, outcome, raw.Status, raw.TLS),
 	}, true
 }
 
@@ -308,8 +323,8 @@ func validExportTransferEncoding(raw string) bool {
 	return true
 }
 
-func limitationCodes(outcome, status, tlsCat string) []string {
-	codes := []string{"synthetic_https_lab_acquisition_not_public_live"}
+func limitationCodes(scope, outcome, status, tlsCat string) []string {
+	codes := []string{scope}
 	switch outcome {
 	case "head_response":
 		codes = append(codes, "head_response_does_not_prove_access_or_objective_completion")

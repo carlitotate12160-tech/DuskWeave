@@ -61,14 +61,14 @@ func LoadLabPool() (*x509.CertPool, error) {
 
 type httpsDeps struct {
 	now      func() time.Time
-	loadPool func() (*x509.CertPool, error)
+	loadPool func(string) (*x509.CertPool, error)
 	dial     func(string, uint16, time.Time) (net.Conn, error)
 }
 
 func runHTTPS(control *frame.Reader, raw *frame.Writer, payload []byte) error {
 	return runHTTPSWithDeps(control, raw, payload, httpsDeps{
 		now:      time.Now,
-		loadPool: LoadLabPool,
+		loadPool: loadTrustPool,
 		dial:     dialPinned,
 	})
 }
@@ -84,6 +84,14 @@ func runHTTPSWithDeps(control *frame.Reader, raw *frame.Writer, payload []byte, 
 	}
 	if !admitStart(control, q, "connect", 2, readyAt, deps.now) {
 		return frame.ErrFrame
+	}
+	var preloadedPool *x509.CertPool
+	if q.RunProfile == frame.PublicRunProfile {
+		var err error
+		preloadedPool, err = deps.loadPool(q.RunProfile)
+		if err != nil || preloadedPool == nil {
+			return writePrivate(raw, q, "connect", "execution_refused", "none", 0, "", deps.now)
+		}
 	}
 	deadline := time.UnixMilli(q.Deadline)
 	conn, err := deps.dial(q.IPv4, q.Port, deadline)
@@ -105,10 +113,13 @@ func runHTTPSWithDeps(control *frame.Reader, raw *frame.Writer, payload []byte, 
 	if !admitStart(control, q, "tls", 4, readyAt, deps.now) {
 		return frame.ErrFrame
 	}
-	pool, err := deps.loadPool()
-	if err != nil {
-		closeConn()
-		return writePrivate(raw, q, "tls", "execution_refused", "none", uint32(capped.used), "", deps.now)
+	pool := preloadedPool
+	if pool == nil {
+		pool, err = deps.loadPool(q.RunProfile)
+		if err != nil || pool == nil {
+			closeConn()
+			return writePrivate(raw, q, "tls", "execution_refused", "none", uint32(capped.used), "", deps.now)
+		}
 	}
 	tlsConn, status, category := handshake(capped, pool, q.Hostname, deadline)
 	if status != "" {
